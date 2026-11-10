@@ -10,7 +10,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.pocketdev.advance_erp"
+        applicationId = "com.pocketdev.advance_erp2"
         minSdk = 28
         targetSdk = 35
         versionCode = 1
