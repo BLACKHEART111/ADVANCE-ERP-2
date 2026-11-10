@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.engine.AllocationMethod
+import com.pocketdev.advance_erp.core.engine.LandingCostEngine
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.util.ImportPdfGenerator
 import com.pocketdev.advance_erp.data.dao.BusinessProfileDao
@@ -13,8 +14,10 @@ import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.CostCategory
 import com.pocketdev.advance_erp.data.entity.DamageRecord
+import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.ImportShipment
+import com.pocketdev.advance_erp.data.entity.InventoryCostAdjustment
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.LandedCostSnapshot
 import com.pocketdev.advance_erp.data.entity.PaymentMethod
@@ -25,7 +28,9 @@ import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
+import com.pocketdev.advance_erp.data.entity.ShipmentFreightRate
 import com.pocketdev.advance_erp.data.entity.ShipmentStatus
+import com.pocketdev.advance_erp.data.entity.ShipmentSupplier
 import com.pocketdev.advance_erp.data.entity.ShippingMethod
 import com.pocketdev.advance_erp.data.entity.ShortageRecord
 import com.pocketdev.advance_erp.data.entity.Supplier
@@ -40,6 +45,7 @@ import com.pocketdev.advance_erp.domain.repository.ProductRepository
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
 import com.pocketdev.advance_erp.domain.repository.ReceiptItemDraft
 import com.pocketdev.advance_erp.domain.repository.ShipmentCartonDraft
+import com.pocketdev.advance_erp.domain.repository.ShipmentSupplierDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -77,6 +83,12 @@ data class ImportUiState(
     val selectedPoShortageRecords: List<ShortageRecord> = emptyList(),
     val selectedPoAdditionalCosts: List<AdditionalProductCost> = emptyList(),
     val selectedPoCompletionRecord: PurchaseCompletionRecord? = null,
+    val selectedShipmentSuppliers: List<ShipmentSupplier> = emptyList(),
+    val selectedShipmentOrders: List<PurchaseOrder> = emptyList(),
+    val selectedShipmentFreightRates: List<ShipmentFreightRate> = emptyList(),
+    val selectedShipmentLandingPreview: LandingCostEngine.ShipmentLandingCostResult? = null,
+    val selectedShipmentCostAdjustments: List<InventoryCostAdjustment> = emptyList(),
+    val warehouseRentHistory: List<ExpenseVoucher> = emptyList(),
     val searchQuery: String = "",
     val poStatusFilter: PurchaseOrderStatus? = null,
     val poSupplierFilter: String? = null,
@@ -143,6 +155,11 @@ class ImportViewModel @Inject constructor(
                     _uiState.update { it.copy(categories = cats) }
                 }
             }
+            viewModelScope.launch {
+                importRepository.getWarehouseRentExpenses(null).collect { rents ->
+                    _uiState.update { it.copy(warehouseRentHistory = rents) }
+                }
+            }
 
             combine(
                 ordersShipmentsFlow,
@@ -194,17 +211,51 @@ class ImportViewModel @Inject constructor(
             launch {
                 importRepository.getCartonsForShipment(shipmentId).collect { cartons ->
                     _uiState.update { it.copy(selectedShipmentCartons = cartons) }
+                    refreshShipmentLandingPreview(shipmentId)
                 }
             }
             launch {
                 importRepository.getCostItemsForShipment(shipmentId).collect { costs ->
                     _uiState.update { it.copy(costItems = costs) }
+                    refreshShipmentLandingPreview(shipmentId)
                 }
             }
             launch {
                 importRepository.getLandedCostSnapshots(shipmentId).collect { snapshots ->
                     _uiState.update { it.copy(landedCostSnapshots = snapshots) }
                 }
+            }
+            launch {
+                importRepository.getSuppliersForShipment(shipmentId).collect { sups ->
+                    _uiState.update { it.copy(selectedShipmentSuppliers = sups) }
+                    refreshShipmentLandingPreview(shipmentId)
+                }
+            }
+            launch {
+                importRepository.getOrdersForShipment(shipmentId).collect { orders ->
+                    _uiState.update { it.copy(selectedShipmentOrders = orders) }
+                }
+            }
+            launch {
+                importRepository.getFreightRatesForShipment(shipmentId).collect { rates ->
+                    _uiState.update { it.copy(selectedShipmentFreightRates = rates) }
+                }
+            }
+            launch {
+                importRepository.getCostAdjustmentsForShipment(shipmentId).collect { adjs ->
+                    _uiState.update { it.copy(selectedShipmentCostAdjustments = adjs) }
+                }
+            }
+        }
+    }
+
+    fun refreshShipmentLandingPreview(shipmentId: String) {
+        viewModelScope.launch {
+            try {
+                val preview = importRepository.previewShipmentLandingCost(shipmentId)
+                _uiState.update { it.copy(selectedShipmentLandingPreview = preview) }
+            } catch (_: Exception) {
+                // Ignore if shipment has no cartons yet
             }
         }
     }
@@ -1005,7 +1056,8 @@ class ImportViewModel @Inject constructor(
         warehouseId: String,
         receivingMethod: String,
         items: List<ReceiptItemDraft>,
-        notes: String?
+        notes: String?,
+        postImmediately: Boolean = false
     ) {
         viewModelScope.launch {
             try {
@@ -1017,7 +1069,22 @@ class ImportViewModel @Inject constructor(
                     items = items,
                     notes = notes
                 )
-                _uiState.update { it.copy(isLoading = false, userMessage = "Receiving draft created ($receivingMethod). Cost must be finalized before posting stock.") }
+                if (postImmediately) {
+                    importRepository.postPurchaseReceiving(receiptId, allowDiscrepancy = true)
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            userMessage = "Stock received and posted to Inventory successfully with FIFO cost layers!"
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            userMessage = "Receiving draft created ($receivingMethod). Cost must be finalized before posting stock."
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "Receiving Error: ${e.message}") }
             }
@@ -1125,6 +1192,190 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product '${newProd.nameEn}' added to catalog!") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product Add Error: ${e.message}") }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Phase 2-6 Shipment-Centric Actions (China Delivery, Freight, BD Transport, Post-Finalize, Rent)
+    // =========================================================================
+
+    fun saveShipmentSupplierAndChinaDelivery(draft: ShipmentSupplierDraft) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.saveShipmentSupplierAndChinaDelivery(draft)
+                refreshShipmentLandingPreview(draft.shipmentId)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "Supplier & China Local Delivery saved and allocated!"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "China Delivery Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun linkPoToShipment(orderId: String, shipmentId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.linkPurchaseOrderToShipment(orderId, shipmentId)
+                refreshShipmentLandingPreview(shipmentId)
+                _uiState.update { it.copy(isLoading = false, userMessage = "Purchase Order linked to Shipment!") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Link PO Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun updateCategoryDefaultFreightRate(categoryId: String, ratePerKgBdtMinor: Long) {
+        viewModelScope.launch {
+            try {
+                importRepository.updateCategoryDefaultFreightRate(categoryId, ratePerKgBdtMinor)
+                _uiState.value.selectedShipmentId?.let { shpId ->
+                    importRepository.syncShipmentCategoryFreightRates(shpId)
+                    refreshShipmentLandingPreview(shpId)
+                }
+                _uiState.update { it.copy(userMessage = "Default category freight rate saved (৳${ratePerKgBdtMinor / 100.0}/KG)!") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(userMessage = "Freight Rate Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun overrideShipmentCategoryFreightRate(
+        shipmentId: String,
+        categoryId: String,
+        overrideRatePerKgBdtMinor: Long?
+    ) {
+        viewModelScope.launch {
+            try {
+                importRepository.overrideShipmentCategoryFreightRate(shipmentId, categoryId, overrideRatePerKgBdtMinor)
+                refreshShipmentLandingPreview(shipmentId)
+                val msg = if (overrideRatePerKgBdtMinor != null) {
+                    "Shipment freight rate overridden to ৳${overrideRatePerKgBdtMinor / 100.0}/KG (default preserved)!"
+                } else {
+                    "Shipment freight rate reset to category default!"
+                }
+                _uiState.update { it.copy(userMessage = msg) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(userMessage = "Override Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun addShipmentExpenseWithManualAllocations(
+        shipmentId: String,
+        category: CostCategory,
+        description: String,
+        amountMinor: Long,
+        currency: String,
+        exchangeRate: BigDecimal,
+        method: AllocationMethod,
+        paymentAccount: String,
+        docRef: String? = null,
+        supplierId: String? = null,
+        manualAllocationsBdtMinor: Map<String, Long> = emptyMap(),
+        notes: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.addShipmentExpenseWithManualAllocations(
+                    shipmentId = shipmentId,
+                    category = category,
+                    description = description,
+                    amountMinor = amountMinor,
+                    currency = currency,
+                    exchangeRate = exchangeRate,
+                    method = method,
+                    paymentAccount = paymentAccount,
+                    docRef = docRef,
+                    supplierId = supplierId,
+                    manualAllocationsBdtMinor = manualAllocationsBdtMinor,
+                    notes = notes
+                )
+                refreshShipmentLandingPreview(shipmentId)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "Expense '$description' recorded with ${method.titleEn} allocation!"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Expense Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun finalizeShipmentLandingCost(shipmentId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                val snapshots = importRepository.finalizeShipmentLandingCost(shipmentId)
+                refreshShipmentLandingPreview(shipmentId)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        landedCostSnapshots = snapshots,
+                        userMessage = "Shipment Landing Cost finalized across ${snapshots.size} products!"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Finalization Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun applyPostFinalizationCostAdjustment(shipmentId: String, reason: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                val res = importRepository.applyPostFinalizationCostAdjustment(
+                    shipmentId = shipmentId,
+                    reason = reason
+                )
+                refreshShipmentLandingPreview(shipmentId)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "Post-Finalize Adjustment ${res.adjustmentReference} posted! Inv: +৳${res.totalInventoryAssetAdjustmentBdtMinor / 100.0}, COGS: +৳${res.totalCogsAdjustmentBdtMinor / 100.0}"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Adjustment Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun recordWarehouseMonthlyRent(
+        warehouseId: String,
+        rentMonth: String,
+        amountMinor: Long,
+        paymentAccountId: String = "coa-1010",
+        notes: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.recordWarehouseMonthlyRent(
+                    warehouseId = warehouseId,
+                    rentMonth = rentMonth,
+                    amountMinor = amountMinor,
+                    paymentAccountId = paymentAccountId,
+                    notes = notes
+                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "Monthly Warehouse Rent ($rentMonth) recorded as Operating Expense (5110) — excluded from Import Landing Cost!"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Rent Error: ${e.message}") }
             }
         }
     }

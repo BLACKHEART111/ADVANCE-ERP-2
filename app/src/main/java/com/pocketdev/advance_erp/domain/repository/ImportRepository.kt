@@ -1,23 +1,29 @@
 package com.pocketdev.advance_erp.domain.repository
 
 import com.pocketdev.advance_erp.core.engine.AllocationMethod
+import com.pocketdev.advance_erp.core.engine.LandingCostEngine
 import com.pocketdev.advance_erp.data.entity.AdditionalCostCategory
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
 import com.pocketdev.advance_erp.data.entity.CostCategory
 import com.pocketdev.advance_erp.data.entity.DamageRecord
+import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.ImportShipment
+import com.pocketdev.advance_erp.data.entity.InventoryCostAdjustment
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.LandedCostAllocation
 import com.pocketdev.advance_erp.data.entity.LandedCostSnapshot
 import com.pocketdev.advance_erp.data.entity.PaymentMethod
 import com.pocketdev.advance_erp.data.entity.Product
+import com.pocketdev.advance_erp.data.entity.ProductCategory
 import com.pocketdev.advance_erp.data.entity.PurchaseCompletionRecord
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
+import com.pocketdev.advance_erp.data.entity.ShipmentFreightRate
 import com.pocketdev.advance_erp.data.entity.ShipmentStatus
+import com.pocketdev.advance_erp.data.entity.ShipmentSupplier
 import com.pocketdev.advance_erp.data.entity.ShippingMethod
 import com.pocketdev.advance_erp.data.entity.ShortageRecord
 import com.pocketdev.advance_erp.data.entity.SupplierPayment
@@ -25,6 +31,21 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceipt
 import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
+
+data class ShipmentSupplierDraft(
+    val id: String? = null,
+    val shipmentId: String,
+    val supplierId: String,
+    val purchaseOrderId: String? = null,
+    val currency: String = "CNY",
+    val exchangeRateToBdt: BigDecimal = BigDecimal("17.00"),
+    val chinaDeliveryChargeMinor: Long = 0L,
+    val chinaDeliveryCurrency: String = "CNY",
+    val chinaDeliveryExchangeRateToBdt: BigDecimal = BigDecimal("17.00"),
+    val chinaDeliveryAllocationMethod: AllocationMethod = AllocationMethod.PURCHASE_VALUE,
+    val manualProductAllocationsForeignMinor: Map<String, Long> = emptyMap(),
+    val notes: String? = null
+)
 
 data class PurchaseOrderItemDraft(
     val productId: String,
@@ -50,11 +71,16 @@ data class ShipmentCartonDraft(
     val productId: String,
     val variantId: String? = null,
     val quantity: Int,
-    val lengthCm: BigDecimal,
-    val widthCm: BigDecimal,
-    val heightCm: BigDecimal,
+    val lengthCm: BigDecimal = BigDecimal.ZERO,
+    val widthCm: BigDecimal = BigDecimal.ZERO,
+    val heightCm: BigDecimal = BigDecimal.ZERO,
     val grossWeightKg: BigDecimal,
-    val netWeightKg: BigDecimal
+    val netWeightKg: BigDecimal = BigDecimal.ZERO,
+    val cbm: BigDecimal = BigDecimal.ZERO,
+    val supplierId: String? = null,
+    val purchaseOrderId: String? = null,
+    val categoryId: String? = null,
+    val categoryName: String? = null
 )
 
 data class ReceiptItemDraft(
@@ -66,7 +92,9 @@ data class ReceiptItemDraft(
     val damagedQuantity: Int = 0,
     val missingQuantity: Int = 0,
     val excessQuantity: Int = 0,
-    val conditionNotes: String? = null
+    val conditionNotes: String? = null,
+    val goodQuantity: Int = -1,
+    val pendingQuantity: Int = -1
 )
 
 data class PoRemainingItem(
@@ -263,4 +291,79 @@ interface ImportRepository {
     fun getCompletionRecordForOrder(orderId: String): Flow<PurchaseCompletionRecord?>
     fun getDamageRecordsForOrder(orderId: String): Flow<List<DamageRecord>>
     fun getShortageRecordsForOrder(orderId: String): Flow<List<ShortageRecord>>
+
+    // --- Phase 2-5 Shipment-Centric Import & Landing Cost Extensions ---
+    fun getSuppliersForShipment(shipmentId: String): Flow<List<ShipmentSupplier>>
+    suspend fun getSuppliersForShipmentSync(shipmentId: String): List<ShipmentSupplier>
+    fun getOrdersForShipment(shipmentId: String): Flow<List<PurchaseOrder>>
+    suspend fun getOrdersForShipmentSync(shipmentId: String): List<PurchaseOrder>
+
+    suspend fun saveShipmentSupplierAndChinaDelivery(draft: ShipmentSupplierDraft): String
+    suspend fun deleteShipmentSupplier(id: String)
+    suspend fun linkPurchaseOrderToShipment(orderId: String, shipmentId: String?): Unit
+
+    fun getAllCategoriesFlow(): Flow<List<ProductCategory>>
+    suspend fun updateCategoryDefaultFreightRate(categoryId: String, ratePerKgBdtMinor: Long)
+    fun getFreightRatesForShipment(shipmentId: String): Flow<List<ShipmentFreightRate>>
+    suspend fun getFreightRatesForShipmentSync(shipmentId: String): List<ShipmentFreightRate>
+    suspend fun syncShipmentCategoryFreightRates(shipmentId: String): List<ShipmentFreightRate>
+    suspend fun overrideShipmentCategoryFreightRate(
+        shipmentId: String,
+        categoryId: String,
+        overrideRatePerKgBdtMinor: Long?
+    ): ShipmentFreightRate
+
+    suspend fun addShipmentExpenseWithManualAllocations(
+        shipmentId: String,
+        category: CostCategory,
+        description: String,
+        amountMinor: Long,
+        currency: String,
+        exchangeRate: BigDecimal,
+        method: AllocationMethod,
+        paymentAccount: String,
+        docRef: String? = null,
+        supplierId: String? = null,
+        manualAllocationsBdtMinor: Map<String, Long> = emptyMap(),
+        notes: String? = null,
+        attachmentPath: String? = null,
+        costDate: Long = System.currentTimeMillis()
+    ): String
+
+    suspend fun previewShipmentLandingCost(shipmentId: String): LandingCostEngine.ShipmentLandingCostResult
+    suspend fun finalizeShipmentLandingCost(
+        shipmentId: String,
+        operatorRole: String = "ADMIN",
+        operatorName: String = "SYSTEM_ADMIN"
+    ): List<LandedCostSnapshot>
+
+    suspend fun applyPostFinalizationCostAdjustment(
+        shipmentId: String,
+        operatorRole: String = "ADMIN",
+        operatorName: String = "SYSTEM_ADMIN",
+        reason: String = "Post-Finalization Import Expense Adjustment"
+    ): LandingCostEngine.PostFinalizeAdjustmentResult
+
+    fun getCostAdjustmentsForShipment(shipmentId: String): Flow<List<InventoryCostAdjustment>>
+
+    // Phase 2G: Monthly Warehouse Rent (Operating Expense - Never in Product Import Landing Cost)
+    fun getWarehouseRentExpenses(warehouseId: String? = null): Flow<List<ExpenseVoucher>>
+    suspend fun recordWarehouseMonthlyRent(
+        warehouseId: String,
+        rentMonth: String,
+        amountMinor: Long,
+        paymentAccountId: String,
+        voucherDate: Long = System.currentTimeMillis(),
+        notes: String? = null
+    ): String
+
+    // Phase 2H: Customer Delivery Expense (Sales Expense - Never in Product Import Landing Cost)
+    suspend fun recordCustomerDeliveryExpense(
+        salesInvoiceId: String,
+        deliveryChallanNumber: String?,
+        amountMinor: Long,
+        paymentAccountId: String,
+        voucherDate: Long = System.currentTimeMillis(),
+        notes: String? = null
+    ): String
 }

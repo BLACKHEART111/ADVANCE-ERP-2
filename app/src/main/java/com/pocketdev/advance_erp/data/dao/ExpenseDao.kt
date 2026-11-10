@@ -40,4 +40,13 @@ interface ExpenseDao {
 
     @Query("UPDATE expense_vouchers SET isReversed = 1, reversalJournalEntryId = :reversalEntryId WHERE id = :id")
     suspend fun markExpenseReversed(id: String, reversalEntryId: String)
+
+    @Query("SELECT * FROM expense_vouchers WHERE category IN ('RENT_UTILITIES', 'WAREHOUSE_RENT') AND (:warehouseId IS NULL OR warehouseId = :warehouseId) ORDER BY voucherDate DESC")
+    fun getWarehouseRentExpenses(warehouseId: String? = null): Flow<List<ExpenseVoucher>>
+
+    @Query("SELECT * FROM expense_vouchers WHERE category IN ('RENT_UTILITIES', 'WAREHOUSE_RENT') AND (:warehouseId IS NULL OR warehouseId = :warehouseId) ORDER BY voucherDate DESC")
+    suspend fun getWarehouseRentExpensesSync(warehouseId: String? = null): List<ExpenseVoucher>
+
+    @Query("SELECT * FROM expense_vouchers WHERE salesInvoiceId = :salesInvoiceId ORDER BY voucherDate DESC")
+    suspend fun getCustomerDeliveryExpensesForInvoiceSync(salesInvoiceId: String): List<ExpenseVoucher>
 }

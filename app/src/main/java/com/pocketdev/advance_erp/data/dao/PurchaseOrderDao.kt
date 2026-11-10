@@ -91,4 +91,13 @@ interface PurchaseOrderDao {
 
     @Query("UPDATE purchase_order_items SET receivedQuantity = receivedQuantity + :addedQty WHERE id = :itemId")
     suspend fun incrementReceivedQuantity(itemId: String, addedQty: Int)
+
+    @Query("SELECT * FROM purchase_orders WHERE shipmentId = :shipmentId ORDER BY createdAt ASC")
+    fun getOrdersForShipment(shipmentId: String): Flow<List<PurchaseOrder>>
+
+    @Query("SELECT * FROM purchase_orders WHERE shipmentId = :shipmentId ORDER BY createdAt ASC")
+    suspend fun getOrdersForShipmentSync(shipmentId: String): List<PurchaseOrder>
+
+    @Query("UPDATE purchase_orders SET shipmentId = :shipmentId, updatedAt = :updatedAt WHERE id = :orderId")
+    suspend fun updateOrderShipmentId(orderId: String, shipmentId: String?, updatedAt: Long = System.currentTimeMillis())
 }

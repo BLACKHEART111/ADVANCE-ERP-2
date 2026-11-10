@@ -46,6 +46,18 @@ class DatabaseMigrationVerificationTest {
         val m78 = DatabaseMigrations.MIGRATION_7_8
         assertEquals(7, m78.startVersion)
         assertEquals(8, m78.endVersion)
+
+        val m89 = DatabaseMigrations.MIGRATION_8_9
+        assertEquals(8, m89.startVersion)
+        assertEquals(9, m89.endVersion)
+
+        val m910 = DatabaseMigrations.MIGRATION_9_10
+        assertEquals(9, m910.startVersion)
+        assertEquals(10, m910.endVersion)
+
+        val m1011 = DatabaseMigrations.MIGRATION_10_11
+        assertEquals(10, m1011.startVersion)
+        assertEquals(11, m1011.endVersion)
     }
 
     @Test
@@ -106,7 +118,11 @@ class DatabaseMigrationVerificationTest {
         DatabaseMigrations.MIGRATION_4_5.migrate(mockDb)
         DatabaseMigrations.MIGRATION_5_6.migrate(mockDb)
         DatabaseMigrations.MIGRATION_6_7.migrate(mockDb)
+        DatabaseMigrations.MIGRATION_7_8.migrate(mockDb)
+        DatabaseMigrations.MIGRATION_8_9.migrate(mockDb)
+        DatabaseMigrations.MIGRATION_9_10.migrate(mockDb)
+        DatabaseMigrations.MIGRATION_10_11.migrate(mockDb)
 
-        assertTrue("Expected multiple SQL statements to be executed across migrations", executedSqlList.size > 20)
+        assertTrue("Expected multiple SQL statements to be executed across migrations", executedSqlList.size > 30)
     }
 }

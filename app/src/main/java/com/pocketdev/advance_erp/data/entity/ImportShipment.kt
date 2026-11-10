@@ -115,5 +115,92 @@ data class ShipmentCarton(
     val purchaseOrderId: String? = null,
     val isMixedCarton: Boolean = false,
     val totalCartonQuantity: Int = 0,
-    val cartonGrossWeightKg: String = "0.000"
+    val cartonGrossWeightKg: String = "0.000",
+    val supplierId: String? = null,
+    val categoryId: String? = null,
+    val categoryName: String? = null
+)
+
+@Entity(
+    tableName = "shipment_suppliers",
+    foreignKeys = [
+        ForeignKey(
+            entity = ImportShipment::class,
+            parentColumns = ["id"],
+            childColumns = ["shipmentId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = Supplier::class,
+            parentColumns = ["id"],
+            childColumns = ["supplierId"],
+            onDelete = ForeignKey.RESTRICT
+        ),
+        ForeignKey(
+            entity = PurchaseOrder::class,
+            parentColumns = ["id"],
+            childColumns = ["purchaseOrderId"],
+            onDelete = ForeignKey.SET_NULL
+        )
+    ],
+    indices = [
+        Index("shipmentId"),
+        Index("supplierId"),
+        Index("purchaseOrderId")
+    ]
+)
+data class ShipmentSupplier(
+    @PrimaryKey
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val shipmentId: String,
+    val supplierId: String,
+    val purchaseOrderId: String? = null,
+    val currency: String = "CNY",
+    val exchangeRateToBdt: String = "17.0000",
+    val chinaDeliveryChargeMinor: Long = 0L,
+    val chinaDeliveryCurrency: String = "CNY",
+    val chinaDeliveryExchangeRateToBdt: String = "17.0000",
+    val chinaDeliveryBdtMinor: Long = 0L,
+    val chinaDeliveryAllocationMethod: String = "PURCHASE_VALUE",
+    val manualAllocationsJson: String? = null,
+    val paymentAccountId: String = "coa-2010",
+    val notes: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "shipment_freight_rates",
+    foreignKeys = [
+        ForeignKey(
+            entity = ImportShipment::class,
+            parentColumns = ["id"],
+            childColumns = ["shipmentId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = ProductCategory::class,
+            parentColumns = ["id"],
+            childColumns = ["categoryId"],
+            onDelete = ForeignKey.RESTRICT
+        )
+    ],
+    indices = [
+        Index(value = ["shipmentId", "categoryId"], unique = true),
+        Index("shipmentId"),
+        Index("categoryId")
+    ]
+)
+data class ShipmentFreightRate(
+    @PrimaryKey
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val shipmentId: String,
+    val categoryId: String,
+    val categoryNameEn: String,
+    val categoryNameBn: String = "",
+    val defaultRatePerKgBdtMinor: Long = 0L,
+    val overrideRatePerKgBdtMinor: Long? = null,
+    val appliedRatePerKgBdtMinor: Long = 0L,
+    val totalCategoryGrossWeightKg: String = "0.000",
+    val totalCategoryFreightBdtMinor: Long = 0L,
+    val updatedAt: Long = System.currentTimeMillis()
 )

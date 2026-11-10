@@ -83,5 +83,14 @@ data class LandedCostSnapshot(
     val totalLandedCostBdtMinor: Long,
     val unitLandedCostBdtMinor: Long,
     val snapshotDate: Long = System.currentTimeMillis(),
-    val isFinal: Boolean = true
+    val isFinal: Boolean = true,
+    val chinaDeliveryBdtMinor: Long = 0L,
+    val internationalFreightBdtMinor: Long = 0L,
+    val bdTransportBdtMinor: Long = 0L,
+    val otherExpensesBdtMinor: Long = 0L,
+    val packedQuantity: Int = 0,
+    val goodQuantity: Int = 0,
+    val damagedQuantity: Int = 0,
+    val missingQuantity: Int = 0,
+    val pendingQuantity: Int = 0
 )

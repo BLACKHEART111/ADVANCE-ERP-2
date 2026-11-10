@@ -17,5 +17,6 @@ data class ProductCategory(
     val nameEn: String,
     val nameBn: String,
     val code: String,
-    val description: String? = null
+    val description: String? = null,
+    val defaultFreightRatePerKgBdtMinor: Long = 0L
 )

@@ -97,6 +97,7 @@ fun AddCostItemDialog(
 
     val categories = listOf(
         CostCategory.INTERNATIONAL_FREIGHT,
+        CostCategory.BD_LOCAL_TRANSPORT,
         CostCategory.CUSTOMS_DUTY,
         CostCategory.CF_CHARGE,
         CostCategory.PORT_CHARGE,
@@ -108,9 +109,10 @@ fun AddCostItemDialog(
 
     val methods = listOf(
         AllocationMethod.GROSS_WEIGHT,
-        AllocationMethod.QUANTITY,
-        AllocationMethod.PURCHASE_VALUE,
         AllocationMethod.CBM,
+        AllocationMethod.CARTON_COUNT,
+        AllocationMethod.PURCHASE_VALUE,
+        AllocationMethod.QUANTITY,
         AllocationMethod.MANUAL
     )
 

@@ -73,6 +73,8 @@ import com.pocketdev.advance_erp.data.entity.SalesInvoiceItem
 import com.pocketdev.advance_erp.data.entity.SalesReturn
 import com.pocketdev.advance_erp.data.entity.SalesReturnItem
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
+import com.pocketdev.advance_erp.data.entity.ShipmentFreightRate
+import com.pocketdev.advance_erp.data.entity.ShipmentSupplier
 import com.pocketdev.advance_erp.data.entity.ShortageRecord
 import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.StockMovement
@@ -139,9 +141,12 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
         FifoConsumption::class,
         InventoryCostAdjustment::class,
         InventoryReconciliation::class,
-        InventoryReconciliationItem::class
+        InventoryReconciliationItem::class,
+        // Phase 07 Multi-Supplier & Category Freight Entities:
+        ShipmentSupplier::class,
+        ShipmentFreightRate::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class AdvanceErpDatabase : RoomDatabase() {
@@ -206,7 +211,8 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                     DatabaseMigrations.MIGRATION_6_7,
                     DatabaseMigrations.MIGRATION_7_8,
                     DatabaseMigrations.MIGRATION_8_9,
-                    DatabaseMigrations.MIGRATION_9_10
+                    DatabaseMigrations.MIGRATION_9_10,
+                    DatabaseMigrations.MIGRATION_10_11
                 )
                 .addCallback(object : Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {

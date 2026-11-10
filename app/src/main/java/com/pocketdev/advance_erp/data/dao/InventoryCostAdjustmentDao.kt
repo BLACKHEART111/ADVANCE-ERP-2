@@ -95,4 +95,7 @@ interface InventoryCostAdjustmentDao {
 
     @Query("SELECT COUNT(*) FROM inventory_cost_adjustments")
     suspend fun getAdjustmentCount(): Int
+
+    @Query("SELECT * FROM inventory_cost_adjustments WHERE referenceId = :referenceId OR purchaseOrderId = :referenceId ORDER BY createdAt DESC")
+    fun getAdjustmentsForReference(referenceId: String): Flow<List<InventoryCostAdjustment>>
 }

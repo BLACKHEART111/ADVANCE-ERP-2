@@ -93,5 +93,7 @@ data class WarehouseReceiptItem(
     val missingQuantity: Int = 0,
     val excessQuantity: Int = 0,
     val unitLandedCostMinor: Long = 0L,
-    val conditionNotes: String? = null
+    val conditionNotes: String? = null,
+    val goodQuantity: Int = 0,
+    val pendingQuantity: Int = 0
 )

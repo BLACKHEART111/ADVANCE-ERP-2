@@ -28,13 +28,14 @@ enum class CostCategory(
     SHIPPING_LINE_CHARGES("SHIP_LINE", "Shipping Line Charges", "শিপিং লাইন চার্জ", AllocationMethod.CBM, true),
     SHIPPING_AGENT_CHARGE("SHIP_AGENT", "Shipping Agent Charge", "শিপিং এজেন্ট চার্জ", AllocationMethod.CBM, true),
     LOCAL_TRANSPORTATION("LOCAL_TRANS", "Local Transportation", "স্থানীয় পরিবহন", AllocationMethod.GROSS_WEIGHT, true),
+    BD_LOCAL_TRANSPORT("BD_LOCAL_TRANS", "Bangladesh Local Transport", "বাংলাদেশ স্থানীয় পরিবহন", AllocationMethod.GROSS_WEIGHT, true),
     LOADING_UNLOADING("LOAD_UNLOAD", "Loading / Unloading", "লোডিং / আনলোডিং", AllocationMethod.QUANTITY, true),
     WAREHOUSE_CHARGES("WH_CHARGES", "Warehouse & Handling", "ওয়্যারহাউস ও হ্যান্ডলিং", AllocationMethod.QUANTITY, true),
     INSURANCE("INSURANCE", "Marine Cargo Insurance", "কার্গো বীমা প্রিমিয়াম", AllocationMethod.PURCHASE_VALUE, true),
     BANK_CHARGE("BANK_CHARGE", "Bank Charge", "ব্যাংক চার্জ", AllocationMethod.PURCHASE_VALUE, false),
     DOCUMENTATION_CHARGE("DOC_CHARGE", "Documentation Charge", "ডকুমেন্টেশন চার্জ", AllocationMethod.QUANTITY, true),
     OTHER_CHARGES("OTHER_CHARGES", "Other Charges", "অন্যান্য চার্জ", AllocationMethod.MANUAL, false),
-    OTHER_EXPENSES("OTHER_EXP", "Other Import Expenses", "অন্যান্য আমদানি ব্যয়", AllocationMethod.MANUAL, false)
+    OTHER_EXPENSES("OTHER_EXP", "Other Import Expenses", "অন্যান্য আমদানি ব্যয়", AllocationMethod.MANUAL, true)
 }
 
 @Entity(
@@ -72,7 +73,12 @@ data class ImportCostItem(
     val isPaid: Boolean = false,
     val notes: String? = null,
     val attachmentPath: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val supplierId: String? = null,
+    val isPostFinalization: Boolean = false,
+    val isCapitalized: Boolean = false,
+    val costAdjustmentReference: String? = null,
+    val manualAllocationsJson: String? = null
 ) {
     val isCapitalizableCost: Boolean
         get() = try {

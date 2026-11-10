@@ -8,6 +8,8 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.pocketdev.advance_erp.data.entity.ImportShipment
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
+import com.pocketdev.advance_erp.data.entity.ShipmentFreightRate
+import com.pocketdev.advance_erp.data.entity.ShipmentSupplier
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -84,4 +86,51 @@ interface ImportShipmentDao {
         deleteCartonsForShipment(shipment.id)
         insertCartons(cartons)
     }
+
+    // --- Shipment Suppliers (Multi-Supplier & China Local Delivery) ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertShipmentSupplier(supplier: ShipmentSupplier)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertShipmentSuppliers(suppliers: List<ShipmentSupplier>)
+
+    @Update
+    suspend fun updateShipmentSupplier(supplier: ShipmentSupplier)
+
+    @Query("DELETE FROM shipment_suppliers WHERE id = :id")
+    suspend fun deleteShipmentSupplierById(id: String)
+
+    @Query("DELETE FROM shipment_suppliers WHERE shipmentId = :shipmentId")
+    suspend fun deleteSuppliersForShipment(shipmentId: String)
+
+    @Query("SELECT * FROM shipment_suppliers WHERE shipmentId = :shipmentId ORDER BY createdAt ASC")
+    fun getSuppliersForShipment(shipmentId: String): Flow<List<ShipmentSupplier>>
+
+    @Query("SELECT * FROM shipment_suppliers WHERE shipmentId = :shipmentId ORDER BY createdAt ASC")
+    suspend fun getSuppliersForShipmentSync(shipmentId: String): List<ShipmentSupplier>
+
+    @Query("SELECT * FROM shipment_suppliers WHERE id = :id LIMIT 1")
+    suspend fun getShipmentSupplierById(id: String): ShipmentSupplier?
+
+    // --- Shipment Category Freight Rates (Two-Level Freight Management) ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertShipmentFreightRate(rate: ShipmentFreightRate)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertShipmentFreightRates(rates: List<ShipmentFreightRate>)
+
+    @Update
+    suspend fun updateShipmentFreightRate(rate: ShipmentFreightRate)
+
+    @Query("DELETE FROM shipment_freight_rates WHERE shipmentId = :shipmentId")
+    suspend fun deleteFreightRatesForShipment(shipmentId: String)
+
+    @Query("SELECT * FROM shipment_freight_rates WHERE shipmentId = :shipmentId ORDER BY categoryNameEn ASC")
+    fun getFreightRatesForShipment(shipmentId: String): Flow<List<ShipmentFreightRate>>
+
+    @Query("SELECT * FROM shipment_freight_rates WHERE shipmentId = :shipmentId ORDER BY categoryNameEn ASC")
+    suspend fun getFreightRatesForShipmentSync(shipmentId: String): List<ShipmentFreightRate>
+
+    @Query("SELECT * FROM shipment_freight_rates WHERE shipmentId = :shipmentId AND categoryId = :categoryId LIMIT 1")
+    suspend fun getFreightRateForShipmentAndCategorySync(shipmentId: String, categoryId: String): ShipmentFreightRate?
 }

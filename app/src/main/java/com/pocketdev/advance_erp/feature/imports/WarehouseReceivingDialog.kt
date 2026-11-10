@@ -86,6 +86,7 @@ private data class ReceivingLineState(
     var goodQtyStr: String,
     var damagedQtyStr: String = "0",
     var missingQtyStr: String = "0",
+    var pendingQtyStr: String = "0",
     var conditionNotes: String = "Good Condition"
 )
 
@@ -163,17 +164,18 @@ fun WarehouseReceivingDialog(
         errorMessage = null
         val drafts = mutableListOf<ReceiptItemDraft>()
         for ((idx, line) in lines.withIndex()) {
-            val received = line.receivedQtyStr.trim().toIntOrNull() ?: -1
             val good = line.goodQtyStr.trim().toIntOrNull() ?: -1
             val damaged = line.damagedQtyStr.trim().toIntOrNull() ?: 0
             val missing = line.missingQtyStr.trim().toIntOrNull() ?: 0
+            val pending = line.pendingQtyStr.trim().toIntOrNull() ?: 0
+            val received = good + damaged
 
-            if (received < 0 || good < 0 || damaged < 0 || missing < 0) {
+            if (good < 0 || damaged < 0 || missing < 0 || pending < 0) {
                 errorMessage = "Row #${idx + 1} (${line.productName}): Quantities cannot be negative."
                 return null
             }
-            if (good + damaged + missing != received) {
-                errorMessage = "Row #${idx + 1} (${line.productName}): Received ($received) must equal Good ($good) + Damaged ($damaged) + Missing ($missing)."
+            if (good + damaged + missing + pending != line.expectedQty) {
+                errorMessage = "Row #${idx + 1} (${line.productName}): Packed (${line.expectedQty}) must equal Good ($good) + Damaged ($damaged) + Missing ($missing) + Pending ($pending)."
                 return null
             }
 
@@ -186,8 +188,10 @@ fun WarehouseReceivingDialog(
                     receivedQuantity = received,
                     damagedQuantity = damaged,
                     missingQuantity = missing,
-                    excessQuantity = (received - line.expectedQty).coerceAtLeast(0),
-                    conditionNotes = line.conditionNotes
+                    excessQuantity = 0,
+                    conditionNotes = line.conditionNotes,
+                    goodQuantity = good,
+                    pendingQuantity = pending
                 )
             )
         }
@@ -400,27 +404,21 @@ fun WarehouseReceivingDialog(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Inputs: Received, Good, Damaged, Missing
+                                // Inputs: Good, Damaged, Missing, Pending (Packed = Good + Damaged + Missing + Pending)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     OutlinedTextField(
-                                        value = line.receivedQtyStr,
-                                        onValueChange = { newVal ->
-                                            line.receivedQtyStr = newVal
-                                            line.goodQtyStr = newVal
-                                            line.damagedQtyStr = "0"
-                                            line.missingQtyStr = "0"
-                                        },
-                                        label = { Text("Received", fontSize = 11.sp) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
                                         value = line.goodQtyStr,
-                                        onValueChange = { line.goodQtyStr = it },
+                                        onValueChange = { newVal ->
+                                            line.goodQtyStr = newVal
+                                            val g = newVal.trim().toIntOrNull() ?: 0
+                                            val d = line.damagedQtyStr.trim().toIntOrNull() ?: 0
+                                            val m = line.missingQtyStr.trim().toIntOrNull() ?: 0
+                                            line.receivedQtyStr = (g + d).toString()
+                                            line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
+                                        },
                                         label = { Text("Good", fontSize = 11.sp, color = StatusSuccess) },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         modifier = Modifier.weight(1f),
@@ -428,7 +426,14 @@ fun WarehouseReceivingDialog(
                                     )
                                     OutlinedTextField(
                                         value = line.damagedQtyStr,
-                                        onValueChange = { line.damagedQtyStr = it },
+                                        onValueChange = { newVal ->
+                                            line.damagedQtyStr = newVal
+                                            val g = line.goodQtyStr.trim().toIntOrNull() ?: 0
+                                            val d = newVal.trim().toIntOrNull() ?: 0
+                                            val m = line.missingQtyStr.trim().toIntOrNull() ?: 0
+                                            line.receivedQtyStr = (g + d).toString()
+                                            line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
+                                        },
                                         label = { Text("Damaged", fontSize = 11.sp, color = StatusError) },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         modifier = Modifier.weight(1f),
@@ -436,8 +441,22 @@ fun WarehouseReceivingDialog(
                                     )
                                     OutlinedTextField(
                                         value = line.missingQtyStr,
-                                        onValueChange = { line.missingQtyStr = it },
+                                        onValueChange = { newVal ->
+                                            line.missingQtyStr = newVal
+                                            val g = line.goodQtyStr.trim().toIntOrNull() ?: 0
+                                            val d = line.damagedQtyStr.trim().toIntOrNull() ?: 0
+                                            val m = newVal.trim().toIntOrNull() ?: 0
+                                            line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
+                                        },
                                         label = { Text("Missing", fontSize = 11.sp, color = Color(0xFFD97706)) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = line.pendingQtyStr,
+                                        onValueChange = { line.pendingQtyStr = it },
+                                        label = { Text("Pending", fontSize = 11.sp, color = PrimaryPurple) },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         modifier = Modifier.weight(1f),
                                         singleLine = true

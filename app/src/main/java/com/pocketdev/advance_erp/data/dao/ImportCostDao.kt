@@ -72,4 +72,16 @@ interface ImportCostDao {
         insertAllocations(allocations)
         insertSnapshots(snapshots)
     }
+
+    @androidx.room.Update
+    suspend fun updateCostItem(item: ImportCostItem)
+
+    @Query("SELECT * FROM import_cost_items WHERE id = :costId LIMIT 1")
+    suspend fun getCostItemById(costId: String): ImportCostItem?
+
+    @Query("SELECT * FROM import_cost_items WHERE shipmentId = :shipmentId AND isCapitalized = 0 ORDER BY costDate ASC")
+    suspend fun getUncapitalizedCostItemsForShipmentSync(shipmentId: String): List<ImportCostItem>
+
+    @Query("UPDATE import_cost_items SET isCapitalized = 1, costAdjustmentReference = :adjustmentRef WHERE id IN (:ids)")
+    suspend fun markCostItemsCapitalized(ids: List<String>, adjustmentRef: String? = null)
 }

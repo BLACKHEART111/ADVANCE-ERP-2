@@ -1143,4 +1143,146 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE business_profiles ADD COLUMN logoPath TEXT")
         }
     }
+
+    val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. Add defaultFreightRatePerKgBdtMinor to product_categories
+            db.execSQL("ALTER TABLE product_categories ADD COLUMN defaultFreightRatePerKgBdtMinor INTEGER NOT NULL DEFAULT 0")
+
+            // Seed default freight rates for standard categories if present
+            db.execSQL("UPDATE product_categories SET defaultFreightRatePerKgBdtMinor = 18000 WHERE LOWER(nameEn) LIKE '%electronic%' AND defaultFreightRatePerKgBdtMinor = 0")
+            db.execSQL("UPDATE product_categories SET defaultFreightRatePerKgBdtMinor = 12000 WHERE LOWER(nameEn) LIKE '%accessor%' AND defaultFreightRatePerKgBdtMinor = 0")
+            db.execSQL("UPDATE product_categories SET defaultFreightRatePerKgBdtMinor = 15000 WHERE LOWER(nameEn) LIKE '%household%' AND defaultFreightRatePerKgBdtMinor = 0")
+
+            // 2. Add shipmentId to purchase_orders for multi-PO per shipment support
+            db.execSQL("ALTER TABLE purchase_orders ADD COLUMN shipmentId TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_purchase_orders_shipmentId ON purchase_orders(shipmentId)")
+
+            // Backfill purchase_orders.shipmentId from import_shipments.purchaseOrderId where present
+            db.execSQL("""
+                UPDATE purchase_orders
+                SET shipmentId = (
+                    SELECT s.id FROM import_shipments s WHERE s.purchaseOrderId = purchase_orders.id LIMIT 1
+                )
+                WHERE shipmentId IS NULL
+            """.trimIndent())
+
+            // 3. Extend shipment_cartons with supplierId, categoryId, categoryName
+            db.execSQL("ALTER TABLE shipment_cartons ADD COLUMN supplierId TEXT")
+            db.execSQL("ALTER TABLE shipment_cartons ADD COLUMN categoryId TEXT")
+            db.execSQL("ALTER TABLE shipment_cartons ADD COLUMN categoryName TEXT")
+
+            // 4. Create shipment_suppliers table for Multi-Supplier & China Local Delivery
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS shipment_suppliers (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    shipmentId TEXT NOT NULL,
+                    supplierId TEXT NOT NULL,
+                    purchaseOrderId TEXT,
+                    currency TEXT NOT NULL DEFAULT 'CNY',
+                    exchangeRateToBdt TEXT NOT NULL DEFAULT '17.0000',
+                    chinaDeliveryChargeMinor INTEGER NOT NULL DEFAULT 0,
+                    chinaDeliveryCurrency TEXT NOT NULL DEFAULT 'CNY',
+                    chinaDeliveryExchangeRateToBdt TEXT NOT NULL DEFAULT '17.0000',
+                    chinaDeliveryBdtMinor INTEGER NOT NULL DEFAULT 0,
+                    chinaDeliveryAllocationMethod TEXT NOT NULL DEFAULT 'PURCHASE_VALUE',
+                    manualAllocationsJson TEXT,
+                    paymentAccountId TEXT NOT NULL DEFAULT 'coa-2010',
+                    notes TEXT,
+                    createdAt INTEGER NOT NULL,
+                    FOREIGN KEY(shipmentId) REFERENCES import_shipments(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(supplierId) REFERENCES suppliers(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                    FOREIGN KEY(purchaseOrderId) REFERENCES purchase_orders(id) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_shipment_suppliers_shipmentId ON shipment_suppliers(shipmentId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_shipment_suppliers_supplierId ON shipment_suppliers(supplierId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_shipment_suppliers_purchaseOrderId ON shipment_suppliers(purchaseOrderId)")
+
+            // Backfill shipment_suppliers from existing import_shipments
+            db.execSQL("""
+                INSERT OR IGNORE INTO shipment_suppliers (
+                    id, shipmentId, supplierId, purchaseOrderId, currency, exchangeRateToBdt,
+                    chinaDeliveryChargeMinor, chinaDeliveryCurrency, chinaDeliveryExchangeRateToBdt,
+                    chinaDeliveryBdtMinor, chinaDeliveryAllocationMethod, manualAllocationsJson,
+                    paymentAccountId, notes, createdAt
+                )
+                SELECT
+                    'ss-' || s.id,
+                    s.id,
+                    s.supplierId,
+                    s.purchaseOrderId,
+                    COALESCE((SELECT po.currency FROM purchase_orders po WHERE po.id = s.purchaseOrderId), 'CNY'),
+                    COALESCE((SELECT po.exchangeRateToBdt FROM purchase_orders po WHERE po.id = s.purchaseOrderId), '17.0000'),
+                    0,
+                    'CNY',
+                    '17.0000',
+                    0,
+                    'PURCHASE_VALUE',
+                    NULL,
+                    'coa-2010',
+                    s.notes,
+                    s.createdAt
+                FROM import_shipments s
+            """.trimIndent())
+
+            // 5. Create shipment_freight_rates table for Two-Level Category Freight Rate Management
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS shipment_freight_rates (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    shipmentId TEXT NOT NULL,
+                    categoryId TEXT NOT NULL,
+                    categoryNameEn TEXT NOT NULL,
+                    categoryNameBn TEXT NOT NULL DEFAULT '',
+                    defaultRatePerKgBdtMinor INTEGER NOT NULL DEFAULT 0,
+                    overrideRatePerKgBdtMinor INTEGER,
+                    appliedRatePerKgBdtMinor INTEGER NOT NULL DEFAULT 0,
+                    totalCategoryGrossWeightKg TEXT NOT NULL DEFAULT '0.000',
+                    totalCategoryFreightBdtMinor INTEGER NOT NULL DEFAULT 0,
+                    updatedAt INTEGER NOT NULL,
+                    FOREIGN KEY(shipmentId) REFERENCES import_shipments(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(categoryId) REFERENCES product_categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_shipment_freight_rates_shipmentId_categoryId ON shipment_freight_rates(shipmentId, categoryId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_shipment_freight_rates_shipmentId ON shipment_freight_rates(shipmentId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_shipment_freight_rates_categoryId ON shipment_freight_rates(categoryId)")
+
+            // 6. Extend import_cost_items for post-finalization & duplicate prevention
+            db.execSQL("ALTER TABLE import_cost_items ADD COLUMN supplierId TEXT")
+            db.execSQL("ALTER TABLE import_cost_items ADD COLUMN isPostFinalization INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE import_cost_items ADD COLUMN isCapitalized INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE import_cost_items ADD COLUMN costAdjustmentReference TEXT")
+            db.execSQL("ALTER TABLE import_cost_items ADD COLUMN manualAllocationsJson TEXT")
+
+            // 7. Extend warehouse_receipt_items with goodQuantity and pendingQuantity
+            db.execSQL("ALTER TABLE warehouse_receipt_items ADD COLUMN goodQuantity INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE warehouse_receipt_items ADD COLUMN pendingQuantity INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("""
+                UPDATE warehouse_receipt_items
+                SET goodQuantity = MAX(0, receivedQuantity - damagedQuantity),
+                    pendingQuantity = MAX(0, expectedQuantity - receivedQuantity - missingQuantity)
+                WHERE goodQuantity = 0
+            """.trimIndent())
+
+            // 8. Extend landed_cost_snapshots with breakdown & quantity outcome columns
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN chinaDeliveryBdtMinor INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN internationalFreightBdtMinor INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN bdTransportBdtMinor INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN otherExpensesBdtMinor INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN packedQuantity INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN goodQuantity INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN damagedQuantity INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN missingQuantity INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN pendingQuantity INTEGER NOT NULL DEFAULT 0")
+
+            // 9. Extend expense_vouchers for Warehouse Rent (Phase 2G) and Customer Delivery (Phase 2H)
+            db.execSQL("ALTER TABLE expense_vouchers ADD COLUMN warehouseId TEXT")
+            db.execSQL("ALTER TABLE expense_vouchers ADD COLUMN rentMonth TEXT")
+            db.execSQL("ALTER TABLE expense_vouchers ADD COLUMN salesInvoiceId TEXT")
+            db.execSQL("ALTER TABLE expense_vouchers ADD COLUMN deliveryChallanNumber TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_expense_vouchers_warehouseId ON expense_vouchers(warehouseId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_expense_vouchers_salesInvoiceId ON expense_vouchers(salesInvoiceId)")
+        }
+    }
 }

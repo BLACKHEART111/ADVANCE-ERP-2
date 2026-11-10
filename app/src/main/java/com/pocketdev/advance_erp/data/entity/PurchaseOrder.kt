@@ -30,7 +30,8 @@ enum class PurchaseOrderStatus(val labelEn: String, val labelBn: String) {
     ],
     indices = [
         Index("supplierId"),
-        Index(value = ["poNumber"], unique = true)
+        Index(value = ["poNumber"], unique = true),
+        Index("shipmentId")
     ]
 )
 data class PurchaseOrder(
@@ -57,7 +58,8 @@ data class PurchaseOrder(
     val totalCartons: Int = 0,
     val attachments: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val shipmentId: String? = null
 )
 
 @Entity(

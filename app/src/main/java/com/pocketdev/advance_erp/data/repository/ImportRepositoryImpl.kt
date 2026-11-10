@@ -7,6 +7,7 @@ import com.pocketdev.advance_erp.core.engine.AllocationItemInput
 import com.pocketdev.advance_erp.core.engine.AllocationMethod
 import com.pocketdev.advance_erp.core.engine.CbmCalculator
 import com.pocketdev.advance_erp.core.engine.LandedCostAllocationEngine
+import com.pocketdev.advance_erp.core.engine.LandingCostEngine
 import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
 import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
 import com.pocketdev.advance_erp.data.dao.CustomerDao
@@ -24,21 +25,28 @@ import com.pocketdev.advance_erp.data.dao.SupplierPaymentDao
 import com.pocketdev.advance_erp.data.dao.WarehouseReceiptDao
 import com.pocketdev.advance_erp.data.entity.AdditionalCostCategory
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
+import com.pocketdev.advance_erp.data.entity.AuditLog
 import com.pocketdev.advance_erp.data.entity.CostCategory
 import com.pocketdev.advance_erp.data.entity.DamageRecord
+import com.pocketdev.advance_erp.data.entity.ExpenseCategory
+import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.ImportShipment
+import com.pocketdev.advance_erp.data.entity.InventoryCostAdjustment
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.LandedCostAllocation
 import com.pocketdev.advance_erp.data.entity.LandedCostSnapshot
 import com.pocketdev.advance_erp.data.entity.PaymentMethod
+import com.pocketdev.advance_erp.data.entity.ProductCategory
 import com.pocketdev.advance_erp.data.entity.PurchaseCompletionRecord
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ReceiptStatus
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
+import com.pocketdev.advance_erp.data.entity.ShipmentFreightRate
 import com.pocketdev.advance_erp.data.entity.ShipmentStatus
+import com.pocketdev.advance_erp.data.entity.ShipmentSupplier
 import com.pocketdev.advance_erp.data.entity.ShippingMethod
 import com.pocketdev.advance_erp.data.entity.ShortageRecord
 import com.pocketdev.advance_erp.data.entity.StockBalance
@@ -56,6 +64,7 @@ import com.pocketdev.advance_erp.domain.repository.PoRemainingItem
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
 import com.pocketdev.advance_erp.domain.repository.ReceiptItemDraft
 import com.pocketdev.advance_erp.domain.repository.ShipmentCartonDraft
+import com.pocketdev.advance_erp.domain.repository.ShipmentSupplierDraft
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -505,14 +514,23 @@ class ImportRepositoryImpl @Inject constructor(
 
         val cartonEntities = cartons.map { draft ->
             require(draft.quantity > 0) { "Carton quantity must be positive" }
-            require(draft.lengthCm > BigDecimal.ZERO && draft.widthCm > BigDecimal.ZERO && draft.heightCm > BigDecimal.ZERO) {
-                "Carton dimensions must be greater than zero"
+            require(draft.lengthCm >= BigDecimal.ZERO && draft.widthCm >= BigDecimal.ZERO && draft.heightCm >= BigDecimal.ZERO) {
+                "Carton dimensions cannot be negative"
             }
             require(draft.grossWeightKg >= BigDecimal.ZERO && draft.netWeightKg >= BigDecimal.ZERO) {
                 "Weights cannot be negative"
             }
 
-            val cbm = CbmCalculator.calculateCbm(draft.lengthCm, draft.widthCm, draft.heightCm, 1)
+            val hasDims = draft.lengthCm > BigDecimal.ZERO && draft.widthCm > BigDecimal.ZERO && draft.heightCm > BigDecimal.ZERO
+            val cbm = if (hasDims) {
+                CbmCalculator.calculateCbm(draft.lengthCm, draft.widthCm, draft.heightCm, 1)
+            } else {
+                draft.cbm.setScale(6, RoundingMode.HALF_UP)
+            }
+
+            val product = productDao.getProductById(draft.productId)
+            val resolvedCatId = draft.categoryId ?: product?.categoryId
+            val resolvedCatName = draft.categoryName ?: resolvedCatId?.let { database.productCategoryDao().getCategoryById(it)?.nameEn }
 
             totalQty += draft.quantity
             totalGrossWeight = totalGrossWeight.add(draft.grossWeightKg)
@@ -531,7 +549,11 @@ class ImportRepositoryImpl @Inject constructor(
                 heightCm = draft.heightCm.toPlainString(),
                 grossWeightKg = draft.grossWeightKg.toPlainString(),
                 netWeightKg = draft.netWeightKg.toPlainString(),
-                cbm = cbm.toPlainString()
+                cbm = cbm.toPlainString(),
+                purchaseOrderId = draft.purchaseOrderId ?: orderId,
+                supplierId = draft.supplierId ?: supplierId,
+                categoryId = resolvedCatId,
+                categoryName = resolvedCatName
             )
         }
 
@@ -548,7 +570,7 @@ class ImportRepositoryImpl @Inject constructor(
             shippingDate = System.currentTimeMillis(),
             estimatedArrivalDate = System.currentTimeMillis() + (if (method == ShippingMethod.AIR) 5L else 20L) * 24 * 3600 * 1000,
             status = ShipmentStatus.IN_TRANSIT.name,
-            totalCartons = cartons.size,
+            totalCartons = cartons.map { it.cartonNumber }.distinct().size.coerceAtLeast(cartons.size),
             totalQuantity = totalQty,
             totalGrossWeightKg = totalGrossWeight.toPlainString(),
             totalNetWeightKg = totalNetWeight.toPlainString(),
@@ -560,9 +582,28 @@ class ImportRepositoryImpl @Inject constructor(
 
         importShipmentDao.saveShipmentWithCartons(shipment, cartonEntities)
 
+        // Ensure primary supplier entry exists in shipment_suppliers
+        val linkedPo = if (orderId != null) purchaseOrderDao.getOrderById(orderId) else null
+        importShipmentDao.insertShipmentSupplier(
+            ShipmentSupplier(
+                id = "ss-$shipmentId-$supplierId",
+                shipmentId = shipmentId,
+                supplierId = supplierId,
+                purchaseOrderId = orderId,
+                currency = linkedPo?.currency ?: "CNY",
+                exchangeRateToBdt = linkedPo?.exchangeRateToBdt ?: "17.0000",
+                chinaDeliveryCurrency = linkedPo?.currency ?: "CNY",
+                chinaDeliveryExchangeRateToBdt = linkedPo?.exchangeRateToBdt ?: "17.0000"
+            )
+        )
+
         if (orderId != null) {
+            purchaseOrderDao.updateOrderShipmentId(orderId, shipmentId)
             purchaseOrderDao.updateOrderStatus(orderId, PurchaseOrderStatus.SHIPPED.name)
         }
+
+        // Auto-load default category freight rates for categories in this shipment
+        syncShipmentCategoryFreightRates(shipmentId)
 
         return shipmentId
     }
@@ -572,14 +613,23 @@ class ImportRepositoryImpl @Inject constructor(
             ?: throw IllegalArgumentException("Shipment not found: $shipmentId")
 
         require(carton.quantity > 0) { "Carton quantity must be positive" }
-        require(carton.lengthCm > BigDecimal.ZERO && carton.widthCm > BigDecimal.ZERO && carton.heightCm > BigDecimal.ZERO) {
-            "Carton dimensions must be greater than zero"
+        require(carton.lengthCm >= BigDecimal.ZERO && carton.widthCm >= BigDecimal.ZERO && carton.heightCm >= BigDecimal.ZERO) {
+            "Carton dimensions cannot be negative"
         }
         require(carton.grossWeightKg >= BigDecimal.ZERO && carton.netWeightKg >= BigDecimal.ZERO) {
             "Weights cannot be negative"
         }
 
-        val cbm = CbmCalculator.calculateCbm(carton.lengthCm, carton.widthCm, carton.heightCm, 1)
+        val hasDims = carton.lengthCm > BigDecimal.ZERO && carton.widthCm > BigDecimal.ZERO && carton.heightCm > BigDecimal.ZERO
+        val cbm = if (hasDims) {
+            CbmCalculator.calculateCbm(carton.lengthCm, carton.widthCm, carton.heightCm, 1)
+        } else {
+            carton.cbm.setScale(6, RoundingMode.HALF_UP)
+        }
+        val product = productDao.getProductById(carton.productId)
+        val resolvedCatId = carton.categoryId ?: product?.categoryId
+        val resolvedCatName = carton.categoryName ?: resolvedCatId?.let { database.productCategoryDao().getCategoryById(it)?.nameEn }
+
         val cartonId = "ctn-${UUID.randomUUID()}"
         val cartonEntity = ShipmentCarton(
             id = cartonId,
@@ -593,7 +643,11 @@ class ImportRepositoryImpl @Inject constructor(
             heightCm = carton.heightCm.toPlainString(),
             grossWeightKg = carton.grossWeightKg.toPlainString(),
             netWeightKg = carton.netWeightKg.toPlainString(),
-            cbm = cbm.toPlainString()
+            cbm = cbm.toPlainString(),
+            purchaseOrderId = carton.purchaseOrderId ?: shipment.purchaseOrderId,
+            supplierId = carton.supplierId ?: shipment.supplierId,
+            categoryId = resolvedCatId,
+            categoryName = resolvedCatName
         )
 
         importShipmentDao.insertCarton(cartonEntity)
@@ -606,7 +660,7 @@ class ImportRepositoryImpl @Inject constructor(
         val totalCbm = allCartons.fold(BigDecimal.ZERO) { acc, c -> acc.add(BigDecimal(c.cbm)) }
 
         val updatedShipment = shipment.copy(
-            totalCartons = allCartons.size,
+            totalCartons = allCartons.map { it.cartonNumber }.distinct().size.coerceAtLeast(allCartons.size),
             totalQuantity = totalQty,
             totalGrossWeightKg = totalGross.toPlainString(),
             totalNetWeightKg = totalNet.toPlainString(),
@@ -614,6 +668,7 @@ class ImportRepositoryImpl @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
         importShipmentDao.updateShipment(updatedShipment)
+        syncShipmentCategoryFreightRates(shipmentId)
 
         return cartonId
     }
@@ -719,107 +774,11 @@ class ImportRepositoryImpl @Inject constructor(
     }
 
     override suspend fun calculateAndSaveLandedCost(shipmentId: String): List<LandedCostSnapshot> {
-        val costItems = importCostDao.getCostItemsForShipmentSync(shipmentId)
-        val cartons = importShipmentDao.getCartonsForShipmentSync(shipmentId)
-        require(cartons.isNotEmpty()) { "Cannot calculate landed cost without cartons in shipment" }
-
-        // Group cartons by product & variant
-        val productGroups = cartons.groupBy { it.productId to it.variantId }
-
-        val allocationInputs = productGroups.map { (key, groupCartons) ->
-            val productId = key.first
-            val variantId = key.second
-
-            val product = productDao.getProductById(productId)
-            val variant = if (variantId != null) productVariantDao.getVariantById(variantId) else null
-
-            val totalQty = groupCartons.sumOf { it.quantity }
-            val totalGrossWeight = groupCartons.fold(BigDecimal.ZERO) { acc, c -> acc.add(BigDecimal(c.grossWeightKg)) }
-            val totalCbm = groupCartons.fold(BigDecimal.ZERO) { acc, c -> acc.add(BigDecimal(c.cbm)) }
-
-            val unitPurchaseCostMinor = variant?.variantCostMinor ?: product?.purchasePriceMinor ?: 0L
-            val totalPurchaseValueBdt = totalQty.toLong() * unitPurchaseCostMinor
-
-            val name = "${product?.nameEn ?: productId}${if (variant != null) " - ${variant.color ?: ""}" else ""}"
-
-            AllocationItemInput(
-                id = if (variantId != null) "$productId:$variantId" else productId,
-                name = name,
-                quantity = totalQty,
-                grossWeightKg = totalGrossWeight,
-                cbm = totalCbm,
-                purchaseValueBdtMinor = totalPurchaseValueBdt
-            )
-        }
-
-        val allAllocations = mutableListOf<LandedCostAllocation>()
-        val totalAllocatedPerItem = mutableMapOf<String, Long>()
-
-        // For each cost item, run the engine
-        costItems.forEach { costItem ->
-            val method = AllocationMethod.valueOf(costItem.allocationMethod)
-            val results = LandedCostAllocationEngine.allocate(costItem.bdtAmountMinor, allocationInputs, method)
-
-            results.forEach { res ->
-                val parts = res.itemId.split(":")
-                val productId = parts[0]
-                val variantId = if (parts.size > 1) parts[1] else null
-
-                allAllocations.add(
-                    LandedCostAllocation(
-                        id = "lca-${UUID.randomUUID()}",
-                        shipmentId = shipmentId,
-                        costItemId = costItem.id,
-                        productId = productId,
-                        variantId = variantId,
-                        allocationBasis = costItem.allocationMethod,
-                        basisValue = res.basisValue.toPlainString(),
-                        basisPercentage = res.basisPercentage.toPlainString(),
-                        allocatedBdtMinor = res.allocatedBdtMinor,
-                        createdAt = System.currentTimeMillis()
-                    )
-                )
-
-                totalAllocatedPerItem[res.itemId] = (totalAllocatedPerItem[res.itemId] ?: 0L) + res.allocatedBdtMinor
-            }
-        }
-
-        // Create immutable snapshots per product
-        val snapshots = allocationInputs.map { input ->
-            val parts = input.id.split(":")
-            val productId = parts[0]
-            val variantId = if (parts.size > 1) parts[1] else null
-
-            val product = productDao.getProductById(productId)
-            val variant = if (variantId != null) productVariantDao.getVariantById(variantId) else null
-
-            val totalAllocatedBdt = totalAllocatedPerItem[input.id] ?: 0L
-            val totalPurchaseBdt = input.purchaseValueBdtMinor
-            val totalLandedBdt = totalPurchaseBdt + totalAllocatedBdt
-            val unitLandedBdt = if (input.quantity > 0) {
-                totalLandedBdt / input.quantity.toLong()
-            } else 0L
-
-            LandedCostSnapshot(
-                id = "lcs-${UUID.randomUUID()}",
-                shipmentId = shipmentId,
-                productId = productId,
-                variantId = variantId,
-                productNameEn = product?.nameEn ?: productId,
-                productNameBn = product?.nameBn ?: "",
-                sku = variant?.sku ?: product?.baseSku ?: "",
-                totalReceivedQuantity = input.quantity,
-                totalPurchaseCostBdtMinor = totalPurchaseBdt,
-                totalAllocatedCostsBdtMinor = totalAllocatedBdt,
-                totalLandedCostBdtMinor = totalLandedBdt,
-                unitLandedCostBdtMinor = unitLandedBdt,
-                snapshotDate = System.currentTimeMillis(),
-                isFinal = true
-            )
-        }
-
-        importCostDao.replaceAllocationsAndSnapshots(shipmentId, allAllocations, snapshots)
-        return snapshots
+        return finalizeShipmentLandingCost(
+            shipmentId = shipmentId,
+            operatorRole = "ADMIN",
+            operatorName = "SYSTEM_ADMIN"
+        )
     }
 
     override suspend fun getCostItemsForShipmentSync(shipmentId: String): List<ImportCostItem> =
@@ -996,7 +955,31 @@ class ImportRepositoryImpl @Inject constructor(
             val snapshot = snapshots[key]
             val unitLandedCost = snapshot?.unitLandedCostBdtMinor ?: 0L
 
-            if (draft.receivedQuantity != draft.expectedQuantity || draft.damagedQuantity > 0 || draft.missingQuantity > 0) {
+            val resolvedGood = if (draft.goodQuantity >= 0) {
+                draft.goodQuantity
+            } else if (draft.receivedQuantity + draft.damagedQuantity + draft.missingQuantity == draft.expectedQuantity) {
+                draft.receivedQuantity
+            } else {
+                (draft.receivedQuantity - draft.damagedQuantity).coerceAtLeast(0)
+            }
+            val resolvedPending = if (draft.pendingQuantity >= 0) {
+                draft.pendingQuantity
+            } else {
+                (draft.expectedQuantity - resolvedGood - draft.damagedQuantity - draft.missingQuantity).coerceAtLeast(0)
+            }
+
+            // Phase 3 Validation: Packed Quantity = Good + Damaged + Missing + Pending
+            if (draft.excessQuantity == 0) {
+                LandingCostEngine.validateReceivingQuantities(
+                    packedQuantity = draft.expectedQuantity,
+                    goodQuantity = resolvedGood,
+                    damagedQuantity = draft.damagedQuantity,
+                    missingQuantity = draft.missingQuantity,
+                    pendingQuantity = resolvedPending
+                )
+            }
+
+            if (resolvedGood != draft.expectedQuantity || draft.damagedQuantity > 0 || draft.missingQuantity > 0 || resolvedPending > 0) {
                 hasDiscrepancy = true
             }
 
@@ -1012,7 +995,9 @@ class ImportRepositoryImpl @Inject constructor(
                 missingQuantity = draft.missingQuantity,
                 excessQuantity = draft.excessQuantity,
                 unitLandedCostMinor = unitLandedCost,
-                conditionNotes = draft.conditionNotes
+                conditionNotes = draft.conditionNotes,
+                goodQuantity = resolvedGood,
+                pendingQuantity = resolvedPending
             )
         }
 
@@ -1066,13 +1051,21 @@ class ImportRepositoryImpl @Inject constructor(
         // ATOMIC DATABASE TRANSACTION
         database.withTransaction {
             var totalCapitalizedValueBdt = 0L
+            var totalDamagedValueBdt = 0L
+            var totalMissingValueBdt = 0L
+            var hasRemainingPending = false
 
             items.forEach { item ->
                 // Effective sound sellable stock:
-                val goodQuantity = if (item.receivedQuantity + item.damagedQuantity + item.missingQuantity == item.expectedQuantity) {
+                val goodQuantity = if (item.goodQuantity > 0 || (item.damagedQuantity + item.missingQuantity + item.pendingQuantity == item.expectedQuantity)) {
+                    item.goodQuantity
+                } else if (item.receivedQuantity + item.damagedQuantity + item.missingQuantity == item.expectedQuantity) {
                     item.receivedQuantity
                 } else {
                     (item.receivedQuantity - item.damagedQuantity).coerceAtLeast(0)
+                }
+                if (item.pendingQuantity > 0) {
+                    hasRemainingPending = true
                 }
 
                 var balanceAfterReceipt = (if (item.variantId != null) {
@@ -1147,6 +1140,8 @@ class ImportRepositoryImpl @Inject constructor(
                             shipmentNumber = shipment?.shipmentNumber ?: "SHP-UNKNOWN",
                             warehouseReceiptId = receipt.id,
                             receiptNumber = receipt.receiptNumber,
+                            purchaseOrderId = linkedPoId,
+                            purchaseBatchId = receipt.receiptNumber,
                             initialQuantity = goodQuantity,
                             remainingQuantity = goodQuantity,
                             unitLandedCostBdtMinor = unitCost,
@@ -1161,8 +1156,10 @@ class ImportRepositoryImpl @Inject constructor(
                     )
                 }
 
-                // 4. Record Damaged Stock (Excluded from sellable stock)
+                // 4. Record Damaged Stock (Excluded from sellable stock -> 5050 Write-Off)
                 if (item.damagedQuantity > 0) {
+                    val dmgLoss = item.damagedQuantity.toLong() * item.unitLandedCostMinor
+                    totalDamagedValueBdt += dmgLoss
                     val dmgMovementNumber = MovementNumberGenerator.generate("DMG-2026")
                     stockMovementDao.insertMovement(
                         StockMovement(
@@ -1175,7 +1172,7 @@ class ImportRepositoryImpl @Inject constructor(
                             quantity = item.damagedQuantity,
                             unitCostMinor = item.unitLandedCostMinor,
                             balanceAfterMovement = balanceAfterReceipt,
-                            totalCostImpactMinor = item.damagedQuantity.toLong() * item.unitLandedCostMinor,
+                            totalCostImpactMinor = dmgLoss,
                             referenceType = "WAREHOUSE_RECEIPT",
                             referenceId = receipt.receiptNumber,
                             purchaseOrderId = shipment?.shipmentNumber ?: receipt.shipmentId,
@@ -1186,8 +1183,10 @@ class ImportRepositoryImpl @Inject constructor(
                     )
                 }
 
-                // 5. Record Missing Stock (Excluded from stock)
+                // 5. Record Missing Stock (Excluded from stock -> 1050 Shortage/Loss)
                 if (item.missingQuantity > 0) {
+                    val misLoss = item.missingQuantity.toLong() * item.unitLandedCostMinor
+                    totalMissingValueBdt += misLoss
                     val misMovementNumber = MovementNumberGenerator.generate("MIS-2026")
                     stockMovementDao.insertMovement(
                         StockMovement(
@@ -1200,7 +1199,7 @@ class ImportRepositoryImpl @Inject constructor(
                             quantity = item.missingQuantity,
                             unitCostMinor = item.unitLandedCostMinor,
                             balanceAfterMovement = balanceAfterReceipt,
-                            totalCostImpactMinor = item.missingQuantity.toLong() * item.unitLandedCostMinor,
+                            totalCostImpactMinor = misLoss,
                             referenceType = "WAREHOUSE_RECEIPT",
                             referenceId = receipt.receiptNumber,
                             purchaseOrderId = shipment?.shipmentNumber ?: receipt.shipmentId,
@@ -1219,39 +1218,74 @@ class ImportRepositoryImpl @Inject constructor(
                 postedAt = System.currentTimeMillis()
             )
 
-            // 5. Update shipment status
+            // 5. Update shipment status (RECEIVED if pending items remain for partial receiving; COMPLETED if all received)
+            val newShipmentStatus = if (hasRemainingPending) {
+                ShipmentStatus.RECEIVED.name
+            } else {
+                ShipmentStatus.COMPLETED.name
+            }
             importShipmentDao.updateShipmentStatus(
                 shipmentId = receipt.shipmentId,
-                status = ShipmentStatus.COMPLETED.name,
+                status = newShipmentStatus,
                 arrivalDate = receipt.receiptDate,
                 updatedAt = System.currentTimeMillis()
             )
 
             // 6. Double-Entry Accounting Event:
-            // Dr. Inventory Asset (Warehouse) (1210)
-            // Cr. In-Transit Inventory (1220)
-            if (totalCapitalizedValueBdt > 0L) {
+            // Good -> Dr. Inventory Asset (1210)
+            // Damaged -> Dr. Damaged Merchandise Write-Off (5050)
+            // Missing -> Dr. Supplier Shortage & Claims Receivable (1050)
+            // Pending -> Remains in In-Transit Inventory (1220)
+            // Credit -> Cr. In-Transit Inventory (1220)
+            val totalClearedFromInTransit = totalCapitalizedValueBdt + totalDamagedValueBdt + totalMissingValueBdt
+            if (totalClearedFromInTransit > 0L) {
                 try {
-                    accountingRepository.postJournalEntry(
-                        entryDate = receipt.receiptDate,
-                        descEn = "Inventory Capitalization for ${receipt.receiptNumber}",
-                        descBn = "মজুদ পণ্য ক্যাপিটালাইজেশন (${receipt.receiptNumber})",
-                        referenceType = "WAREHOUSE_RECEIPT",
-                        referenceId = receipt.receiptNumber,
-                        lines = listOf(
+                    val lines = mutableListOf<JournalLineDraft>()
+                    if (totalCapitalizedValueBdt > 0L) {
+                        lines.add(
                             JournalLineDraft(
-                                accountId = "coa-1210", // Inventory Asset
+                                accountId = "coa-1210",
                                 isDebit = true,
                                 amountMinor = totalCapitalizedValueBdt,
-                                description = "Capitalize received goods into warehouse inventory"
-                            ),
-                            JournalLineDraft(
-                                accountId = "coa-1220", // In-Transit Inventory
-                                isDebit = false,
-                                amountMinor = totalCapitalizedValueBdt,
-                                description = "Clear in-transit inventory after receiving check-in"
+                                description = "Capitalize good received stock into warehouse inventory"
                             )
                         )
+                    }
+                    if (totalDamagedValueBdt > 0L) {
+                        lines.add(
+                            JournalLineDraft(
+                                accountId = "coa-5050",
+                                isDebit = true,
+                                amountMinor = totalDamagedValueBdt,
+                                description = "Write-off damaged goods on ${receipt.receiptNumber}"
+                            )
+                        )
+                    }
+                    if (totalMissingValueBdt > 0L) {
+                        lines.add(
+                            JournalLineDraft(
+                                accountId = "coa-1050",
+                                isDebit = true,
+                                amountMinor = totalMissingValueBdt,
+                                description = "Record missing/shortage claim on ${receipt.receiptNumber}"
+                            )
+                        )
+                    }
+                    lines.add(
+                        JournalLineDraft(
+                            accountId = "coa-1220",
+                            isDebit = false,
+                            amountMinor = totalClearedFromInTransit,
+                            description = "Clear received/reconciled goods from in-transit inventory (Pending remains in 1220)"
+                        )
+                    )
+                    accountingRepository.postJournalEntry(
+                        entryDate = receipt.receiptDate,
+                        descEn = "Inventory Receiving & Reconciliation for ${receipt.receiptNumber}",
+                        descBn = "মজুদ পণ্য গ্রহণ ও সমন্বয় (${receipt.receiptNumber})",
+                        referenceType = "WAREHOUSE_RECEIPT",
+                        referenceId = receipt.receiptNumber,
+                        lines = lines
                     )
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -1571,7 +1605,31 @@ class ImportRepositoryImpl @Inject constructor(
             val snapshot = snapshots[key]
             val unitLandedCost = snapshot?.unitLandedCostBdtMinor ?: 0L
 
-            if (draft.receivedQuantity != draft.expectedQuantity || draft.damagedQuantity > 0 || draft.missingQuantity > 0) {
+            val resolvedGood = if (draft.goodQuantity >= 0) {
+                draft.goodQuantity
+            } else if (draft.receivedQuantity + draft.damagedQuantity + draft.missingQuantity == draft.expectedQuantity) {
+                draft.receivedQuantity
+            } else {
+                (draft.receivedQuantity - draft.damagedQuantity).coerceAtLeast(0)
+            }
+            val resolvedPending = if (draft.pendingQuantity >= 0) {
+                draft.pendingQuantity
+            } else {
+                (draft.expectedQuantity - resolvedGood - draft.damagedQuantity - draft.missingQuantity).coerceAtLeast(0)
+            }
+
+            // Phase 3 Validation: Packed Quantity = Good + Damaged + Missing + Pending
+            if (draft.excessQuantity == 0) {
+                LandingCostEngine.validateReceivingQuantities(
+                    packedQuantity = draft.expectedQuantity,
+                    goodQuantity = resolvedGood,
+                    damagedQuantity = draft.damagedQuantity,
+                    missingQuantity = draft.missingQuantity,
+                    pendingQuantity = resolvedPending
+                )
+            }
+
+            if (resolvedGood != draft.expectedQuantity || draft.damagedQuantity > 0 || draft.missingQuantity > 0 || resolvedPending > 0) {
                 hasDiscrepancy = true
             }
 
@@ -1587,7 +1645,9 @@ class ImportRepositoryImpl @Inject constructor(
                 missingQuantity = draft.missingQuantity,
                 excessQuantity = draft.excessQuantity,
                 unitLandedCostMinor = unitLandedCost,
-                conditionNotes = draft.conditionNotes
+                conditionNotes = draft.conditionNotes,
+                goodQuantity = resolvedGood,
+                pendingQuantity = resolvedPending
             )
         }
 
@@ -2198,5 +2258,1075 @@ class ImportRepositoryImpl @Inject constructor(
                 updatedAt = System.currentTimeMillis()
             )
         )
+    }
+
+    // =========================================================================
+    // PHASE 2-5 SHIPMENT-CENTRIC IMPORT & LANDING COST EXTENSIONS
+    // =========================================================================
+
+    override fun getSuppliersForShipment(shipmentId: String): Flow<List<ShipmentSupplier>> =
+        importShipmentDao.getSuppliersForShipment(shipmentId)
+
+    override suspend fun getSuppliersForShipmentSync(shipmentId: String): List<ShipmentSupplier> =
+        importShipmentDao.getSuppliersForShipmentSync(shipmentId)
+
+    override fun getOrdersForShipment(shipmentId: String): Flow<List<PurchaseOrder>> =
+        purchaseOrderDao.getOrdersForShipment(shipmentId)
+
+    override suspend fun getOrdersForShipmentSync(shipmentId: String): List<PurchaseOrder> =
+        purchaseOrderDao.getOrdersForShipmentSync(shipmentId)
+
+    override suspend fun saveShipmentSupplierAndChinaDelivery(draft: ShipmentSupplierDraft): String {
+        val shipment = importShipmentDao.getShipmentById(draft.shipmentId)
+            ?: throw IllegalArgumentException("Shipment not found: ${draft.shipmentId}")
+
+        require(draft.exchangeRateToBdt > BigDecimal.ZERO) { "Exchange rate must be positive" }
+        require(draft.chinaDeliveryExchangeRateToBdt > BigDecimal.ZERO) { "China delivery exchange rate must be positive" }
+        require(draft.chinaDeliveryChargeMinor >= 0L) { "China delivery charge cannot be negative" }
+
+        val chinaDeliveryBdtMinor = LandingCostEngine.convertToBdtMinor(
+            amountForeignMinor = draft.chinaDeliveryChargeMinor,
+            currency = draft.chinaDeliveryCurrency,
+            exchangeRateToBdt = draft.chinaDeliveryExchangeRateToBdt
+        )
+
+        val manualSpec = if (draft.chinaDeliveryAllocationMethod == AllocationMethod.MANUAL && draft.manualProductAllocationsForeignMinor.isNotEmpty()) {
+            val manualSum = draft.manualProductAllocationsForeignMinor.values.sum()
+            require(manualSum == draft.chinaDeliveryChargeMinor) {
+                "Manual China delivery allocations ($manualSum) must equal supplier China delivery charge (${draft.chinaDeliveryChargeMinor})"
+            }
+            LandedCostAllocationEngine.formatManualAllocations(draft.manualProductAllocationsForeignMinor)
+        } else null
+
+        val recordId = draft.id ?: "ss-${shipment.id}-${draft.supplierId}-${draft.purchaseOrderId ?: UUID.randomUUID().toString().take(6)}"
+        val entity = ShipmentSupplier(
+            id = recordId,
+            shipmentId = draft.shipmentId,
+            supplierId = draft.supplierId,
+            purchaseOrderId = draft.purchaseOrderId,
+            currency = draft.currency,
+            exchangeRateToBdt = draft.exchangeRateToBdt.toPlainString(),
+            chinaDeliveryChargeMinor = draft.chinaDeliveryChargeMinor,
+            chinaDeliveryCurrency = draft.chinaDeliveryCurrency,
+            chinaDeliveryExchangeRateToBdt = draft.chinaDeliveryExchangeRateToBdt.toPlainString(),
+            chinaDeliveryBdtMinor = chinaDeliveryBdtMinor,
+            chinaDeliveryAllocationMethod = draft.chinaDeliveryAllocationMethod.name,
+            manualAllocationsJson = manualSpec,
+            notes = draft.notes
+        )
+        importShipmentDao.insertShipmentSupplier(entity)
+
+        if (draft.purchaseOrderId != null) {
+            purchaseOrderDao.updateOrderShipmentId(draft.purchaseOrderId, draft.shipmentId)
+        }
+        return recordId
+    }
+
+    override suspend fun deleteShipmentSupplier(id: String) {
+        val existing = importShipmentDao.getShipmentSupplierById(id)
+        if (existing?.purchaseOrderId != null) {
+            purchaseOrderDao.updateOrderShipmentId(existing.purchaseOrderId, null)
+        }
+        importShipmentDao.deleteShipmentSupplierById(id)
+    }
+
+    override suspend fun linkPurchaseOrderToShipment(orderId: String, shipmentId: String?) {
+        val po = purchaseOrderDao.getOrderById(orderId)
+            ?: throw IllegalArgumentException("Purchase Order not found: $orderId")
+        purchaseOrderDao.updateOrderShipmentId(orderId, shipmentId)
+
+        if (shipmentId != null) {
+            val existingSuppliers = importShipmentDao.getSuppliersForShipmentSync(shipmentId)
+            if (existingSuppliers.none { it.purchaseOrderId == orderId }) {
+                importShipmentDao.insertShipmentSupplier(
+                    ShipmentSupplier(
+                        id = "ss-$shipmentId-${po.supplierId}-$orderId",
+                        shipmentId = shipmentId,
+                        supplierId = po.supplierId,
+                        purchaseOrderId = orderId,
+                        currency = po.currency,
+                        exchangeRateToBdt = po.exchangeRateToBdt,
+                        chinaDeliveryCurrency = po.currency,
+                        chinaDeliveryExchangeRateToBdt = po.exchangeRateToBdt
+                    )
+                )
+            }
+            syncShipmentCategoryFreightRates(shipmentId)
+        }
+    }
+
+    override fun getAllCategoriesFlow(): Flow<List<ProductCategory>> =
+        database.productCategoryDao().getAllCategories()
+
+    override suspend fun updateCategoryDefaultFreightRate(categoryId: String, ratePerKgBdtMinor: Long) {
+        require(ratePerKgBdtMinor >= 0L) { "Default freight rate cannot be negative" }
+        database.productCategoryDao().updateCategoryDefaultFreightRate(categoryId, ratePerKgBdtMinor)
+    }
+
+    override fun getFreightRatesForShipment(shipmentId: String): Flow<List<ShipmentFreightRate>> =
+        importShipmentDao.getFreightRatesForShipment(shipmentId)
+
+    override suspend fun getFreightRatesForShipmentSync(shipmentId: String): List<ShipmentFreightRate> =
+        importShipmentDao.getFreightRatesForShipmentSync(shipmentId)
+
+    override suspend fun syncShipmentCategoryFreightRates(shipmentId: String): List<ShipmentFreightRate> {
+        val cartons = importShipmentDao.getCartonsForShipmentSync(shipmentId)
+        val existingRates = importShipmentDao.getFreightRatesForShipmentSync(shipmentId).associateBy { it.categoryId }
+
+        val categoryIds = mutableSetOf<String>()
+        cartons.forEach { c ->
+            val catId = c.categoryId ?: productDao.getProductById(c.productId)?.categoryId
+            if (!catId.isNullOrBlank()) categoryIds.add(catId)
+        }
+
+        // Also check linked PO items in case cartons haven't been added for all products yet
+        val linkedPos = purchaseOrderDao.getOrdersForShipmentSync(shipmentId)
+        val shipment = importShipmentDao.getShipmentById(shipmentId)
+        val allPoIds = (linkedPos.map { it.id } + listOfNotNull(shipment?.purchaseOrderId)).distinct()
+        for (poId in allPoIds) {
+            val items = purchaseOrderDao.getItemsForOrderSync(poId)
+            items.forEach { item ->
+                val catId = productDao.getProductById(item.productId)?.categoryId
+                if (!catId.isNullOrBlank()) categoryIds.add(catId)
+            }
+        }
+
+        val updatedList = mutableListOf<ShipmentFreightRate>()
+        for (catId in categoryIds) {
+            val category = database.productCategoryDao().getCategoryById(catId) ?: continue
+            val existing = existingRates[catId]
+            val catWeight = cartons.filter { (it.categoryId ?: productDao.getProductById(it.productId)?.categoryId) == catId }
+                .fold(BigDecimal.ZERO) { acc, c -> acc.add(BigDecimal(c.grossWeightKg.ifBlank { "0" })) }
+                .setScale(3, RoundingMode.HALF_UP)
+
+            if (existing != null) {
+                // Historical preservation: keep existing.appliedRatePerKgBdtMinor unless overridden
+                val appliedRate = existing.overrideRatePerKgBdtMinor ?: existing.appliedRatePerKgBdtMinor
+                val totalFreight = catWeight.multiply(BigDecimal(appliedRate)).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                val updated = existing.copy(
+                    totalCategoryGrossWeightKg = catWeight.toPlainString(),
+                    totalCategoryFreightBdtMinor = totalFreight,
+                    updatedAt = System.currentTimeMillis()
+                )
+                importShipmentDao.updateShipmentFreightRate(updated)
+                updatedList.add(updated)
+            } else {
+                val defaultRate = category.defaultFreightRatePerKgBdtMinor
+                val totalFreight = catWeight.multiply(BigDecimal(defaultRate)).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                val created = ShipmentFreightRate(
+                    id = "sfr-$shipmentId-$catId",
+                    shipmentId = shipmentId,
+                    categoryId = catId,
+                    categoryNameEn = category.nameEn,
+                    categoryNameBn = category.nameBn,
+                    defaultRatePerKgBdtMinor = defaultRate,
+                    overrideRatePerKgBdtMinor = null,
+                    appliedRatePerKgBdtMinor = defaultRate,
+                    totalCategoryGrossWeightKg = catWeight.toPlainString(),
+                    totalCategoryFreightBdtMinor = totalFreight,
+                    updatedAt = System.currentTimeMillis()
+                )
+                importShipmentDao.insertShipmentFreightRate(created)
+                updatedList.add(created)
+            }
+        }
+        return importShipmentDao.getFreightRatesForShipmentSync(shipmentId)
+    }
+
+    override suspend fun overrideShipmentCategoryFreightRate(
+        shipmentId: String,
+        categoryId: String,
+        overrideRatePerKgBdtMinor: Long?
+    ): ShipmentFreightRate {
+        if (overrideRatePerKgBdtMinor != null) {
+            require(overrideRatePerKgBdtMinor >= 0L) { "Freight rate override cannot be negative" }
+        }
+        syncShipmentCategoryFreightRates(shipmentId)
+        val existing = importShipmentDao.getFreightRateForShipmentAndCategorySync(shipmentId, categoryId)
+            ?: run {
+                val cat = database.productCategoryDao().getCategoryById(categoryId)
+                    ?: throw IllegalArgumentException("Category not found: $categoryId")
+                ShipmentFreightRate(
+                    id = "sfr-$shipmentId-$categoryId",
+                    shipmentId = shipmentId,
+                    categoryId = categoryId,
+                    categoryNameEn = cat.nameEn,
+                    categoryNameBn = cat.nameBn,
+                    defaultRatePerKgBdtMinor = cat.defaultFreightRatePerKgBdtMinor,
+                    overrideRatePerKgBdtMinor = overrideRatePerKgBdtMinor,
+                    appliedRatePerKgBdtMinor = overrideRatePerKgBdtMinor ?: cat.defaultFreightRatePerKgBdtMinor
+                )
+            }
+
+        val appliedRate = overrideRatePerKgBdtMinor ?: existing.defaultRatePerKgBdtMinor
+        val weightBd = BigDecimal(existing.totalCategoryGrossWeightKg.ifBlank { "0" })
+        val totalFreight = weightBd.multiply(BigDecimal(appliedRate)).setScale(0, RoundingMode.HALF_UP).longValueExact()
+
+        val updated = existing.copy(
+            overrideRatePerKgBdtMinor = overrideRatePerKgBdtMinor,
+            appliedRatePerKgBdtMinor = appliedRate,
+            totalCategoryFreightBdtMinor = totalFreight,
+            updatedAt = System.currentTimeMillis()
+        )
+        importShipmentDao.insertShipmentFreightRate(updated)
+        return updated
+    }
+
+    override suspend fun addShipmentExpenseWithManualAllocations(
+        shipmentId: String,
+        category: CostCategory,
+        description: String,
+        amountMinor: Long,
+        currency: String,
+        exchangeRate: BigDecimal,
+        method: AllocationMethod,
+        paymentAccount: String,
+        docRef: String?,
+        supplierId: String?,
+        manualAllocationsBdtMinor: Map<String, Long>,
+        notes: String?,
+        attachmentPath: String?,
+        costDate: Long
+    ): String {
+        require(amountMinor > 0L) { "Expense amount must be greater than zero" }
+        require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive" }
+
+        val shipment = importShipmentDao.getShipmentById(shipmentId)
+            ?: throw IllegalArgumentException("Shipment not found: $shipmentId")
+
+        // Guard against duplicate expense entry (same shipment, category, description, amount, and document reference)
+        val existingExpenses = importCostDao.getCostItemsForShipmentSync(shipmentId)
+        val isDuplicate = existingExpenses.any {
+            it.costCategory == category.name &&
+                it.description.equals(description.trim(), ignoreCase = true) &&
+                it.amountMinor == amountMinor &&
+                it.currency.equals(currency, ignoreCase = true) &&
+                (docRef != null && it.documentReference == docRef)
+        }
+        require(!isDuplicate) {
+            "Duplicate expense rejected: '$description' ($currency ${amountMinor / 100.0}) with reference '$docRef' already exists on this shipment"
+        }
+
+        val bdtAmountMinor = LandingCostEngine.convertToBdtMinor(amountMinor, currency, exchangeRate)
+        val manualSpec = if (method == AllocationMethod.MANUAL) {
+            require(manualAllocationsBdtMinor.isNotEmpty()) {
+                "Manual product-wise allocation amounts are required when MANUAL allocation method is selected"
+            }
+            val manualSum = manualAllocationsBdtMinor.values.sum()
+            require(manualSum == bdtAmountMinor) {
+                "Manual allocated amounts ($manualSum) must equal the expense BDT amount ($bdtAmountMinor)"
+            }
+            LandedCostAllocationEngine.formatManualAllocations(manualAllocationsBdtMinor)
+        } else null
+
+        val snapshots = importCostDao.getSnapshotsForShipmentSync(shipmentId)
+        val isPostFinal = shipment.status == ShipmentStatus.COMPLETED.name || snapshots.any { it.isFinal }
+
+        val costId = "cost-${UUID.randomUUID()}"
+        val costItem = ImportCostItem(
+            id = costId,
+            shipmentId = shipmentId,
+            costCategory = category.name,
+            description = description.trim(),
+            amountMinor = amountMinor,
+            currency = currency.uppercase(),
+            exchangeRateToBdt = exchangeRate.toPlainString(),
+            bdtAmountMinor = bdtAmountMinor,
+            costDate = costDate,
+            paymentAccount = paymentAccount,
+            documentReference = docRef,
+            allocationMethod = method.name,
+            isPosted = true,
+            purchaseOrderId = shipment.purchaseOrderId,
+            isEstimated = false,
+            isPaid = true,
+            notes = notes,
+            attachmentPath = attachmentPath,
+            createdAt = System.currentTimeMillis(),
+            supplierId = supplierId,
+            isPostFinalization = isPostFinal,
+            isCapitalized = false,
+            manualAllocationsJson = manualSpec
+        )
+        importCostDao.insertCostItem(costItem)
+
+        try {
+            accountingRepository.postJournalEntry(
+                entryDate = costDate,
+                descEn = "Import Expense: $description ($currency ${amountMinor / 100.0})",
+                descBn = "আমদানি ব্যয়: $description",
+                referenceType = "IMPORT_EXPENSE",
+                referenceId = costId,
+                lines = listOf(
+                    JournalLineDraft(
+                        accountId = "coa-1220",
+                        isDebit = true,
+                        amountMinor = bdtAmountMinor,
+                        description = "Import expense recorded: $description"
+                    ),
+                    JournalLineDraft(
+                        accountId = "coa-1020",
+                        isDebit = false,
+                        amountMinor = bdtAmountMinor,
+                        description = "Payment for import expense: $description"
+                    )
+                )
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return costId
+    }
+
+    private suspend fun buildShipmentLandingCostEngineInputs(
+        shipmentId: String
+    ): LandingCostEngine.ShipmentLandingCostResult {
+        val shipment = importShipmentDao.getShipmentById(shipmentId)
+            ?: throw IllegalArgumentException("Shipment not found: $shipmentId")
+        val cartons = importShipmentDao.getCartonsForShipmentSync(shipmentId)
+        require(cartons.isNotEmpty()) { "Cannot calculate landing cost without cartons in shipment" }
+
+        val shipmentSuppliers = importShipmentDao.getSuppliersForShipmentSync(shipmentId)
+        val linkedPos = purchaseOrderDao.getOrdersForShipmentSync(shipmentId)
+        val allPoIds = (
+            linkedPos.map { it.id } +
+                shipmentSuppliers.mapNotNull { it.purchaseOrderId } +
+                cartons.mapNotNull { it.purchaseOrderId } +
+                listOfNotNull(shipment.purchaseOrderId)
+            ).distinct()
+
+        val poById = allPoIds.mapNotNull { purchaseOrderDao.getOrderById(it) }.associateBy { it.id }
+        val poItemsByProduct = mutableMapOf<String, Pair<PurchaseOrder, PurchaseOrderItem>>()
+        for (po in poById.values) {
+            val items = purchaseOrderDao.getItemsForOrderSync(po.id)
+            for (item in items) {
+                poItemsByProduct[item.productId] = po to item
+            }
+        }
+
+        // Aggregate receiving quantities from WarehouseReceipts for this shipment
+        val receipts = warehouseReceiptDao.getReceiptsByShipmentSync(shipmentId)
+            .filter { it.status != ReceiptStatus.CANCELLED.name }
+        val receiptItemsByProduct = receipts
+            .flatMap { warehouseReceiptDao.getItemsForReceiptSync(it.id) }
+            .groupBy { it.productId }
+
+        val cartonInputs = cartons.map { c ->
+            val product = productDao.getProductById(c.productId)
+            val resolvedCatId = c.categoryId ?: product?.categoryId ?: "cat-uncategorized"
+            val resolvedSupplierId = c.supplierId ?: poItemsByProduct[c.productId]?.first?.supplierId ?: shipment.supplierId
+            LandingCostEngine.ShipmentCartonInput(
+                cartonNumber = c.cartonNumber,
+                supplierId = resolvedSupplierId,
+                productId = c.productId,
+                variantId = c.variantId,
+                categoryId = resolvedCatId,
+                quantity = c.quantity,
+                grossWeightKg = BigDecimal(c.grossWeightKg.ifBlank { "0" }),
+                cbm = BigDecimal(c.cbm.ifBlank { "0" }),
+                lengthCm = BigDecimal(c.lengthCm.ifBlank { "0" }),
+                widthCm = BigDecimal(c.widthCm.ifBlank { "0" }),
+                heightCm = BigDecimal(c.heightCm.ifBlank { "0" })
+            )
+        }
+
+        val productGroups = cartons.groupBy { it.productId }
+        val productInputs = productGroups.map { (productId, groupCartons) ->
+            val product = productDao.getProductById(productId)
+            val firstCarton = groupCartons.first()
+            val variantId = firstCarton.variantId
+            val variant = if (variantId != null) productVariantDao.getVariantById(variantId) else null
+            val packedQty = groupCartons.sumOf { it.quantity }
+
+            val poPair = poItemsByProduct[productId]
+            val resolvedSupplierId = firstCarton.supplierId ?: poPair?.first?.supplierId ?: shipment.supplierId
+            val supplierConfig = shipmentSuppliers.find { it.supplierId == resolvedSupplierId }
+
+            val unitPriceForeign = poPair?.second?.unitPriceMinor
+                ?: variant?.variantCostMinor
+                ?: product?.purchasePriceMinor
+                ?: 0L
+            val currency = poPair?.first?.currency ?: supplierConfig?.currency ?: "BDT"
+            val exchangeRate = BigDecimal(
+                (poPair?.first?.exchangeRateToBdt ?: supplierConfig?.exchangeRateToBdt ?: "1.0").ifBlank { "1.0" }
+            )
+
+            val catId = firstCarton.categoryId ?: product?.categoryId ?: "cat-uncategorized"
+            val catName = firstCarton.categoryName
+                ?: database.productCategoryDao().getCategoryById(catId)?.nameEn
+                ?: "Uncategorized"
+
+            val recItems = receiptItemsByProduct[productId].orEmpty()
+            val (goodQty, damagedQty, missingQty, pendingQty) = if (recItems.isNotEmpty()) {
+                val dmg = recItems.sumOf { it.damagedQuantity }
+                val mis = recItems.sumOf { it.missingQuantity }
+                val gd = recItems.sumOf { item ->
+                    if (item.goodQuantity > 0 || (item.damagedQuantity + item.missingQuantity + item.pendingQuantity == item.expectedQuantity)) {
+                        item.goodQuantity
+                    } else if (item.receivedQuantity + item.damagedQuantity + item.missingQuantity == item.expectedQuantity) {
+                        item.receivedQuantity
+                    } else {
+                        (item.receivedQuantity - item.damagedQuantity).coerceAtLeast(0)
+                    }
+                }
+                val cappedGood = gd.coerceAtMost(maxOf(0, packedQty - dmg - mis))
+                val pend = maxOf(0, packedQty - cappedGood - dmg - mis)
+                listOf(cappedGood, dmg, mis, pend)
+            } else {
+                listOf(packedQty, 0, 0, 0)
+            }
+
+            LandingCostEngine.ShipmentProductInput(
+                productId = productId,
+                variantId = variantId,
+                productNameEn = product?.nameEn ?: productId,
+                productNameBn = product?.nameBn ?: productId,
+                sku = variant?.sku ?: product?.baseSku ?: "",
+                supplierId = resolvedSupplierId,
+                purchaseOrderId = firstCarton.purchaseOrderId ?: poPair?.first?.id ?: shipment.purchaseOrderId,
+                categoryId = catId,
+                categoryNameEn = catName,
+                packedQuantity = packedQty,
+                unitPurchasePriceForeignMinor = unitPriceForeign,
+                purchaseCurrency = currency,
+                purchaseExchangeRateToBdt = exchangeRate,
+                goodQuantity = goodQty,
+                damagedQuantity = damagedQty,
+                missingQuantity = missingQty,
+                pendingQuantity = pendingQty
+            )
+        }
+
+        val chinaDeliveryInputs = shipmentSuppliers.filter { it.chinaDeliveryChargeMinor > 0L }.map { ss ->
+            val method = try {
+                AllocationMethod.valueOf(ss.chinaDeliveryAllocationMethod)
+            } catch (_: Exception) {
+                AllocationMethod.PURCHASE_VALUE
+            }
+            LandingCostEngine.SupplierChinaDeliveryInput(
+                supplierId = ss.supplierId,
+                deliveryChargeForeignMinor = ss.chinaDeliveryChargeMinor,
+                currency = ss.chinaDeliveryCurrency,
+                exchangeRateToBdt = BigDecimal(ss.chinaDeliveryExchangeRateToBdt.ifBlank { "1.0" }),
+                allocationMethod = method,
+                manualProductAllocationsForeignMinor = LandedCostAllocationEngine.parseManualAllocations(ss.manualAllocationsJson)
+            )
+        }
+
+        val syncedRates = syncShipmentCategoryFreightRates(shipmentId)
+        val costItems = importCostDao.getCostItemsForShipmentSync(shipmentId)
+
+        // Avoid double-counting international freight if explicit INTERNATIONAL_FREIGHT cost item is already entered
+        // AND category freight rates are 0; if category freight rates > 0, apply category freight rates!
+        val categoryRateInputs = syncedRates.map { r ->
+            LandingCostEngine.CategoryFreightRateInput(
+                categoryId = r.categoryId,
+                categoryNameEn = r.categoryNameEn,
+                defaultRatePerKgBdtMinor = r.defaultRatePerKgBdtMinor,
+                overrideRatePerKgBdtMinor = r.overrideRatePerKgBdtMinor
+            )
+        }
+
+        val expenseInputs = costItems.map { ci ->
+            val cat = try {
+                CostCategory.valueOf(ci.costCategory)
+            } catch (_: Exception) {
+                CostCategory.OTHER_EXPENSES
+            }
+            val method = try {
+                AllocationMethod.valueOf(ci.allocationMethod)
+            } catch (_: Exception) {
+                AllocationMethod.PURCHASE_VALUE
+            }
+            LandingCostEngine.ImportExpenseInput(
+                expenseId = ci.id,
+                expenseName = ci.description,
+                category = cat,
+                amountForeignMinor = ci.amountMinor,
+                currency = ci.currency,
+                exchangeRateToBdt = BigDecimal(ci.exchangeRateToBdt.ifBlank { "1.0" }),
+                allocationMethod = method,
+                supplierId = ci.supplierId,
+                manualProductAllocationsBdtMinor = LandedCostAllocationEngine.parseManualAllocations(ci.manualAllocationsJson),
+                isPostFinalization = ci.isPostFinalization,
+                isAlreadyCapitalized = ci.isCapitalized
+            )
+        }
+
+        return LandingCostEngine.calculateShipmentLandingCost(
+            products = productInputs,
+            cartons = cartonInputs,
+            supplierChinaDeliveries = chinaDeliveryInputs,
+            categoryFreightRates = categoryRateInputs,
+            expenses = expenseInputs
+        )
+    }
+
+    override suspend fun previewShipmentLandingCost(
+        shipmentId: String
+    ): LandingCostEngine.ShipmentLandingCostResult {
+        return buildShipmentLandingCostEngineInputs(shipmentId)
+    }
+
+    private fun checkFinalizePermission(operatorRole: String) {
+        val allowedRoles = setOf("ADMIN", "SYSTEM_ADMIN", "OWNER", "MANAGER", "ACCOUNTANT")
+        require(operatorRole.uppercase() in allowedRoles) {
+            "Permission denied: Role '$operatorRole' is not authorized to finalize or adjust Landing Cost"
+        }
+    }
+
+    override suspend fun finalizeShipmentLandingCost(
+        shipmentId: String,
+        operatorRole: String,
+        operatorName: String
+    ): List<LandedCostSnapshot> {
+        checkFinalizePermission(operatorRole)
+
+        val shipment = importShipmentDao.getShipmentById(shipmentId)
+            ?: throw IllegalArgumentException("Shipment not found: $shipmentId")
+
+        val engineResult = buildShipmentLandingCostEngineInputs(shipmentId)
+        val costItems = importCostDao.getCostItemsForShipmentSync(shipmentId)
+
+        return database.withTransaction {
+            val allAllocations = mutableListOf<LandedCostAllocation>()
+            engineResult.expenseAllocationsByExpenseId.forEach { (expenseId, items) ->
+                val ci = costItems.find { it.id == expenseId }
+                val methodStr = ci?.allocationMethod ?: AllocationMethod.PURCHASE_VALUE.name
+                items.forEach { res ->
+                    allAllocations.add(
+                        LandedCostAllocation(
+                            id = "lca-${UUID.randomUUID()}",
+                            shipmentId = shipmentId,
+                            costItemId = expenseId,
+                            productId = res.itemId,
+                            variantId = null,
+                            allocationBasis = methodStr,
+                            basisValue = res.basisValue.toPlainString(),
+                            basisPercentage = res.basisPercentage.toPlainString(),
+                            allocatedBdtMinor = res.allocatedBdtMinor,
+                            createdAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+
+            val now = System.currentTimeMillis()
+            val snapshots = engineResult.productBreakdowns.map { b ->
+                LandedCostSnapshot(
+                    id = "lcs-${UUID.randomUUID()}",
+                    shipmentId = shipmentId,
+                    productId = b.productId,
+                    variantId = b.variantId,
+                    productNameEn = b.productNameEn,
+                    productNameBn = b.productNameBn,
+                    sku = b.sku,
+                    totalReceivedQuantity = b.packedQuantity,
+                    totalPurchaseCostBdtMinor = b.purchaseCostBdtMinor,
+                    totalAllocatedCostsBdtMinor = b.totalAllocatedExpensesBdtMinor,
+                    totalLandedCostBdtMinor = b.totalProductImportCostBdtMinor,
+                    unitLandedCostBdtMinor = b.unitImportCostBdtMinor,
+                    snapshotDate = now,
+                    isFinal = true,
+                    chinaDeliveryBdtMinor = b.chinaDeliveryBdtMinor,
+                    internationalFreightBdtMinor = b.internationalFreightBdtMinor,
+                    bdTransportBdtMinor = b.bdTransportBdtMinor,
+                    otherExpensesBdtMinor = b.otherImportExpensesBdtMinor,
+                    packedQuantity = b.packedQuantity,
+                    goodQuantity = b.goodQuantity,
+                    damagedQuantity = b.damagedQuantity,
+                    missingQuantity = b.missingQuantity,
+                    pendingQuantity = b.pendingQuantity
+                )
+            }
+
+            importCostDao.replaceAllocationsAndSnapshots(shipmentId, allAllocations, snapshots)
+
+            // Mark all current cost items as capitalized
+            if (costItems.isNotEmpty()) {
+                importCostDao.markCostItemsCapitalized(costItems.map { it.id }, "FINALIZED")
+            }
+
+            // Update any existing FIFO layers for this shipment with the finalized unit cost
+            val existingLayers = inventoryCostLayerDao.getLayersForShipmentSync(shipmentId)
+            for (layer in existingLayers) {
+                val matchingSnapshot = snapshots.find { it.productId == layer.productId }
+                if (matchingSnapshot != null) {
+                    val unitPurchase = if (matchingSnapshot.packedQuantity > 0) {
+                        matchingSnapshot.totalPurchaseCostBdtMinor / matchingSnapshot.packedQuantity
+                    } else 0L
+                    inventoryCostLayerDao.updateCostLayerUnitCost(
+                        layerId = layer.id,
+                        unitCostMinor = matchingSnapshot.unitLandedCostBdtMinor,
+                        allocatedExpenseMinor = (matchingSnapshot.unitLandedCostBdtMinor - unitPurchase).coerceAtLeast(0L)
+                    )
+                }
+            }
+
+            // Mark linked POs as Actual Cost Finalized so Warehouse Receiving is unlocked
+            val linkedPos = purchaseOrderDao.getOrdersForShipmentSync(shipmentId)
+            val allPoIds = (linkedPos.map { it.id } + listOfNotNull(shipment.purchaseOrderId)).distinct()
+            for (poId in allPoIds) {
+                val po = purchaseOrderDao.getOrderById(poId)
+                if (po != null && !po.isActualCostFinalized) {
+                    purchaseOrderDao.markActualCostFinalized(
+                        orderId = poId,
+                        status = PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name,
+                        finalizedAt = now
+                    )
+                }
+            }
+
+            database.auditLogDao().insertAuditLog(
+                AuditLog(
+                    recordType = "IMPORT_SHIPMENT",
+                    recordId = shipmentId,
+                    action = "FINALIZE_LANDING_COST",
+                    details = "Finalized Landing Cost for ${shipment.shipmentNumber}. Grand Total: ৳${engineResult.grandTotalLandingCostBdtMinor / 100.0}",
+                    operator = operatorName,
+                    documentNumber = shipment.shipmentNumber,
+                    operationType = "LANDING_COST_FINALIZE",
+                    previousStatus = shipment.status,
+                    newStatus = "COST_FINALIZED"
+                )
+            )
+
+            snapshots
+        }
+    }
+
+    override suspend fun applyPostFinalizationCostAdjustment(
+        shipmentId: String,
+        operatorRole: String,
+        operatorName: String,
+        reason: String
+    ): LandingCostEngine.PostFinalizeAdjustmentResult {
+        checkFinalizePermission(operatorRole)
+
+        val shipment = importShipmentDao.getShipmentById(shipmentId)
+            ?: throw IllegalArgumentException("Shipment not found: $shipmentId")
+        val existingSnapshots = importCostDao.getSnapshotsForShipmentSync(shipmentId)
+        require(existingSnapshots.isNotEmpty() && existingSnapshots.all { it.isFinal }) {
+            "Shipment ${shipment.shipmentNumber} must be finalized before applying post-finalization cost adjustments"
+        }
+
+        val uncapitalizedItems = importCostDao.getUncapitalizedCostItemsForShipmentSync(shipmentId)
+        require(uncapitalizedItems.isNotEmpty()) {
+            "No new unallocated post-finalization expenses found for shipment ${shipment.shipmentNumber}"
+        }
+
+        val cartons = importShipmentDao.getCartonsForShipmentSync(shipmentId)
+        val packagingSummary = LandingCostEngine.summarizePackagingList(
+            cartons.map { c ->
+                LandingCostEngine.ShipmentCartonInput(
+                    cartonNumber = c.cartonNumber,
+                    supplierId = c.supplierId ?: shipment.supplierId,
+                    productId = c.productId,
+                    variantId = c.variantId,
+                    categoryId = c.categoryId ?: "cat-uncategorized",
+                    quantity = c.quantity,
+                    grossWeightKg = BigDecimal(c.grossWeightKg.ifBlank { "0" }),
+                    cbm = BigDecimal(c.cbm.ifBlank { "0" })
+                )
+            }
+        )
+
+        val existingBreakdowns = existingSnapshots.map { s ->
+            val packed = if (s.packedQuantity > 0) s.packedQuantity else s.totalReceivedQuantity
+            LandingCostEngine.ProductLandingCostBreakdown(
+                productId = s.productId,
+                variantId = s.variantId,
+                productNameEn = s.productNameEn,
+                productNameBn = s.productNameBn,
+                sku = s.sku,
+                supplierId = shipment.supplierId,
+                categoryId = "cat-uncategorized",
+                packedQuantity = packed,
+                goodQuantity = if (s.goodQuantity > 0) s.goodQuantity else packed,
+                damagedQuantity = s.damagedQuantity,
+                missingQuantity = s.missingQuantity,
+                pendingQuantity = s.pendingQuantity,
+                grossWeightKg = packagingSummary.productWeightMap[s.productId] ?: BigDecimal.ONE,
+                cbm = packagingSummary.productCbmMap[s.productId] ?: BigDecimal.ONE,
+                cartonCount = packagingSummary.productCartonCountMap[s.productId] ?: 1,
+                purchaseCostForeignMinor = s.totalPurchaseCostBdtMinor,
+                purchaseCurrency = "BDT",
+                purchaseExchangeRateToBdt = BigDecimal.ONE,
+                purchaseCostBdtMinor = s.totalPurchaseCostBdtMinor,
+                chinaDeliveryForeignMinor = s.chinaDeliveryBdtMinor,
+                chinaDeliveryBdtMinor = s.chinaDeliveryBdtMinor,
+                internationalFreightBdtMinor = s.internationalFreightBdtMinor,
+                bdTransportBdtMinor = s.bdTransportBdtMinor,
+                otherImportExpensesBdtMinor = s.otherExpensesBdtMinor,
+                totalAllocatedExpensesBdtMinor = s.totalAllocatedCostsBdtMinor,
+                totalProductImportCostBdtMinor = s.totalLandedCostBdtMinor,
+                unitImportCostBdtMinor = s.unitLandedCostBdtMinor,
+                goodInventoryValuationBdtMinor = s.goodQuantity.toLong() * s.unitLandedCostBdtMinor,
+                damagedWriteOffValuationBdtMinor = s.damagedQuantity.toLong() * s.unitLandedCostBdtMinor,
+                missingShortageValuationBdtMinor = s.missingQuantity.toLong() * s.unitLandedCostBdtMinor,
+                pendingInTransitValuationBdtMinor = s.pendingQuantity.toLong() * s.unitLandedCostBdtMinor
+            )
+        }
+
+        val layers = inventoryCostLayerDao.getLayersForShipmentSync(shipmentId)
+        val fifoLayersByProduct = layers.groupBy { it.productId }.mapValues { (_, prodLayers) ->
+            prodLayers.map { layer ->
+                val consumptions = database.fifoConsumptionDao().getConsumptionsForLayerSync(layer.id)
+                val soldFromFifo = consumptions.sumOf { it.quantity }
+                val effectiveSold = if (soldFromFifo > 0) soldFromFifo else (layer.initialQuantity - layer.remainingQuantity).coerceAtLeast(0)
+                LandingCostEngine.FifoLayerAdjustmentInput(
+                    layerId = layer.id,
+                    productId = layer.productId,
+                    variantId = layer.variantId,
+                    warehouseId = layer.warehouseId,
+                    initialQuantity = layer.initialQuantity,
+                    remainingQuantity = layer.remainingQuantity,
+                    soldQuantity = effectiveSold,
+                    currentUnitLandedCostBdtMinor = layer.unitLandedCostBdtMinor
+                )
+            }
+        }
+
+        val newExpenseInputs = uncapitalizedItems.map { ci ->
+            val cat = try {
+                CostCategory.valueOf(ci.costCategory)
+            } catch (_: Exception) {
+                CostCategory.OTHER_EXPENSES
+            }
+            val method = try {
+                AllocationMethod.valueOf(ci.allocationMethod)
+            } catch (_: Exception) {
+                AllocationMethod.PURCHASE_VALUE
+            }
+            LandingCostEngine.ImportExpenseInput(
+                expenseId = ci.id,
+                expenseName = ci.description,
+                category = cat,
+                amountForeignMinor = ci.amountMinor,
+                currency = ci.currency,
+                exchangeRateToBdt = BigDecimal(ci.exchangeRateToBdt.ifBlank { "1.0" }),
+                allocationMethod = method,
+                supplierId = ci.supplierId,
+                manualProductAllocationsBdtMinor = LandedCostAllocationEngine.parseManualAllocations(ci.manualAllocationsJson),
+                isPostFinalization = true,
+                isAlreadyCapitalized = false
+            )
+        }
+
+        val adjCount = database.inventoryCostAdjustmentDao().getAdjustmentCount()
+        val adjustmentRef = "LCA-2026-%04d".format(adjCount + 1)
+
+        val adjResult = LandingCostEngine.calculatePostFinalizeAdjustment(
+            adjustmentReference = adjustmentRef,
+            existingBreakdowns = existingBreakdowns,
+            fifoLayersByProduct = fifoLayersByProduct,
+            newPostFinalizeExpenses = newExpenseInputs
+        )
+
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            var journalEntryId: String? = null
+
+            // Post Double-Entry Accounting for Post-Finalize Cost Adjustment:
+            // Dr. 1210 Inventory Asset (Remaining FIFO Qty)
+            // Dr. 5010 COGS (Already Sold FIFO Qty)
+            // Dr. 5050 Write-off / 1220 In-Transit (Non-sellable / Pending Qty)
+            // Cr. 1220 In-Transit Inventory / 2010 Clearing
+            val journalLines = mutableListOf<JournalLineDraft>()
+            if (adjResult.totalInventoryAssetAdjustmentBdtMinor > 0L) {
+                journalLines.add(
+                    JournalLineDraft(
+                        accountId = "coa-1210",
+                        isDebit = true,
+                        amountMinor = adjResult.totalInventoryAssetAdjustmentBdtMinor,
+                        description = "Post-finalize inventory valuation increase ($adjustmentRef)"
+                    )
+                )
+            }
+            if (adjResult.totalCogsAdjustmentBdtMinor > 0L) {
+                journalLines.add(
+                    JournalLineDraft(
+                        accountId = "coa-5010",
+                        isDebit = true,
+                        amountMinor = adjResult.totalCogsAdjustmentBdtMinor,
+                        description = "Post-finalize COGS adjustment for sold units ($adjustmentRef)"
+                    )
+                )
+            }
+            if (adjResult.totalOtherAdjustmentBdtMinor > 0L) {
+                journalLines.add(
+                    JournalLineDraft(
+                        accountId = "coa-5050",
+                        isDebit = true,
+                        amountMinor = adjResult.totalOtherAdjustmentBdtMinor,
+                        description = "Post-finalize adjustment on non-sellable/pending units ($adjustmentRef)"
+                    )
+                )
+            }
+            if (adjResult.totalAddedExpenseBdtMinor > 0L) {
+                journalLines.add(
+                    JournalLineDraft(
+                        accountId = "coa-1220",
+                        isDebit = false,
+                        amountMinor = adjResult.totalAddedExpenseBdtMinor,
+                        description = "Clear capitalized post-finalization import expenses ($adjustmentRef)"
+                    )
+                )
+            }
+
+            if (journalLines.size >= 2) {
+                try {
+                    journalEntryId = accountingRepository.postJournalEntry(
+                        entryDate = now,
+                        descEn = "Post-Finalize Landed Cost Adjustment $adjustmentRef (${shipment.shipmentNumber})",
+                        descBn = "আমদানি পরবর্তী ব্যয় সমন্বয় $adjustmentRef (${shipment.shipmentNumber})",
+                        referenceType = "LANDED_COST_ADJUSTMENT",
+                        referenceId = adjustmentRef,
+                        lines = journalLines
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // Update FIFO layers and insert InventoryCostAdjustment audit trail
+            val prodAdjByProduct = adjResult.productAdjustments.associateBy { it.productId }
+            var seq = 1
+            for (prodAdj in adjResult.productAdjustments) {
+                val prodLayers = layers.filter { it.productId == prodAdj.productId }
+                if (prodLayers.isNotEmpty()) {
+                    prodLayers.forEach { layer ->
+                        val newUnitCost = layer.unitLandedCostBdtMinor + prodAdj.unitVarianceBdtMinor
+                        val newAllocExp = layer.allocatedExpensePerUnitBdtMinor + prodAdj.unitVarianceBdtMinor
+                        inventoryCostLayerDao.updateCostLayerUnitCost(
+                            layerId = layer.id,
+                            unitCostMinor = newUnitCost,
+                            allocatedExpenseMinor = newAllocExp
+                        )
+
+                        database.inventoryCostAdjustmentDao().insertAdjustment(
+                            InventoryCostAdjustment(
+                                id = "ica-${UUID.randomUUID()}",
+                                adjustmentNumber = "$adjustmentRef-${seq++}",
+                                costLayerId = layer.id,
+                                productId = prodAdj.productId,
+                                variantId = prodAdj.variantId,
+                                warehouseId = layer.warehouseId,
+                                purchaseOrderId = shipment.purchaseOrderId ?: shipmentId,
+                                referenceType = "POST_FINALIZE_IMPORT_EXPENSE",
+                                referenceId = shipmentId,
+                                reason = "$reason [$adjustmentRef]",
+                                oldUnitCostBdtMinor = prodAdj.oldUnitCostBdtMinor,
+                                newUnitCostBdtMinor = prodAdj.newUnitCostBdtMinor,
+                                unitVarianceBdtMinor = prodAdj.unitVarianceBdtMinor,
+                                totalRemainingQty = prodAdj.totalRemainingQty,
+                                totalSoldQty = prodAdj.totalSoldQty,
+                                inventoryAdjustmentAmountMinor = prodAdj.inventoryAdjustmentBdtMinor,
+                                cogsAdjustmentAmountMinor = prodAdj.cogsAdjustmentBdtMinor,
+                                totalAdjustmentAmountMinor = prodAdj.addedCostBdtMinor,
+                                journalEntryId = journalEntryId,
+                                createdAt = now
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Update snapshots with new total allocated expenses & unit cost
+            val updatedSnapshots = existingSnapshots.map { snap ->
+                val pAdj = prodAdjByProduct[snap.productId]
+                if (pAdj != null) {
+                    snap.copy(
+                        totalAllocatedCostsBdtMinor = snap.totalAllocatedCostsBdtMinor + pAdj.addedCostBdtMinor,
+                        totalLandedCostBdtMinor = snap.totalLandedCostBdtMinor + pAdj.addedCostBdtMinor,
+                        unitLandedCostBdtMinor = pAdj.newUnitCostBdtMinor,
+                        otherExpensesBdtMinor = snap.otherExpensesBdtMinor + pAdj.addedCostBdtMinor
+                    )
+                } else snap
+            }
+            importCostDao.deleteSnapshotsForShipment(shipmentId)
+            importCostDao.insertSnapshots(updatedSnapshots)
+
+            // Mark post-finalize expenses as capitalized with adjustmentRef
+            importCostDao.markCostItemsCapitalized(uncapitalizedItems.map { it.id }, adjustmentRef)
+
+            database.auditLogDao().insertAuditLog(
+                AuditLog(
+                    recordType = "IMPORT_SHIPMENT",
+                    recordId = shipmentId,
+                    action = "POST_FINALIZE_ADJUSTMENT",
+                    details = "Post-finalize adjustment $adjustmentRef: Added ৳${adjResult.totalAddedExpenseBdtMinor / 100.0}, Inv Adj: ৳${adjResult.totalInventoryAssetAdjustmentBdtMinor / 100.0}, COGS Adj: ৳${adjResult.totalCogsAdjustmentBdtMinor / 100.0}",
+                    operator = operatorName,
+                    documentNumber = adjustmentRef,
+                    operationType = "COST_ADJUSTMENT",
+                    previousStatus = "FINALIZED",
+                    newStatus = "ADJUSTED"
+                )
+            )
+        }
+
+        return adjResult
+    }
+
+    override fun getCostAdjustmentsForShipment(shipmentId: String): Flow<List<InventoryCostAdjustment>> =
+        database.inventoryCostAdjustmentDao().getAdjustmentsForReference(shipmentId)
+
+    // =========================================================================
+    // PHASE 2G: WAREHOUSE MONTHLY RENT (OPERATING EXPENSE — EXCLUDED FROM LANDING COST)
+    // =========================================================================
+
+    override fun getWarehouseRentExpenses(warehouseId: String?): Flow<List<ExpenseVoucher>> =
+        database.expenseDao().getWarehouseRentExpenses(warehouseId)
+
+    override suspend fun recordWarehouseMonthlyRent(
+        warehouseId: String,
+        rentMonth: String,
+        amountMinor: Long,
+        paymentAccountId: String,
+        voucherDate: Long,
+        notes: String?
+    ): String {
+        require(amountMinor > 0L) { "Warehouse rent amount must be greater than zero" }
+        require(rentMonth.isNotBlank()) { "Rent month (e.g. 2026-11) is required" }
+
+        val warehouse = database.warehouseDao().getWarehouseById(warehouseId)
+        val whName = warehouse?.name ?: warehouseId
+        val count = database.expenseDao().getExpenseCount()
+        val voucherNumber = "RENT-${rentMonth.replace("-", "")}-%04d".format(count + 1)
+        val voucherId = "exp-rent-${UUID.randomUUID()}"
+
+        val descEn = "Monthly Warehouse Rent ($whName - $rentMonth)"
+        val descBn = "মাসিক গুদাম ভাড়া ($whName - $rentMonth)"
+
+        var journalEntryId: String? = null
+        try {
+            journalEntryId = accountingRepository.postJournalEntry(
+                entryDate = voucherDate,
+                descEn = "$descEn [$voucherNumber]",
+                descBn = "$descBn [$voucherNumber]",
+                referenceType = "WAREHOUSE_RENT_EXPENSE",
+                referenceId = voucherId,
+                lines = listOf(
+                    JournalLineDraft(
+                        accountId = "coa-5110", // Office Rent & Warehouse Utilities (Operating Expense)
+                        isDebit = true,
+                        amountMinor = amountMinor,
+                        description = descEn
+                    ),
+                    JournalLineDraft(
+                        accountId = paymentAccountId,
+                        isDebit = false,
+                        amountMinor = amountMinor,
+                        description = "Paid $descEn"
+                    )
+                )
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val voucher = ExpenseVoucher(
+            id = voucherId,
+            voucherNumber = voucherNumber,
+            category = ExpenseCategory.WAREHOUSE_RENT.name,
+            descriptionEn = descEn,
+            descriptionBn = descBn,
+            amountMinor = amountMinor,
+            currency = "BDT",
+            exchangeRateToBdt = "1.0000",
+            bdtAmountMinor = amountMinor,
+            paymentAccountId = paymentAccountId,
+            expenseAccountId = "coa-5110",
+            voucherDate = voucherDate,
+            referenceNumber = rentMonth,
+            isPosted = true,
+            isReversed = false,
+            journalEntryId = journalEntryId,
+            notes = notes,
+            createdAt = System.currentTimeMillis(),
+            warehouseId = warehouseId,
+            rentMonth = rentMonth
+        )
+        database.expenseDao().insertExpense(voucher)
+        return voucherId
+    }
+
+    // =========================================================================
+    // PHASE 2H: CUSTOMER DELIVERY EXPENSE (SALES EXPENSE — EXCLUDED FROM LANDING COST)
+    // =========================================================================
+
+    override suspend fun recordCustomerDeliveryExpense(
+        salesInvoiceId: String,
+        deliveryChallanNumber: String?,
+        amountMinor: Long,
+        paymentAccountId: String,
+        voucherDate: Long,
+        notes: String?
+    ): String {
+        require(amountMinor > 0L) { "Customer delivery expense must be greater than zero" }
+        require(salesInvoiceId.isNotBlank()) { "Sales Invoice reference is required for Customer Delivery Expense" }
+
+        val invoice = database.salesDao().getInvoiceById(salesInvoiceId)
+        val invNum = invoice?.invoiceNumber ?: salesInvoiceId
+        val challanTag = if (!deliveryChallanNumber.isNullOrBlank()) " / Challan #$deliveryChallanNumber" else ""
+        val count = database.expenseDao().getExpenseCount()
+        val voucherNumber = "CDEL-2026-%04d".format(count + 1)
+        val voucherId = "exp-cdel-${UUID.randomUUID()}"
+
+        val descEn = "Customer Delivery Expense for Invoice #$invNum$challanTag"
+        val descBn = "ক্রেতা ডেলিভারি খরচ (ইনভয়েস #$invNum$challanTag)"
+
+        var journalEntryId: String? = null
+        try {
+            journalEntryId = accountingRepository.postJournalEntry(
+                entryDate = voucherDate,
+                descEn = "$descEn [$voucherNumber]",
+                descBn = "$descBn [$voucherNumber]",
+                referenceType = "CUSTOMER_DELIVERY_EXPENSE",
+                referenceId = voucherId,
+                lines = listOf(
+                    JournalLineDraft(
+                        accountId = "coa-5040", // Delivery / Outbound Logistics Expense
+                        isDebit = true,
+                        amountMinor = amountMinor,
+                        description = descEn
+                    ),
+                    JournalLineDraft(
+                        accountId = paymentAccountId,
+                        isDebit = false,
+                        amountMinor = amountMinor,
+                        description = "Paid $descEn"
+                    )
+                )
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val voucher = ExpenseVoucher(
+            id = voucherId,
+            voucherNumber = voucherNumber,
+            category = ExpenseCategory.CUSTOMER_DELIVERY.name,
+            descriptionEn = descEn,
+            descriptionBn = descBn,
+            amountMinor = amountMinor,
+            currency = "BDT",
+            exchangeRateToBdt = "1.0000",
+            bdtAmountMinor = amountMinor,
+            paymentAccountId = paymentAccountId,
+            expenseAccountId = "coa-5040",
+            voucherDate = voucherDate,
+            referenceNumber = deliveryChallanNumber ?: invNum,
+            isPosted = true,
+            isReversed = false,
+            journalEntryId = journalEntryId,
+            notes = notes,
+            createdAt = System.currentTimeMillis(),
+            salesInvoiceId = salesInvoiceId,
+            deliveryChallanNumber = deliveryChallanNumber
+        )
+        database.expenseDao().insertExpense(voucher)
+        return voucherId
     }
 }

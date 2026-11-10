@@ -40,4 +40,7 @@ interface ProductCategoryDao {
 
     @Query("SELECT * FROM product_categories WHERE code = :code LIMIT 1")
     suspend fun getCategoryByCode(code: String): ProductCategory?
+
+    @Query("UPDATE product_categories SET defaultFreightRatePerKgBdtMinor = :ratePerKgBdtMinor WHERE id = :categoryId")
+    suspend fun updateCategoryDefaultFreightRate(categoryId: String, ratePerKgBdtMinor: Long)
 }

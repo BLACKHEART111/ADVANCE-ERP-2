@@ -128,6 +128,7 @@ fun ImportManagementScreen(
     var showAddCartonDialog by remember { mutableStateOf(false) }
     var showAddAdditionalCostDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
+    var showShipmentWorkspaceDialog by remember { mutableStateOf(false) }
 
     // Preselected entities for dialogs
     var preselectedOrderIdForPayment by remember { mutableStateOf<String?>(null) }
@@ -743,6 +744,20 @@ fun ImportManagementScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (selectedShipment != null) {
+                                    OutlinedButton(
+                                        onClick = { showShipmentWorkspaceDialog = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Calculate, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (isBangla) "ওয়ার্কস্পেস" else "Workspace",
+                                            fontSize = 12.sp,
+                                            color = SecondaryTeal,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                     IconButton(
                                         onClick = { viewModel.sharePackingListPdf(context, selectedShipment) },
                                         modifier = Modifier.size(36.dp)
@@ -825,7 +840,10 @@ fun ImportManagementScreen(
                             LiveShipmentCard(
                                 shipment = shipment,
                                 isSelected = isSelected,
-                                onSelect = { viewModel.selectShipment(shipment.id) },
+                                onSelect = {
+                                    viewModel.selectShipment(shipment.id)
+                                    showShipmentWorkspaceDialog = true
+                                },
                                 onSharePdf = { viewModel.sharePackingListPdf(context, shipment) }
                             )
                         }
@@ -1399,11 +1417,56 @@ fun ImportManagementScreen(
             },
             onConfirmPost = { whId, items, notes, allowDiscrepancy ->
                 if (activePo != null) {
-                    viewModel.createPurchaseReceiving(activePo.id, whId, "PHYSICAL_COUNT", items, notes)
+                    viewModel.createPurchaseReceiving(activePo.id, whId, "PHYSICAL_COUNT", items, notes, postImmediately = true)
                 } else if (activeShipment != null) {
                     viewModel.createAndPostWarehouseReceipt(activeShipment.id, whId, items, notes, allowDiscrepancy)
                 }
             }
+        )
+    }
+
+    if (showShipmentWorkspaceDialog && selectedShipment != null) {
+        ShipmentWorkspaceDialog(
+            shipment = selectedShipment,
+            suppliers = uiState.suppliers,
+            allPurchaseOrders = uiState.purchaseOrders,
+            shipmentSuppliers = uiState.selectedShipmentSuppliers,
+            shipmentOrders = uiState.selectedShipmentOrders,
+            cartons = uiState.selectedShipmentCartons,
+            categories = uiState.categories,
+            freightRates = uiState.selectedShipmentFreightRates,
+            costItems = uiState.costItems,
+            landingPreview = uiState.selectedShipmentLandingPreview,
+            snapshots = uiState.landedCostSnapshots,
+            costAdjustments = uiState.selectedShipmentCostAdjustments,
+            products = uiState.products,
+            warehouseRentHistory = uiState.warehouseRentHistory,
+            isBangla = isBangla,
+            onDismiss = { showShipmentWorkspaceDialog = false },
+            onAddCartonClick = { showAddCartonDialog = true },
+            onReceiveClick = { showReceivingDialog = true },
+            onShareReportPdf = { viewModel.shareLandedCostPdf(context, selectedShipment) },
+            onSaveSupplierChinaDelivery = { draft -> viewModel.saveShipmentSupplierAndChinaDelivery(draft) },
+            onLinkPoToShipment = { poId -> viewModel.linkPoToShipment(poId, selectedShipment.id) },
+            onUpdateCategoryDefaultFreightRate = { catId, rate -> viewModel.updateCategoryDefaultFreightRate(catId, rate) },
+            onOverrideShipmentFreightRate = { catId, ov -> viewModel.overrideShipmentCategoryFreightRate(selectedShipment.id, catId, ov) },
+            onAddExpense = { cat, desc, amt, cur, fx, meth, ref, manualMap ->
+                viewModel.addShipmentExpenseWithManualAllocations(
+                    shipmentId = selectedShipment.id,
+                    category = cat,
+                    description = desc,
+                    amountMinor = amt,
+                    currency = cur,
+                    exchangeRate = fx,
+                    method = meth,
+                    paymentAccount = "City Bank Corporate (Import LC)",
+                    docRef = ref,
+                    manualAllocationsBdtMinor = manualMap
+                )
+            },
+            onFinalizeLandingCost = { viewModel.finalizeShipmentLandingCost(selectedShipment.id) },
+            onApplyPostFinalizeAdjustment = { reason -> viewModel.applyPostFinalizationCostAdjustment(selectedShipment.id, reason) },
+            onRecordWarehouseRent = { whId, month, amt, notes -> viewModel.recordWarehouseMonthlyRent(whId, month, amt, "coa-1010", notes) }
         )
     }
 

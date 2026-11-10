@@ -7,6 +7,7 @@ enum class AllocationMethod(val titleEn: String, val titleBn: String) {
     QUANTITY("By Quantity", "পরিমাণ অনুযায়ী"),
     GROSS_WEIGHT("By Gross Weight", "মোট ওজন অনুযায়ী"),
     CBM("By CBM (Volume)", "আয়তন (সিবিএম) অনুযায়ী"),
+    CARTON_COUNT("By Carton Count", "কার্টন সংখ্যা অনুযায়ী"),
     PURCHASE_VALUE("By Purchase Value", "ক্রয়মূল্য অনুযায়ী"),
     MANUAL("Manual Allocation", "ম্যানুয়াল বরাদ্দ")
 }
@@ -18,7 +19,9 @@ data class AllocationItemInput(
     val grossWeightKg: BigDecimal = BigDecimal.ZERO,
     val cbm: BigDecimal = BigDecimal.ZERO,
     val purchaseValueBdtMinor: Long = 0L,
-    val manualRatio: BigDecimal = BigDecimal.ZERO
+    val manualRatio: BigDecimal = BigDecimal.ZERO,
+    val cartonCount: Int = 0,
+    val manualAmountBdtMinor: Long? = null
 )
 
 data class AllocationResultItem(
@@ -55,12 +58,49 @@ object LandedCostAllocationEngine {
             }
         }
 
+        // Special handling when MANUAL uses explicit manualAmountBdtMinor
+        if (method == AllocationMethod.MANUAL && items.any { it.manualAmountBdtMinor != null }) {
+            val manualSum = items.sumOf { item ->
+                val amt = item.manualAmountBdtMinor ?: 0L
+                require(amt >= 0L) { "Manual allocation amount cannot be negative for ${item.name}: $amt" }
+                amt
+            }
+            require(manualSum == totalCostBdtMinor) {
+                "Manual allocated amounts ($manualSum) must equal the original expense ($totalCostBdtMinor)"
+            }
+            val hundred = BigDecimal("100")
+            val totalBd = BigDecimal(totalCostBdtMinor)
+            return items.map { item ->
+                val allocatedMinor = item.manualAmountBdtMinor ?: 0L
+                val basis = BigDecimal(allocatedMinor)
+                val percentage = if (totalBd > BigDecimal.ZERO) {
+                    basis.multiply(hundred).divide(totalBd, 4, RoundingMode.HALF_UP)
+                } else {
+                    BigDecimal.ZERO
+                }
+                val unitAllocatedMinor = if (item.quantity > 0) {
+                    BigDecimal(allocatedMinor).divide(BigDecimal(item.quantity), 0, RoundingMode.HALF_UP).longValueExact()
+                } else {
+                    0L
+                }
+                AllocationResultItem(
+                    itemId = item.id,
+                    name = item.name,
+                    basisValue = basis,
+                    basisPercentage = percentage,
+                    allocatedBdtMinor = allocatedMinor,
+                    unitAllocatedCostBdtMinor = unitAllocatedMinor
+                )
+            }
+        }
+
         // 1. Extract basis value per item
         val bases: List<Pair<AllocationItemInput, BigDecimal>> = items.map { item ->
             val basis = when (method) {
                 AllocationMethod.QUANTITY -> BigDecimal(item.quantity)
                 AllocationMethod.GROSS_WEIGHT -> item.grossWeightKg
                 AllocationMethod.CBM -> item.cbm
+                AllocationMethod.CARTON_COUNT -> BigDecimal(item.cartonCount)
                 AllocationMethod.PURCHASE_VALUE -> BigDecimal(item.purchaseValueBdtMinor)
                 AllocationMethod.MANUAL -> item.manualRatio
             }
@@ -140,5 +180,30 @@ object LandedCostAllocationEngine {
         }
 
         return finalResults
+    }
+
+    /**
+     * Parses a serialized manual allocation string ("productId:amountMinor;productId2:amountMinor2")
+     * into a map of productId -> amountMinor.
+     */
+    fun parseManualAllocations(spec: String?): Map<String, Long> {
+        if (spec.isNullOrBlank()) return emptyMap()
+        val result = mutableMapOf<String, Long>()
+        spec.split(";", ",").forEach { entry ->
+            val trimmed = entry.trim()
+            if (trimmed.contains(":")) {
+                val parts = trimmed.split(":", limit = 2)
+                val key = parts[0].trim().removeSurrounding("\"")
+                val value = parts[1].trim().removeSurrounding("\"").toLongOrNull()
+                if (key.isNotEmpty() && value != null) {
+                    result[key] = value
+                }
+            }
+        }
+        return result
+    }
+
+    fun formatManualAllocations(map: Map<String, Long>): String {
+        return map.entries.joinToString(";") { "${it.key}:${it.value}" }
     }
 }

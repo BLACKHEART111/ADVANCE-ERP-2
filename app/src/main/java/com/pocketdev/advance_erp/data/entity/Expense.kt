@@ -13,6 +13,7 @@ enum class ExpenseCategory(
     val titleBn: String
 ) {
     RENT_UTILITIES("5110", "coa-5110", "Office Rent & Warehouse Utilities", "অফিস ভাড়া ও ওয়্যারহাউস ইউটিলিটি"),
+    WAREHOUSE_RENT("5110", "coa-5110", "Warehouse Monthly Rent", "গুদাম মাসিক ভাড়া (Operating Expense)"),
     SALARIES_BENEFITS("5120", "coa-5120", "Salaries, Wages & Benefits", "কর্মচারী বেতন ও সুবিধা"),
     CHINA_TRAVEL_SOURCING("5130", "coa-5130", "China Business Travel & Sourcing", "চীন ভ্রমণ ও সোর্সিং ব্যয়"),
     MARKETING_PROMOTION("5140", "coa-5140", "Marketing, Promotion & Samples", "মার্কেটিং ও স্যাম্পল ব্যয়"),
@@ -20,6 +21,7 @@ enum class ExpenseCategory(
     CUSTOMS_CLEARING("5020", "coa-5020", "Customs, Tariff & Port Charges", "কাস্টমস ও পোর্ট চার্জ"),
     SHIPPING_FREIGHT("5030", "coa-5030", "International Shipping & Freight", "আন্তর্জাতিক শিপিং ও ফ্রেইট"),
     LOCAL_LOGISTICS("5040", "coa-5040", "Warehouse Handling & Logistics", "ওয়্যারহাউস হ্যান্ডলিং ও স্থানীয় পরিবহন"),
+    CUSTOMER_DELIVERY("5040", "coa-5040", "Customer Sales Delivery Expense", "ক্রেতা ডেলিভারি খরচ (Sales Expense)"),
     GENERAL_ADMIN("5190", "coa-5190", "General & Administrative Expenses", "সাধারণ ও প্রশাসনিক ব্যয়"),
     MISCELLANEOUS("5190", "coa-5190", "Miscellaneous Operating Expenses", "বিবিধ পরিচালনা ব্যয়")
 }
@@ -45,7 +47,9 @@ enum class ExpenseCategory(
         Index("category"),
         Index("paymentAccountId"),
         Index("expenseAccountId"),
-        Index("voucherDate")
+        Index("voucherDate"),
+        Index("warehouseId"),
+        Index("salesInvoiceId")
     ]
 )
 data class ExpenseVoucher(
@@ -69,5 +73,9 @@ data class ExpenseVoucher(
     val journalEntryId: String? = null,
     val reversalJournalEntryId: String? = null,
     val notes: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val warehouseId: String? = null,
+    val rentMonth: String? = null,
+    val salesInvoiceId: String? = null,
+    val deliveryChallanNumber: String? = null
 )
