@@ -8,6 +8,11 @@ import com.pocketdev.advance_erp.core.engine.AllocationMethod
 import com.pocketdev.advance_erp.core.engine.LandingCostEngine
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.util.ImportPdfGenerator
+import com.pocketdev.advance_erp.core.util.ProductImageStorage
+import com.pocketdev.advance_erp.core.util.QrCodeGenerator
+import com.pocketdev.advance_erp.data.entity.ProductImage
+import com.pocketdev.advance_erp.feature.product.GalleryItemDraft
+import com.pocketdev.advance_erp.feature.product.NewVariantDraft
 import com.pocketdev.advance_erp.data.dao.BusinessProfileDao
 import com.pocketdev.advance_erp.data.entity.AdditionalCostCategory
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
@@ -116,7 +121,8 @@ class ImportViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val contactsRepository: ContactsRepository,
     private val preferencesRepository: UserPreferencesRepository,
-    private val businessProfileDao: BusinessProfileDao
+    private val businessProfileDao: BusinessProfileDao,
+    private val imageStorage: ProductImageStorage
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ImportUiState(isLoading = true))
@@ -1289,6 +1295,85 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product '${newProd.nameEn}' added to catalog!") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product Add Error: ${e.message}") }
+            }
+        }
+    }
+
+
+    // ---- Full "Add Product" support from inside Purchase Order (same data as Product module) ----
+    suspend fun generateBaseSku(categoryId: String, nameEn: String): String {
+        val cat = _uiState.value.categories.firstOrNull { it.id == categoryId }
+        return productRepository.generateUniqueBaseSku(cat?.code ?: cat?.nameEn ?: "GEN", nameEn)
+    }
+    suspend fun generateVariantSku(baseSku: String, color: String?, size: String?): String =
+        productRepository.generateUniqueVariantSku(baseSku, color, size)
+    suspend fun generateBarcode(): String = productRepository.generateUniqueBarcode()
+    suspend fun isBaseSkuAvailable(sku: String, excludeId: String?): Boolean =
+        productRepository.isBaseSkuAvailable(sku, excludeId)
+    suspend fun isBarcodeAvailable(barcode: String, excludeId: String?): Boolean =
+        productRepository.isBarcodeAvailable(barcode, excludeId)
+
+    /** Creates a complete product (photos, variants, barcode/QR) with ZERO stock. Stock only arrives via warehouse receiving. */
+    fun createFullProductFromPurchase(
+        nameEn: String,
+        nameBn: String,
+        baseSku: String,
+        barcode: String?,
+        categoryId: String,
+        unit: String,
+        purchasePriceMinor: Long,
+        sellingPriceMinor: Long,
+        minStockAlert: Int,
+        productPhotos: List<GalleryItemDraft>,
+        variants: List<NewVariantDraft>,
+        onCreated: (Product, List<ProductVariant>) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val productId = UUID.randomUUID().toString()
+                val sku = baseSku.trim().uppercase()
+                val product = Product(
+                    id = productId,
+                    categoryId = categoryId,
+                    nameEn = nameEn.trim(),
+                    nameBn = nameBn.ifBlank { nameEn }.trim(),
+                    baseSku = sku,
+                    barcode = barcode?.trim()?.ifBlank { null },
+                    qrCode = QrCodeGenerator.createProductQrPayload(productId, sku),
+                    unit = unit,
+                    purchasePriceMinor = purchasePriceMinor,
+                    sellingPriceMinor = sellingPriceMinor,
+                    minStockAlert = minStockAlert,
+                    isActive = true
+                )
+                val images = mutableListOf<ProductImage>()
+                productPhotos.forEachIndexed { idx, d ->
+                    val path = try { imageStorage.saveImageFromUri(android.net.Uri.parse(d.uriString)) } catch (_: Exception) { d.uriString }
+                    images.add(ProductImage(id = UUID.randomUUID().toString(), productId = productId, variantId = null,
+                        imageUri = path, isPrimary = d.isPrimary, sortOrder = idx, createdAt = System.currentTimeMillis()))
+                }
+                val varEntities = variants.map { v ->
+                    val vid = v.id.ifBlank { UUID.randomUUID().toString() }
+                    val vsku = v.sku.trim().uppercase()
+                    v.photos.forEachIndexed { vIdx, d ->
+                        val path = try { imageStorage.saveImageFromUri(android.net.Uri.parse(d.uriString)) } catch (_: Exception) { d.uriString }
+                        images.add(ProductImage(id = UUID.randomUUID().toString(), productId = productId, variantId = vid,
+                            imageUri = path, isPrimary = d.isPrimary, sortOrder = vIdx, createdAt = System.currentTimeMillis()))
+                    }
+                    ProductVariant(
+                        id = vid, productId = productId, sku = vsku,
+                        color = v.color.trim().ifBlank { null }, size = v.size.trim().ifBlank { null },
+                        variantPriceMinor = if (v.priceMinor > 0) v.priceMinor else sellingPriceMinor,
+                        variantCostMinor = if (v.costMinor > 0) v.costMinor else purchasePriceMinor,
+                        barcode = v.barcode?.trim()?.ifBlank { null },
+                        qrCode = QrCodeGenerator.createVariantQrPayload(vid, productId, vsku)
+                    )
+                }
+                productRepository.addProductWithMedia(product, varEntities, images, 0, "", emptyMap())
+                onCreated(product, varEntities)
+                _uiState.update { it.copy(userMessage = "Product '${product.nameEn}' added to inventory catalog (stock 0 until received)") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(userMessage = "Product Add Error: ${e.message}") }
             }
         }
     }

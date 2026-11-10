@@ -84,6 +84,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.pocketdev.advance_erp.R
+import com.pocketdev.advance_erp.core.designsystem.SuggestTextField
+import com.pocketdev.advance_erp.data.entity.SuggestionType
 import com.pocketdev.advance_erp.core.designsystem.DeepNavy
 import com.pocketdev.advance_erp.core.designsystem.ERPActionButton
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
@@ -684,7 +686,8 @@ private fun AddContactDialog(
                     }
                 }
 
-                OutlinedTextField(
+                SuggestTextField(
+                    fieldType = if (isCustomer) SuggestionType.CUSTOMER_NAME else SuggestionType.SUPPLIER_NAME,
                     value = name,
                     onValueChange = { name = it },
                     label = { Text(if (isCustomer) (if (isBangla) "গ্রাহকের নাম *" else stringResource(R.string.contact_name)) else stringResource(R.string.company_name)) },
@@ -694,7 +697,8 @@ private fun AddContactDialog(
 
                 if (!isCustomer) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
+                    SuggestTextField(
+                        fieldType = SuggestionType.CONTACT_PERSON,
                         value = contactPerson,
                         onValueChange = { contactPerson = it },
                         label = { Text("Contact Person") },

@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
+import com.pocketdev.advance_erp.core.notification.BackupNotificationHelper
 import com.pocketdev.advance_erp.data.dao.AuditLogDao
 import com.pocketdev.advance_erp.data.dao.BackupDao
 import com.pocketdev.advance_erp.data.entity.AuditLog
@@ -109,21 +110,44 @@ class BackupRepositoryImpl @Inject constructor(
             zos.closeEntry()
         }
 
-        // Calculate final ZIP SHA-256
-        val checksum = calculateSha256(zipBackupFile)
+        // Check if user has set a backup encryption passphrase (5 to 10 characters)
+        val savedPassphrase = try {
+            preferencesRepository.backupPassphrase.firstOrNull()?.trim()
+        } catch (_: Exception) {
+            null
+        }
+
+        val isEncrypted = !savedPassphrase.isNullOrBlank() && savedPassphrase.length in 5..10
+        val finalFileName = if (isEncrypted) "AdvanceERP_Backup_${timeStamp}.zip.enc" else fileName
+        val finalBackupFile = if (isEncrypted) {
+            val encFile = File(backupDir, finalFileName)
+            BackupEncryption.encrypt(zipBackupFile, encFile, savedPassphrase!!.toCharArray())
+            zipBackupFile.delete() // clean up unencrypted zip
+            encFile
+        } else {
+            zipBackupFile
+        }
+
+        // Calculate final SHA-256
+        val checksum = calculateSha256(finalBackupFile)
 
         // Automatically save a copy to Phone File Manager (User-selected SAF folder OR Downloads/AdvanceERP_Backups)
-        val exportedLocationDesc = exportBackupToPhoneFileManager(zipBackupFile, fileName)
+        val exportedLocationDesc = exportBackupToPhoneFileManager(
+            backupFile = finalBackupFile,
+            fileName = finalFileName,
+            mimeType = if (isEncrypted) "application/octet-stream" else "application/zip"
+        )
         val combinedNotes = buildString {
             if (!notes.isNullOrBlank()) append(notes).append(" • ")
+            if (isEncrypted) append("🔒 Encrypted • ")
             append("Saved to File Manager: $exportedLocationDesc")
         }
 
         val record = BackupRecord(
             id = "bak-${UUID.randomUUID()}",
-            fileName = fileName,
-            filePath = zipBackupFile.absolutePath,
-            fileSizeBytes = zipBackupFile.length(),
+            fileName = finalFileName,
+            filePath = finalBackupFile.absolutePath,
+            fileSizeBytes = finalBackupFile.length(),
             checksumSha256 = checksum,
             schemaVersion = schemaVersion,
             isAutomatic = isAutomatic,
@@ -139,14 +163,27 @@ class BackupRepositoryImpl @Inject constructor(
                 recordType = "BACKUP",
                 recordId = record.id,
                 action = "BACKUP",
-                details = "Created comprehensive ZIP backup $fileName (${record.fileSizeBytes / 1024} KB, ${imageFiles.size} images, schema v$schemaVersion, File Manager: $exportedLocationDesc, SHA-256: ${checksum.take(8)}...)"
+                details = "Created comprehensive ${if (isEncrypted) "ENCRYPTED" else "ZIP"} backup $finalFileName (${record.fileSizeBytes / 1024} KB, ${imageFiles.size} images, schema v$schemaVersion, File Manager: $exportedLocationDesc, SHA-256: ${checksum.take(8)}...)"
             )
+        )
+
+        // Post notification to phone status bar
+        BackupNotificationHelper.notifyBackupSuccess(
+            context = context,
+            fileName = finalFileName,
+            locationDesc = exportedLocationDesc,
+            isEncrypted = isEncrypted,
+            isAutomatic = isAutomatic
         )
 
         record
     }
 
-    private suspend fun exportBackupToPhoneFileManager(zipBackupFile: File, fileName: String): String {
+    private suspend fun exportBackupToPhoneFileManager(
+        backupFile: File,
+        fileName: String,
+        mimeType: String = "application/zip"
+    ): String {
         val customFolderUriStr = try {
             preferencesRepository.backupFolderUri.firstOrNull()
         } catch (_: Exception) {
@@ -162,12 +199,12 @@ class BackupRepositoryImpl @Inject constructor(
                 val createdDocUri = DocumentsContract.createDocument(
                     context.contentResolver,
                     parentDocumentUri,
-                    "application/zip",
+                    mimeType,
                     fileName
                 )
                 if (createdDocUri != null) {
                     context.contentResolver.openOutputStream(createdDocUri)?.use { out ->
-                        FileInputStream(zipBackupFile).use { input ->
+                        FileInputStream(backupFile).use { input ->
                             input.copyTo(out)
                         }
                     }
@@ -183,7 +220,7 @@ class BackupRepositoryImpl @Inject constructor(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                    put(MediaStore.Downloads.MIME_TYPE, "application/zip")
+                    put(MediaStore.Downloads.MIME_TYPE, mimeType)
                     put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AdvanceERP_Backups")
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
@@ -192,7 +229,7 @@ class BackupRepositoryImpl @Inject constructor(
                 val itemUri = resolver.insert(collection, contentValues)
                 if (itemUri != null) {
                     resolver.openOutputStream(itemUri)?.use { out ->
-                        FileInputStream(zipBackupFile).use { input ->
+                        FileInputStream(backupFile).use { input ->
                             input.copyTo(out)
                         }
                     }
@@ -201,22 +238,22 @@ class BackupRepositoryImpl @Inject constructor(
                     resolver.update(itemUri, contentValues, null, null)
                     "Downloads/AdvanceERP_Backups/$fileName"
                 } else {
-                    saveToLegacyDownloadsFolder(zipBackupFile, fileName)
+                    saveToLegacyDownloadsFolder(backupFile, fileName)
                 }
             } else {
-                saveToLegacyDownloadsFolder(zipBackupFile, fileName)
+                saveToLegacyDownloadsFolder(backupFile, fileName)
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            zipBackupFile.absolutePath
+            backupFile.absolutePath
         }
     }
 
-    private fun saveToLegacyDownloadsFolder(zipBackupFile: File, fileName: String): String {
+    private fun saveToLegacyDownloadsFolder(backupFile: File, fileName: String): String {
         val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val targetDir = File(publicDownloads, "AdvanceERP_Backups").apply { if (!exists()) mkdirs() }
         val targetFile = File(targetDir, fileName)
-        FileInputStream(zipBackupFile).use { input ->
+        FileInputStream(backupFile).use { input ->
             FileOutputStream(targetFile).use { out ->
                 input.copyTo(out)
             }
@@ -227,11 +264,17 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun verifyBackupFile(backupFile: File, passphrase: String?): Boolean = withContext(Dispatchers.IO) {
         if (!backupFile.exists() || backupFile.length() < 100) return@withContext false
 
+        val effectivePassphrase = passphrase ?: try {
+            preferencesRepository.backupPassphrase.firstOrNull()?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+
         if (BackupEncryption.isEncrypted(backupFile)) {
-            if (passphrase.isNullOrEmpty()) return@withContext false
+            if (effectivePassphrase.isNullOrEmpty()) return@withContext false
             val decrypted = File(context.cacheDir, "verify_${UUID.randomUUID()}.zip")
             try {
-                BackupEncryption.decrypt(backupFile, decrypted, passphrase.toCharArray())
+                BackupEncryption.decrypt(backupFile, decrypted, effectivePassphrase.toCharArray())
                 verifyZipBackup(decrypted)
             } catch (_: Exception) {
                 false
@@ -305,15 +348,21 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun restoreBackup(backupFile: File, passphrase: String?): Result<Boolean> = withContext(Dispatchers.IO) {
         var decryptedFile: File? = null
         try {
+            val effectivePassphrase = passphrase ?: try {
+                preferencesRepository.backupPassphrase.firstOrNull()?.takeIf { it.isNotBlank() }
+            } catch (_: Exception) {
+                null
+            }
+
             val restoreFile = if (BackupEncryption.isEncrypted(backupFile)) {
-                require(!passphrase.isNullOrEmpty()) { "Backup passphrase is required" }
+                require(!effectivePassphrase.isNullOrEmpty()) { "ব্যাকআপ পাসওয়ার্ড প্রয়োজন (Backup password is required)" }
                 File(context.cacheDir, "restore_${UUID.randomUUID()}.zip").also {
                     decryptedFile = it
-                    BackupEncryption.decrypt(backupFile, it, passphrase.toCharArray())
+                    BackupEncryption.decrypt(backupFile, it, effectivePassphrase.toCharArray())
                 }
             } else backupFile
 
-            if (!verifyBackupFile(restoreFile)) {
+            if (!verifyBackupFile(restoreFile, effectivePassphrase)) {
                 return@withContext Result.failure(IllegalArgumentException("Invalid or corrupted backup file"))
             }
 

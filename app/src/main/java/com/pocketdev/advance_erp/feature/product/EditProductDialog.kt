@@ -59,6 +59,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.pocketdev.advance_erp.R
+import com.pocketdev.advance_erp.core.designsystem.SuggestTextField
+import com.pocketdev.advance_erp.data.entity.SuggestionType
 import com.pocketdev.advance_erp.core.designsystem.ERPActionButton
 import com.pocketdev.advance_erp.core.designsystem.ERPButtonVariant
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
@@ -609,7 +611,8 @@ fun EditProductDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedTextField(
+                            SuggestTextField(
+                                fieldType = SuggestionType.COLOR,
                                 value = varColor,
                                 onValueChange = { varColor = it },
                                 label = { Text(if (language == AppLanguage.BANGLA) "রঙ (Color)" else "Color") },
@@ -617,7 +620,8 @@ fun EditProductDialog(
                                 singleLine = true,
                                 shape = RoundedCornerShape(8.dp)
                             )
-                            OutlinedTextField(
+                            SuggestTextField(
+                                fieldType = SuggestionType.SIZE,
                                 value = varSize,
                                 onValueChange = { varSize = it },
                                 label = { Text(if (language == AppLanguage.BANGLA) "সাইজ (Size)" else "Size") },

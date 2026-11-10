@@ -8,6 +8,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
+import com.pocketdev.advance_erp.core.notification.BackupNotificationHelper
 import com.pocketdev.advance_erp.domain.repository.BackupRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -54,6 +55,11 @@ class FridayAutoBackupWorker(
             Result.success()
         } catch (e: Exception) {
             e.printStackTrace()
+            BackupNotificationHelper.notifyBackupFailed(
+                context = applicationContext,
+                error = e.localizedMessage ?: "অটো ব্যাকআপ সম্পন্ন হতে পারেনি",
+                isAutomatic = true
+            )
             Result.retry()
         }
     }

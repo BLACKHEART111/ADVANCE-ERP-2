@@ -66,6 +66,8 @@ import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.SuggestTextField
+import com.pocketdev.advance_erp.data.entity.SuggestionType
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
@@ -79,6 +81,10 @@ import com.pocketdev.advance_erp.domain.model.PaymentTermType
 import com.pocketdev.advance_erp.domain.model.PaymentTermsCalculator
 import com.pocketdev.advance_erp.domain.repository.MixedCartonLineDraft
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
+import com.pocketdev.advance_erp.core.model.AppLanguage
+import com.pocketdev.advance_erp.feature.product.AddProductDialog
+import com.pocketdev.advance_erp.feature.product.GalleryItemDraft
+import com.pocketdev.advance_erp.feature.product.NewVariantDraft
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -133,7 +139,17 @@ fun CreatePurchaseOrderDialog(
     isBangla: Boolean = false,
     onDismiss: () -> Unit,
     onAddNewSupplier: ((companyName: String, contactPerson: String, phone: String, address: String, country: String, currency: String, onCreated: (Supplier) -> Unit) -> Unit)? = null,
-    onAddNewProduct: ((nameEn: String, nameBn: String, categoryId: String, sku: String, unit: String, purchasePrice: Long, sellingPrice: Long, onCreated: (Product) -> Unit) -> Unit)? = null,
+    onCreateFullProduct: ((
+        nameEn: String, nameBn: String, baseSku: String, barcode: String?, categoryId: String, unit: String,
+        purchasePriceMinor: Long, sellingPriceMinor: Long, minStockAlert: Int,
+        productPhotos: List<GalleryItemDraft>, variants: List<NewVariantDraft>,
+        onCreated: (Product, List<ProductVariant>) -> Unit
+    ) -> Unit)? = null,
+    onGenerateSku: (suspend (categoryId: String, nameEn: String) -> String)? = null,
+    onGenerateVariantSku: (suspend (baseSku: String, color: String?, size: String?) -> String)? = null,
+    onGenerateBarcode: (suspend () -> String)? = null,
+    onValidateSku: (suspend (sku: String, excludeId: String?) -> Boolean)? = null,
+    onValidateBarcode: (suspend (barcode: String, excludeId: String?) -> Boolean)? = null,
     onAddNewVariant: ((productId: String, color: String, size: String, sku: String, costMinor: Long, priceMinor: Long, onCreated: (ProductVariant) -> Unit) -> Unit)? = null,
     onAddNewCategory: ((nameEn: String, nameBn: String, onCreated: (ProductCategory) -> Unit) -> Unit)? = null,
     onSavePo: (
@@ -641,7 +657,7 @@ fun CreatePurchaseOrderDialog(
                                 color = DeepNavy
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (onAddNewProduct != null) {
+                                if (onCreateFullProduct != null) {
                                     Button(
                                         onClick = { showInlineAddProductDialog = true },
                                         colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal.copy(alpha = 0.15f)),
@@ -1640,14 +1656,16 @@ fun CreatePurchaseOrderDialog(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
+                    SuggestTextField(
+                        fieldType = SuggestionType.SUPPLIER_NAME,
                         value = newSupCompany,
                         onValueChange = { newSupCompany = it },
                         label = { Text(if (isBangla) "কোম্পানি / ফ্যাক্টরির নাম *" else "Company / Factory Name *") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    SuggestTextField(
+                        fieldType = SuggestionType.CONTACT_PERSON,
                         value = newSupContact,
                         onValueChange = { newSupContact = it },
                         label = { Text(if (isBangla) "যোগাযোগের ব্যক্তি (ঐচ্ছিক)" else "Contact Person (Optional)") },
@@ -1662,7 +1680,8 @@ fun CreatePurchaseOrderDialog(
                         singleLine = true
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
+                        SuggestTextField(
+                            fieldType = SuggestionType.COUNTRY,
                             value = newSupCountry,
                             onValueChange = { newSupCountry = it },
                             label = { Text(if (isBangla) "দেশ" else "Country") },
@@ -1732,14 +1751,16 @@ fun CreatePurchaseOrderDialog(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
+                        SuggestTextField(
+                            fieldType = SuggestionType.COLOR,
                             value = newVarColor,
                             onValueChange = { newVarColor = it },
                             label = { Text(if (isBangla) "রঙ (Color)" else "Color") },
                             modifier = Modifier.weight(1f),
                             singleLine = true
                         )
-                        OutlinedTextField(
+                        SuggestTextField(
+                            fieldType = SuggestionType.SIZE,
                             value = newVarSize,
                             onValueChange = { newVarSize = it },
                             label = { Text(if (isBangla) "সাইজ (Size)" else "Size") },
@@ -1805,195 +1826,33 @@ fun CreatePurchaseOrderDialog(
     }
 
     // ==========================================
-    // Inline Add Product Dialog
+    // Full Add Product (same fields as Product module; stock stays 0 until receiving)
     // ==========================================
-    if (showInlineAddProductDialog && onAddNewProduct != null) {
-        AlertDialog(
-            onDismissRequest = { showInlineAddProductDialog = false },
-            title = {
-                Text(
-                    text = if (isBangla) "ক্যাটালগে নতুন পণ্য যোগ করুন" else "Add New Product to Catalog",
-                    fontWeight = FontWeight.Bold,
-                    color = DeepNavy
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = newProdNameEn,
-                        onValueChange = { newProdNameEn = it },
-                        label = { Text("Product Name (English)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = newProdSku,
-                        onValueChange = { newProdSku = it },
-                        label = { Text("Base SKU") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = newProdUnit,
-                            onValueChange = { newProdUnit = it },
-                            label = { Text("Unit (PCS/Pair)") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                        OutlinedTextField(
-                            value = newProdPurchasePriceStr,
-                            onValueChange = { newProdPurchasePriceStr = it },
-                            label = { Text("Cost ($selectedCurrency)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isBangla) "ক্যাটাগরি নির্বাচন করুন:" else "Select Category:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary
-                        )
-                        if (onAddNewCategory != null) {
-                            TextButton(
-                                onClick = { showInlineAddCategoryDialog = true },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Text(if (isBangla) "+ নতুন ক্যাটাগরি" else "+ New Category", fontSize = 11.sp)
-                            }
+    if (showInlineAddProductDialog && onCreateFullProduct != null) {
+        AddProductDialog(
+            categories = categories,
+            warehouses = emptyList(),
+            language = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH,
+            hideStock = true,
+            onDismiss = { showInlineAddProductDialog = false },
+            onAddNewCategory = onAddNewCategory,
+            onGenerateSku = onGenerateSku,
+            onGenerateVariantSku = onGenerateVariantSku,
+            onGenerateBarcode = onGenerateBarcode,
+            onValidateSku = onValidateSku,
+            onValidateBarcode = onValidateBarcode,
+            onConfirm = { nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, photos, vars, _, _ ->
+                onCreateFullProduct(
+                    nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, photos, vars
+                ) { created, createdVars ->
+                    showInlineAddProductDialog = false
+                    if (createdVars.isEmpty()) {
+                        itemsList.add(ItemDraftState(productId = created.id, variantId = null, quantityStr = "100", unitPriceStr = ""))
+                    } else {
+                        createdVars.forEach { cv ->
+                            itemsList.add(ItemDraftState(productId = created.id, variantId = cv.id, quantityStr = "100", unitPriceStr = ""))
                         }
                     }
-
-                    if (categories.isNotEmpty()) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(categories) { cat ->
-                                val isSel = cat.id == selectedCategoryId
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color.White)
-                                        .border(
-                                            width = if (isSel) 1.dp else 0.5.dp,
-                                            color = if (isSel) PrimaryPurple else Color(0xFFCBD5E1),
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { selectedCategoryId = cat.id }
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = if (isBangla && cat.nameBn.isNotBlank()) cat.nameBn else cat.nameEn,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSel) PrimaryPurple else TextPrimary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (newProdNameEn.isNotBlank() && newProdSku.isNotBlank()) {
-                            val priceMinor = BigDecimal(newProdPurchasePriceStr.ifEmpty { "0" })
-                                .multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                            val sellMinor = BigDecimal(newProdSellingPriceStr.ifEmpty { "0" })
-                                .multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                            onAddNewProduct(
-                                newProdNameEn.trim(),
-                                newProdNameBn.ifBlank { newProdNameEn.trim() },
-                                selectedCategoryId.ifBlank { "cat-footwear" },
-                                newProdSku.trim(),
-                                newProdUnit.trim(),
-                                priceMinor,
-                                sellMinor
-                            ) { created ->
-                                showInlineAddProductDialog = false
-                                itemsList.add(
-                                    ItemDraftState(
-                                        productId = created.id,
-                                        quantityStr = "100",
-                                        unitPriceStr = newProdPurchasePriceStr
-                                    )
-                                )
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
-                ) {
-                    Text(if (isBangla) "যোগ করুন" else "Create Product")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showInlineAddProductDialog = false }) {
-                    Text(if (isBangla) "বাতিল" else "Cancel")
-                }
-            }
-        )
-    }
-
-    // ==========================================
-    // Inline Add Category Dialog
-    // ==========================================
-    if (showInlineAddCategoryDialog && onAddNewCategory != null) {
-        AlertDialog(
-            onDismissRequest = { showInlineAddCategoryDialog = false },
-            title = {
-                Text(
-                    text = if (isBangla) "নতুন ক্যাটাগরি তৈরি করুন" else "Create New Category",
-                    fontWeight = FontWeight.Bold,
-                    color = DeepNavy
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = newCatNameEn,
-                        onValueChange = { newCatNameEn = it },
-                        label = { Text("Category Name (English)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = newCatNameBn,
-                        onValueChange = { newCatNameBn = it },
-                        label = { Text("Category Name (Bangla - Optional)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (newCatNameEn.isNotBlank()) {
-                            onAddNewCategory(newCatNameEn.trim(), newCatNameBn.trim()) { created ->
-                                selectedCategoryId = created.id
-                                showInlineAddCategoryDialog = false
-                                newCatNameEn = ""
-                                newCatNameBn = ""
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
-                ) {
-                    Text(if (isBangla) "তৈরি করুন" else "Save Category")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showInlineAddCategoryDialog = false }) {
-                    Text(if (isBangla) "বাতিল" else "Cancel")
                 }
             }
         )

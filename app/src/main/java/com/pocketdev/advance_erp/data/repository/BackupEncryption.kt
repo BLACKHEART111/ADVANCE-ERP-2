@@ -34,7 +34,7 @@ internal object BackupEncryption {
     }
 
     fun encrypt(inputFile: File, outputFile: File, passphrase: CharArray) {
-        require(passphrase.size >= 8) { "Backup passphrase must have at least 8 characters" }
+        require(passphrase.size >= 5) { "Backup passphrase must have at least 5 characters" }
         val random = SecureRandom()
         val salt = ByteArray(SALT_SIZE).also { random.nextBytes(it) }
         val iv = ByteArray(IV_SIZE).also { random.nextBytes(it) }

@@ -25,6 +25,7 @@ import com.pocketdev.advance_erp.data.dao.StockBalanceDao
 import com.pocketdev.advance_erp.data.dao.StockMovementDao
 import com.pocketdev.advance_erp.data.dao.StockTransferDao
 import com.pocketdev.advance_erp.data.dao.SupplierDao
+import com.pocketdev.advance_erp.data.dao.SuggestionDao
 import com.pocketdev.advance_erp.data.dao.SupplierPaymentDao
 import com.pocketdev.advance_erp.data.dao.WarehouseDao
 import com.pocketdev.advance_erp.data.dao.WarehouseReceiptDao
@@ -77,6 +78,9 @@ object DatabaseModule {
 
     @Provides
     fun provideSupplierDao(db: AdvanceErpDatabase): SupplierDao = db.supplierDao()
+
+    @Provides
+    fun provideSuggestionDao(db: AdvanceErpDatabase): SuggestionDao = db.suggestionDao()
 
     @Provides
     fun provideAppSettingsDao(db: AdvanceErpDatabase): AppSettingsDao = db.appSettingsDao()

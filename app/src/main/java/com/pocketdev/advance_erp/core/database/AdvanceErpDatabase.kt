@@ -32,6 +32,8 @@ import com.pocketdev.advance_erp.data.dao.StockBalanceDao
 import com.pocketdev.advance_erp.data.dao.StockMovementDao
 import com.pocketdev.advance_erp.data.dao.StockTransferDao
 import com.pocketdev.advance_erp.data.dao.SupplierDao
+import com.pocketdev.advance_erp.data.dao.SuggestionDao
+import com.pocketdev.advance_erp.data.entity.SavedSuggestion
 import com.pocketdev.advance_erp.data.dao.SupplierPaymentDao
 import com.pocketdev.advance_erp.data.dao.WarehouseDao
 import com.pocketdev.advance_erp.data.dao.WarehouseReceiptDao
@@ -144,9 +146,11 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
         InventoryReconciliationItem::class,
         // Phase 07 Multi-Supplier & Category Freight Entities:
         ShipmentSupplier::class,
-        ShipmentFreightRate::class
+        ShipmentFreightRate::class,
+        // Phase 08 Smart Suggestions:
+        SavedSuggestion::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 abstract class AdvanceErpDatabase : RoomDatabase() {
@@ -162,6 +166,7 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
     abstract fun stockTransferDao(): StockTransferDao
     abstract fun customerDao(): CustomerDao
     abstract fun supplierDao(): SupplierDao
+    abstract fun suggestionDao(): SuggestionDao
     abstract fun appSettingsDao(): AppSettingsDao
 
     // Phase 02 DAOs:
@@ -212,7 +217,8 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                     DatabaseMigrations.MIGRATION_7_8,
                     DatabaseMigrations.MIGRATION_8_9,
                     DatabaseMigrations.MIGRATION_9_10,
-                    DatabaseMigrations.MIGRATION_10_11
+                    DatabaseMigrations.MIGRATION_10_11,
+                    DatabaseMigrations.MIGRATION_11_12
                 )
                 .addCallback(object : Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {

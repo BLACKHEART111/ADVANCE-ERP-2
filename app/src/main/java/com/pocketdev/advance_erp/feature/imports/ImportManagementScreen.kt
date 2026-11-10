@@ -1288,7 +1288,12 @@ fun ImportManagementScreen(
             isBangla = isBangla,
             onDismiss = { showCreatePoDialog = false },
             onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
-            onAddNewProduct = viewModel::addNewProductFromPurchase,
+            onCreateFullProduct = viewModel::createFullProductFromPurchase,
+            onGenerateSku = viewModel::generateBaseSku,
+            onGenerateVariantSku = viewModel::generateVariantSku,
+            onGenerateBarcode = viewModel::generateBarcode,
+            onValidateSku = viewModel::isBaseSkuAvailable,
+            onValidateBarcode = viewModel::isBarcodeAvailable,
             onAddNewVariant = viewModel::addNewVariantFromPurchase,
             onAddNewCategory = viewModel::addNewCategory,
             onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor ->

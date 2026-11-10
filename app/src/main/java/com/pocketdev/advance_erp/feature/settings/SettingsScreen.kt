@@ -637,14 +637,16 @@ fun SettingsScreen(
                         isFridayAutoBackupEnabled = state.isFridayAutoBackupEnabled,
                         lastAutoBackupTime = state.lastAutoBackupTime,
                         backupFolderUri = state.backupFolderUri,
+                        backupPassphrase = state.backupPassphrase,
                         language = state.language,
                         onCreateBackup = { onFinished -> viewModel.createInstantBackup(onFinished) },
-                        onRestoreBackupFile = { file -> viewModel.restoreBackup(file) },
+                        onRestoreBackupFile = { file, passphrase -> viewModel.restoreBackup(file, passphrase) },
                         onRestoreFromUri = { uri, passphrase -> viewModel.restoreFromUri(uri, passphrase) },
                         onShareBackup = { file, passphrase -> viewModel.shareBackup(file, passphrase) },
                         onDeleteBackup = { recordId -> viewModel.deleteBackup(recordId) },
                         onToggleFridayAutoBackup = { enabled -> viewModel.toggleFridayAutoBackup(enabled) },
-                        onSelectBackupFolder = { uri -> viewModel.setBackupFolderUri(uri) }
+                        onSelectBackupFolder = { uri -> viewModel.setBackupFolderUri(uri) },
+                        onSetBackupPassphrase = { pass -> viewModel.setBackupPassphrase(pass) }
                     )
                 }
             }

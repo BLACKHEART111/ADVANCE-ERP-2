@@ -71,6 +71,8 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.pocketdev.advance_erp.R
+import com.pocketdev.advance_erp.core.designsystem.SuggestTextField
+import com.pocketdev.advance_erp.data.entity.SuggestionType
 import com.pocketdev.advance_erp.core.designsystem.DeepNavy
 import com.pocketdev.advance_erp.core.designsystem.ERPActionButton
 import com.pocketdev.advance_erp.core.designsystem.ERPButtonVariant
@@ -96,6 +98,7 @@ fun AddProductDialog(
     categories: List<ProductCategory>,
     warehouses: List<Warehouse>,
     language: AppLanguage,
+    hideStock: Boolean = false,
     onDismiss: () -> Unit,
     onAddNewCategory: ((nameEn: String, nameBn: String, onCreated: (ProductCategory) -> Unit) -> Unit)? = null,
     onGenerateSku: (suspend (categoryId: String, nameEn: String) -> String)? = null,
@@ -393,8 +396,8 @@ fun AddProductDialog(
                     style = MaterialTheme.typography.labelLarge,
                     color = TextPrimary
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(modifier = Modifier.fillMaxWidth()) {
+                if (!hideStock) Spacer(modifier = Modifier.height(4.dp))
+                if (!hideStock) Box(modifier = Modifier.fillMaxWidth()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -773,7 +776,7 @@ fun AddProductDialog(
                     val hasVariantStock = variantStockTotal > 0
                     val isRestock = selectedExistingProduct != null
 
-                    OutlinedTextField(
+                    if (!hideStock) OutlinedTextField(
                         value = if (hasVariantStock) variantStockTotal.toString() else initialStockStr,
                         onValueChange = { initialStockStr = it.filter { ch -> ch.isDigit() } },
                         label = {
@@ -813,7 +816,7 @@ fun AddProductDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // 7. Warehouse for Stock
-                Text(
+                if (!hideStock) Text(
                     text = stringResource(R.string.warehouse),
                     style = MaterialTheme.typography.labelLarge,
                     color = TextPrimary
@@ -912,14 +915,16 @@ fun AddProductDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+                            SuggestTextField(
+                                fieldType = SuggestionType.COLOR,
                                 value = variantColor,
                                 onValueChange = { variantColor = it },
                                 label = { Text(stringResource(R.string.color)) },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true
                             )
-                            OutlinedTextField(
+                            SuggestTextField(
+                                fieldType = SuggestionType.SIZE,
                                 value = variantSize,
                                 onValueChange = { variantSize = it },
                                 label = { Text(stringResource(R.string.size)) },
@@ -1035,7 +1040,7 @@ fun AddProductDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Variant Opening Quantity
-                        OutlinedTextField(
+                        if (!hideStock) OutlinedTextField(
                             value = variantQtyStr,
                             onValueChange = { variantQtyStr = it.filter { ch -> ch.isDigit() } },
                             label = {
@@ -1296,7 +1301,7 @@ fun AddProductDialog(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 // Inline Input for Stock Quantity + Quick Add Chips (+10, +50, +100)
-                                Row(
+                                if (!hideStock) Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -1467,8 +1472,8 @@ fun AddProductDialog(
                                 val sellingMinor = Money.parseFromString(sellingPriceStr).minorUnits
                                 val minStock = minStockAlertStr.toIntOrNull() ?: 10
                                 val variantStockSum = variants.sumOf { it.initialStock }
-                                val additionalStock = if (variantStockSum > 0) variantStockSum else (initialStockStr.toIntOrNull() ?: 0)
-                                val whId = selectedWarehouse?.id ?: ""
+                                val additionalStock = if (hideStock) 0 else if (variantStockSum > 0) variantStockSum else (initialStockStr.toIntOrNull() ?: 0)
+                                val whId = if (hideStock) "" else (selectedWarehouse?.id ?: "")
                                 val excludeId = selectedExistingProduct?.id
 
                                 scope.launch {
@@ -1524,7 +1529,7 @@ fun AddProductDialog(
                                                         sellingMinor,
                                                         minStock,
                                                         productPhotos.toList(),
-                                                        variants.toList(),
+                                                        variants.toList().map { if (hideStock) it.copy(initialStock = 0) else it },
                                                         additionalStock,
                                                         whId
                                                     )

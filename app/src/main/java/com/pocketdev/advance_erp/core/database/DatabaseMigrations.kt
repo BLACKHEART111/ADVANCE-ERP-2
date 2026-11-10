@@ -1285,4 +1285,18 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_expense_vouchers_salesInvoiceId ON expense_vouchers(salesInvoiceId)")
         }
     }
+
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `saved_suggestions` (`id` TEXT NOT NULL, `fieldType` TEXT NOT NULL, " +
+                    "`value` TEXT NOT NULL, `valueNormalized` TEXT NOT NULL, `useCount` INTEGER NOT NULL, " +
+                    "`lastUsedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_saved_suggestions_fieldType_valueNormalized` " +
+                    "ON `saved_suggestions` (`fieldType`, `valueNormalized`)"
+            )
+        }
+    }
 }

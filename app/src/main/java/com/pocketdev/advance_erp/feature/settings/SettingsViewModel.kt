@@ -38,6 +38,7 @@ data class SettingsUiState(
     val isFridayAutoBackupEnabled: Boolean = true,
     val lastAutoBackupTime: Long? = null,
     val backupFolderUri: String? = null,
+    val backupPassphrase: String? = null,
     val backupRecords: List<BackupRecord> = emptyList(),
     val userMessage: String? = null
 )
@@ -64,6 +65,7 @@ class SettingsViewModel @Inject constructor(
         preferencesRepository.isFridayAutoBackupEnabled,
         preferencesRepository.lastAutoBackupTime,
         preferencesRepository.backupFolderUri,
+        preferencesRepository.backupPassphrase,
         backupRepository.getAllBackupRecords(),
         _userMessage
     ) { args: Array<Any?> ->
@@ -83,8 +85,9 @@ class SettingsViewModel @Inject constructor(
             isFridayAutoBackupEnabled = args[8] as Boolean,
             lastAutoBackupTime = args[9] as? Long,
             backupFolderUri = args[10] as? String,
-            backupRecords = (args[11] as? List<*>)?.filterIsInstance<BackupRecord>() ?: emptyList(),
-            userMessage = args[12] as? String
+            backupPassphrase = args[11] as? String,
+            backupRecords = (args[12] as? List<*>)?.filterIsInstance<BackupRecord>() ?: emptyList(),
+            userMessage = args[13] as? String
         )
     }.stateIn(
         scope = viewModelScope,
@@ -195,6 +198,23 @@ class SettingsViewModel @Inject constructor(
             } else {
                 preferencesRepository.setBackupFolderUri(null)
                 _userMessage.value = "ডিফল্ট ব্যাকআপ ফোল্ডার (Downloads/AdvanceERP_Backups) সেট করা হয়েছে।"
+            }
+        }
+    }
+
+    fun setBackupPassphrase(passphrase: String?) {
+        viewModelScope.launch {
+            if (!passphrase.isNullOrBlank()) {
+                val clean = passphrase.trim()
+                if (clean.length in 5..10) {
+                    preferencesRepository.setBackupPassphrase(clean)
+                    _userMessage.value = "ব্যাকআপ পাসওয়ার্ড সফলভাবে সংরক্ষিত হয়েছে! এখন থেকে সকল ব্যাকআপ এই পাসওয়ার্ড দিয়ে এনক্রিপ্ট হবে।"
+                } else {
+                    _userMessage.value = "পাসওয়ার্ড অবশ্যই ৫ থেকে ১০ অক্ষরের মধ্যে হতে হবে।"
+                }
+            } else {
+                preferencesRepository.setBackupPassphrase(null)
+                _userMessage.value = "ব্যাকআপ পাসওয়ার্ড মুছে ফেলা হয়েছে। ব্যাকআপ সাধারণ জিপ (.zip) হিসেবে সেভ হবে।"
             }
         }
     }
