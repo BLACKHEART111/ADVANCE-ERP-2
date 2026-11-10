@@ -629,8 +629,8 @@ fun SettingsScreen(
                 Column {
                     ERPSectionHeader(
                         title = if (isBn) "ডাটা ব্যাকআপ ও রিস্টোর" else "Data Backup & Restore",
-                        subtitle = if (isBn) "সম্পূর্ণ অফলাইন ব্যাকআপ (.zip) • ছবি ও ডাটাবেজ সংরক্ষণ • প্রতি শুক্রবার স্বয়ংক্রিয় ব্যাকআপ"
-                        else "Full offline ZIP backups • Photos & database bundle • Automatic Friday backup"
+                        subtitle = if (isBn) "লোকাল ব্যাকআপ • শেয়ারের সময় পাসফ্রেজ এনক্রিপশন • শুক্রবার স্বয়ংক্রিয় ব্যাকআপ"
+                        else "Local backups • Passphrase-encrypted exports • Automatic Friday backup"
                     )
                     BackupManagementSection(
                         backupRecords = state.backupRecords,
@@ -639,8 +639,8 @@ fun SettingsScreen(
                         language = state.language,
                         onCreateBackup = { onFinished -> viewModel.createInstantBackup(onFinished) },
                         onRestoreBackupFile = { file -> viewModel.restoreBackup(file) },
-                        onRestoreFromUri = { uri -> viewModel.restoreFromUri(uri) },
-                        onShareBackup = { file -> viewModel.shareBackup(file) },
+                        onRestoreFromUri = { uri, passphrase -> viewModel.restoreFromUri(uri, passphrase) },
+                        onShareBackup = { file, passphrase -> viewModel.shareBackup(file, passphrase) },
                         onDeleteBackup = { recordId -> viewModel.deleteBackup(recordId) },
                         onToggleFridayAutoBackup = { enabled -> viewModel.toggleFridayAutoBackup(enabled) }
                     )
@@ -653,7 +653,7 @@ fun SettingsScreen(
                     ERPSectionHeader(title = stringResource(R.string.app_info))
                     ERPCard {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            SystemInfoRow("System Mode", "Single Device • Offline-First")
+                            SystemInfoRow("System Mode", "Single User • Offline-First")
                             Divider(color = ERPDivider)
                             SystemInfoRow("Architecture", "Room SQLite + Hilt + Compose M3")
                             Divider(color = ERPDivider)

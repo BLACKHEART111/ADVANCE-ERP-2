@@ -52,7 +52,7 @@ import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 data class MoreHubItem(
     val route: String,
     val titleResId: Int,
-    val subtitle: String,
+    val subtitleResId: Int,
     val icon: ImageVector,
     val color: Color
 )
@@ -63,15 +63,15 @@ fun MoreHubScreen(
     modifier: Modifier = Modifier
 ) {
     val items = listOf(
-        MoreHubItem("products", R.string.nav_products, "Catalog, variants & prices", Icons.Default.Category, PrimaryPurple),
-        MoreHubItem("import_management", R.string.nav_import_management, "China sourcing & shipments", Icons.Default.Public, SecondaryTeal),
-        MoreHubItem("purchases", R.string.nav_purchases, "Purchase orders pipeline", Icons.Default.ShoppingCart, Color(0xFFE11D48)),
-        MoreHubItem("shipments", R.string.nav_shipments, "Air cargo & port tracking", Icons.Default.FlightTakeoff, Color(0xFF0284C7)),
-        MoreHubItem("customers", R.string.nav_customers, "Wholesale & retail clients", Icons.Default.Group, Color(0xFF16A34A)),
-        MoreHubItem("suppliers", R.string.nav_suppliers, "China factory partners", Icons.Default.Storefront, Color(0xFFD97706)),
-        MoreHubItem("ledger", R.string.nav_ledger, "Customer & supplier ledger", Icons.Default.MenuBook, Color(0xFF7C3AED)),
-        MoreHubItem("reports", R.string.nav_reports, "Business Control Center & Ledgers", Icons.Default.Assessment, Color(0xFF059669)),
-        MoreHubItem("settings", R.string.nav_settings, "Language, currency & profile", Icons.Default.Settings, Color(0xFF475569))
+        MoreHubItem("products", R.string.nav_products, R.string.more_products_subtitle, Icons.Default.Category, PrimaryPurple),
+        MoreHubItem("import_management", R.string.nav_import_management, R.string.more_import_subtitle, Icons.Default.Public, SecondaryTeal),
+        MoreHubItem("purchases", R.string.nav_purchases, R.string.more_purchases_subtitle, Icons.Default.ShoppingCart, Color(0xFFE11D48)),
+        MoreHubItem("shipments", R.string.nav_shipments, R.string.more_shipments_subtitle, Icons.Default.FlightTakeoff, Color(0xFF0284C7)),
+        MoreHubItem("customers", R.string.nav_customers, R.string.more_customers_subtitle, Icons.Default.Group, Color(0xFF16A34A)),
+        MoreHubItem("suppliers", R.string.nav_suppliers, R.string.more_suppliers_subtitle, Icons.Default.Storefront, Color(0xFFD97706)),
+        MoreHubItem("ledger", R.string.nav_ledger, R.string.more_ledger_subtitle, Icons.Default.MenuBook, Color(0xFF7C3AED)),
+        MoreHubItem("reports", R.string.nav_reports, R.string.more_reports_subtitle, Icons.Default.Assessment, Color(0xFF059669)),
+        MoreHubItem("settings", R.string.nav_settings, R.string.more_settings_subtitle, Icons.Default.Settings, Color(0xFF475569))
     )
 
     Column(
@@ -81,8 +81,8 @@ fun MoreHubScreen(
             .padding(16.dp)
     ) {
         ERPSectionHeader(
-            title = "All Modules & Tools",
-            subtitle = "Single-device import business ERP features"
+            title = stringResource(R.string.more_modules_title),
+            subtitle = stringResource(R.string.more_modules_subtitle)
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -126,7 +126,7 @@ fun MoreHubScreen(
                         Spacer(modifier = Modifier.height(2.dp))
 
                         Text(
-                            text = item.subtitle,
+                            text = stringResource(item.subtitleResId),
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )

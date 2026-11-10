@@ -58,6 +58,8 @@ fun ERPBottomNavigation(
     onNavigate: (BottomNavDestination) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isPrimaryDestination = BottomNavDestination.entries
+        .any { it != BottomNavDestination.MORE && it.route == currentRoute }
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -80,7 +82,8 @@ fun ERPBottomNavigation(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BottomNavDestination.entries.forEach { destination ->
-                    val isSelected = currentRoute == destination.route
+                    val isSelected = currentRoute == destination.route ||
+                        (destination == BottomNavDestination.MORE && !isPrimaryDestination)
                     val interactionSource = remember { MutableInteractionSource() }
 
                     Column(

@@ -21,6 +21,7 @@ import com.pocketdev.advance_erp.domain.repository.DashboardSummary
 import com.pocketdev.advance_erp.domain.repository.DashboardTransaction
 import com.pocketdev.advance_erp.domain.repository.DateWiseMetrics
 import com.pocketdev.advance_erp.domain.repository.HistoricalClosingBalances
+import com.pocketdev.advance_erp.domain.repository.MonthlyPerformanceMetrics
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import java.util.Calendar
@@ -62,6 +63,17 @@ class DashboardRepositoryImpl @Inject constructor(
         calendar.set(Calendar.SECOND, 59)
         calendar.set(Calendar.MILLISECOND, 999)
         val endOfDay = calendar.timeInMillis
+
+        val monthCalendar = Calendar.getInstance().apply { timeInMillis = dateMillis }
+        monthCalendar.set(Calendar.DAY_OF_MONTH, 1)
+        monthCalendar.set(Calendar.HOUR_OF_DAY, 0)
+        monthCalendar.set(Calendar.MINUTE, 0)
+        monthCalendar.set(Calendar.SECOND, 0)
+        monthCalendar.set(Calendar.MILLISECOND, 0)
+        val startOfMonth = monthCalendar.timeInMillis
+        monthCalendar.add(Calendar.MONTH, 1)
+        monthCalendar.add(Calendar.MILLISECOND, -1)
+        val endOfMonth = monthCalendar.timeInMillis
 
         val financialsFlow = combine(
             inventoryCostLayerDao.getTotalInventoryValuationMinor(),
@@ -231,6 +243,33 @@ class DashboardRepositoryImpl @Inject constructor(
                 .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
             val netProfitMinor = grossProfitMinor - opExpenses
 
+            // Monthly report values use actual posted transactions for the selected month.
+            val monthInvoices = salesDao.getPostedInvoicesInRange(startOfMonth, endOfMonth)
+            val monthOrders = purchaseOrderDao.getOrdersInRange(startOfMonth, endOfMonth)
+            val monthCollections = customerPaymentDao.getPaymentsInRange(startOfMonth, endOfMonth)
+            val monthExpenses = expenseDao.getExpensesByDateRangeSync(startOfMonth, endOfMonth)
+            val monthLines = accountingDao.getActivePostedLinesInRange(startOfMonth, endOfMonth)
+            val monthGrossSales = monthLines.filter { it.accountId == "coa-4010" }
+                .sumOf { if (!it.isDebit) it.amountMinor else -it.amountMinor }
+            val monthReturns = monthLines.filter { it.accountId == "coa-4020" }
+                .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
+            val monthDiscounts = monthLines.filter { it.accountId == "coa-4030" }
+                .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
+            val monthCogs = monthLines.filter { it.accountId == "coa-5010" }
+                .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
+            val monthOperatingExpenses = monthLines.filter { it.accountId in opExpenseCodes }
+                .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
+            val monthlyMetrics = MonthlyPerformanceMetrics(
+                totalSales = Money.ofMinor(monthInvoices.sumOf { it.totalAmountMinor }, CurrencyCode.BDT),
+                totalPurchases = Money.ofMinor(monthOrders.sumOf { it.totalBdtAmountMinor }, CurrencyCode.BDT),
+                totalCollections = Money.ofMinor(monthCollections.sumOf { it.amountMinor }, CurrencyCode.BDT),
+                totalExpenses = Money.ofMinor(monthExpenses.sumOf { it.bdtAmountMinor }, CurrencyCode.BDT),
+                netProfit = Money.ofMinor(
+                    monthGrossSales - monthReturns - monthDiscounts - monthCogs - monthOperatingExpenses,
+                    CurrencyCode.BDT
+                )
+            )
+
             DashboardSummary(
                 todaysSales = Money.ofMinor(salesMinor, CurrencyCode.BDT),
                 totalReceivable = Money.ofMinor(closingArMinor, CurrencyCode.BDT),
@@ -247,7 +286,8 @@ class DashboardRepositoryImpl @Inject constructor(
                 grossProfit = Money.ofMinor(grossProfitMinor, CurrencyCode.BDT),
                 netProfit = Money.ofMinor(netProfitMinor, CurrencyCode.BDT),
                 dateWiseMetrics = dateWiseMetrics,
-                closingBalances = closingBalances
+                closingBalances = closingBalances,
+                monthlyMetrics = monthlyMetrics
             )
         }
     }

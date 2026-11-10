@@ -26,9 +26,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.Calendar
 import javax.inject.Inject
 
 data class DashboardUiState(
@@ -174,16 +174,20 @@ class DashboardViewModel @Inject constructor(
             val profile = businessProfileDao.getProfile().first()
             val isBangla = currentState.language == AppLanguage.BANGLA
 
-            val monthFormat = SimpleDateFormat("MMMM yyyy", Locale.US)
+            val monthFormat = SimpleDateFormat(
+                "MMMM yyyy",
+                if (isBangla) Locale("bn", "BD") else Locale.US
+            )
             val monthName = monthFormat.format(Date(currentState.selectedDateMillis))
+            val monthMetrics = summary.monthlyMetrics ?: return@launch
 
             val report = CentralizedPdfReportRegistry.buildMonthlyPerformanceReport(
                 monthName = monthName,
-                salesMinor = summary.todaysSales.minorUnits * 30L, // Projected/accumulated
-                purchasesMinor = summary.totalPayable.minorUnits,
-                collectionsMinor = summary.todaysSales.minorUnits * 25L,
-                expensesMinor = summary.totalExpenses.minorUnits,
-                netProfitMinor = summary.netProfit.minorUnits,
+                salesMinor = monthMetrics.totalSales.minorUnits,
+                purchasesMinor = monthMetrics.totalPurchases.minorUnits,
+                collectionsMinor = monthMetrics.totalCollections.minorUnits,
+                expensesMinor = monthMetrics.totalExpenses.minorUnits,
+                netProfitMinor = monthMetrics.netProfit.minorUnits,
                 isBangla = isBangla
             )
 

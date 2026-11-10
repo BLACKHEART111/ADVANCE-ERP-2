@@ -39,6 +39,14 @@ data class HistoricalClosingBalances(
     val inventoryValuation: Money
 )
 
+data class MonthlyPerformanceMetrics(
+    val totalSales: Money,
+    val totalPurchases: Money,
+    val totalCollections: Money,
+    val totalExpenses: Money,
+    val netProfit: Money
+)
+
 data class DashboardSummary(
     val todaysSales: Money,
     val totalReceivable: Money,
@@ -55,7 +63,8 @@ data class DashboardSummary(
     val grossProfit: Money = Money.ofMinor(0L, CurrencyCode.BDT),
     val netProfit: Money = Money.ofMinor(0L, CurrencyCode.BDT),
     val dateWiseMetrics: DateWiseMetrics? = null,
-    val closingBalances: HistoricalClosingBalances? = null
+    val closingBalances: HistoricalClosingBalances? = null,
+    val monthlyMetrics: MonthlyPerformanceMetrics? = null
 )
 
 interface DashboardRepository {

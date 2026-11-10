@@ -4,11 +4,53 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.pocketdev.advance_erp.data.repository.isSafeBackupZipEntry
+import com.pocketdev.advance_erp.data.repository.BackupEncryption
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 
 class BackupAndRestoreValidationTest {
+
+    @Test
+    fun backupZipRejectsPathTraversalAndUnknownEntries() {
+        assertTrue(isSafeBackupZipEntry("database/advance_erp.db"))
+        assertTrue(isSafeBackupZipEntry("product_images/item_01.jpg"))
+        assertTrue(isSafeBackupZipEntry("avatars/avatar_user.jpg"))
+        assertFalse(isSafeBackupZipEntry("product_images/../../database.db"))
+        assertFalse(isSafeBackupZipEntry("avatars/..\\database.db"))
+        assertFalse(isSafeBackupZipEntry("/database/advance_erp.db"))
+        assertFalse(isSafeBackupZipEntry("database/other.db"))
+    }
+
+    @Test
+    fun encryptedBackupRoundTripsAndRejectsWrongPassphrase() {
+        val source = File.createTempFile("erp_source", ".zip")
+        val encrypted = File.createTempFile("erp_encrypted", ".aerpbackup")
+        val restored = File.createTempFile("erp_restored", ".zip")
+        try {
+            val bytes = ByteArray(4096) { (it % 251).toByte() }
+            source.writeBytes(bytes)
+            BackupEncryption.encrypt(source, encrypted, "correct horse".toCharArray())
+            assertTrue(BackupEncryption.isEncrypted(encrypted))
+            BackupEncryption.decrypt(encrypted, restored, "correct horse".toCharArray())
+            assertTrue(bytes.contentEquals(restored.readBytes()))
+
+            val wrongPassOutput = File.createTempFile("erp_wrong", ".zip")
+            try {
+                org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                    BackupEncryption.decrypt(encrypted, wrongPassOutput, "incorrect".toCharArray())
+                }
+                assertFalse(wrongPassOutput.exists() && wrongPassOutput.length() > 0)
+            } finally {
+                wrongPassOutput.delete()
+            }
+        } finally {
+            source.delete()
+            encrypted.delete()
+            restored.delete()
+        }
+    }
 
     @Test
     fun testSha256ChecksumVerification() {

@@ -41,12 +41,7 @@ class BackupRepositoryImpl @Inject constructor(
     override fun getAllBackupRecords(): Flow<List<BackupRecord>> = backupDao.getAllBackupRecords()
 
     override suspend fun createBackup(isAutomatic: Boolean, notes: String?): BackupRecord = withContext(Dispatchers.IO) {
-        // 1. Flush SQLite write-ahead log (WAL) to main DB file
-        try {
-            database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(FULL);")
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        checkpointDatabase()
 
         val dbFile = context.getDatabasePath(AdvanceErpDatabase.DATABASE_NAME)
         require(dbFile.exists()) { "Database file does not exist at ${dbFile.absolutePath}" }
@@ -136,10 +131,21 @@ class BackupRepositoryImpl @Inject constructor(
         record
     }
 
-    override suspend fun verifyBackupFile(backupFile: File): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun verifyBackupFile(backupFile: File, passphrase: String?): Boolean = withContext(Dispatchers.IO) {
         if (!backupFile.exists() || backupFile.length() < 100) return@withContext false
 
-        if (backupFile.name.endsWith(".zip", ignoreCase = true)) {
+        if (BackupEncryption.isEncrypted(backupFile)) {
+            if (passphrase.isNullOrEmpty()) return@withContext false
+            val decrypted = File(context.cacheDir, "verify_${UUID.randomUUID()}.zip")
+            try {
+                BackupEncryption.decrypt(backupFile, decrypted, passphrase.toCharArray())
+                verifyZipBackup(decrypted)
+            } catch (_: Exception) {
+                false
+            } finally {
+                decrypted.delete()
+            }
+        } else if (backupFile.name.endsWith(".zip", ignoreCase = true)) {
             verifyZipBackup(backupFile)
         } else {
             verifySqliteDbFile(backupFile)
@@ -149,6 +155,10 @@ class BackupRepositoryImpl @Inject constructor(
     private fun verifyZipBackup(zipBackupFile: File): Boolean {
         return try {
             ZipFile(zipBackupFile).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    if (!isSafeBackupZipEntry(entries.nextElement().name)) return false
+                }
                 val dbEntry = zip.getEntry("database/advance_erp.db") ?: return false
                 val tempDbFile = File(context.cacheDir, "verify_db_${UUID.randomUUID()}.db")
                 try {
@@ -199,11 +209,22 @@ class BackupRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun restoreBackup(backupFile: File): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun restoreBackup(backupFile: File, passphrase: String?): Result<Boolean> = withContext(Dispatchers.IO) {
+        var decryptedFile: File? = null
         try {
-            if (!verifyBackupFile(backupFile)) {
+            val restoreFile = if (BackupEncryption.isEncrypted(backupFile)) {
+                require(!passphrase.isNullOrEmpty()) { "Backup passphrase is required" }
+                File(context.cacheDir, "restore_${UUID.randomUUID()}.zip").also {
+                    decryptedFile = it
+                    BackupEncryption.decrypt(backupFile, it, passphrase.toCharArray())
+                }
+            } else backupFile
+
+            if (!verifyBackupFile(restoreFile)) {
                 return@withContext Result.failure(IllegalArgumentException("Invalid or corrupted backup file"))
             }
+
+            checkpointDatabase()
 
             val dbFile = context.getDatabasePath(AdvanceErpDatabase.DATABASE_NAME)
 
@@ -218,16 +239,9 @@ class BackupRepositoryImpl @Inject constructor(
                 }
             }
 
-            // Step 2: Checkpoint current DB
-            try {
-                database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(FULL);")
-            } catch (e: Exception) {
-                // Ignore if in-transit
-            }
-
-            // Step 3: Extract from ZIP or restore DB directly
-            if (backupFile.name.endsWith(".zip", ignoreCase = true)) {
-                ZipFile(backupFile).use { zip ->
+            // Extract from ZIP or restore DB directly
+            if (restoreFile.name.endsWith(".zip", ignoreCase = true)) {
+                ZipFile(restoreFile).use { zip ->
                     val dbEntry = zip.getEntry("database/advance_erp.db")
                         ?: throw IllegalStateException("Backup ZIP does not contain database/advance_erp.db")
 
@@ -243,7 +257,8 @@ class BackupRepositoryImpl @Inject constructor(
                     while (entries.hasMoreElements()) {
                         val entry = entries.nextElement()
                         if (entry.name.startsWith("product_images/") && !entry.isDirectory) {
-                            val imgFileName = entry.name.removePrefix("product_images/")
+                            val imgFileName = safeBackupEntryFileName(entry.name, "product_images/")
+                                ?: throw IllegalArgumentException("Unsafe backup image path")
                             val destImgFile = File(targetImagesDir, imgFileName)
                             zip.getInputStream(entry).use { input ->
                                 FileOutputStream(destImgFile).use { output ->
@@ -251,7 +266,8 @@ class BackupRepositoryImpl @Inject constructor(
                                 }
                             }
                         } else if (entry.name.startsWith("avatars/") && !entry.isDirectory) {
-                            val avFileName = entry.name.removePrefix("avatars/")
+                            val avFileName = safeBackupEntryFileName(entry.name, "avatars/")
+                                ?: throw IllegalArgumentException("Unsafe backup avatar path")
                             val destAvFile = File(context.filesDir, avFileName)
                             zip.getInputStream(entry).use { input ->
                                 FileOutputStream(destAvFile).use { output ->
@@ -279,7 +295,7 @@ class BackupRepositoryImpl @Inject constructor(
                 AuditLog(
                     id = "audit-${UUID.randomUUID()}",
                     recordType = "RESTORE",
-                    recordId = backupFile.name,
+                    recordId = restoreFile.name,
                     action = "RESTORE",
                     details = "Restored comprehensive database package from ${backupFile.name} successfully."
                 )
@@ -289,10 +305,12 @@ class BackupRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
+        } finally {
+            decryptedFile?.delete()
         }
     }
 
-    override suspend fun restoreFromUri(context: Context, uri: Uri): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun restoreFromUri(context: Context, uri: Uri, passphrase: String?): Result<Boolean> = withContext(Dispatchers.IO) {
         val tempRestoreFile = File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -301,7 +319,7 @@ class BackupRepositoryImpl @Inject constructor(
                 }
             } ?: return@withContext Result.failure(IllegalArgumentException("Cannot open or read chosen backup file"))
 
-            restoreBackup(tempRestoreFile)
+            restoreBackup(tempRestoreFile, passphrase)
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
@@ -312,18 +330,24 @@ class BackupRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun shareBackup(context: Context, backupFile: File) {
+    override suspend fun shareBackup(context: Context, backupFile: File, passphrase: String) = withContext(Dispatchers.IO) {
         require(backupFile.exists()) { "Backup file does not exist at ${backupFile.absolutePath}" }
+        val exportRetentionMillis = 7L * 24 * 60 * 60 * 1000
+        context.cacheDir.listFiles { file -> file.name.startsWith("AdvanceERP_Export_") }
+            ?.filter { System.currentTimeMillis() - it.lastModified() > exportRetentionMillis }
+            ?.forEach { it.delete() }
+        val encryptedBackup = File(context.cacheDir, "AdvanceERP_Export_${UUID.randomUUID()}.aerpbackup")
+        BackupEncryption.encrypt(backupFile, encryptedBackup, passphrase.toCharArray())
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
-            backupFile
+            encryptedBackup
         )
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/zip"
+            type = "application/octet-stream"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Advance ERP Backup - ${backupFile.name}")
-            putExtra(Intent.EXTRA_TEXT, "Advance ERP Full System Backup (${backupFile.name})")
+            putExtra(Intent.EXTRA_SUBJECT, "Advance ERP Encrypted Backup - ${encryptedBackup.name}")
+            putExtra(Intent.EXTRA_TEXT, "Encrypted Advance ERP backup. Keep the passphrase to restore it.")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         val chooser = Intent.createChooser(shareIntent, "শেয়ার করুন / Share Backup").apply {
@@ -354,4 +378,28 @@ class BackupRepositoryImpl @Inject constructor(
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
+
+    private fun checkpointDatabase() {
+        database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { cursor ->
+            check(cursor.moveToFirst() && cursor.getInt(0) == 0) {
+                "Database is busy; could not safely checkpoint before backup operation"
+            }
+        }
+    }
+}
+
+internal fun isSafeBackupZipEntry(name: String): Boolean {
+    if (name.isBlank() || name.startsWith('/') || '\\' in name) return false
+    val parts = name.split('/')
+    if (parts.any { it == "." || it == ".." }) return false
+    if (name == "metadata.json" || name == "database/advance_erp.db") return true
+    if (name == "product_images/" || name == "avatars/") return true
+    return (parts.size == 2 && parts[1].isNotBlank() &&
+        (parts[0] == "product_images" || parts[0] == "avatars"))
+}
+
+private fun safeBackupEntryFileName(entryName: String, prefix: String): String? {
+    if (!isSafeBackupZipEntry(entryName) || !entryName.startsWith(prefix)) return null
+    val fileName = entryName.removePrefix(prefix)
+    return fileName.takeIf { it.isNotBlank() && '/' !in it && '\\' !in it }
 }

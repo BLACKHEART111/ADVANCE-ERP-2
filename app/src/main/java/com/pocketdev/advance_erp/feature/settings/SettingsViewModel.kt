@@ -194,10 +194,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun restoreBackup(file: File) {
+    fun restoreBackup(file: File, passphrase: String? = null) {
         viewModelScope.launch {
             try {
-                val res = backupRepository.restoreBackup(file)
+                val res = backupRepository.restoreBackup(file, passphrase)
                 if (res.isSuccess) {
                     _userMessage.value = "ডাটাবেজ এবং ছবি সফলভাবে রিস্টোর করা হয়েছে!"
                 } else {
@@ -209,10 +209,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun restoreFromUri(uri: Uri) {
+    fun restoreFromUri(uri: Uri, passphrase: String? = null) {
         viewModelScope.launch {
             try {
-                val res = backupRepository.restoreFromUri(context, uri)
+                val res = backupRepository.restoreFromUri(context, uri, passphrase)
                 if (res.isSuccess) {
                     _userMessage.value = "নির্বাচিত জিপ ফাইল থেকে সফলভাবে রিস্টোর সম্পন্ন হয়েছে!"
                 } else {
@@ -224,11 +224,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun shareBackup(file: File) {
-        try {
-            backupRepository.shareBackup(context, file)
-        } catch (e: Exception) {
-            _userMessage.value = "ফাইল শেয়ার ত্রুটি: ${e.localizedMessage}"
+    fun shareBackup(file: File, passphrase: String) {
+        viewModelScope.launch {
+            try {
+                backupRepository.shareBackup(context, file, passphrase)
+            } catch (e: Exception) {
+                _userMessage.value = "ফাইল শেয়ার ত্রুটি: ${e.localizedMessage}"
+            }
         }
     }
 

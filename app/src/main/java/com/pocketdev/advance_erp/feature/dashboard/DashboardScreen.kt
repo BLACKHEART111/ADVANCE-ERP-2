@@ -146,7 +146,9 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (isBangla) "রিয়েল-টাইম ডাটাবেস মেট্রিক্স" else "Live Real-Time Database Metrics",
+                                text = stringResource(
+                                    if (summary?.isLiveDatabaseData == true) R.string.dashboard_live_metrics else R.string.dashboard_saved_metrics
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.75f)
                             )
@@ -165,7 +167,9 @@ fun DashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "LIVE",
+                                    text = stringResource(
+                                        if (summary?.isLiveDatabaseData == true) R.string.dashboard_live else R.string.dashboard_saved
+                                    ),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = StatusSuccess,
                                     fontWeight = FontWeight.Bold
@@ -198,6 +202,39 @@ fun DashboardScreen(
                             value = Formatters.formatNumber(summary?.supplierCount?.toLong() ?: 0L, language)
                         )
                     }
+                }
+            }
+        }
+
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    DashboardQuickAction(
+                        label = if (isBangla) "নতুন বিক্রয়" else "New Sale",
+                        icon = Icons.Default.PointOfSale,
+                        onClick = onNavigateToSales
+                    )
+                }
+                item {
+                    DashboardQuickAction(
+                        label = if (isBangla) "পণ্য যোগ" else "Add Product",
+                        icon = Icons.Default.Add,
+                        onClick = onNavigateToAddProduct
+                    )
+                }
+                item {
+                    DashboardQuickAction(
+                        label = if (isBangla) "স্টক সমন্বয়" else "Adjust Stock",
+                        icon = Icons.Default.Inventory2,
+                        onClick = onNavigateToStockAdjust
+                    )
+                }
+                item {
+                    DashboardQuickAction(
+                        label = if (isBangla) "ক্রয়াদেশ" else "Purchase",
+                        icon = Icons.Default.ShoppingCart,
+                        onClick = onNavigateToImports
+                    )
                 }
             }
         }
@@ -553,6 +590,23 @@ fun DashboardScreen(
             isBangla = isBangla,
             onDismiss = { viewModel.clearGeneratedPdf() }
         )
+    }
+}
+
+@Composable
+private fun DashboardQuickAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

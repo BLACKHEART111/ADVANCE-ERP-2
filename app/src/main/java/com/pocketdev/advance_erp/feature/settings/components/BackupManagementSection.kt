@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -52,6 +53,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pocketdev.advance_erp.core.designsystem.ERPCard
@@ -78,8 +82,8 @@ fun BackupManagementSection(
     language: AppLanguage,
     onCreateBackup: (onFinished: () -> Unit) -> Unit,
     onRestoreBackupFile: (file: File) -> Unit,
-    onRestoreFromUri: (uri: Uri) -> Unit,
-    onShareBackup: (file: File) -> Unit,
+    onRestoreFromUri: (uri: Uri, passphrase: String?) -> Unit,
+    onShareBackup: (file: File, passphrase: String) -> Unit,
     onDeleteBackup: (recordId: String) -> Unit,
     onToggleFridayAutoBackup: (enabled: Boolean) -> Unit
 ) {
@@ -90,6 +94,10 @@ fun BackupManagementSection(
     var isCreatingBackup by remember { mutableStateOf(false) }
     var backupToRestore by remember { mutableStateOf<BackupRecord?>(null) }
     var backupToDelete by remember { mutableStateOf<BackupRecord?>(null) }
+    var backupToShare by remember { mutableStateOf<BackupRecord?>(null) }
+    var exportPassphrase by remember { mutableStateOf("") }
+    var confirmExportPassphrase by remember { mutableStateOf("") }
+    var restorePassphrase by remember { mutableStateOf("") }
     var pendingUriToRestore by remember { mutableStateOf<Uri?>(null) }
 
     // File Picker Launcher for Restoring .zip
@@ -161,7 +169,7 @@ fun BackupManagementSection(
                 OutlinedButton(
                     onClick = {
                         try {
-                            zipPickerLauncher.launch("application/zip")
+                            zipPickerLauncher.launch("*/*")
                         } catch (e: Exception) {
                             zipPickerLauncher.launch("*/*")
                         }
@@ -340,7 +348,7 @@ fun BackupManagementSection(
                                     IconButton(
                                         onClick = {
                                             if (file.exists()) {
-                                                onShareBackup(file)
+                                                backupToShare = bak
                                             } else {
                                                 Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
                                             }
@@ -429,7 +437,7 @@ fun BackupManagementSection(
     // Confirmation Dialog for Restoring from picked Uri
     pendingUriToRestore?.let { uri ->
         AlertDialog(
-            onDismissRequest = { pendingUriToRestore = null },
+            onDismissRequest = { pendingUriToRestore = null; restorePassphrase = "" },
             icon = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = SecondaryTeal) },
             title = {
                 Text(
@@ -438,16 +446,24 @@ fun BackupManagementSection(
                 )
             },
             text = {
-                Text(
-                    text = if (isBn) "ডিভাইস থেকে নির্বাচিত ফাইলটি যাচাই করে ছবি ও ডাটা রিস্টোর করা হবে। আপনি কি এগিয়ে যেতে চান?"
-                    else "The selected ZIP archive will be verified and restored. Proceed?"
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (isBn) "ফাইলটি যাচাই করে ডাটা ও ছবি রিস্টোর হবে। এনক্রিপ্ট করা ব্যাকআপ হলে পাসফ্রেজ দিন।" else "The backup will be verified before restore. Enter a passphrase for encrypted exports.")
+                    OutlinedTextField(
+                        value = restorePassphrase,
+                        onValueChange = { restorePassphrase = it },
+                        label = { Text(if (isBn) "ব্যাকআপ পাসফ্রেজ (ঐচ্ছিক)" else "Backup passphrase (optional)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true
+                    )
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        onRestoreFromUri(uri)
+                        onRestoreFromUri(uri, restorePassphrase.takeIf { it.isNotBlank() })
                         pendingUriToRestore = null
+                        restorePassphrase = ""
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
                 ) {
@@ -455,9 +471,62 @@ fun BackupManagementSection(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingUriToRestore = null }) {
+                TextButton(onClick = { pendingUriToRestore = null; restorePassphrase = "" }) {
                     Text(if (isBn) "বাতিল" else "Cancel")
                 }
+            }
+        )
+    }
+
+    backupToShare?.let { backup ->
+        AlertDialog(
+            onDismissRequest = {
+                backupToShare = null
+                exportPassphrase = ""
+                confirmExportPassphrase = ""
+            },
+            icon = { Icon(Icons.Default.Share, contentDescription = null, tint = PrimaryPurple) },
+            title = { Text(if (isBn) "এনক্রিপ্ট করা ব্যাকআপ শেয়ার" else "Share encrypted backup", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (isBn) "কমপক্ষে ৮ অক্ষরের পাসফ্রেজ দিন। অন্য ডিভাইসে রিস্টোরের জন্য এটি আলাদা করে সংরক্ষণ করুন।" else "Set a passphrase of at least 8 characters. Keep it separately to restore this backup on another device.")
+                    OutlinedTextField(
+                        value = exportPassphrase,
+                        onValueChange = { exportPassphrase = it },
+                        label = { Text(if (isBn) "পাসফ্রেজ" else "Passphrase") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = confirmExportPassphrase,
+                        onValueChange = { confirmExportPassphrase = it },
+                        label = { Text(if (isBn) "পাসফ্রেজ নিশ্চিত করুন" else "Confirm passphrase") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        isError = confirmExportPassphrase.isNotEmpty() && confirmExportPassphrase != exportPassphrase
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = exportPassphrase.length >= 8 && exportPassphrase == confirmExportPassphrase,
+                    onClick = {
+                        onShareBackup(File(backup.filePath), exportPassphrase)
+                        backupToShare = null
+                        exportPassphrase = ""
+                        confirmExportPassphrase = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
+                ) { Text(if (isBn) "এনক্রিপ্ট ও শেয়ার" else "Encrypt & Share") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    backupToShare = null
+                    exportPassphrase = ""
+                    confirmExportPassphrase = ""
+                }) { Text(if (isBn) "বাতিল" else "Cancel") }
             }
         )
     }

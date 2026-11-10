@@ -53,7 +53,7 @@ fun AdvanceErpNavGraph(
                 viewModel = hiltViewModel(),
                 onNavigateToAddProduct = { navController.navigate(Destinations.PRODUCTS) },
                 onNavigateToStockAdjust = { navController.navigate(Destinations.INVENTORY) },
-                onNavigateToImports = { navController.navigate(Destinations.IMPORT_MANAGEMENT) },
+                onNavigateToImports = { navController.navigate(Destinations.PURCHASES) },
                 onNavigateToSales = { navController.navigate(Destinations.SALES) },
                 onNavigateToTransactions = { navController.navigate(Destinations.INVENTORY) }
             )
@@ -84,7 +84,7 @@ fun AdvanceErpNavGraph(
         }
 
         composable(Destinations.IMPORT_MANAGEMENT) {
-            ImportManagementScreen(initialTab = ImportModuleTab.PURCHASE_ORDERS)
+            ImportManagementScreen(initialTab = ImportModuleTab.OVERVIEW)
         }
 
         composable(Destinations.SHIPMENTS) {

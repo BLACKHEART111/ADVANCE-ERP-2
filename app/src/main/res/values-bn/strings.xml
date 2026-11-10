@@ -19,21 +19,33 @@
     <string name="business_control_center">ব্যবসা নিয়ন্ত্রণ কেন্দ্র</string>
     <string name="centralized_ledger_reports">কেন্দ্রীয় লেজার, হিসাব বিবরণী ও এক্সপোর্ট</string>
     <string name="nav_settings">সেটিংস</string>
+    <string name="more_modules_title">সব মডিউল ও টুল</string>
+    <string name="more_modules_subtitle">একক ব্যবহারকারীর ব্যবসায়িক টুল</string>
+    <string name="more_products_subtitle">পণ্য, ভ্যারিয়েন্ট ও দাম</string>
+    <string name="more_import_subtitle">আমদানি সারসংক্ষেপ ও কার্যপ্রবাহ</string>
+    <string name="more_purchases_subtitle">ক্রয়াদেশ ও সরবরাহকারী পেমেন্ট</string>
+    <string name="more_shipments_subtitle">চালান ও কার্টন ট্র্যাকিং</string>
+    <string name="more_customers_subtitle">গ্রাহক তথ্য ও বকেয়া</string>
+    <string name="more_suppliers_subtitle">সরবরাহকারী তথ্য ও দেনা</string>
+    <string name="more_ledger_subtitle">গ্রাহক ও সরবরাহকারী খতিয়ান</string>
+    <string name="more_reports_subtitle">রিপোর্ট ও ব্যবসার সারসংক্ষেপ</string>
+    <string name="more_settings_subtitle">ভাষা, মুদ্রা ও ব্যাকআপ</string>
 
     <!-- Drawer Menu Items & Header -->
     <string name="drawer_logged_in_at">বর্তমান সময়</string>
     <string name="drawer_clock_time">বর্তমান সময়</string>
-    <string name="drawer_sync_logout">সিঙ্ক ও\nলগআউট</string>
+    <string name="drawer_sync_logout">ব্যাকআপ ও\nসেটিংস</string>
     <string name="drawer_default_user">Santanu Ganguly</string>
     <string name="drawer_select_photo">গ্যালারি থেকে ছবি নির্বাচন</string>
     <string name="drawer_remove_photo">ডিফল্ট ছবি ব্যবহার করুন</string>
     <string name="drawer_profile_options">প্রোফাইল ও ছবি সেটিংস</string>
     <string name="drawer_edit_user_name">প্রোফাইলের নাম</string>
-    <string name="drawer_sync_title">সিঙ্ক ও লগআউট</string>
-    <string name="drawer_sync_message">আপনি কি ডাটাবেজ ব্যাকআপ সিঙ্ক করে লগআউট করতে চান?</string>
-    <string name="drawer_sync_now">এখনই সিঙ্ক করুন</string>
-    <string name="drawer_logout_now">লগআউট</string>
-    <string name="drawer_sync_success">ডাটাবেজ সফলভাবে সিঙ্ক হয়েছে</string>
+    <string name="drawer_sync_title">ব্যাকআপ ও সেটিংস</string>
+    <string name="drawer_sync_message">লোকাল ডাটাবেজ ব্যাকআপ তৈরি করুন, অথবা ব্যাকআপ পরিচালনার জন্য সেটিংস খুলুন।</string>
+    <string name="drawer_sync_now">ব্যাকআপ তৈরি করুন</string>
+    <string name="drawer_logout_now">সেটিংস খুলুন</string>
+    <string name="drawer_sync_success">লোকাল ব্যাকআপ সফলভাবে তৈরি হয়েছে</string>
+    <string name="drawer_sync_failed">লোকাল ব্যাকআপ তৈরি করা যায়নি</string>
     <string name="drawer_attendance">উপস্থিতি (Attendance)</string>
     <string name="drawer_timeline">টাইমলাইন (Timeline)</string>
     <string name="drawer_nearby_clients">নিকটস্থ ক্লায়েন্ট (Nearby Clients)</string>
@@ -48,6 +60,10 @@
 
     <!-- Dashboard -->
     <string name="dashboard_overview">ব্যবসায়িক পর্যালোচনা</string>
+    <string name="dashboard_live_metrics">ডাটাবেজের হালনাগাদ তথ্য</string>
+    <string name="dashboard_saved_metrics">সংরক্ষিত ডাটাবেজ তথ্য</string>
+    <string name="dashboard_live">হালনাগাদ</string>
+    <string name="dashboard_saved">সংরক্ষিত</string>
     <string name="todays_sales">আজকের বিক্রয়</string>
     <string name="total_receivable">মোট পাওনা (বাকি)</string>
     <string name="total_payable">মোট দেনা</string>

@@ -46,6 +46,7 @@ import com.pocketdev.advance_erp.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 @Composable
 fun MainAppScaffold(
@@ -197,14 +198,21 @@ fun MainAppScaffold(
                     onClick = {
                         coroutineScope.launch {
                             try {
-                                backupRepository?.createBackup(isAutomatic = false, notes = "Drawer manual sync")
+                                requireNotNull(backupRepository) { "Backup service is unavailable" }
+                                    .createBackup(isAutomatic = false, notes = "Drawer manual backup")
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.drawer_sync_success),
                                     Toast.LENGTH_SHORT
                                 ).show()
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.drawer_sync_failed),
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
                             showSyncLogoutDialog = false
                             drawerState.close()
