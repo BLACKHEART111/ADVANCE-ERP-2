@@ -23,9 +23,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
+import java.util.UUID
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -82,6 +85,7 @@ fun EditProductDialog(
     onDismiss: () -> Unit,
     onGenerateSku: suspend (categoryId: String, nameEn: String) -> String,
     onGenerateBarcode: suspend () -> String,
+    onGenerateVariantSku: (suspend (baseSku: String, color: String, size: String) -> String)? = null,
     onValidateSku: suspend (sku: String) -> Boolean,
     onValidateBarcode: suspend (barcode: String) -> Boolean,
     onDeleteProduct: ((productId: String) -> Unit)? = null,
@@ -145,6 +149,39 @@ fun EditProductDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isCheckingDuplicates by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+
+    // Variant Add / Edit state
+    var showVariantForm by remember { mutableStateOf(false) }
+    var editingVariantIndex by remember { mutableStateOf<Int?>(null) }
+    var varColor by remember { mutableStateOf("") }
+    var varSize by remember { mutableStateOf("") }
+    var varSku by remember { mutableStateOf("") }
+    var varBarcode by remember { mutableStateOf("") }
+    var varCostStr by remember { mutableStateOf("") }
+    var varPriceStr by remember { mutableStateOf("") }
+
+    fun resetVariantForm() {
+        editingVariantIndex = null
+        varColor = ""
+        varSize = ""
+        varSku = ""
+        varBarcode = ""
+        varCostStr = purchasePriceStr
+        varPriceStr = sellingPriceStr
+    }
+
+    LaunchedEffect(varColor, varSize, baseSku) {
+        if (showVariantForm && editingVariantIndex == null && (varColor.isNotBlank() || varSize.isNotBlank())) {
+            val generated = if (onGenerateVariantSku != null) {
+                onGenerateVariantSku(baseSku, varColor, varSize)
+            } else {
+                listOf(baseSku.ifBlank { "VAR" }, varColor.trim().uppercase(), varSize.trim().uppercase())
+                    .filter { it.isNotBlank() }
+                    .joinToString("-")
+            }
+            varSku = generated
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -402,6 +439,349 @@ fun EditProductDialog(
                         shape = RoundedCornerShape(10.dp),
                         singleLine = true
                     )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                Divider(color = ERPDivider)
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 7. Product Variants Section (Add, Edit, Delete)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট সমূহ (${variants.size})" else "Product Variants (${variants.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = if (language == AppLanguage.BANGLA) "রঙ, সাইজ বা আলাদা মূল্য থাকলে ভ্যারিয়েন্ট যোগ/সম্পাদনা/ডিলিট করুন" else "Add, edit, or delete color/size variants",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                    ERPActionButton(
+                        text = if (language == AppLanguage.BANGLA) "+ ভ্যারিয়েন্ট যোগ" else "+ Add Variant",
+                        icon = Icons.Default.Add,
+                        onClick = {
+                            resetVariantForm()
+                            showVariantForm = true
+                        },
+                        variant = ERPButtonVariant.SECONDARY
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (variants.isEmpty() && !showVariantForm) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF8FAFC))
+                            .border(1.dp, ERPDivider, RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = if (language == AppLanguage.BANGLA) "কোনো ভ্যারিয়েন্ট নেই। নতুন ভ্যারিয়েন্ট যোগ করতে উপরের '+ ভ্যারিয়েন্ট যোগ' বাটনে চাপুন।" else "No variants added. Tap '+ Add Variant' above to add color/size variants.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        variants.forEachIndexed { idx, v ->
+                            val isBeingEdited = showVariantForm && editingVariantIndex == idx
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isBeingEdited) Color(0xFFEEF2FF) else Color(0xFFF8FAFC))
+                                    .border(
+                                        1.dp,
+                                        if (isBeingEdited) PrimaryPurple else ERPDivider,
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        val labelParts = listOfNotNull(
+                                            v.color.takeIf { it.isNotBlank() },
+                                            v.size.takeIf { it.isNotBlank() }
+                                        )
+                                        Text(
+                                            text = if (labelParts.isNotEmpty()) labelParts.joinToString(" / ") else v.sku,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
+                                        )
+                                        Text(
+                                            text = "SKU: ${v.sku}" + (if (!v.barcode.isNullOrBlank()) " • Barcode: ${v.barcode}" else ""),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary
+                                        )
+                                        Text(
+                                            text = if (language == AppLanguage.BANGLA)
+                                                "ক্রয়: ৳${v.costMinor / 100.0} | বিক্রয়: ৳${v.priceMinor / 100.0}"
+                                            else
+                                                "Cost: ৳${v.costMinor / 100.0} | Price: ৳${v.priceMinor / 100.0}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = PrimaryPurple
+                                        )
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = {
+                                                editingVariantIndex = idx
+                                                varColor = v.color
+                                                varSize = v.size
+                                                varSku = v.sku
+                                                varBarcode = v.barcode ?: ""
+                                                varCostStr = (v.costMinor / 100.0).toString()
+                                                varPriceStr = (v.priceMinor / 100.0).toString()
+                                                showVariantForm = true
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Edit Variant",
+                                                tint = PrimaryPurple
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                if (editingVariantIndex == idx) {
+                                                    showVariantForm = false
+                                                    resetVariantForm()
+                                                } else if (editingVariantIndex != null && editingVariantIndex!! > idx) {
+                                                    editingVariantIndex = editingVariantIndex!! - 1
+                                                }
+                                                variants.removeAt(idx)
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DeleteOutline,
+                                                contentDescription = "Remove Variant",
+                                                tint = StatusError
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Inline Add / Edit Variant Form
+                if (showVariantForm) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF1F5F9))
+                            .border(1.dp, SecondaryTeal.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = if (editingVariantIndex != null) {
+                                if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট সম্পাদনা করুন" else "Edit Variant"
+                            } else {
+                                if (language == AppLanguage.BANGLA) "নতুন ভ্যারিয়েন্ট যোগ করুন" else "New Variant Details"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = SecondaryTeal
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = varColor,
+                                onValueChange = { varColor = it },
+                                label = { Text(if (language == AppLanguage.BANGLA) "রঙ (Color)" else "Color") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            OutlinedTextField(
+                                value = varSize,
+                                onValueChange = { varSize = it },
+                                label = { Text(if (language == AppLanguage.BANGLA) "সাইজ (Size)" else "Size") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = varSku,
+                                onValueChange = { varSku = it.uppercase() },
+                                label = { Text(if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট SKU" else "Variant SKU") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        varSku = if (onGenerateVariantSku != null) {
+                                            onGenerateVariantSku(baseSku, varColor, varSize)
+                                        } else {
+                                            listOf(baseSku.ifBlank { "VAR" }, varColor.trim().uppercase(), varSize.trim().uppercase())
+                                                .filter { it.isNotBlank() }
+                                                .joinToString("-")
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White)
+                                    .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
+                            ) {
+                                Icon(Icons.Default.AutoFixHigh, contentDescription = "Auto Variant SKU", tint = PrimaryPurple)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = varBarcode,
+                                onValueChange = { varBarcode = it },
+                                label = { Text(if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট বারকোড (ঐচ্ছিক)" else "Variant Barcode (Optional)") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        varBarcode = onGenerateBarcode()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White)
+                                    .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
+                            ) {
+                                Icon(Icons.Default.AutoFixHigh, contentDescription = "Auto Barcode", tint = PrimaryPurple)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = varCostStr,
+                                onValueChange = { varCostStr = it },
+                                label = { Text(stringResource(R.string.purchase_price)) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            OutlinedTextField(
+                                value = varPriceStr,
+                                onValueChange = { varPriceStr = it },
+                                label = { Text(stringResource(R.string.selling_price)) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            ERPActionButton(
+                                text = stringResource(R.string.cancel),
+                                onClick = {
+                                    showVariantForm = false
+                                    resetVariantForm()
+                                },
+                                variant = ERPButtonVariant.GHOST
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            ERPActionButton(
+                                text = if (editingVariantIndex != null) {
+                                    if (language == AppLanguage.BANGLA) "আপডেট করুন" else "Update Variant"
+                                } else {
+                                    if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট যোগ করুন" else "Add Variant"
+                                },
+                                onClick = {
+                                    if (varSku.isNotBlank()) {
+                                        val cMinor = (varCostStr.toDoubleOrNull()?.times(100))?.toLong()
+                                            ?: (purchasePriceStr.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
+                                        val pMinor = (varPriceStr.toDoubleOrNull()?.times(100))?.toLong()
+                                            ?: (sellingPriceStr.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
+
+                                        val editIdx = editingVariantIndex
+                                        if (editIdx != null && editIdx in variants.indices) {
+                                            val existing = variants[editIdx]
+                                            variants[editIdx] = existing.copy(
+                                                sku = varSku.trim().uppercase(),
+                                                color = varColor.trim(),
+                                                size = varSize.trim(),
+                                                costMinor = cMinor,
+                                                priceMinor = pMinor,
+                                                barcode = varBarcode.trim().ifBlank { null }
+                                            )
+                                        } else {
+                                            variants.add(
+                                                NewVariantDraft(
+                                                    id = "var-" + UUID.randomUUID().toString().take(8),
+                                                    sku = varSku.trim().uppercase(),
+                                                    color = varColor.trim(),
+                                                    size = varSize.trim(),
+                                                    costMinor = cMinor,
+                                                    priceMinor = pMinor,
+                                                    barcode = varBarcode.trim().ifBlank { null }
+                                                )
+                                            )
+                                        }
+                                        showVariantForm = false
+                                        resetVariantForm()
+                                    }
+                                },
+                                variant = ERPButtonVariant.PRIMARY
+                            )
+                        }
+                    }
                 }
 
                 }

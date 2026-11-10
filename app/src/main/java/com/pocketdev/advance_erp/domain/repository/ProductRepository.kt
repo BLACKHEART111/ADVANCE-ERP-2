@@ -21,8 +21,10 @@ interface ProductRepository {
     suspend fun getProductById(id: String): Product?
     suspend fun getProductWithDetailsById(id: String): ProductWithDetails?
     fun getAllCategories(): Flow<List<ProductCategory>>
+    fun getAllVariants(): Flow<List<ProductVariant>>
     fun getVariantsForProduct(productId: String): Flow<List<ProductVariant>>
     suspend fun getVariantsForProductSync(productId: String): List<ProductVariant>
+    suspend fun insertVariant(variant: ProductVariant)
     fun getImagesForProduct(productId: String): Flow<List<ProductImage>>
     fun getImagesForVariant(variantId: String): Flow<List<ProductImage>>
     suspend fun getImagesForProductSync(productId: String): List<ProductImage>

@@ -23,6 +23,7 @@ import com.pocketdev.advance_erp.data.entity.LandedCostSnapshot
 import com.pocketdev.advance_erp.data.entity.PaymentMethod
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
+import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.PurchaseCompletionRecord
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
@@ -59,11 +60,22 @@ import java.math.BigDecimal
 import java.util.UUID
 import javax.inject.Inject
 
+data class PoMixedCartonDraft(
+    val cartonNumber: String,
+    val grossWeightKg: BigDecimal,
+    val netWeightKg: BigDecimal = grossWeightKg,
+    val lengthCm: BigDecimal = BigDecimal.ZERO,
+    val widthCm: BigDecimal = BigDecimal.ZERO,
+    val heightCm: BigDecimal = BigDecimal.ZERO,
+    val lines: List<MixedCartonLineDraft>
+)
+
 data class ImportUiState(
     val purchaseOrders: List<PurchaseOrder> = emptyList(),
     val shipments: List<ImportShipment> = emptyList(),
     val suppliers: List<Supplier> = emptyList(),
     val products: List<Product> = emptyList(),
+    val productVariants: List<ProductVariant> = emptyList(),
     val categories: List<ProductCategory> = emptyList(),
     val selectedShipmentCartons: List<ShipmentCarton> = emptyList(),
     val costItems: List<ImportCostItem> = emptyList(),
@@ -153,6 +165,11 @@ class ImportViewModel @Inject constructor(
             viewModelScope.launch {
                 productRepository.getAllCategories().collect { cats ->
                     _uiState.update { it.copy(categories = cats) }
+                }
+            }
+            viewModelScope.launch {
+                productRepository.getAllVariants().collect { vars ->
+                    _uiState.update { it.copy(productVariants = vars) }
                 }
             }
             viewModelScope.launch {
@@ -348,16 +365,96 @@ class ImportViewModel @Inject constructor(
         exchangeRate: BigDecimal,
         items: List<PurchaseOrderItemDraft>,
         notes: String?,
-        status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED
+        status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED,
+        cartons: List<PoMixedCartonDraft> = emptyList(),
+        chinaDeliveryChargeMinor: Long = 0L,
+        categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap()
     ) {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
-                importRepository.createPurchaseOrder(supplierId, currency, exchangeRate, items, notes, status)
+                val orderId = importRepository.createPurchaseOrder(supplierId, currency, exchangeRate, items, notes, status)
+
+                // 1. Auto-save cartons (including mixed-variant cartons) into the PO and its linked Import Shipment
+                for (ctn in cartons) {
+                    if (ctn.lines.isNotEmpty() && ctn.grossWeightKg >= BigDecimal.ZERO) {
+                        importRepository.addMixedCarton(
+                            orderId = orderId,
+                            cartonNumber = ctn.cartonNumber,
+                            lengthCm = ctn.lengthCm,
+                            widthCm = ctn.widthCm,
+                            heightCm = ctn.heightCm,
+                            grossWeightKg = ctn.grossWeightKg,
+                            netWeightKg = ctn.netWeightKg,
+                            lines = ctn.lines
+                        )
+                    }
+                }
+
+                // 2. Auto-sync China Local Delivery & Category Per-KG Freight Rates to the linked Import Shipment
+                val batchShipment = importRepository.getShipmentsForOrderSync(orderId).firstOrNull()
+                if (chinaDeliveryChargeMinor > 0L) {
+                    if (batchShipment != null) {
+                        importRepository.saveShipmentSupplierAndChinaDelivery(
+                            ShipmentSupplierDraft(
+                                id = "ss-${batchShipment.id}-$supplierId",
+                                shipmentId = batchShipment.id,
+                                supplierId = supplierId,
+                                purchaseOrderId = orderId,
+                                currency = currency,
+                                exchangeRateToBdt = exchangeRate,
+                                chinaDeliveryChargeMinor = chinaDeliveryChargeMinor,
+                                chinaDeliveryCurrency = currency,
+                                chinaDeliveryExchangeRateToBdt = exchangeRate,
+                                chinaDeliveryAllocationMethod = AllocationMethod.QUANTITY
+                            )
+                        )
+                    }
+                    importRepository.addPurchaseCostItem(
+                        orderId = orderId,
+                        category = CostCategory.CHINA_DOMESTIC_TRANSPORT,
+                        description = "China Local Delivery (চীন লোকাল ডেলিভারি)",
+                        amountMinor = chinaDeliveryChargeMinor,
+                        currency = currency,
+                        exchangeRate = exchangeRate,
+                        method = AllocationMethod.QUANTITY,
+                        isEstimated = false
+                    )
+                }
+
+                if (categoryFreightRatesBdtMinor.isNotEmpty()) {
+                    var totalCategoryFreightBdtMinor = 0L
+                    for ((catId, rateMinor) in categoryFreightRatesBdtMinor) {
+                        if (rateMinor >= 0L) {
+                            importRepository.updateCategoryDefaultFreightRate(catId, rateMinor)
+                            if (batchShipment != null) {
+                                val updatedRate = importRepository.overrideShipmentCategoryFreightRate(batchShipment.id, catId, rateMinor)
+                                totalCategoryFreightBdtMinor += updatedRate.totalCategoryFreightBdtMinor
+                            }
+                        }
+                    }
+                    if (totalCategoryFreightBdtMinor > 0L) {
+                        importRepository.addPurchaseCostItem(
+                            orderId = orderId,
+                            category = CostCategory.INTERNATIONAL_FREIGHT,
+                            description = "Category Per-KG International Freight (ক্যাটাগরি কেজি প্রতি ফ্রেইট)",
+                            amountMinor = totalCategoryFreightBdtMinor,
+                            currency = "BDT",
+                            exchangeRate = BigDecimal.ONE,
+                            method = AllocationMethod.GROSS_WEIGHT,
+                            isEstimated = false
+                        )
+                    }
+                }
+
+                if (batchShipment != null) {
+                    selectShipment(batchShipment.id)
+                }
+
                 val msg = if (status == PurchaseOrderStatus.DRAFT) {
-                    "Purchase Order saved as Draft successfully!"
+                    "Purchase Order saved as Draft & synced to Import Shipment!"
                 } else {
-                    "Purchase Order confirmed successfully!"
+                    "Purchase Order confirmed & automatically synced to Import Shipment!"
                 }
                 _uiState.update { it.copy(isLoading = false, userMessage = msg) }
             } catch (e: Exception) {
@@ -1192,6 +1289,83 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product '${newProd.nameEn}' added to catalog!") }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product Add Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun addNewSupplierFromPurchase(
+        companyName: String,
+        contactPerson: String,
+        phone: String,
+        address: String,
+        country: String,
+        currency: String,
+        onCreated: (Supplier) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                val supCode = "SUP-${System.currentTimeMillis() % 100000}"
+                val newSup = Supplier(
+                    id = "sup-${UUID.randomUUID().toString().take(8)}",
+                    supplierCode = supCode,
+                    companyName = companyName.trim(),
+                    contactPerson = contactPerson.trim().ifBlank { null },
+                    phone = phone.trim().ifBlank { "N/A" },
+                    email = null,
+                    address = address.trim().ifBlank { country.trim() },
+                    country = country.trim().ifBlank { "China" },
+                    currency = currency.trim().ifBlank { "CNY" },
+                    outstandingPayableMinor = 0L,
+                    isActive = true,
+                    createdAt = System.currentTimeMillis()
+                )
+                contactsRepository.addSupplier(newSup)
+                onCreated(newSup)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "Supplier '${newSup.companyName}' added and selected!"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Supplier Add Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun addNewVariantFromPurchase(
+        productId: String,
+        color: String,
+        size: String,
+        sku: String,
+        costMinor: Long,
+        priceMinor: Long,
+        onCreated: (ProductVariant) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val product = _uiState.value.products.find { it.id == productId }
+                val finalSku = sku.trim().uppercase().ifBlank {
+                    productRepository.generateUniqueVariantSku(product?.baseSku ?: "VAR", color, size)
+                }
+                val newVar = ProductVariant(
+                    id = "var-${UUID.randomUUID().toString().take(8)}",
+                    productId = productId,
+                    sku = finalSku,
+                    color = color.trim().ifBlank { null },
+                    size = size.trim().ifBlank { null },
+                    variantCostMinor = costMinor,
+                    variantPriceMinor = priceMinor,
+                    isActive = true
+                )
+                productRepository.insertVariant(newVar)
+                onCreated(newVar)
+                _uiState.update {
+                    it.copy(userMessage = "Variant '${listOfNotNull(newVar.color, newVar.size).joinToString(" / ").ifBlank { newVar.sku }}' added!")
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(userMessage = "Variant Add Error: ${e.message}") }
             }
         }
     }

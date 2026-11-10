@@ -1283,13 +1283,26 @@ fun ImportManagementScreen(
         CreatePurchaseOrderDialog(
             suppliers = uiState.suppliers,
             products = uiState.products,
+            variants = uiState.productVariants,
             categories = uiState.categories,
             isBangla = isBangla,
             onDismiss = { showCreatePoDialog = false },
+            onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
             onAddNewProduct = viewModel::addNewProductFromPurchase,
+            onAddNewVariant = viewModel::addNewVariantFromPurchase,
             onAddNewCategory = viewModel::addNewCategory,
-            onSavePo = { supId, cur, rate, items, notes, status ->
-                viewModel.createPurchaseOrder(supId, cur, rate, items, notes, status)
+            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor ->
+                viewModel.createPurchaseOrder(
+                    supplierId = supId,
+                    currency = cur,
+                    exchangeRate = rate,
+                    items = items,
+                    notes = notes,
+                    status = status,
+                    cartons = cartons,
+                    chinaDeliveryChargeMinor = chinaDeliveryMinor,
+                    categoryFreightRatesBdtMinor = catRatesMinor
+                )
             }
         )
     }

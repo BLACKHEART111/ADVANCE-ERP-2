@@ -41,6 +41,7 @@ class UserPreferencesRepository @Inject constructor(
     // Automatic Friday Backup Keys
     private val keyFridayAutoBackup = booleanPreferencesKey("friday_auto_backup_enabled")
     private val keyLastAutoBackupTime = longPreferencesKey("last_auto_backup_time")
+    private val keyBackupFolderUri = stringPreferencesKey("backup_folder_uri")
 
     val isAppLockEnabled: Flow<Boolean> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -65,6 +66,10 @@ class UserPreferencesRepository @Inject constructor(
     val lastAutoBackupTime: Flow<Long?> = context.dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[keyLastAutoBackupTime] }
+
+    val backupFolderUri: Flow<String?> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[keyBackupFolderUri] }
 
     val selectedUserRole: Flow<com.pocketdev.advance_erp.core.security.UserRole> = context.dataStore.data
         .catch { exception ->
@@ -218,6 +223,16 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setLastAutoBackupTime(time: Long) {
         context.dataStore.edit { preferences ->
             preferences[keyLastAutoBackupTime] = time
+        }
+    }
+
+    suspend fun setBackupFolderUri(uri: String?) {
+        context.dataStore.edit { preferences ->
+            if (!uri.isNullOrBlank()) {
+                preferences[keyBackupFolderUri] = uri
+            } else {
+                preferences.remove(keyBackupFolderUri)
+            }
         }
     }
 }

@@ -79,13 +79,15 @@ fun BackupManagementSection(
     backupRecords: List<BackupRecord>,
     isFridayAutoBackupEnabled: Boolean,
     lastAutoBackupTime: Long?,
+    backupFolderUri: String? = null,
     language: AppLanguage,
     onCreateBackup: (onFinished: () -> Unit) -> Unit,
     onRestoreBackupFile: (file: File) -> Unit,
     onRestoreFromUri: (uri: Uri, passphrase: String?) -> Unit,
     onShareBackup: (file: File, passphrase: String) -> Unit,
     onDeleteBackup: (recordId: String) -> Unit,
-    onToggleFridayAutoBackup: (enabled: Boolean) -> Unit
+    onToggleFridayAutoBackup: (enabled: Boolean) -> Unit,
+    onSelectBackupFolder: ((uri: Uri?) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val isBn = language == AppLanguage.BANGLA
@@ -106,6 +108,15 @@ fun BackupManagementSection(
     ) { uri: Uri? ->
         if (uri != null) {
             pendingUriToRestore = uri
+        }
+    }
+
+    // Folder Picker Launcher for Selecting Phone File Manager Backup Destination
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri: Uri? ->
+        if (treeUri != null) {
+            onSelectBackupFolder?.invoke(treeUri)
         }
     }
 
@@ -242,6 +253,97 @@ fun BackupManagementSection(
                             checkedTrackColor = StatusSuccess
                         )
                     )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = ERPDivider)
+
+                // Phone File Manager Backup Folder Location Picker
+                val readableFolderPath = remember(backupFolderUri) {
+                    if (backupFolderUri.isNullOrBlank()) {
+                        "Downloads/AdvanceERP_Backups"
+                    } else {
+                        try {
+                            Uri.decode(Uri.parse(backupFolderUri).lastPathSegment ?: backupFolderUri)
+                        } catch (_: Exception) {
+                            backupFolderUri
+                        }
+                    }
+                }
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FolderZip,
+                                contentDescription = null,
+                                tint = PrimaryPurple,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (isBn)
+                                        "ফোন ফাইল ম্যানেজারে অটো সেভ লোকেশন"
+                                    else
+                                        "Phone File Manager Auto-Save Location",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = if (isBn)
+                                        "ফোল্ডার: $readableFolderPath (শুক্রবারের অটো ব্যাকআপ ও ম্যানুয়াল ব্যাকআপ এখানে সরাসরি সেভ হবে)"
+                                    else
+                                        "Folder: $readableFolderPath (Friday auto-backup & manual backups are saved here)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SecondaryTeal,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { folderPickerLauncher.launch(null) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryPurple)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isBn) "ফাইল ম্যানেজার থেকে ফোল্ডার সিলেক্ট করুন" else "Select Folder in File Manager",
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryPurple,
+                                fontSize = 11.5.sp
+                            )
+                        }
+
+                        if (!backupFolderUri.isNullOrBlank() && onSelectBackupFolder != null) {
+                            TextButton(
+                                onClick = { onSelectBackupFolder(null) },
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(
+                                    text = if (isBn) "ডিফল্ট (Downloads)" else "Reset Default",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -37,6 +37,7 @@ data class SettingsUiState(
     val isBiometricSupported: Boolean = false,
     val isFridayAutoBackupEnabled: Boolean = true,
     val lastAutoBackupTime: Long? = null,
+    val backupFolderUri: String? = null,
     val backupRecords: List<BackupRecord> = emptyList(),
     val userMessage: String? = null
 )
@@ -62,6 +63,7 @@ class SettingsViewModel @Inject constructor(
         preferencesRepository.isBiometricEnabled,
         preferencesRepository.isFridayAutoBackupEnabled,
         preferencesRepository.lastAutoBackupTime,
+        preferencesRepository.backupFolderUri,
         backupRepository.getAllBackupRecords(),
         _userMessage
     ) { args: Array<Any?> ->
@@ -80,8 +82,9 @@ class SettingsViewModel @Inject constructor(
             isBiometricSupported = BiometricHelper.isBiometricAvailable(context),
             isFridayAutoBackupEnabled = args[8] as Boolean,
             lastAutoBackupTime = args[9] as? Long,
-            backupRecords = (args[10] as? List<*>)?.filterIsInstance<BackupRecord>() ?: emptyList(),
-            userMessage = args[11] as? String
+            backupFolderUri = args[10] as? String,
+            backupRecords = (args[11] as? List<*>)?.filterIsInstance<BackupRecord>() ?: emptyList(),
+            userMessage = args[12] as? String
         )
     }.stateIn(
         scope = viewModelScope,
@@ -174,6 +177,24 @@ class SettingsViewModel @Inject constructor(
             } else {
                 FridayBackupScheduler.cancel(context)
                 _userMessage.value = "স্বয়ংক্রিয় ব্যাকআপ বন্ধ করা হয়েছে।"
+            }
+        }
+    }
+
+    fun setBackupFolderUri(uri: Uri?) {
+        viewModelScope.launch {
+            if (uri != null) {
+                try {
+                    val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                } catch (_: Exception) {
+                }
+                preferencesRepository.setBackupFolderUri(uri.toString())
+                _userMessage.value = "ব্যাকআপ ফোল্ডার সফলভাবে নির্বাচন করা হয়েছে! এখন থেকে শুক্রবারের অটো ব্যাকআপ ও ম্যানুয়াল ব্যাকআপ এই ফোল্ডারে সেভ হবে।"
+            } else {
+                preferencesRepository.setBackupFolderUri(null)
+                _userMessage.value = "ডিফল্ট ব্যাকআপ ফোল্ডার (Downloads/AdvanceERP_Backups) সেট করা হয়েছে।"
             }
         }
     }

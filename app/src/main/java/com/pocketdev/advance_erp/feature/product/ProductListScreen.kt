@@ -470,6 +470,9 @@ fun ProductListScreen(
             onGenerateBarcode = {
                 viewModel.generateBarcode()
             },
+            onGenerateVariantSku = { baseSku, color, size ->
+                viewModel.generateVariantSku(baseSku, color, size)
+            },
             onValidateSku = { sku ->
                 viewModel.isBaseSkuAvailable(sku, state.selectedProductForDetail!!.id)
             },

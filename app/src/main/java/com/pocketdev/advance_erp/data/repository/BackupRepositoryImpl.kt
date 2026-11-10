@@ -1,11 +1,17 @@
 package com.pocketdev.advance_erp.data.repository
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
+import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.data.dao.AuditLogDao
 import com.pocketdev.advance_erp.data.dao.BackupDao
 import com.pocketdev.advance_erp.data.entity.AuditLog
@@ -14,6 +20,7 @@ import com.pocketdev.advance_erp.domain.repository.BackupRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -35,7 +42,8 @@ class BackupRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: AdvanceErpDatabase,
     private val backupDao: BackupDao,
-    private val auditLogDao: AuditLogDao
+    private val auditLogDao: AuditLogDao,
+    private val preferencesRepository: UserPreferencesRepository
 ) : BackupRepository {
 
     override fun getAllBackupRecords(): Flow<List<BackupRecord>> = backupDao.getAllBackupRecords()
@@ -104,6 +112,13 @@ class BackupRepositoryImpl @Inject constructor(
         // Calculate final ZIP SHA-256
         val checksum = calculateSha256(zipBackupFile)
 
+        // Automatically save a copy to Phone File Manager (User-selected SAF folder OR Downloads/AdvanceERP_Backups)
+        val exportedLocationDesc = exportBackupToPhoneFileManager(zipBackupFile, fileName)
+        val combinedNotes = buildString {
+            if (!notes.isNullOrBlank()) append(notes).append(" • ")
+            append("Saved to File Manager: $exportedLocationDesc")
+        }
+
         val record = BackupRecord(
             id = "bak-${UUID.randomUUID()}",
             fileName = fileName,
@@ -112,7 +127,7 @@ class BackupRepositoryImpl @Inject constructor(
             checksumSha256 = checksum,
             schemaVersion = schemaVersion,
             isAutomatic = isAutomatic,
-            notes = notes,
+            notes = combinedNotes,
             createdAt = System.currentTimeMillis()
         )
 
@@ -124,11 +139,89 @@ class BackupRepositoryImpl @Inject constructor(
                 recordType = "BACKUP",
                 recordId = record.id,
                 action = "BACKUP",
-                details = "Created comprehensive ZIP backup $fileName (${record.fileSizeBytes / 1024} KB, ${imageFiles.size} images, schema v$schemaVersion, SHA-256: ${checksum.take(8)}...)"
+                details = "Created comprehensive ZIP backup $fileName (${record.fileSizeBytes / 1024} KB, ${imageFiles.size} images, schema v$schemaVersion, File Manager: $exportedLocationDesc, SHA-256: ${checksum.take(8)}...)"
             )
         )
 
         record
+    }
+
+    private suspend fun exportBackupToPhoneFileManager(zipBackupFile: File, fileName: String): String {
+        val customFolderUriStr = try {
+            preferencesRepository.backupFolderUri.firstOrNull()
+        } catch (_: Exception) {
+            null
+        }
+
+        // 1. Try saving to User-Selected Phone File Manager Folder (SAF Tree URI)
+        if (!customFolderUriStr.isNullOrBlank()) {
+            try {
+                val treeUri = Uri.parse(customFolderUriStr)
+                val docId = DocumentsContract.getTreeDocumentId(treeUri)
+                val parentDocumentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                val createdDocUri = DocumentsContract.createDocument(
+                    context.contentResolver,
+                    parentDocumentUri,
+                    "application/zip",
+                    fileName
+                )
+                if (createdDocUri != null) {
+                    context.contentResolver.openOutputStream(createdDocUri)?.use { out ->
+                        FileInputStream(zipBackupFile).use { input ->
+                            input.copyTo(out)
+                        }
+                    }
+                    return Uri.decode(treeUri.lastPathSegment ?: "Selected Folder") + "/$fileName"
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // 2. Default / Fallback: Save to Public Downloads/AdvanceERP_Backups so it is always visible in Phone File Manager
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/zip")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AdvanceERP_Backups")
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val itemUri = resolver.insert(collection, contentValues)
+                if (itemUri != null) {
+                    resolver.openOutputStream(itemUri)?.use { out ->
+                        FileInputStream(zipBackupFile).use { input ->
+                            input.copyTo(out)
+                        }
+                    }
+                    contentValues.clear()
+                    contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
+                    resolver.update(itemUri, contentValues, null, null)
+                    "Downloads/AdvanceERP_Backups/$fileName"
+                } else {
+                    saveToLegacyDownloadsFolder(zipBackupFile, fileName)
+                }
+            } else {
+                saveToLegacyDownloadsFolder(zipBackupFile, fileName)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            zipBackupFile.absolutePath
+        }
+    }
+
+    private fun saveToLegacyDownloadsFolder(zipBackupFile: File, fileName: String): String {
+        val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val targetDir = File(publicDownloads, "AdvanceERP_Backups").apply { if (!exists()) mkdirs() }
+        val targetFile = File(targetDir, fileName)
+        FileInputStream(zipBackupFile).use { input ->
+            FileOutputStream(targetFile).use { out ->
+                input.copyTo(out)
+            }
+        }
+        return "Downloads/AdvanceERP_Backups/$fileName"
     }
 
     override suspend fun verifyBackupFile(backupFile: File, passphrase: String?): Boolean = withContext(Dispatchers.IO) {

@@ -71,12 +71,25 @@ class ProductRepositoryImpl @Inject constructor(
         return categoryDao.getAllCategories()
     }
 
+    override fun getAllVariants(): Flow<List<ProductVariant>> {
+        return variantDao.getAllVariants()
+    }
+
     override fun getVariantsForProduct(productId: String): Flow<List<ProductVariant>> {
         return variantDao.getVariantsForProduct(productId)
     }
 
     override suspend fun getVariantsForProductSync(productId: String): List<ProductVariant> {
         return variantDao.getVariantsForProductSync(productId)
+    }
+
+    override suspend fun insertVariant(variant: ProductVariant) {
+        val ensured = if (variant.qrCode.isNullOrBlank()) {
+            variant.copy(qrCode = QrCodeGenerator.createVariantQrPayload(variant.id, variant.productId, variant.sku))
+        } else {
+            variant
+        }
+        variantDao.insertVariant(ensured)
     }
 
     override fun getImagesForProduct(productId: String): Flow<List<ProductImage>> {
@@ -263,6 +276,15 @@ class ProductRepositoryImpl @Inject constructor(
                     v.copy(qrCode = QrCodeGenerator.createVariantQrPayload(v.id, product.id, v.sku))
                 } else {
                     v
+                }
+            }
+
+            // Soft-delete any variants that were removed during product edit
+            val existingVariants = variantDao.getVariantsForProductSync(product.id)
+            val keptVariantIds = ensuredVariants.map { it.id }.toSet()
+            for (oldVar in existingVariants) {
+                if (oldVar.id !in keptVariantIds) {
+                    variantDao.updateVariant(oldVar.copy(isActive = false))
                 }
             }
 

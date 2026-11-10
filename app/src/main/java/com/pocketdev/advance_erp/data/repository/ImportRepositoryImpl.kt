@@ -107,7 +107,10 @@ class ImportRepositoryImpl @Inject constructor(
     override suspend fun getPoRemainingItems(orderId: String): List<PoRemainingItem> {
         val items = purchaseOrderDao.getItemsForOrderSync(orderId)
         val existingShipments = importShipmentDao.getShipmentsByOrderIdSync(orderId)
-            .filter { it.status != ShipmentStatus.CANCELLED.name }
+            .filter {
+                it.status != ShipmentStatus.CANCELLED.name &&
+                    !(it.shipmentNumber.startsWith("BATCH-") && it.status == ShipmentStatus.DRAFT.name)
+            }
         val existingCartons = existingShipments.flatMap { importShipmentDao.getCartonsForShipmentSync(it.id) }
         val shippedByProduct = existingCartons.groupBy { it.productId to it.variantId }
             .mapValues { (_, cList) -> cList.sumOf { it.quantity } }
@@ -226,6 +229,21 @@ class ImportRepositoryImpl @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
         importShipmentDao.insertShipment(batchShipment)
+
+        // Ensure supplier entry and category freight rates exist on the auto-created batch shipment
+        importShipmentDao.insertShipmentSupplier(
+            ShipmentSupplier(
+                id = "ss-${batchShipment.id}-$supplierId",
+                shipmentId = batchShipment.id,
+                supplierId = supplierId,
+                purchaseOrderId = orderId,
+                currency = currency,
+                exchangeRateToBdt = exchangeRate.toPlainString(),
+                chinaDeliveryCurrency = currency,
+                chinaDeliveryExchangeRateToBdt = exchangeRate.toPlainString()
+            )
+        )
+        syncShipmentCategoryFreightRates(batchShipment.id)
 
         // Update supplier outstanding payable if PO is confirmed
         if (status == PurchaseOrderStatus.CONFIRMED) {
@@ -479,7 +497,10 @@ class ImportRepositoryImpl @Inject constructor(
                 ?: throw IllegalArgumentException("Purchase Order not found: $orderId")
             val orderItems = purchaseOrderDao.getItemsForOrderSync(orderId)
             val existingShipments = importShipmentDao.getShipmentsByOrderIdSync(orderId)
-                .filter { it.status != ShipmentStatus.CANCELLED.name }
+                .filter {
+                    it.status != ShipmentStatus.CANCELLED.name &&
+                        !(it.shipmentNumber.startsWith("BATCH-") && it.status == ShipmentStatus.DRAFT.name)
+                }
             val existingCartons = existingShipments.flatMap { importShipmentDao.getCartonsForShipmentSync(it.id) }
 
             val alreadyShippedByProduct = existingCartons.groupBy { it.productId to it.variantId }
@@ -582,18 +603,27 @@ class ImportRepositoryImpl @Inject constructor(
 
         importShipmentDao.saveShipmentWithCartons(shipment, cartonEntities)
 
-        // Ensure primary supplier entry exists in shipment_suppliers
+        // Ensure primary supplier entry exists in shipment_suppliers (copying any China delivery entered on the PO's batch shipment)
         val linkedPo = if (orderId != null) purchaseOrderDao.getOrderById(orderId) else null
+        val batchShipment = if (orderId != null) importShipmentDao.getBatchShipmentForOrder(orderId) else null
+        val batchSupplier = if (batchShipment != null) {
+            importShipmentDao.getSuppliersForShipmentSync(batchShipment.id).firstOrNull { it.supplierId == supplierId }
+        } else null
+
         importShipmentDao.insertShipmentSupplier(
             ShipmentSupplier(
                 id = "ss-$shipmentId-$supplierId",
                 shipmentId = shipmentId,
                 supplierId = supplierId,
                 purchaseOrderId = orderId,
-                currency = linkedPo?.currency ?: "CNY",
-                exchangeRateToBdt = linkedPo?.exchangeRateToBdt ?: "17.0000",
-                chinaDeliveryCurrency = linkedPo?.currency ?: "CNY",
-                chinaDeliveryExchangeRateToBdt = linkedPo?.exchangeRateToBdt ?: "17.0000"
+                currency = linkedPo?.currency ?: batchSupplier?.currency ?: "CNY",
+                exchangeRateToBdt = linkedPo?.exchangeRateToBdt ?: batchSupplier?.exchangeRateToBdt ?: "17.0000",
+                chinaDeliveryChargeMinor = batchSupplier?.chinaDeliveryChargeMinor ?: 0L,
+                chinaDeliveryCurrency = batchSupplier?.chinaDeliveryCurrency ?: linkedPo?.currency ?: "CNY",
+                chinaDeliveryExchangeRateToBdt = batchSupplier?.chinaDeliveryExchangeRateToBdt ?: linkedPo?.exchangeRateToBdt ?: "17.0000",
+                chinaDeliveryBdtMinor = batchSupplier?.chinaDeliveryBdtMinor ?: 0L,
+                chinaDeliveryAllocationMethod = batchSupplier?.chinaDeliveryAllocationMethod ?: AllocationMethod.QUANTITY.name,
+                manualAllocationsJson = batchSupplier?.manualAllocationsJson
             )
         )
 
@@ -602,8 +632,16 @@ class ImportRepositoryImpl @Inject constructor(
             purchaseOrderDao.updateOrderStatus(orderId, PurchaseOrderStatus.SHIPPED.name)
         }
 
-        // Auto-load default category freight rates for categories in this shipment
+        // Auto-load default category freight rates for categories in this shipment (and inherit any PO overrides)
         syncShipmentCategoryFreightRates(shipmentId)
+        if (batchShipment != null) {
+            val batchRates = importShipmentDao.getFreightRatesForShipmentSync(batchShipment.id)
+            batchRates.forEach { br ->
+                if (br.overrideRatePerKgBdtMinor != null) {
+                    overrideShipmentCategoryFreightRate(shipmentId, br.categoryId, br.overrideRatePerKgBdtMinor)
+                }
+            }
+        }
 
         return shipmentId
     }
@@ -1342,6 +1380,9 @@ class ImportRepositoryImpl @Inject constructor(
         val insertedIds = mutableListOf<String>()
         allocated.forEach { alloc ->
             val cartonId = "ctn-${UUID.randomUUID()}"
+            val product = productDao.getProductById(alloc.productId)
+            val resolvedCatId = product?.categoryId
+            val resolvedCatName = resolvedCatId?.let { database.productCategoryDao().getCategoryById(it)?.nameEn }
             val cartonEntity = ShipmentCarton(
                 id = cartonId,
                 shipmentId = batchShipment.id,
@@ -1356,9 +1397,12 @@ class ImportRepositoryImpl @Inject constructor(
                 netWeightKg = alloc.allocatedNetWeightKg.toPlainString(),
                 cbm = cbm.toPlainString(),
                 purchaseOrderId = orderId,
-                isMixedCarton = true,
+                isMixedCarton = lines.size > 1,
                 totalCartonQuantity = totalQty,
-                cartonGrossWeightKg = grossWeightKg.toPlainString()
+                cartonGrossWeightKg = grossWeightKg.toPlainString(),
+                supplierId = po.supplierId,
+                categoryId = resolvedCatId,
+                categoryName = resolvedCatName
             )
             importShipmentDao.insertCarton(cartonEntity)
             insertedIds.add(cartonId)
@@ -1380,6 +1424,18 @@ class ImportRepositoryImpl @Inject constructor(
             cbm = totalCbm.toPlainString(),
             cartons = distinctCartonsCount
         )
+
+        importShipmentDao.updateShipment(
+            batchShipment.copy(
+                totalCartons = distinctCartonsCount,
+                totalQuantity = allCartons.sumOf { it.quantity },
+                totalGrossWeightKg = totalGross.toPlainString(),
+                totalNetWeightKg = totalNet.toPlainString(),
+                totalCbm = totalCbm.toPlainString(),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        syncShipmentCategoryFreightRates(batchShipment.id)
 
         return insertedIds
     }
