@@ -279,6 +279,14 @@ class ImportViewModel @Inject constructor(
         return importRepository.getItemsForOrder(orderId)
     }
 
+    fun getCartonsForOrder(orderId: String): kotlinx.coroutines.flow.Flow<List<ShipmentCarton>> {
+        return importRepository.getCartonsForOrder(orderId)
+    }
+
+    fun getCostItemsForOrder(orderId: String): kotlinx.coroutines.flow.Flow<List<ImportCostItem>> {
+        return importRepository.getCostItemsForOrder(orderId)
+    }
+
     fun selectPurchaseOrder(order: PurchaseOrder?) {
         if (order == null) {
             _uiState.update {
@@ -748,19 +756,20 @@ class ImportViewModel @Inject constructor(
                 val items = importRepository.getItemsForOrderSync(order.id)
                 val supplier = _uiState.value.suppliers.find { it.id == order.supplierId }
                 val productMap = _uiState.value.products.associateBy { it.id }
-                val pdfFile = ImportPdfGenerator.generatePurchaseOrderPdf(
-                    context = context,
-                    order = order,
-                    items = items,
-                    productsMap = productMap,
-                    supplier = supplier,
-                    businessProfile = _uiState.value.businessProfile,
-                    isBangla = _uiState.value.language == AppLanguage.BANGLA
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generatePurchaseOrderPdf(
+                        context = context,
+                        order = order,
+                        items = items,
+                        productsMap = productMap,
+                        supplier = supplier,
+                        businessProfile = _uiState.value.businessProfile,
+                        isBangla = _uiState.value.language == AppLanguage.BANGLA
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Purchase Order PDF")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -772,18 +781,19 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = true) }
                 val supplier = _uiState.value.suppliers.find { it.id == payment.supplierId }
                 val order = payment.purchaseOrderId?.let { importRepository.getPurchaseOrderById(it) }
-                val pdfFile = ImportPdfGenerator.generateSupplierPaymentReceiptPdf(
-                    context = context,
-                    payment = payment,
-                    order = order,
-                    supplier = supplier,
-                    businessProfile = _uiState.value.businessProfile,
-                    isBangla = _uiState.value.language == AppLanguage.BANGLA
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generateSupplierPaymentReceiptPdf(
+                        context = context,
+                        payment = payment,
+                        order = order,
+                        supplier = supplier,
+                        businessProfile = _uiState.value.businessProfile,
+                        isBangla = _uiState.value.language == AppLanguage.BANGLA
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Supplier Payment Receipt")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -796,19 +806,20 @@ class ImportViewModel @Inject constructor(
                 val supplier = _uiState.value.suppliers.find { it.id == shipment.supplierId }
                 val productMap = _uiState.value.products.associateBy { it.id }
                 val cartons = _uiState.value.selectedShipmentCartons
-                val pdfFile = ImportPdfGenerator.generatePackingListPdf(
-                    context = context,
-                    shipment = shipment,
-                    cartons = cartons,
-                    productsMap = productMap,
-                    supplier = supplier,
-                    businessProfile = _uiState.value.businessProfile,
-                    isBangla = _uiState.value.language == AppLanguage.BANGLA
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generatePackingListPdf(
+                        context = context,
+                        shipment = shipment,
+                        cartons = cartons,
+                        productsMap = productMap,
+                        supplier = supplier,
+                        businessProfile = _uiState.value.businessProfile,
+                        isBangla = _uiState.value.language == AppLanguage.BANGLA
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Packing List PDF")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -820,18 +831,19 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = true) }
                 val snapshots = _uiState.value.landedCostSnapshots
                 val costItems = _uiState.value.costItems
-                val pdfFile = ImportPdfGenerator.generateLandedCostReportPdf(
-                    context = context,
-                    shipment = shipment,
-                    snapshots = snapshots,
-                    costItems = costItems,
-                    businessProfile = _uiState.value.businessProfile,
-                    isBangla = _uiState.value.language == AppLanguage.BANGLA
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generateLandedCostReportPdf(
+                        context = context,
+                        shipment = shipment,
+                        snapshots = snapshots,
+                        costItems = costItems,
+                        businessProfile = _uiState.value.businessProfile,
+                        isBangla = _uiState.value.language == AppLanguage.BANGLA
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Landed Cost Report")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -843,18 +855,19 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = true) }
                 val items = importRepository.getReceiptItemsSync(receipt.id)
                 val productMap = _uiState.value.products.associateBy { it.id }
-                val pdfFile = ImportPdfGenerator.generateWarehouseReceivingReportPdf(
-                    context = context,
-                    receipt = receipt,
-                    items = items,
-                    productsMap = productMap,
-                    businessProfile = _uiState.value.businessProfile,
-                    isBangla = _uiState.value.language == AppLanguage.BANGLA
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generateWarehouseReceivingReportPdf(
+                        context = context,
+                        receipt = receipt,
+                        items = items,
+                        productsMap = productMap,
+                        businessProfile = _uiState.value.businessProfile,
+                        isBangla = _uiState.value.language == AppLanguage.BANGLA
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Receiving Report")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -900,19 +913,20 @@ class ImportViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
-                val pdfFile = ImportPdfGenerator.generateCostVarianceReportPdf(
-                    context = context,
-                    shipment = shipment,
-                    costVarianceBdtMinor = costVarianceBdtMinor,
-                    oldTotalExpenseBdtMinor = oldTotalExpenseBdtMinor,
-                    newTotalExpenseBdtMinor = newTotalExpenseBdtMinor,
-                    reason = reason,
-                    businessProfile = _uiState.value.businessProfile
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generateCostVarianceReportPdf(
+                        context = context,
+                        shipment = shipment,
+                        costVarianceBdtMinor = costVarianceBdtMinor,
+                        oldTotalExpenseBdtMinor = oldTotalExpenseBdtMinor,
+                        newTotalExpenseBdtMinor = newTotalExpenseBdtMinor,
+                        reason = reason,
+                        businessProfile = _uiState.value.businessProfile
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Cost Variance Report")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -924,18 +938,19 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = true) }
                 val items = importRepository.getReceiptItemsSync(receipt.id)
                 val productMap = _uiState.value.products.associateBy { it.id }
-                val pdfFile = ImportPdfGenerator.generateDamageLossReportPdf(
-                    context = context,
-                    receipt = receipt,
-                    shipment = shipment,
-                    items = items,
-                    productsMap = productMap,
-                    businessProfile = _uiState.value.businessProfile
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generateDamageLossReportPdf(
+                        context = context,
+                        receipt = receipt,
+                        shipment = shipment,
+                        items = items,
+                        productsMap = productMap,
+                        businessProfile = _uiState.value.businessProfile
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Damage & Loss Report")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -947,16 +962,17 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = true) }
                 val layers = _uiState.value.costLayers
                 val productMap = _uiState.value.products.associateBy { it.id }
-                val pdfFile = ImportPdfGenerator.generateInventoryCostLayerReportPdf(
-                    context = context,
-                    layers = layers,
-                    productsMap = productMap,
-                    businessProfile = _uiState.value.businessProfile
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generateInventoryCostLayerReportPdf(
+                        context = context,
+                        layers = layers,
+                        productsMap = productMap,
+                        businessProfile = _uiState.value.businessProfile
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Inventory Cost Layers")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -968,17 +984,18 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = true) }
                 val cartons = _uiState.value.selectedShipmentCartons
                 val productMap = _uiState.value.products.associateBy { it.id }
-                val pdfFile = ImportPdfGenerator.generateCbmReportPdf(
-                    context = context,
-                    shipment = shipment,
-                    cartons = cartons,
-                    productsMap = productMap,
-                    businessProfile = _uiState.value.businessProfile
-                )
-                val intent = ImportPdfGenerator.createSharePdfIntent(context, pdfFile)
-                context.startActivity(intent)
+                val pdfFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ImportPdfGenerator.generateCbmReportPdf(
+                        context = context,
+                        shipment = shipment,
+                        cartons = cartons,
+                        productsMap = productMap,
+                        businessProfile = _uiState.value.businessProfile
+                    )
+                }
+                ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share CBM & Volume Report")
                 _uiState.update { it.copy(isLoading = false) }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }

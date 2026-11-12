@@ -1,6 +1,9 @@
 package com.pocketdev.advance_erp.core.util
 
+import android.app.Activity
+import android.content.ClipData
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -35,6 +38,17 @@ object ImportPdfGenerator {
     private const val PAGE_WIDTH = 595 // Standard A4 points
     private const val PAGE_HEIGHT = 842
 
+    internal fun sanitizeFileName(raw: String): String {
+        val cleaned = raw.trim().replace(Regex("[^A-Za-z0-9._-]"), "_")
+        return cleaned.trim('_').ifBlank { "document" }
+    }
+
+    private tailrec fun Context.findActivity(): Activity? = when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
     private fun drawBrandHeader(
         context: Context,
         canvas: Canvas,
@@ -54,13 +68,24 @@ object ImportPdfGenerator {
         paint.color = Color.parseColor("#299DB2")
         canvas.drawRect(PAGE_WIDTH.toFloat() * 0.5f, 110f, PAGE_WIDTH.toFloat(), 115f, paint)
 
-        // Official White Logo
-        val logoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white)
+        // Official White Logo (downsampled & recycled to avoid OOM crashes on repeated shares)
+        val logoBitmap = try {
+            val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+            BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white, opts)
+        } catch (_: Throwable) {
+            null
+        }
         if (logoBitmap != null) {
-            val logoH = 32f
-            val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
-            val logoDest = RectF(36f, 16f, 36f + logoW, 16f + logoH)
-            canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+            try {
+                if (logoBitmap.height > 0 && logoBitmap.width > 0) {
+                    val logoH = 32f
+                    val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
+                    val logoDest = RectF(36f, 16f, 36f + logoW, 16f + logoH)
+                    canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+                }
+            } finally {
+                logoBitmap.recycle()
+            }
         }
 
         // Company Information
@@ -266,9 +291,12 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "Internal_${order.poNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "Internal_${sanitizeFileName(order.poNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -422,9 +450,12 @@ object ImportPdfGenerator {
         canvas.drawText(origTotalStr, PAGE_WIDTH - 48f - paint.measureText(origTotalStr), totalBoxY + 52f, paint)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "Supplier_${order.poNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "Supplier_${sanitizeFileName(order.poNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -529,9 +560,12 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "${payment.paymentNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "${sanitizeFileName(payment.paymentNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -629,9 +663,12 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "packing_list_${shipment.shipmentNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "packing_list_${sanitizeFileName(shipment.shipmentNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -739,9 +776,12 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "landed_cost_${shipment.shipmentNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "landed_cost_${sanitizeFileName(shipment.shipmentNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -825,9 +865,12 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "${receipt.receiptNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "${sanitizeFileName(receipt.receiptNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -902,9 +945,12 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "Variance-${shipment.shipmentNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "Variance-${sanitizeFileName(shipment.shipmentNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -975,9 +1021,12 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "DamageReport-${receipt.receiptNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "DamageReport-${sanitizeFileName(receipt.receiptNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
@@ -1128,22 +1177,41 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "CBM-${shipment.shipmentNumber}.pdf")
-        FileOutputStream(file).use { out -> document.writeTo(out) }
-        document.close()
+        val file = File(dir, "CBM-${sanitizeFileName(shipment.shipmentNumber)}.pdf")
+        try {
+            FileOutputStream(file).use { out -> document.writeTo(out) }
+        } finally {
+            document.close()
+        }
         return file
     }
 
-    fun createSharePdfIntent(context: Context, pdfFile: File): Intent {
+    fun createSharePdfIntent(context: Context, pdfFile: File): Intent =
+        createShareFileIntent(context, pdfFile, "application/pdf")
+
+    fun createShareFileIntent(context: Context, file: File, mimeType: String): Intent {
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
-            pdfFile
+            file
         )
         return Intent(Intent.ACTION_SEND).apply {
-            type = "application/pdf"
+            type = mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+    }
+
+    fun launchShareChooser(context: Context, file: File, mimeType: String, chooserTitle: String) {
+        require(file.exists() && file.length() > 0L) { "Generated file is empty or missing" }
+        val sendIntent = createShareFileIntent(context, file, mimeType)
+        val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (context.findActivity() == null) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        context.startActivity(chooser)
     }
 }

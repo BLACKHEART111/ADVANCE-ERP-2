@@ -3,6 +3,9 @@ package com.pocketdev.advance_erp.feature.imports
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,19 +72,13 @@ import java.io.File
 
 private fun shareFileToApp(context: Context, file: File, mimeType: String, chooserTitle: String) {
     try {
-        if (!file.exists()) {
-            Toast.makeText(context, "ফাইল পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
+        if (!file.exists() || file.length() <= 0L) {
+            Toast.makeText(context, "ফাইল তৈরি বা পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
             return
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = mimeType
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(intent, chooserTitle))
-    } catch (e: Exception) {
-        Toast.makeText(context, "শেয়ার করতে সমস্যা হয়েছে: ${e.message}", Toast.LENGTH_SHORT).show()
+        ImportPdfGenerator.launchShareChooser(context, file, mimeType, chooserTitle)
+    } catch (t: Throwable) {
+        Toast.makeText(context, "শেয়ার করতে সমস্যা হয়েছে: ${t.message ?: t::class.java.simpleName}", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -100,7 +98,10 @@ fun PoShareDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var selectedPerspective by remember { mutableStateOf(PoExportPerspective.SUPPLIER_COPY) }
+    var isExporting by remember { mutableStateOf(false) }
+    var exportError by remember { mutableStateOf<String?>(null) }
     val isLocalOrder = order.currency == "BDT"
 
     Dialog(onDismissRequest = onDismiss) {
@@ -304,6 +305,15 @@ fun PoShareDialog(
                     fontWeight = FontWeight.Bold,
                     color = DeepNavy
                 )
+                if (exportError != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = exportError!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
@@ -312,21 +322,37 @@ fun PoShareDialog(
                 ) {
                     // Export PDF Button
                     Button(
+                        enabled = !isExporting,
                         onClick = {
-                            val pdfFile = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
-                                ImportPdfGenerator.generateSupplierCommercialOrderPdf(
-                                    context, order, items, productsMap, supplier, businessProfile
-                                )
-                            } else {
-                                ImportPdfGenerator.generateCompanyInternalOrderPdf(
-                                    context, order, items, productsMap, supplier, businessProfile, isBangla
-                                )
+                            if (isExporting) return@Button
+                            isExporting = true
+                            exportError = null
+                            coroutineScope.launch {
+                                try {
+                                    val pdfFile = withContext(Dispatchers.IO) {
+                                        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+                                            ImportPdfGenerator.generateSupplierCommercialOrderPdf(
+                                                context, order, items, productsMap, supplier, businessProfile
+                                            )
+                                        } else {
+                                            ImportPdfGenerator.generateCompanyInternalOrderPdf(
+                                                context, order, items, productsMap, supplier, businessProfile, isBangla
+                                            )
+                                        }
+                                    }
+                                    val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
+                                        "Share Supplier Commercial PO PDF"
+                                    else
+                                        "Share Internal Audit PO PDF"
+                                    shareFileToApp(context, pdfFile, "application/pdf", title)
+                                } catch (t: Throwable) {
+                                    val msg = t.message ?: t::class.java.simpleName
+                                    exportError = if (isBangla) "PDF তৈরি করতে সমস্যা হয়েছে: $msg" else "PDF export failed: $msg"
+                                    Toast.makeText(context, exportError, Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isExporting = false
+                                }
                             }
-                            val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
-                                "Share Supplier Commercial PO PDF"
-                            else
-                                "Share Internal Audit PO PDF"
-                            shareFileToApp(context, pdfFile, "application/pdf", title)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                         shape = RoundedCornerShape(10.dp),
@@ -339,21 +365,37 @@ fun PoShareDialog(
 
                     // Export Excel Button
                     OutlinedButton(
+                        enabled = !isExporting,
                         onClick = {
-                            val xlsxFile = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
-                                ImportExcelGenerator.generateSupplierOrderExcel(
-                                    context, order, items, productsMap, supplier, businessProfile
-                                )
-                            } else {
-                                ImportExcelGenerator.generateCompanyInternalOrderExcel(
-                                    context, order, items, productsMap, supplier, businessProfile
-                                )
+                            if (isExporting) return@OutlinedButton
+                            isExporting = true
+                            exportError = null
+                            coroutineScope.launch {
+                                try {
+                                    val xlsxFile = withContext(Dispatchers.IO) {
+                                        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+                                            ImportExcelGenerator.generateSupplierOrderExcel(
+                                                context, order, items, productsMap, supplier, businessProfile
+                                            )
+                                        } else {
+                                            ImportExcelGenerator.generateCompanyInternalOrderExcel(
+                                                context, order, items, productsMap, supplier, businessProfile
+                                            )
+                                        }
+                                    }
+                                    val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
+                                        "Share Supplier Commercial PO (Excel)"
+                                    else
+                                        "Share Internal Audit PO (Excel)"
+                                    shareFileToApp(context, xlsxFile, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", title)
+                                } catch (t: Throwable) {
+                                    val msg = t.message ?: t::class.java.simpleName
+                                    exportError = if (isBangla) "Excel তৈরি করতে সমস্যা হয়েছে: $msg" else "Excel export failed: $msg"
+                                    Toast.makeText(context, exportError, Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isExporting = false
+                                }
                             }
-                            val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
-                                "Share Supplier Commercial PO (Excel)"
-                            else
-                                "Share Internal Audit PO (Excel)"
-                            shareFileToApp(context, xlsxFile, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", title)
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = SecondaryTeal),
                         shape = RoundedCornerShape(10.dp),

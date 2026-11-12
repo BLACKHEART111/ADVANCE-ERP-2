@@ -532,7 +532,6 @@ class ImportRepositoryImpl @Inject constructor(
         var totalQty = 0
         var totalGrossWeight = BigDecimal.ZERO
         var totalNetWeight = BigDecimal.ZERO
-        var totalCbm = BigDecimal.ZERO
 
         val cartonEntities = cartons.map { draft ->
             require(draft.quantity > 0) { "Carton quantity must be positive" }
@@ -557,7 +556,6 @@ class ImportRepositoryImpl @Inject constructor(
             totalQty += draft.quantity
             totalGrossWeight = totalGrossWeight.add(draft.grossWeightKg)
             totalNetWeight = totalNetWeight.add(draft.netWeightKg)
-            totalCbm = totalCbm.add(cbm)
 
             ShipmentCarton(
                 id = "ctn-${UUID.randomUUID()}",
@@ -579,6 +577,13 @@ class ImportRepositoryImpl @Inject constructor(
             )
         }
 
+        // Count physical cartons by distinct cartonNumber so mixed cartons (multi-category/product) are counted once
+        val distinctCartonsCount = cartonEntities.map { it.cartonNumber.trim().ifBlank { it.id } }.distinct().size
+        val totalCbm = cartonEntities.groupBy { it.cartonNumber.trim().ifBlank { it.id } }.values
+            .fold(BigDecimal.ZERO) { acc, rows ->
+                acc.add(BigDecimal(rows.first().cbm.ifBlank { "0" }))
+            }
+
         val shipment = ImportShipment(
             id = shipmentId,
             shipmentNumber = shipmentNumber,
@@ -592,7 +597,7 @@ class ImportRepositoryImpl @Inject constructor(
             shippingDate = System.currentTimeMillis(),
             estimatedArrivalDate = System.currentTimeMillis() + (if (method == ShippingMethod.AIR) 5L else 20L) * 24 * 3600 * 1000,
             status = ShipmentStatus.IN_TRANSIT.name,
-            totalCartons = cartons.map { it.cartonNumber }.distinct().size.coerceAtLeast(cartons.size),
+            totalCartons = distinctCartonsCount,
             totalQuantity = totalQty,
             totalGrossWeightKg = totalGrossWeight.toPlainString(),
             totalNetWeightKg = totalNetWeight.toPlainString(),
@@ -2290,7 +2295,11 @@ class ImportRepositoryImpl @Inject constructor(
             )
         }
 
-        val totalCartonsSum = if (cartons.isNotEmpty()) cartons.size else poItems.sumOf { it.cartonQuantity }
+        val totalCartonsSum = if (cartons.isNotEmpty()) {
+            cartons.map { it.cartonNumber.trim().ifBlank { "CTN" } }.distinct().size
+        } else {
+            poItems.sumOf { it.cartonQuantity }
+        }
         val totalGrossWeightSum = if (cartons.isNotEmpty()) {
             cartons.fold(BigDecimal.ZERO) { acc, it -> acc.add(it.grossWeightKg) }
         } else {
@@ -2398,6 +2407,85 @@ class ImportRepositoryImpl @Inject constructor(
                             categoryName = resolvedCatName
                         )
                         importShipmentDao.insertCarton(cartonEntity)
+                    }
+                }
+            }
+        }
+
+        // Sync editable PO cost items (China Local Delivery, Handling, Sample) without duplicating
+        if (batchShipment != null) {
+            val existingCosts = importCostDao.getCostItemsForOrderSync(orderId)
+
+            suspend fun upsertPoCost(
+                category: CostCategory,
+                descMatch: String,
+                defaultDesc: String,
+                amountMinor: Long
+            ) {
+                val existing = existingCosts.firstOrNull {
+                    it.costCategory == category.name && it.description.contains(descMatch, ignoreCase = true)
+                }
+                if (amountMinor > 0L) {
+                    val bdtMinor = BigDecimal(amountMinor)
+                        .multiply(exchangeRate)
+                        .setScale(0, RoundingMode.HALF_UP)
+                        .longValueExact()
+                    if (existing != null) {
+                        importCostDao.updateCostItem(
+                            existing.copy(
+                                amountMinor = amountMinor,
+                                currency = currency,
+                                exchangeRateToBdt = exchangeRate.toPlainString(),
+                                bdtAmountMinor = bdtMinor
+                            )
+                        )
+                    } else {
+                        addPurchaseCostItem(
+                            orderId = orderId,
+                            category = category,
+                            description = defaultDesc,
+                            amountMinor = amountMinor,
+                            currency = currency,
+                            exchangeRate = exchangeRate,
+                            method = AllocationMethod.QUANTITY,
+                            isEstimated = false
+                        )
+                    }
+                } else if (existing != null) {
+                    importCostDao.deleteCostItem(existing.id)
+                }
+            }
+
+            if (chinaDeliveryChargeMinor > 0L || existingCosts.any { it.costCategory == CostCategory.CHINA_DOMESTIC_TRANSPORT.name }) {
+                upsertPoCost(
+                    category = CostCategory.CHINA_DOMESTIC_TRANSPORT,
+                    descMatch = "China Local",
+                    defaultDesc = "China Local Delivery (চীন লোকাল ডেলিভারি)",
+                    amountMinor = chinaDeliveryChargeMinor
+                )
+            }
+            if (handlingCostMinor > 0L || existingCosts.any { it.description.contains("Handling", ignoreCase = true) }) {
+                upsertPoCost(
+                    category = CostCategory.OTHER_CHARGES,
+                    descMatch = "Handling",
+                    defaultDesc = "Handling & Packaging Charge",
+                    amountMinor = handlingCostMinor
+                )
+            }
+            if (sampleCostMinor > 0L || existingCosts.any { it.description.contains("Sample", ignoreCase = true) }) {
+                upsertPoCost(
+                    category = CostCategory.OTHER_CHARGES,
+                    descMatch = "Sample",
+                    defaultDesc = "Sample Cost",
+                    amountMinor = sampleCostMinor
+                )
+            }
+
+            if (categoryFreightRatesBdtMinor.isNotEmpty()) {
+                for ((catId, rateMinor) in categoryFreightRatesBdtMinor) {
+                    if (rateMinor >= 0L) {
+                        updateCategoryDefaultFreightRate(catId, rateMinor)
+                        overrideShipmentCategoryFreightRate(batchShipment.id, catId, rateMinor)
                     }
                 }
             }

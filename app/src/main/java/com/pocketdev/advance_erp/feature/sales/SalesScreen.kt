@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
@@ -47,6 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -155,24 +157,36 @@ fun SalesScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (selectedTabIndex == 0) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FloatingActionButton(
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ExtendedFloatingActionButton(
                         onClick = { showPosDialog = true },
-                        containerColor = DeepNavy,
-                        contentColor = Color.White
-                    ) {
-                        Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PointOfSale, contentDescription = "POS Mode")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("POS", fontWeight = FontWeight.Bold)
+                        containerColor = PrimaryPurple,
+                        contentColor = Color.White,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Storefront,
+                                contentDescription = "POS Mode",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = if (isBangla) "দ্রুত বিক্রয় (POS)" else "Quick POS",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
-                    }
+                    )
                     FloatingActionButton(
                         onClick = { showCreateInvoiceDialog = true },
                         containerColor = StatusSuccess,
                         contentColor = Color.White
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "New Sale")
+                        Icon(Icons.Default.Add, contentDescription = if (isBangla) "নতুন চালান তৈরি করুন" else "New Sale")
                     }
                 }
             } else if (selectedTabIndex == 2) {
@@ -552,16 +566,22 @@ private fun InvoicesTab(
 
         // Status Filter Chips
         item {
-            val statusList = listOf("ALL", "DRAFT", "POSTED", "PARTIALLY_PAID", "PAID")
+            val statusList = listOf(
+                Pair("ALL", if (isBangla) "সব" else "All"),
+                Pair("DRAFT", if (isBangla) "খসড়া" else "Draft"),
+                Pair("POSTED", if (isBangla) "অনুমোদিত (Posted)" else "Posted"),
+                Pair("PARTIALLY_PAID", if (isBangla) "আংশিক পরিশোধ" else "Partial"),
+                Pair("PAID", if (isBangla) "পরিশোধিত" else "Paid")
+            )
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(statusList) { st ->
+                items(statusList) { (stCode, stLabel) ->
                     FilterChip(
-                        selected = statusFilter == st,
-                        onClick = { onStatusFilterChange(st) },
-                        label = { Text(st) },
+                        selected = statusFilter == stCode,
+                        onClick = { onStatusFilterChange(stCode) },
+                        label = { Text(stLabel) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PrimaryPurple,
                             selectedLabelColor = Color.White
@@ -613,18 +633,19 @@ private fun InvoicesTab(
                             color = TextPrimary,
                             style = MaterialTheme.typography.titleMedium
                         )
-                        val badgeColor = when (inv.status) {
-                            "PAID" -> StatusSuccess
-                            "POSTED" -> SecondaryTeal
-                            "PARTIALLY_PAID" -> Color(0xFFF59E0B)
-                            else -> Color.Gray
+                        val (badgeColor, statusLabel) = when (inv.status) {
+                            "PAID" -> Pair(StatusSuccess, if (isBangla) "পরিশোধিত" else "Paid")
+                            "POSTED" -> Pair(SecondaryTeal, if (isBangla) "অনুমোদিত (Posted)" else "Posted")
+                            "PARTIALLY_PAID" -> Pair(Color(0xFFF59E0B), if (isBangla) "আংশিক পরিশোধ" else "Partially Paid")
+                            "DRAFT" -> Pair(Color.Gray, if (isBangla) "খসড়া" else "Draft")
+                            else -> Pair(Color.Gray, inv.status)
                         }
                         Box(
                             modifier = Modifier
                                 .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
-                            Text(inv.status, color = badgeColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                            Text(statusLabel, color = badgeColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                         }
                     }
 

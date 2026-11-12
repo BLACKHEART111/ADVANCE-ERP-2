@@ -73,6 +73,8 @@ import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import com.pocketdev.advance_erp.data.entity.CostCategory
+import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
 import com.pocketdev.advance_erp.data.entity.ProductVariant
@@ -137,6 +139,41 @@ private class CartonBoxState(
     }
 }
 
+internal data class ParsedPoNotes(
+    val paymentTerm: PaymentTermType,
+    val forwarderAddress: String,
+    val userNotes: String
+)
+
+internal fun parsePoNotesMetadata(rawNotes: String?): ParsedPoNotes {
+    val defaultForwarder = "Guangzhou Baiyun Cargo Terminal / Yiwu Port Warehouse, China"
+    if (rawNotes.isNullOrBlank()) {
+        return ParsedPoNotes(PaymentTermType.THIRTY_SEVENTY, defaultForwarder, "")
+    }
+    val termsRegex = Regex("""\[Terms:\s*([^\]]+)]""")
+    val termsText = termsRegex.find(rawNotes)?.groupValues?.getOrNull(1)?.trim() ?: ""
+    val resolvedTerm = PaymentTermType.entries.firstOrNull {
+        termsText.equals(it.labelEn, ignoreCase = true) || termsText.equals(it.labelBn, ignoreCase = true)
+    } ?: when {
+        termsText.contains("100% Advance", ignoreCase = true) || rawNotes.contains("100% Advance", ignoreCase = true) -> PaymentTermType.HUNDRED_PERCENT_ADVANCE
+        termsText.contains("50%", ignoreCase = true) || rawNotes.contains("50% Advance", ignoreCase = true) -> PaymentTermType.FIFTY_FIFTY
+        termsText.contains("Custom", ignoreCase = true) || rawNotes.contains("Custom Partial", ignoreCase = true) -> PaymentTermType.CUSTOM_PARTIAL
+        termsText.contains("Full Due", ignoreCase = true) || rawNotes.contains("Full Due", ignoreCase = true) -> PaymentTermType.FULL_DUE
+        else -> PaymentTermType.THIRTY_SEVENTY
+    }
+    val forwarderRegex = Regex("""\[Forwarder:\s*([^\]]+)]""")
+    val resolvedForwarder = forwarderRegex.find(rawNotes)?.groupValues?.getOrNull(1)?.trim()
+        ?.ifBlank { defaultForwarder } ?: defaultForwarder
+    val cleanUserNotes = rawNotes
+        .replace(termsRegex, "")
+        .replace(forwarderRegex, "")
+        .split("•")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString(" • ")
+    return ParsedPoNotes(resolvedTerm, resolvedForwarder, cleanUserNotes)
+}
+
 @Composable
 fun CreatePurchaseOrderDialog(
     suppliers: List<Supplier>,
@@ -162,6 +199,7 @@ fun CreatePurchaseOrderDialog(
     editingOrder: PurchaseOrder? = null,
     initialEditingItems: List<PurchaseOrderItem> = emptyList(),
     initialEditingCartons: List<ShipmentCarton> = emptyList(),
+    initialEditingCosts: List<ImportCostItem> = emptyList(),
     onUpdatePo: ((
         orderId: String,
         supplierId: String,
@@ -190,28 +228,56 @@ fun CreatePurchaseOrderDialog(
     ) -> Unit
 ) {
     val isEditing = editingOrder != null
-    var isLocalPurchase by remember { mutableStateOf(editingOrder?.currency == "BDT") }
-    var selectedSupplierId by remember { mutableStateOf(editingOrder?.supplierId ?: (suppliers.firstOrNull()?.id ?: "")) }
-    var selectedCurrency by remember {
+    val parsedNotes = remember(editingOrder?.id, editingOrder?.notes) {
+        parsePoNotesMetadata(editingOrder?.notes)
+    }
+    var isLocalPurchase by remember(editingOrder?.id) { mutableStateOf(editingOrder?.currency == "BDT") }
+    var selectedSupplierId by remember(editingOrder?.id) { mutableStateOf(editingOrder?.supplierId ?: (suppliers.firstOrNull()?.id ?: "")) }
+    var selectedCurrency by remember(editingOrder?.id) {
         mutableStateOf(
             if (isLocalPurchase) "BDT"
             else editingOrder?.currency ?: (suppliers.firstOrNull()?.currency?.ifBlank { "CNY" } ?: "CNY")
         )
     }
-    var exchangeRateStr by remember {
+    var exchangeRateStr by remember(editingOrder?.id) {
         mutableStateOf(
             if (isLocalPurchase) "1.00"
             else editingOrder?.exchangeRateToBdt ?: (if (selectedCurrency == "USD") "120.00" else "17.00")
         )
     }
-    var chinaLocalDeliveryStr by remember { mutableStateOf("0") }
-    var handlingCostStr by remember { mutableStateOf("0") }
-    var sampleCostStr by remember { mutableStateOf("0") }
-    var forwarderAddressStr by remember { mutableStateOf("Guangzhou Baiyun Cargo Terminal / Yiwu Port Warehouse, China") }
-    var attachmentsStr by remember { mutableStateOf(editingOrder?.attachments ?: "") }
-    var selectedPaymentTerm by remember { mutableStateOf(PaymentTermType.THIRTY_SEVENTY) }
-    var notes by remember { mutableStateOf(editingOrder?.notes ?: "") }
+    var chinaLocalDeliveryStr by remember(editingOrder?.id) { mutableStateOf("0") }
+    var handlingCostStr by remember(editingOrder?.id) { mutableStateOf("0") }
+    var sampleCostStr by remember(editingOrder?.id) { mutableStateOf("0") }
+    var forwarderAddressStr by remember(editingOrder?.id) { mutableStateOf(parsedNotes.forwarderAddress) }
+    var attachmentsStr by remember(editingOrder?.id) { mutableStateOf(editingOrder?.attachments ?: "") }
+    var selectedPaymentTerm by remember(editingOrder?.id) { mutableStateOf(parsedNotes.paymentTerm) }
+    var notes by remember(editingOrder?.id) { mutableStateOf(parsedNotes.userNotes) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    var hasHydratedCosts by remember(editingOrder?.id) { mutableStateOf(false) }
+    LaunchedEffect(editingOrder?.id, initialEditingCosts) {
+        if (isEditing && initialEditingCosts.isNotEmpty() && !hasHydratedCosts) {
+            val chinaDel = initialEditingCosts
+                .filter { it.costCategory == CostCategory.CHINA_DOMESTIC_TRANSPORT.name }
+                .sumOf { it.amountMinor }
+            if (chinaDel > 0L) {
+                chinaLocalDeliveryStr = "%.2f".format(chinaDel / 100.0)
+            }
+            val handling = initialEditingCosts
+                .filter { it.description.contains("Handling", ignoreCase = true) }
+                .sumOf { it.amountMinor }
+            if (handling > 0L) {
+                handlingCostStr = "%.2f".format(handling / 100.0)
+            }
+            val sample = initialEditingCosts
+                .filter { it.description.contains("Sample", ignoreCase = true) }
+                .sumOf { it.amountMinor }
+            if (sample > 0L) {
+                sampleCostStr = "%.2f".format(sample / 100.0)
+            }
+            hasHydratedCosts = true
+        }
+    }
 
     // Inline Add Supplier state
     var showInlineAddSupplierDialog by remember { mutableStateOf(false) }
@@ -249,24 +315,41 @@ fun CreatePurchaseOrderDialog(
     val firstProdId = products.firstOrNull()?.id ?: ""
     val firstVarId = variants.firstOrNull { it.productId == firstProdId }?.id
 
-    val itemsList = remember {
+    fun PurchaseOrderItem.toItemDraftState(): ItemDraftState = ItemDraftState(
+        productId = productId,
+        variantId = variantId,
+        quantityStr = quantity.toString(),
+        unitPriceStr = "%.2f".format(unitPriceMinor / 100.0),
+        cartonQuantityStr = cartonQuantity.toString(),
+        pcsPerCartonStr = pcsPerCarton.toString(),
+        grossWeightKgStr = grossWeightKg,
+        netWeightKgStr = netWeightKg
+    )
+
+    fun List<ShipmentCarton>.toCartonBoxStates(): List<CartonBoxState> =
+        groupBy { it.cartonNumber }.map { (cNum, cLines) ->
+            val firstCtn = cLines.firstOrNull()
+            val gwStr = firstCtn?.cartonGrossWeightKg?.ifBlank { firstCtn.grossWeightKg } ?: "15.0"
+            CartonBoxState(
+                cartonNumber = cNum,
+                grossWeightKgStr = gwStr,
+                initialLines = cLines.map { line ->
+                    CartonLineState(
+                        productId = line.productId,
+                        variantId = line.variantId,
+                        quantityStr = line.quantity.toString(),
+                        manualWeightKgStr = line.grossWeightKg
+                    )
+                }
+            )
+        }
+
+    var hasHydratedItems by remember(editingOrder?.id) { mutableStateOf(initialEditingItems.isNotEmpty()) }
+    val itemsList = remember(editingOrder?.id) {
         mutableStateListOf<ItemDraftState>().apply {
             if (initialEditingItems.isNotEmpty()) {
-                addAll(
-                    initialEditingItems.map { itm ->
-                        ItemDraftState(
-                            productId = itm.productId,
-                            variantId = itm.variantId,
-                            quantityStr = itm.quantity.toString(),
-                            unitPriceStr = "%.2f".format(itm.unitPriceMinor / 100.0),
-                            cartonQuantityStr = itm.cartonQuantity.toString(),
-                            pcsPerCartonStr = itm.pcsPerCarton.toString(),
-                            grossWeightKgStr = itm.grossWeightKg,
-                            netWeightKgStr = itm.netWeightKg
-                        )
-                    }
-                )
-            } else {
+                addAll(initialEditingItems.map { it.toItemDraftState() })
+            } else if (!isEditing) {
                 add(
                     ItemDraftState(
                         productId = firstProdId,
@@ -282,31 +365,28 @@ fun CreatePurchaseOrderDialog(
             }
         }
     }
+    LaunchedEffect(editingOrder?.id, initialEditingItems) {
+        if (isEditing && initialEditingItems.isNotEmpty() && !hasHydratedItems) {
+            itemsList.clear()
+            itemsList.addAll(initialEditingItems.map { it.toItemDraftState() })
+            hasHydratedItems = true
+        }
+    }
 
     // Carton-by-Carton Packaging list (supports mixed variants in a single carton)
-    val cartonBoxes = remember {
+    var hasHydratedCartons by remember(editingOrder?.id) { mutableStateOf(initialEditingCartons.isNotEmpty()) }
+    val cartonBoxes = remember(editingOrder?.id) {
         mutableStateListOf<CartonBoxState>().apply {
             if (initialEditingCartons.isNotEmpty()) {
-                val grouped = initialEditingCartons.groupBy { it.cartonNumber }
-                grouped.forEach { (cNum, cLines) ->
-                    val firstCtn = cLines.firstOrNull()
-                    val gwStr = firstCtn?.cartonGrossWeightKg?.ifBlank { firstCtn.grossWeightKg } ?: "15.0"
-                    add(
-                        CartonBoxState(
-                            cartonNumber = cNum,
-                            grossWeightKgStr = gwStr,
-                            initialLines = cLines.map { line ->
-                                CartonLineState(
-                                    productId = line.productId,
-                                    variantId = line.variantId,
-                                    quantityStr = line.quantity.toString(),
-                                    manualWeightKgStr = line.grossWeightKg
-                                )
-                            }
-                        )
-                    )
-                }
+                addAll(initialEditingCartons.toCartonBoxStates())
             }
+        }
+    }
+    LaunchedEffect(editingOrder?.id, initialEditingCartons) {
+        if (isEditing && initialEditingCartons.isNotEmpty() && !hasHydratedCartons) {
+            cartonBoxes.clear()
+            cartonBoxes.addAll(initialEditingCartons.toCartonBoxStates())
+            hasHydratedCartons = true
         }
     }
 

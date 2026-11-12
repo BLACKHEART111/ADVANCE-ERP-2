@@ -856,7 +856,7 @@ fun PurchaseOrderDetailDialog(
                                 if (cartons.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        text = if (isBangla) "যুক্তকৃত কার্টন তালিকা (${cartons.size}):" else "Entered Cartons (${cartons.size}):",
+                                        text = if (isBangla) "যুক্তকৃত কার্টন (${recordedCartonsCount} CTN • ${cartons.size} আইটেম):" else "Entered Cartons (${recordedCartonsCount} CTN • ${cartons.size} items):",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = TextSecondary

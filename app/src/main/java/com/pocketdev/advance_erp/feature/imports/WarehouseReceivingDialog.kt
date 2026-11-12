@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -137,7 +138,8 @@ fun WarehouseReceivingDialog(
                     )
                 }
             } else {
-                // Synthesize cartons from PO item packaging so carton inspection is never blank
+                // Synthesize cartons from PO item packaging without exceeding recorded physical order.totalCartons
+                val maxAllowedCartons = order?.totalCartons?.takeIf { it > 0 } ?: Int.MAX_VALUE
                 var cartonCounter = 1
                 poItems.forEach { item ->
                     val prod = productsMap[item.productId]
@@ -149,10 +151,15 @@ fun WarehouseReceivingDialog(
                     for (i in 1..ctnCount) {
                         val thisCtnQty = if (i == ctnCount) remQty else pcsPerCtn.coerceAtMost(remQty)
                         if (thisCtnQty > 0) {
+                            val assignedCartonNum = if (cartonCounter <= maxAllowedCartons) {
+                                cartonCounter++
+                            } else {
+                                maxAllowedCartons
+                            }
                             list.add(
                                 ReceivingLineState(
                                     cartonId = null,
-                                    cartonNumber = "CTN-%02d".format(cartonCounter++),
+                                    cartonNumber = "CTN-%02d".format(assignedCartonNum),
                                     productId = item.productId,
                                     variantId = item.variantId,
                                     productName = name,
@@ -391,6 +398,47 @@ fun WarehouseReceivingDialog(
                     )
                 }
 
+                // Physical Carton vs Product Line Summary Pill (prevents mixed-carton double counting in display)
+                val distinctPhysicalCartons = remember(lines.size, selectedMethod) {
+                    lines.map { it.cartonNumber }
+                        .filter { it.isNotBlank() && it != "SUMMARY" }
+                        .distinct()
+                }
+                val totalExpectedPcs = lines.sumOf { it.expectedQty }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFF1F5F9))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (selectedMethod == "CARTON_WISE") {
+                            if (isBangla)
+                                "মোট কার্টন: ${distinctPhysicalCartons.size} CTN (${lines.size}টি পণ্য লাইন)"
+                            else
+                                "Physical Cartons: ${distinctPhysicalCartons.size} CTN (${lines.size} product lines)"
+                        } else {
+                            if (isBangla)
+                                "মোট পণ্য লাইন: ${lines.size}টি"
+                            else
+                                "Product Lines: ${lines.size}"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryPurple
+                    )
+                    Text(
+                        text = if (isBangla) "মোট প্যাকড: $totalExpectedPcs পিস" else "Total Packed: $totalExpectedPcs pcs",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary
+                    )
+                }
+
                 // Items Inspection Table
                 LazyColumn(
                     modifier = Modifier
@@ -398,113 +446,128 @@ fun WarehouseReceivingDialog(
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    itemsIndexed(lines) { index, line ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(2.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                    if (selectedMethod == "CARTON_WISE") {
+                        // Group by physical cartonNumber so mixed cartons (multi-category/product) render as 1 physical carton card
+                        val groupedCartons = lines.groupBy { it.cartonNumber.ifBlank { "CTN" } }.entries.toList()
+                        items(groupedCartons) { (cartonNo, cartonLines) ->
+                            val isMixed = cartonLines.size > 1
+                            val cartonExpectedSum = cartonLines.sumOf { it.expectedQty }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = CardDefaults.cardElevation(2.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.ViewInAr,
+                                                contentDescription = null,
+                                                tint = if (isMixed) SecondaryTeal else PrimaryPurple,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = cartonNo,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepNavy
+                                            )
+                                            if (isMixed) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(SecondaryTeal.copy(alpha = 0.14f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (isBangla) "মিক্সড কার্টন (${cartonLines.size} পণ্য)" else "Mixed (${cartonLines.size} items)",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = SecondaryTeal
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = if (isBangla) "মোট প্যাকড: $cartonExpectedSum" else "Carton Packed: $cartonExpectedSum",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextSecondary
+                                        )
+                                    }
+
+                                    cartonLines.forEachIndexed { lineIdx, line ->
+                                        if (lineIdx > 0) {
+                                            HorizontalDivider(
+                                                color = ERPDivider,
+                                                modifier = Modifier.padding(vertical = 10.dp)
+                                            )
+                                        } else {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = line.productName,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepNavy,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = "Expected: ${line.expectedQty}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        ReceivingLineInputs(line = line, isBangla = isBangla)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        itemsIndexed(lines) { _, line ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = CardDefaults.cardElevation(2.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Text(
                                             text = line.productName,
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = DeepNavy,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        if (line.cartonNumber.isNotBlank() && line.cartonNumber != "SUMMARY") {
-                                            Text(
-                                                text = "Carton: ${line.cartonNumber}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = PrimaryPurple,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
+                                        Text(
+                                            text = "Expected: ${line.expectedQty}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextSecondary
+                                        )
                                     }
-                                    Text(
-                                        text = "Expected: ${line.expectedQty}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextSecondary
-                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    ReceivingLineInputs(line = line, isBangla = isBangla)
                                 }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                // Inputs: Good, Damaged, Missing, Pending (Packed = Good + Damaged + Missing + Pending)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = line.goodQtyStr,
-                                        onValueChange = { newVal ->
-                                            line.goodQtyStr = newVal
-                                            val g = newVal.trim().toIntOrNull() ?: 0
-                                            val d = line.damagedQtyStr.trim().toIntOrNull() ?: 0
-                                            val m = line.missingQtyStr.trim().toIntOrNull() ?: 0
-                                            line.receivedQtyStr = (g + d).toString()
-                                            line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
-                                        },
-                                        label = { Text("Good", fontSize = 11.sp, color = StatusSuccess) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
-                                        value = line.damagedQtyStr,
-                                        onValueChange = { newVal ->
-                                            line.damagedQtyStr = newVal
-                                            val g = line.goodQtyStr.trim().toIntOrNull() ?: 0
-                                            val d = newVal.trim().toIntOrNull() ?: 0
-                                            val m = line.missingQtyStr.trim().toIntOrNull() ?: 0
-                                            line.receivedQtyStr = (g + d).toString()
-                                            line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
-                                        },
-                                        label = { Text("Damaged", fontSize = 11.sp, color = StatusError) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
-                                        value = line.missingQtyStr,
-                                        onValueChange = { newVal ->
-                                            line.missingQtyStr = newVal
-                                            val g = line.goodQtyStr.trim().toIntOrNull() ?: 0
-                                            val d = line.damagedQtyStr.trim().toIntOrNull() ?: 0
-                                            val m = newVal.trim().toIntOrNull() ?: 0
-                                            line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
-                                        },
-                                        label = { Text("Missing", fontSize = 11.sp, color = Color(0xFFD97706)) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
-                                        value = line.pendingQtyStr,
-                                        onValueChange = { line.pendingQtyStr = it },
-                                        label = { Text("Pending", fontSize = 11.sp, color = PrimaryPurple) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                OutlinedTextField(
-                                    value = line.conditionNotes,
-                                    onValueChange = { line.conditionNotes = it },
-                                    label = { Text(if (isBangla) "পরিদর্শন মন্তব্য" else "Inspection notes", fontSize = 11.sp) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
                             }
                         }
                     }
@@ -638,4 +701,78 @@ fun WarehouseReceivingDialog(
             }
         )
     }
+}
+
+@Composable
+private fun ReceivingLineInputs(
+    line: ReceivingLineState,
+    isBangla: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedTextField(
+            value = line.goodQtyStr,
+            onValueChange = { newVal ->
+                line.goodQtyStr = newVal
+                val g = newVal.trim().toIntOrNull() ?: 0
+                val d = line.damagedQtyStr.trim().toIntOrNull() ?: 0
+                val m = line.missingQtyStr.trim().toIntOrNull() ?: 0
+                line.receivedQtyStr = (g + d).toString()
+                line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
+            },
+            label = { Text("Good", fontSize = 11.sp, color = StatusSuccess) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = line.damagedQtyStr,
+            onValueChange = { newVal ->
+                line.damagedQtyStr = newVal
+                val g = line.goodQtyStr.trim().toIntOrNull() ?: 0
+                val d = newVal.trim().toIntOrNull() ?: 0
+                val m = line.missingQtyStr.trim().toIntOrNull() ?: 0
+                line.receivedQtyStr = (g + d).toString()
+                line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
+            },
+            label = { Text("Damaged", fontSize = 11.sp, color = StatusError) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = line.missingQtyStr,
+            onValueChange = { newVal ->
+                line.missingQtyStr = newVal
+                val g = line.goodQtyStr.trim().toIntOrNull() ?: 0
+                val d = line.damagedQtyStr.trim().toIntOrNull() ?: 0
+                val m = newVal.trim().toIntOrNull() ?: 0
+                line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
+            },
+            label = { Text("Missing", fontSize = 11.sp, color = Color(0xFFD97706)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = line.pendingQtyStr,
+            onValueChange = { line.pendingQtyStr = it },
+            label = { Text("Pending", fontSize = 11.sp, color = PrimaryPurple) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.weight(1f),
+            singleLine = true
+        )
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    OutlinedTextField(
+        value = line.conditionNotes,
+        onValueChange = { line.conditionNotes = it },
+        label = { Text(if (isBangla) "পরিদর্শন মন্তব্য" else "Inspection notes", fontSize = 11.sp) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true
+    )
 }

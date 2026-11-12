@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,8 +28,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
@@ -107,7 +110,7 @@ fun ProductDetailDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var fullScreenImageUri by remember { mutableStateOf<String?>(null) }
+    var sliderInitialIndex by remember { mutableStateOf<Int?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     // Map of variantId to their primary image
@@ -130,6 +133,80 @@ fun ProductDetailDialog(
                 }
             }
         }
+    }
+
+    // Build unified slide items for interactive fullscreen slider
+    val baseSlides = remember(product, productImages, language) {
+        if (productImages.isNotEmpty()) {
+            productImages.mapIndexed { idx, img ->
+                VariantSlideItem(
+                    id = "base_${img.id}",
+                    imageUri = img.imageUri,
+                    isBaseProduct = true,
+                    variant = null,
+                    title = if (language == AppLanguage.BANGLA) product.nameBn else product.nameEn,
+                    subtitle = if (language == AppLanguage.BANGLA) product.nameEn else product.nameBn,
+                    sku = product.baseSku,
+                    barcode = product.barcode,
+                    priceMinor = product.sellingPriceMinor,
+                    costMinor = product.purchasePriceMinor,
+                    stockQuantity = product.totalStock,
+                    unit = product.unit
+                )
+            }
+        } else {
+            listOf(
+                VariantSlideItem(
+                    id = "base_primary",
+                    imageUri = product.primaryImageUri,
+                    isBaseProduct = true,
+                    variant = null,
+                    title = if (language == AppLanguage.BANGLA) product.nameBn else product.nameEn,
+                    subtitle = if (language == AppLanguage.BANGLA) product.nameEn else product.nameBn,
+                    sku = product.baseSku,
+                    barcode = product.barcode,
+                    priceMinor = product.sellingPriceMinor,
+                    costMinor = product.purchasePriceMinor,
+                    stockQuantity = product.totalStock,
+                    unit = product.unit
+                )
+            )
+        }
+    }
+
+    val variantSlides = remember(variants, variantImagesMap, variantStockMap, selectedHeroUri) {
+        variants.map { v ->
+            val vImageUri = variantImagesMap[v.id] ?: selectedHeroUri
+            val vStock = variantStockMap[v.id] ?: 0
+            val effectiveCost = if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
+            val effectivePrice = if (v.variantPriceMinor > 0L) v.variantPriceMinor else product.sellingPriceMinor
+            val variantTitle = buildString {
+                if (!v.color.isNullOrBlank()) append(v.color)
+                if (!v.size.isNullOrBlank()) {
+                    if (isNotEmpty()) append(" / ")
+                    append(v.size)
+                }
+                if (isEmpty()) append(v.sku)
+            }
+            VariantSlideItem(
+                id = "var_${v.id}",
+                imageUri = vImageUri,
+                isBaseProduct = false,
+                variant = v,
+                title = variantTitle,
+                subtitle = "SKU: ${v.sku}",
+                sku = v.sku,
+                barcode = v.barcode,
+                priceMinor = effectivePrice,
+                costMinor = effectiveCost,
+                stockQuantity = vStock,
+                unit = product.unit
+            )
+        }
+    }
+
+    val allSlides = remember(baseSlides, variantSlides) {
+        baseSlides + variantSlides
     }
 
     Dialog(
@@ -220,7 +297,7 @@ fun ProductDetailDialog(
                             .height(180.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .background(Color(0xFFF1F5F9))
-                            .clickable { fullScreenImageUri = selectedHeroUri }
+                            .clickable { sliderInitialIndex = 0 }
                     ) {
                         AsyncImage(
                             model = ImageRequest.Builder(context)
@@ -231,16 +308,44 @@ fun ProductDetailDialog(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // Fullscreen / Zoom hint badge
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Fullscreen,
+                                    contentDescription = "Expand Fullscreen",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (language == AppLanguage.BANGLA) "বড় করুন" else "Zoom",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
 
-                    // Thumbnail Gallery Strip
+                    // Thumbnail Gallery Strip (Base Product Photos)
                     if (productImages.size > 1) {
                         Spacer(modifier = Modifier.height(8.dp))
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(productImages, key = { it.id }) { img ->
+                            itemsIndexed(productImages, key = { _, img -> img.id }) { imgIndex, img ->
                                 val isSelected = img.imageUri == selectedHeroUri
                                 Box(
                                     modifier = Modifier
@@ -251,7 +356,9 @@ fun ProductDetailDialog(
                                             color = if (isSelected) PrimaryPurple else ERPDivider,
                                             shape = RoundedCornerShape(8.dp)
                                         )
-                                        .clickable { selectedHeroUri = img.imageUri }
+                                        .clickable {
+                                            selectedHeroUri = img.imageUri
+                                        }
                                 ) {
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
@@ -290,6 +397,166 @@ fun ProductDetailDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted
                             )
+                        }
+                    }
+                }
+
+                // Side-by-Side Variant Photos Gallery (পাশাপাশি ভ্যারিয়েন্ট ফটো গ্যালারি)
+                if (variants.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Collections,
+                                contentDescription = null,
+                                tint = PrimaryPurple,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট ফটো গ্যালারি (পাশাপাশি)" else "Variant Gallery (Side-by-Side)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                        Text(
+                            text = if (language == AppLanguage.BANGLA) "বড় করতে ট্যাপ করুন" else "Tap to enlarge",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PrimaryPurple,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        itemsIndexed(variants, key = { _, v -> v.id }) { index, v ->
+                            val vImageUri = variantImagesMap[v.id] ?: selectedHeroUri
+                            val vStock = variantStockMap[v.id] ?: 0
+                            val effectivePrice = if (v.variantPriceMinor > 0L) v.variantPriceMinor else product.sellingPriceMinor
+                            val isPreselected = v.id == preSelectedVariantId
+                            val slideIndex = baseSlides.size + index
+
+                            Box(
+                                modifier = Modifier
+                                    .width(135.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isPreselected) SecondaryTeal.copy(alpha = 0.08f) else Color(0xFFF8FAFC))
+                                    .border(
+                                        width = if (isPreselected) 2.dp else 1.dp,
+                                        color = if (isPreselected) SecondaryTeal else ERPDivider,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { sliderInitialIndex = slideIndex }
+                                    .padding(8.dp)
+                            ) {
+                                Column {
+                                    // Variant Image Thumbnail
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(95.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.White)
+                                    ) {
+                                        if (vImageUri != null) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(rememberImageModel(vImageUri))
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = v.sku,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.Image,
+                                                contentDescription = null,
+                                                tint = TextMuted,
+                                                modifier = Modifier.align(Alignment.Center).size(24.dp)
+                                            )
+                                        }
+
+                                        // Mini zoom icon in thumbnail
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.Black.copy(alpha = 0.5f),
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(4.dp)
+                                                .size(20.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Fullscreen,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.padding(2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    // Variant Color/Size Tag
+                                    val attrText = buildString {
+                                        if (!v.color.isNullOrBlank()) append(v.color)
+                                        if (!v.size.isNullOrBlank()) {
+                                            if (isNotEmpty()) append(" / ")
+                                            append(v.size)
+                                        }
+                                        if (isEmpty()) append(v.sku)
+                                    }
+                                    Text(
+                                        text = attrText,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    // Price
+                                    Text(
+                                        text = Formatters.formatMoney(effectivePrice, currency, language),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryPurple
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    // Stock badge
+                                    val stockColor = when {
+                                        vStock <= 0 -> StatusError
+                                        vStock <= 5 -> Color(0xFFF59E0B)
+                                        else -> StatusSuccess
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(stockColor.copy(alpha = 0.12f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "${Formatters.formatNumber(vStock.toLong(), language)} ${product.unit}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = stockColor
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -514,9 +781,10 @@ fun ProductDetailDialog(
                         color = TextMuted
                     )
                 } else {
-                    variants.forEach { v ->
+                    variants.forEachIndexed { vIndex, v ->
                         val isPreselected = v.id == preSelectedVariantId
                         val vImageUri = variantImagesMap[v.id] ?: selectedHeroUri
+                        val slideIndex = baseSlides.size + vIndex
 
                         Box(
                             modifier = Modifier
@@ -529,6 +797,7 @@ fun ProductDetailDialog(
                                     color = if (isPreselected) SecondaryTeal else ERPDivider,
                                     shape = RoundedCornerShape(10.dp)
                                 )
+                                .clickable { sliderInitialIndex = slideIndex }
                                 .padding(10.dp)
                         ) {
                             Row(
@@ -542,9 +811,7 @@ fun ProductDetailDialog(
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(Color.White)
                                         .clickable {
-                                            if (vImageUri != null) {
-                                                fullScreenImageUri = vImageUri
-                                            }
+                                            sliderInitialIndex = slideIndex
                                         }
                                 ) {
                                     if (vImageUri != null) {
@@ -764,11 +1031,14 @@ fun ProductDetailDialog(
         )
     }
 
-    // Full screen image preview dialog
-    if (fullScreenImageUri != null) {
-        FullScreenImageDialog(
-            imageUriOrPath = fullScreenImageUri!!,
-            onDismiss = { fullScreenImageUri = null }
+    // Full screen interactive variant photo slider dialog
+    if (sliderInitialIndex != null) {
+        VariantPhotoSliderDialog(
+            slides = allSlides,
+            initialIndex = sliderInitialIndex!!,
+            currency = currency,
+            language = language,
+            onDismiss = { sliderInitialIndex = null }
         )
     }
 }

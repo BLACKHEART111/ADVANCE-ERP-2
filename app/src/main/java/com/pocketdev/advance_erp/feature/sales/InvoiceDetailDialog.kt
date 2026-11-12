@@ -126,11 +126,12 @@ fun InvoiceDetailDialog(
                                 color = TextPrimary
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            val badgeColor = when (invoice.status) {
-                                "PAID" -> StatusSuccess
-                                "POSTED" -> SecondaryTeal
-                                "PARTIALLY_PAID" -> Color(0xFFF59E0B)
-                                else -> Color.Gray
+                            val (badgeColor, statusLabel) = when (invoice.status) {
+                                "PAID" -> Pair(StatusSuccess, if (isBangla) "পরিশোধিত" else "Paid")
+                                "POSTED" -> Pair(SecondaryTeal, if (isBangla) "অনুমোদিত (Posted)" else "Posted")
+                                "PARTIALLY_PAID" -> Pair(Color(0xFFF59E0B), if (isBangla) "আংশিক পরিশোধ" else "Partially Paid")
+                                "DRAFT" -> Pair(Color.Gray, if (isBangla) "খসড়া" else "Draft")
+                                else -> Pair(Color.Gray, invoice.status)
                             }
                             Box(
                                 modifier = Modifier
@@ -138,7 +139,7 @@ fun InvoiceDetailDialog(
                                     .padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
                                 Text(
-                                    text = invoice.status,
+                                    text = statusLabel,
                                     color = badgeColor,
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.labelSmall

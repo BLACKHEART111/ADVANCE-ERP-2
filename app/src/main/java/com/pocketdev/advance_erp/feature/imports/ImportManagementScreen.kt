@@ -125,6 +125,9 @@ fun ImportManagementScreen(
     var showCompletionDialog by remember { mutableStateOf(false) }
     var showShipmentWorkspaceDialog by remember { mutableStateOf(false) }
     var editingPo by remember { mutableStateOf<PurchaseOrder?>(null) }
+    var editingPoItemsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.PurchaseOrderItem>>(emptyList()) }
+    var editingPoCartonsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.ShipmentCarton>>(emptyList()) }
+    var editingPoCostsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.ImportCostItem>>(emptyList()) }
     var poToShare by remember { mutableStateOf<PurchaseOrder?>(null) }
 
     // Preselected entities for dialogs
@@ -634,7 +637,6 @@ fun ImportManagementScreen(
                                     viewModel.confirmPurchaseOrder(orderId)
                                 },
                                 onSharePdf = {
-                                    viewModel.selectPurchaseOrder(po)
                                     poToShare = po
                                 }
                             )
@@ -763,17 +765,35 @@ fun ImportManagementScreen(
         )
     }
 
-    if (editingPo != null) {
+    val currentEditingPo = editingPo
+    if (currentEditingPo != null) {
+        val liveEditItems by viewModel.getItemsForOrder(currentEditingPo.id)
+            .collectAsState(initial = editingPoItemsSnapshot)
+        val liveEditCartons by viewModel.getCartonsForOrder(currentEditingPo.id)
+            .collectAsState(initial = editingPoCartonsSnapshot)
+        val liveEditCosts by viewModel.getCostItemsForOrder(currentEditingPo.id)
+            .collectAsState(initial = editingPoCostsSnapshot)
+
+        val resolvedEditItems = liveEditItems.ifEmpty { editingPoItemsSnapshot }
+        val resolvedEditCartons = liveEditCartons.ifEmpty { editingPoCartonsSnapshot }
+        val resolvedEditCosts = liveEditCosts.ifEmpty { editingPoCostsSnapshot }
+
         CreatePurchaseOrderDialog(
             suppliers = uiState.suppliers,
             products = uiState.products,
             variants = uiState.productVariants,
             categories = uiState.categories,
             isBangla = isBangla,
-            editingOrder = editingPo,
-            initialEditingItems = uiState.selectedPoItems,
-            initialEditingCartons = uiState.selectedPoCartons,
-            onDismiss = { editingPo = null },
+            editingOrder = currentEditingPo,
+            initialEditingItems = resolvedEditItems,
+            initialEditingCartons = resolvedEditCartons,
+            initialEditingCosts = resolvedEditCosts,
+            onDismiss = {
+                editingPo = null
+                editingPoItemsSnapshot = emptyList()
+                editingPoCartonsSnapshot = emptyList()
+                editingPoCostsSnapshot = emptyList()
+            },
             onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
             onCreateFullProduct = viewModel::createFullProductFromPurchase,
             onGenerateSku = viewModel::generateBaseSku,
@@ -800,6 +820,9 @@ fun ImportManagementScreen(
                     attachments = attachments
                 )
                 editingPo = null
+                editingPoItemsSnapshot = emptyList()
+                editingPoCartonsSnapshot = emptyList()
+                editingPoCostsSnapshot = emptyList()
             },
             onSavePo = { _, _, _, _, _, _, _, _, _ -> }
         )
@@ -1071,7 +1094,12 @@ fun ImportManagementScreen(
             },
             onAddAdditionalCost = { showAddAdditionalCostDialog = true },
             onCompletePo = { showCompletionDialog = true },
-            onEditFullPo = { po -> editingPo = po },
+            onEditFullPo = { po ->
+                editingPoItemsSnapshot = uiState.selectedPoItems
+                editingPoCartonsSnapshot = uiState.selectedPoCartons
+                editingPoCostsSnapshot = uiState.selectedPoCostItems
+                editingPo = po
+            },
             onSharePdf = { po -> poToShare = po },
             onCancelPo = { orderId, reason ->
                 viewModel.cancelPurchaseOrder(orderId, reason)
@@ -1098,7 +1126,9 @@ fun ImportManagementScreen(
         val supplier = uiState.suppliers.find { it.id == currentPoToShare.supplierId }
         PoShareDialog(
             order = currentPoToShare,
-            items = shareItems.ifEmpty { uiState.selectedPoItems },
+            items = shareItems.ifEmpty {
+                if (uiState.selectedPo?.id == currentPoToShare.id) uiState.selectedPoItems else emptyList()
+            },
             productsMap = uiState.products.associateBy { it.id },
             supplier = supplier,
             businessProfile = uiState.businessProfile,

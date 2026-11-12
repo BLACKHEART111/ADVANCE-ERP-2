@@ -50,7 +50,7 @@ object ImportExcelGenerator {
         supplier: Supplier?,
         businessProfile: BusinessProfile?
     ): File {
-        val file = File(getExcelDir(context), "Supplier_PO_${order.poNumber}.xlsx")
+        val file = File(getExcelDir(context), "Supplier_PO_${ImportPdfGenerator.sanitizeFileName(order.poNumber)}.xlsx")
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
         val sheetXml = buildSupplierSheetXml(order, items, productsMap, supplier, businessProfile, dateFormat)
@@ -206,7 +206,7 @@ object ImportExcelGenerator {
         supplier: Supplier?,
         businessProfile: BusinessProfile?
     ): File {
-        val file = File(getExcelDir(context), "Internal_PO_${order.poNumber}.xlsx")
+        val file = File(getExcelDir(context), "Internal_PO_${ImportPdfGenerator.sanitizeFileName(order.poNumber)}.xlsx")
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
         val sheetXml = buildInternalSheetXml(order, items, productsMap, supplier, businessProfile, dateFormat)
