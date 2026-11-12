@@ -996,7 +996,7 @@ class ImportRepositoryImpl @Inject constructor(
 
         val itemEntities = items.map { draft ->
             val key = if (draft.variantId != null) "${draft.productId}:${draft.variantId}" else draft.productId
-            val snapshot = snapshots[key]
+            val snapshot = snapshots[key] ?: snapshots[draft.productId]
             val unitLandedCost = snapshot?.unitLandedCostBdtMinor ?: 0L
 
             val resolvedGood = if (draft.goodQuantity >= 0) {
@@ -1085,11 +1085,23 @@ class ImportRepositoryImpl @Inject constructor(
 
         val shipment = importShipmentDao.getShipmentById(receipt.shipmentId)
         val linkedPoId = receipt.purchaseOrderId ?: shipment?.purchaseOrderId
-        if (linkedPoId != null) {
-            val linkedPo = purchaseOrderDao.getOrderById(linkedPoId)
-            if (linkedPo != null && !linkedPo.isActualCostFinalized) {
-                throw IllegalStateException("Cannot post stock receiving: Actual Landing Cost must be finalized before posting stock into inventory!")
+        val linkedPo = if (linkedPoId != null) {
+            purchaseOrderDao.getOrderById(linkedPoId)?.also { po ->
+                if (!po.isActualCostFinalized) {
+                    throw IllegalStateException("Cannot post stock receiving: Actual Landing Cost must be finalized before posting stock into inventory!")
+                }
             }
+        } else null
+
+        val snapshotsByKey = importCostDao.getSnapshotsForShipmentSync(receipt.shipmentId).associateBy {
+            if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
+        }
+        val poItemsByKey = if (linkedPoId != null) {
+            purchaseOrderDao.getItemsForOrderSync(linkedPoId).associateBy {
+                if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
+            }
+        } else {
+            emptyMap()
         }
 
         // ATOMIC DATABASE TRANSACTION
@@ -1100,6 +1112,24 @@ class ImportRepositoryImpl @Inject constructor(
             var hasRemainingPending = false
 
             items.forEach { item ->
+                val itemKey = if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId
+                val snapshot = snapshotsByKey[itemKey] ?: snapshotsByKey[item.productId]
+                val poItem = poItemsByKey[itemKey] ?: poItemsByKey[item.productId]
+                val product = productDao.getProductById(item.productId)
+                val variant = if (item.variantId != null) productVariantDao.getVariantById(item.variantId) else null
+
+                val unitPurchaseBdt = when {
+                    poItem != null && poItem.quantity > 0 ->
+                        BigDecimal(poItem.totalBdtAmountMinor)
+                            .divide(BigDecimal(poItem.quantity), 0, RoundingMode.HALF_UP)
+                            .longValueExact()
+                    variant != null && variant.variantCostMinor > 0L -> variant.variantCostMinor
+                    else -> product?.purchasePriceMinor ?: 0L
+                }
+                val unitCost = snapshot?.unitLandedCostBdtMinor?.takeIf { it > 0L }
+                    ?: item.unitLandedCostMinor.takeIf { it > 0L }
+                    ?: unitPurchaseBdt
+
                 // Effective sound sellable stock:
                 val goodQuantity = if (item.goodQuantity > 0 || (item.damagedQuantity + item.missingQuantity + item.pendingQuantity == item.expectedQuantity)) {
                     item.goodQuantity
@@ -1157,21 +1187,19 @@ class ImportRepositoryImpl @Inject constructor(
                             variantId = item.variantId,
                             movementType = StockMovementType.PURCHASE_RECEIPT.code,
                             quantity = goodQuantity,
-                            unitCostMinor = item.unitLandedCostMinor,
+                            unitCostMinor = unitCost,
                             balanceAfterMovement = newBalance.quantity,
-                            totalCostImpactMinor = goodQuantity.toLong() * item.unitLandedCostMinor,
+                            totalCostImpactMinor = goodQuantity.toLong() * unitCost,
                             referenceType = "WAREHOUSE_RECEIPT",
                             referenceId = receipt.receiptNumber,
-                            purchaseOrderId = shipment?.shipmentNumber ?: receipt.shipmentId,
+                            purchaseOrderId = linkedPo?.poNumber ?: shipment?.shipmentNumber ?: receipt.shipmentId,
                             purchaseBatchId = receipt.receiptNumber,
                             notes = "Import receiving check-in from ${shipment?.shipmentNumber ?: receipt.shipmentId}",
                             createdAt = System.currentTimeMillis()
                         )
                     )
 
-                    // 3. Batch Cost Layer for sound stock
-                    val product = productDao.getProductById(item.productId)
-                    val unitCost = item.unitLandedCostMinor
+                    // 3. Batch Cost Layer for sound stock (distinct FIFO batch preserving exact buy & landed cost)
                     totalCapitalizedValueBdt += (goodQuantity.toLong() * unitCost)
 
                     inventoryCostLayerDao.insertCostLayer(
@@ -1189,10 +1217,10 @@ class ImportRepositoryImpl @Inject constructor(
                             initialQuantity = goodQuantity,
                             remainingQuantity = goodQuantity,
                             unitLandedCostBdtMinor = unitCost,
-                            originalCurrency = shipment?.let { "CNY" } ?: "BDT",
-                            originalPurchasePriceMinor = product?.purchasePriceMinor ?: 0L,
-                            exchangeRateToBdt = "17.0000",
-                            allocatedExpensePerUnitBdtMinor = (unitCost - (product?.purchasePriceMinor ?: 0L)).coerceAtLeast(0L),
+                            originalCurrency = linkedPo?.currency ?: "BDT",
+                            originalPurchasePriceMinor = poItem?.unitPriceMinor ?: variant?.variantCostMinor ?: product?.purchasePriceMinor ?: 0L,
+                            exchangeRateToBdt = linkedPo?.exchangeRateToBdt ?: "1.0",
+                            allocatedExpensePerUnitBdtMinor = (unitCost - unitPurchaseBdt).coerceAtLeast(0L),
                             receiptDate = receipt.receiptDate,
                             isActive = true,
                             createdAt = System.currentTimeMillis()
@@ -1202,7 +1230,7 @@ class ImportRepositoryImpl @Inject constructor(
 
                 // 4. Record Damaged Stock (Excluded from sellable stock -> 5050 Write-Off)
                 if (item.damagedQuantity > 0) {
-                    val dmgLoss = item.damagedQuantity.toLong() * item.unitLandedCostMinor
+                    val dmgLoss = item.damagedQuantity.toLong() * unitCost
                     totalDamagedValueBdt += dmgLoss
                     val dmgMovementNumber = MovementNumberGenerator.generate("DMG-2026")
                     stockMovementDao.insertMovement(
@@ -1214,7 +1242,7 @@ class ImportRepositoryImpl @Inject constructor(
                             variantId = item.variantId,
                             movementType = StockMovementType.DAMAGE_WRITE_OFF.code,
                             quantity = item.damagedQuantity,
-                            unitCostMinor = item.unitLandedCostMinor,
+                            unitCostMinor = unitCost,
                             balanceAfterMovement = balanceAfterReceipt,
                             totalCostImpactMinor = dmgLoss,
                             referenceType = "WAREHOUSE_RECEIPT",
@@ -1229,7 +1257,7 @@ class ImportRepositoryImpl @Inject constructor(
 
                 // 5. Record Missing Stock (Excluded from stock -> 1050 Shortage/Loss)
                 if (item.missingQuantity > 0) {
-                    val misLoss = item.missingQuantity.toLong() * item.unitLandedCostMinor
+                    val misLoss = item.missingQuantity.toLong() * unitCost
                     totalMissingValueBdt += misLoss
                     val misMovementNumber = MovementNumberGenerator.generate("MIS-2026")
                     stockMovementDao.insertMovement(
@@ -1241,7 +1269,7 @@ class ImportRepositoryImpl @Inject constructor(
                             variantId = item.variantId,
                             movementType = StockMovementType.SHORTAGE.code,
                             quantity = item.missingQuantity,
-                            unitCostMinor = item.unitLandedCostMinor,
+                            unitCostMinor = unitCost,
                             balanceAfterMovement = balanceAfterReceipt,
                             totalCostImpactMinor = misLoss,
                             referenceType = "WAREHOUSE_RECEIPT",
@@ -1518,10 +1546,11 @@ class ImportRepositoryImpl @Inject constructor(
         val batchShipment = importShipmentDao.getBatchShipmentForOrder(orderId)
             ?: throw IllegalStateException("Batch shipment not found for order: $orderId")
 
-        val actualCosts = importCostDao.getActualCostItemsForOrderSync(orderId)
-        require(actualCosts.isNotEmpty()) {
-            "Cannot finalize landed cost: No actual cost items recorded for purchase ${po.poNumber}!"
-        }
+        val orderActualCosts = importCostDao.getActualCostItemsForOrderSync(orderId)
+        val shipmentActualCosts = importCostDao.getCostItemsForShipmentSync(batchShipment.id).filter { !it.isEstimated }
+        val actualCosts = (orderActualCosts + shipmentActualCosts)
+            .distinctBy { it.id }
+            .filter { !it.costCategory.equals(CostCategory.PRODUCT_PURCHASE.name, ignoreCase = true) }
 
         // Get product items for allocation inputs
         val poItems = purchaseOrderDao.getItemsForOrderSync(orderId)
@@ -1565,7 +1594,11 @@ class ImportRepositoryImpl @Inject constructor(
         var totalAllocatedExpense = 0L
 
         actualCosts.forEach { costItem ->
-            val method = AllocationMethod.valueOf(costItem.allocationMethod)
+            val method = try {
+                AllocationMethod.valueOf(costItem.allocationMethod)
+            } catch (_: Exception) {
+                AllocationMethod.PURCHASE_VALUE
+            }
             val results = LandedCostAllocationEngine.allocate(costItem.bdtAmountMinor, allocationInputs, method)
 
             results.forEach { res ->
@@ -1598,7 +1631,68 @@ class ImportRepositoryImpl @Inject constructor(
             "Cost allocation mismatch: Total allocated ($totalAllocatedExpense) != Total actual ($totalActualCostBdt)"
         }
 
-        // Build finalized immutable snapshots
+        // If no explicit freight cost item was recorded, check category-wise freight rate overrides (or import shipment defaults)
+        val hasExplicitFreight = actualCosts.any {
+            it.costCategory in setOf(
+                CostCategory.INTERNATIONAL_FREIGHT.name,
+                CostCategory.SEA_FREIGHT.name,
+                CostCategory.AIR_FREIGHT.name
+            )
+        }
+        val freightPerKey = mutableMapOf<String, Long>()
+        if (!hasExplicitFreight) {
+            val syncedRates = syncShipmentCategoryFreightRates(batchShipment.id)
+            val applicableRates = syncedRates.filter { rate ->
+                rate.overrideRatePerKgBdtMinor != null ||
+                    (!po.currency.equals("BDT", ignoreCase = true) && rate.defaultRatePerKgBdtMinor > 0L)
+            }
+            if (applicableRates.isNotEmpty()) {
+                val poProducts = poItems.map { item ->
+                    val prod = productDao.getProductById(item.productId)
+                    val variant = if (item.variantId != null) productVariantDao.getVariantById(item.variantId) else null
+                    val key = if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId
+                    val itemWeight = allocationInputs.find { it.id == key }?.grossWeightKg ?: BigDecimal.ZERO
+                    LandingCostEngine.ShipmentProductInput(
+                        productId = item.productId,
+                        variantId = item.variantId,
+                        productNameEn = prod?.nameEn ?: item.productId,
+                        productNameBn = prod?.nameBn ?: "",
+                        sku = variant?.sku ?: prod?.baseSku ?: "",
+                        supplierId = po.supplierId,
+                        purchaseOrderId = orderId,
+                        categoryId = prod?.categoryId ?: "cat-uncategorized",
+                        packedQuantity = item.quantity,
+                        unitPurchasePriceForeignMinor = item.unitPriceMinor,
+                        purchaseCurrency = po.currency,
+                        purchaseExchangeRateToBdt = BigDecimal(po.exchangeRateToBdt.ifBlank { "1.0" }),
+                        goodQuantity = item.quantity,
+                        fallbackGrossWeightKg = itemWeight
+                    )
+                }
+                val rateInputs = applicableRates.map { r ->
+                    LandingCostEngine.CategoryFreightRateInput(
+                        categoryId = r.categoryId,
+                        categoryNameEn = r.categoryNameEn,
+                        defaultRatePerKgBdtMinor = r.defaultRatePerKgBdtMinor,
+                        overrideRatePerKgBdtMinor = r.overrideRatePerKgBdtMinor
+                    )
+                }
+                val freightResults = LandingCostEngine.calculateCategoryInternationalFreight(
+                    products = poProducts,
+                    productWeightsKg = emptyMap(),
+                    categoryRates = rateInputs
+                )
+                freightResults.forEach { res ->
+                    res.productAllocationsBdtMinor.forEach { (key, amt) ->
+                        freightPerKey[key] = (freightPerKey[key] ?: 0L) + amt
+                        totalAllocatedPerItem[key] = (totalAllocatedPerItem[key] ?: 0L) + amt
+                    }
+                }
+            }
+        }
+
+        // Build finalized immutable snapshots (per distinct productId + variantId)
+        val now = System.currentTimeMillis()
         val snapshots = allocationInputs.map { input ->
             val parts = input.id.split(":")
             val productId = parts[0]
@@ -1610,7 +1704,11 @@ class ImportRepositoryImpl @Inject constructor(
             val allocatedBdt = totalAllocatedPerItem[input.id] ?: 0L
             val purchaseBdt = input.purchaseValueBdtMinor
             val landedBdt = purchaseBdt + allocatedBdt
-            val unitLandedBdt = if (input.quantity > 0) landedBdt / input.quantity.toLong() else 0L
+            val unitLandedBdt = if (input.quantity > 0) {
+                BigDecimal(landedBdt).divide(BigDecimal(input.quantity), 0, RoundingMode.HALF_UP).longValueExact()
+            } else {
+                0L
+            }
 
             LandedCostSnapshot(
                 id = "lcs-${UUID.randomUUID()}",
@@ -1625,16 +1723,43 @@ class ImportRepositoryImpl @Inject constructor(
                 totalAllocatedCostsBdtMinor = allocatedBdt,
                 totalLandedCostBdtMinor = landedBdt,
                 unitLandedCostBdtMinor = unitLandedBdt,
-                snapshotDate = System.currentTimeMillis(),
-                isFinal = true
+                snapshotDate = now,
+                isFinal = true,
+                internationalFreightBdtMinor = freightPerKey[input.id] ?: 0L,
+                packedQuantity = input.quantity,
+                goodQuantity = input.quantity
             )
         }
 
-        importCostDao.replaceAllocationsAndSnapshots(batchShipment.id, allAllocations, snapshots)
+        database.withTransaction {
+            importCostDao.replaceAllocationsAndSnapshots(batchShipment.id, allAllocations, snapshots)
+            if (actualCosts.isNotEmpty()) {
+                importCostDao.markCostItemsCapitalized(actualCosts.map { it.id }, "FINALIZED")
+            }
 
-        // Mark PO and Batch as ACTUAL_COST_FINALIZED
-        purchaseOrderDao.markActualCostFinalized(orderId, PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name)
-        importShipmentDao.updateShipmentStatus(batchShipment.id, ShipmentStatus.ARRIVED.name)
+            // Update any pre-existing cost layers on this batch shipment per product+variant
+            val existingLayers = inventoryCostLayerDao.getLayersForShipmentSync(batchShipment.id)
+            for (layer in existingLayers) {
+                val matchingSnapshot = snapshots.find { it.productId == layer.productId && it.variantId == layer.variantId }
+                    ?: snapshots.find { it.productId == layer.productId && it.variantId == null }
+                if (matchingSnapshot != null) {
+                    val unitPurchase = if (matchingSnapshot.totalReceivedQuantity > 0) {
+                        BigDecimal(matchingSnapshot.totalPurchaseCostBdtMinor)
+                            .divide(BigDecimal(matchingSnapshot.totalReceivedQuantity), 0, RoundingMode.HALF_UP)
+                            .longValueExact()
+                    } else 0L
+                    inventoryCostLayerDao.updateCostLayerUnitCost(
+                        layerId = layer.id,
+                        unitCostMinor = matchingSnapshot.unitLandedCostBdtMinor,
+                        allocatedExpenseMinor = (matchingSnapshot.unitLandedCostBdtMinor - unitPurchase).coerceAtLeast(0L)
+                    )
+                }
+            }
+
+            // Mark PO and Batch as ACTUAL_COST_FINALIZED
+            purchaseOrderDao.markActualCostFinalized(orderId, PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name, now)
+            importShipmentDao.updateShipmentStatus(batchShipment.id, ShipmentStatus.ARRIVED.name)
+        }
 
         return snapshots
     }
@@ -1664,7 +1789,7 @@ class ImportRepositoryImpl @Inject constructor(
         var hasDiscrepancy = false
         val itemEntities = items.map { draft ->
             val key = if (draft.variantId != null) "${draft.productId}:${draft.variantId}" else draft.productId
-            val snapshot = snapshots[key]
+            val snapshot = snapshots[key] ?: snapshots[draft.productId]
             val unitLandedCost = snapshot?.unitLandedCostBdtMinor ?: 0L
 
             val resolvedGood = if (draft.goodQuantity >= 0) {
@@ -1771,20 +1896,29 @@ class ImportRepositoryImpl @Inject constructor(
 
             items.forEach { item ->
                 val key = if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId
-                val snapshot = snapshots[key]
-                val poItem = poItems[key]
+                val snapshot = snapshots[key] ?: snapshots[item.productId]
+                val poItem = poItems[key] ?: poItems[item.productId]
+                val product = productDao.getProductById(item.productId)
+                val variant = if (item.variantId != null) productVariantDao.getVariantById(item.variantId) else null
 
-                // Calculate precise unit landed cost: purchase cost + allocated landed cost
-                val unitPurchaseCostBdt = if (poItem != null && poItem.quantity > 0) {
-                    poItem.totalBdtAmountMinor / poItem.quantity.toLong()
-                } else {
-                    productDao.getProductById(item.productId)?.purchasePriceMinor ?: 0L
+                // Calculate precise unit landed cost: finalized snapshot (purchase + freight + expenses) or PO line + allocated
+                val unitPurchaseCostBdt = when {
+                    poItem != null && poItem.quantity > 0 ->
+                        BigDecimal(poItem.totalBdtAmountMinor)
+                            .divide(BigDecimal(poItem.quantity), 0, RoundingMode.HALF_UP)
+                            .longValueExact()
+                    variant != null && variant.variantCostMinor > 0L -> variant.variantCostMinor
+                    else -> product?.purchasePriceMinor ?: 0L
                 }
                 val unitAllocatedCostBdt = if (snapshot != null && snapshot.totalReceivedQuantity > 0) {
-                    snapshot.totalAllocatedCostsBdtMinor / snapshot.totalReceivedQuantity.toLong()
+                    BigDecimal(snapshot.totalAllocatedCostsBdtMinor)
+                        .divide(BigDecimal(snapshot.totalReceivedQuantity), 0, RoundingMode.HALF_UP)
+                        .longValueExact()
                 } else 0L
 
-                val finalUnitCost = unitPurchaseCostBdt + unitAllocatedCostBdt
+                val finalUnitCost = snapshot?.unitLandedCostBdtMinor?.takeIf { it > 0L }
+                    ?: (unitPurchaseCostBdt + unitAllocatedCostBdt)
+                val effectiveAllocatedPerUnit = (finalUnitCost - unitPurchaseCostBdt).coerceAtLeast(unitAllocatedCostBdt)
 
                 val goodQuantity = (item.receivedQuantity - item.damagedQuantity - item.missingQuantity).coerceAtLeast(0)
 
@@ -1844,7 +1978,7 @@ class ImportRepositoryImpl @Inject constructor(
                         )
                     )
 
-                    // FIFO Cost Layer
+                    // Distinct FIFO Cost Layer preserving exact PO buy price & unit landed cost (never averaged)
                     val goodValue = goodQuantity.toLong() * finalUnitCost
                     totalGoodValueBdt += goodValue
 
@@ -1862,9 +1996,9 @@ class ImportRepositoryImpl @Inject constructor(
                             remainingQuantity = goodQuantity,
                             unitLandedCostBdtMinor = finalUnitCost,
                             originalCurrency = po.currency,
-                            originalPurchasePriceMinor = poItem?.unitPriceMinor ?: 0L,
+                            originalPurchasePriceMinor = poItem?.unitPriceMinor ?: variant?.variantCostMinor ?: product?.purchasePriceMinor ?: 0L,
                             exchangeRateToBdt = po.exchangeRateToBdt,
-                            allocatedExpensePerUnitBdtMinor = unitAllocatedCostBdt,
+                            allocatedExpensePerUnitBdtMinor = effectiveAllocatedPerUnit,
                             receiptDate = receipt.receiptDate,
                             isActive = true,
                             purchaseOrderId = po.id,
@@ -1878,7 +2012,11 @@ class ImportRepositoryImpl @Inject constructor(
                 if (item.damagedQuantity > 0) {
                     val dmgLoss = item.damagedQuantity.toLong() * finalUnitCost
                     totalDamageValueBdt += dmgLoss
-                    val curQty = stockBalanceDao.getBalance(receipt.warehouseId, item.productId)?.quantity ?: 0
+                    val curQty = (if (item.variantId != null) {
+                        stockBalanceDao.getVariantBalance(receipt.warehouseId, item.productId, item.variantId)
+                    } else {
+                        stockBalanceDao.getBalance(receipt.warehouseId, item.productId)
+                    })?.quantity ?: 0
 
                     val dmgNumber = MovementNumberGenerator.generate("DMG-2026")
                     minimalImportDao.insertDamageRecord(
@@ -2911,25 +3049,32 @@ class ImportRepositoryImpl @Inject constructor(
             ).distinct()
 
         val poById = allPoIds.mapNotNull { purchaseOrderDao.getOrderById(it) }.associateBy { it.id }
-        val poItemsByProduct = mutableMapOf<String, Pair<PurchaseOrder, PurchaseOrderItem>>()
+        val poItemsByKey = mutableMapOf<String, Pair<PurchaseOrder, PurchaseOrderItem>>()
+        val poItemsByProductFallback = mutableMapOf<String, Pair<PurchaseOrder, PurchaseOrderItem>>()
         for (po in poById.values) {
             val items = purchaseOrderDao.getItemsForOrderSync(po.id)
             for (item in items) {
-                poItemsByProduct[item.productId] = po to item
+                val key = if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId
+                poItemsByKey[key] = po to item
+                poItemsByProductFallback.putIfAbsent(item.productId, po to item)
             }
         }
 
-        // Aggregate receiving quantities from WarehouseReceipts for this shipment
+        // Aggregate receiving quantities from WarehouseReceipts for this shipment keyed by product+variant
         val receipts = warehouseReceiptDao.getReceiptsByShipmentSync(shipmentId)
             .filter { it.status != ReceiptStatus.CANCELLED.name }
-        val receiptItemsByProduct = receipts
-            .flatMap { warehouseReceiptDao.getItemsForReceiptSync(it.id) }
-            .groupBy { it.productId }
+        val allReceiptItems = receipts.flatMap { warehouseReceiptDao.getItemsForReceiptSync(it.id) }
+        val receiptItemsByKey = allReceiptItems.groupBy {
+            if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
+        }
+        val receiptItemsByProduct = allReceiptItems.groupBy { it.productId }
 
         val cartonInputs = cartons.map { c ->
             val product = productDao.getProductById(c.productId)
             val resolvedCatId = c.categoryId ?: product?.categoryId ?: "cat-uncategorized"
-            val resolvedSupplierId = c.supplierId ?: poItemsByProduct[c.productId]?.first?.supplierId ?: shipment.supplierId
+            val cKey = if (c.variantId != null) "${c.productId}:${c.variantId}" else c.productId
+            val poPair = poItemsByKey[cKey] ?: poItemsByProductFallback[c.productId]
+            val resolvedSupplierId = c.supplierId ?: poPair?.first?.supplierId ?: shipment.supplierId
             LandingCostEngine.ShipmentCartonInput(
                 cartonNumber = c.cartonNumber,
                 supplierId = resolvedSupplierId,
@@ -2945,15 +3090,18 @@ class ImportRepositoryImpl @Inject constructor(
             )
         }
 
-        val productGroups = cartons.groupBy { it.productId }
-        val productInputs = productGroups.map { (productId, groupCartons) ->
-            val product = productDao.getProductById(productId)
+        val itemGroups = cartons.groupBy {
+            if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
+        }
+        val productInputs = itemGroups.map { (groupKey, groupCartons) ->
             val firstCarton = groupCartons.first()
+            val productId = firstCarton.productId
             val variantId = firstCarton.variantId
+            val product = productDao.getProductById(productId)
             val variant = if (variantId != null) productVariantDao.getVariantById(variantId) else null
             val packedQty = groupCartons.sumOf { it.quantity }
 
-            val poPair = poItemsByProduct[productId]
+            val poPair = poItemsByKey[groupKey] ?: poItemsByProductFallback[productId]
             val resolvedSupplierId = firstCarton.supplierId ?: poPair?.first?.supplierId ?: shipment.supplierId
             val supplierConfig = shipmentSuppliers.find { it.supplierId == resolvedSupplierId }
 
@@ -2971,7 +3119,8 @@ class ImportRepositoryImpl @Inject constructor(
                 ?: database.productCategoryDao().getCategoryById(catId)?.nameEn
                 ?: "Uncategorized"
 
-            val recItems = receiptItemsByProduct[productId].orEmpty()
+            val recItems = receiptItemsByKey[groupKey]
+                ?: if (variantId == null) receiptItemsByProduct[productId].orEmpty() else emptyList()
             val (goodQty, damagedQty, missingQty, pendingQty) = if (recItems.isNotEmpty()) {
                 val dmg = recItems.sumOf { it.damagedQuantity }
                 val mis = recItems.sumOf { it.missingQuantity }
@@ -3109,13 +3258,16 @@ class ImportRepositoryImpl @Inject constructor(
                 val ci = costItems.find { it.id == expenseId }
                 val methodStr = ci?.allocationMethod ?: AllocationMethod.PURCHASE_VALUE.name
                 items.forEach { res ->
+                    val parts = res.itemId.split(":")
+                    val pId = parts[0]
+                    val vId = parts.getOrNull(1)
                     allAllocations.add(
                         LandedCostAllocation(
                             id = "lca-${UUID.randomUUID()}",
                             shipmentId = shipmentId,
                             costItemId = expenseId,
-                            productId = res.itemId,
-                            variantId = null,
+                            productId = pId,
+                            variantId = vId,
                             allocationBasis = methodStr,
                             basisValue = res.basisValue.toPlainString(),
                             basisPercentage = res.basisPercentage.toPlainString(),
@@ -3162,13 +3314,16 @@ class ImportRepositoryImpl @Inject constructor(
                 importCostDao.markCostItemsCapitalized(costItems.map { it.id }, "FINALIZED")
             }
 
-            // Update any existing FIFO layers for this shipment with the finalized unit cost
+            // Update any existing FIFO layers for this shipment matching both productId and variantId
             val existingLayers = inventoryCostLayerDao.getLayersForShipmentSync(shipmentId)
             for (layer in existingLayers) {
-                val matchingSnapshot = snapshots.find { it.productId == layer.productId }
+                val matchingSnapshot = snapshots.find { it.productId == layer.productId && it.variantId == layer.variantId }
+                    ?: snapshots.find { it.productId == layer.productId && it.variantId == null }
                 if (matchingSnapshot != null) {
                     val unitPurchase = if (matchingSnapshot.packedQuantity > 0) {
-                        matchingSnapshot.totalPurchaseCostBdtMinor / matchingSnapshot.packedQuantity
+                        BigDecimal(matchingSnapshot.totalPurchaseCostBdtMinor)
+                            .divide(BigDecimal(matchingSnapshot.packedQuantity), 0, RoundingMode.HALF_UP)
+                            .longValueExact()
                     } else 0L
                     inventoryCostLayerDao.updateCostLayerUnitCost(
                         layerId = layer.id,

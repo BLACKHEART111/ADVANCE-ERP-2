@@ -67,6 +67,9 @@ object LandingCostEngine {
         val widthCm: BigDecimal? = null,
         val heightCm: BigDecimal? = null
     ) {
+        val itemKey: String
+            get() = if (variantId != null) "$productId:$variantId" else productId
+
         val effectiveCbm: BigDecimal
             get() {
                 if (cbm > BigDecimal.ZERO) return cbm.setScale(6, RoundingMode.HALF_UP)
@@ -90,7 +93,11 @@ object LandingCostEngine {
         val productWeightMap: Map<String, BigDecimal>,
         val productCbmMap: Map<String, BigDecimal>,
         val productCartonCountMap: Map<String, Int>,
-        val categoryWeightMap: Map<String, BigDecimal>
+        val categoryWeightMap: Map<String, BigDecimal>,
+        val itemQuantityMap: Map<String, Int> = productQuantityMap,
+        val itemWeightMap: Map<String, BigDecimal> = productWeightMap,
+        val itemCbmMap: Map<String, BigDecimal> = productCbmMap,
+        val itemCartonCountMap: Map<String, Int> = productCartonCountMap
     )
 
     data class SupplierChinaDeliveryInput(
@@ -289,6 +296,11 @@ object LandingCostEngine {
         val prodCartons = mutableMapOf<String, MutableSet<String>>()
         val catWeight = mutableMapOf<String, BigDecimal>()
 
+        val itemQty = mutableMapOf<String, Int>()
+        val itemWeight = mutableMapOf<String, BigDecimal>()
+        val itemCbm = mutableMapOf<String, BigDecimal>()
+        val itemCartons = mutableMapOf<String, MutableSet<String>>()
+
         cartons.forEachIndexed { idx, c ->
             require(c.quantity > 0) { "Carton ${c.cartonNumber} quantity must be > 0" }
             require(c.grossWeightKg >= BigDecimal.ZERO) { "Carton ${c.cartonNumber} weight cannot be negative" }
@@ -309,6 +321,16 @@ object LandingCostEngine {
                 .setScale(6, RoundingMode.HALF_UP)
             prodCartons.getOrPut(c.productId) { mutableSetOf() }.add(cartonKey)
 
+            val iKey = c.itemKey
+            itemQty[iKey] = (itemQty[iKey] ?: 0) + c.quantity
+            itemWeight[iKey] = (itemWeight[iKey] ?: BigDecimal.ZERO)
+                .add(c.grossWeightKg)
+                .setScale(3, RoundingMode.HALF_UP)
+            itemCbm[iKey] = (itemCbm[iKey] ?: BigDecimal.ZERO)
+                .add(cbmVal)
+                .setScale(6, RoundingMode.HALF_UP)
+            itemCartons.getOrPut(iKey) { mutableSetOf() }.add(cartonKey)
+
             catWeight[c.categoryId] = (catWeight[c.categoryId] ?: BigDecimal.ZERO)
                 .add(c.grossWeightKg)
                 .setScale(3, RoundingMode.HALF_UP)
@@ -323,7 +345,11 @@ object LandingCostEngine {
             productWeightMap = prodWeight,
             productCbmMap = prodCbm,
             productCartonCountMap = prodCartons.mapValues { it.value.size },
-            categoryWeightMap = catWeight
+            categoryWeightMap = catWeight,
+            itemQuantityMap = itemQty,
+            itemWeightMap = itemWeight,
+            itemCbmMap = itemCbm,
+            itemCartonCountMap = itemCartons.mapValues { it.value.size }
         )
     }
 
@@ -332,14 +358,14 @@ object LandingCostEngine {
      * Default formula:
      * Product Delivery Allocation = Supplier Delivery Charge * (Product Purchase Value / Supplier Total Purchase Value)
      * Also supports optional manual product-wise allocation.
-     * Returns pair of (productId -> foreignMinor, productId -> bdtMinor).
+     * Returns pair of (itemKey -> foreignMinor, itemKey -> bdtMinor). When variantId is null, itemKey == productId.
      */
     fun allocateSupplierChinaDelivery(
         supplierDelivery: SupplierChinaDeliveryInput,
         supplierProducts: List<ShipmentProductInput>
     ): Pair<Map<String, Long>, Map<String, Long>> {
         if (supplierProducts.isEmpty() || supplierDelivery.deliveryChargeForeignMinor == 0L) {
-            val zeroMap = supplierProducts.associate { it.productId to 0L }
+            val zeroMap = supplierProducts.associate { it.itemKey to 0L }
             return zeroMap to zeroMap
         }
 
@@ -349,9 +375,10 @@ object LandingCostEngine {
         // Allocate in foreign currency first so foreign-currency breakdown (e.g. CNY 100 / CNY 200) is exact
         val foreignInputs = supplierProducts.map { prod ->
             val purchaseForeignMinor = prod.packedQuantity.toLong() * prod.unitPurchasePriceForeignMinor
-            val manualForeign = supplierDelivery.manualProductAllocationsForeignMinor[prod.productId]
+            val manualForeign = supplierDelivery.manualProductAllocationsForeignMinor[prod.itemKey]
+                ?: supplierDelivery.manualProductAllocationsForeignMinor[prod.productId]
             AllocationItemInput(
-                id = prod.productId,
+                id = prod.itemKey,
                 name = prod.productNameEn,
                 quantity = prod.packedQuantity,
                 purchaseValueBdtMinor = purchaseForeignMinor,
@@ -367,9 +394,9 @@ object LandingCostEngine {
 
         // Convert to BDT using exact reconciliation against totalBdtMinor
         val bdtInputs = supplierProducts.map { prod ->
-            val fShare = foreignAllocated[prod.productId] ?: 0L
+            val fShare = foreignAllocated[prod.itemKey] ?: 0L
             AllocationItemInput(
-                id = prod.productId,
+                id = prod.itemKey,
                 name = prod.productNameEn,
                 quantity = prod.packedQuantity,
                 purchaseValueBdtMinor = fShare
@@ -388,7 +415,7 @@ object LandingCostEngine {
      * Phase 2D: Two-level Category International Freight Calculation.
      * Formula:
      * Category Freight = Total Category Gross Weight * Applicable Rate/KG.
-     * Allocates the resulting category freight to products in that category based on their actual gross weight.
+     * Allocates the resulting category freight to products/variants in that category based on their actual gross weight.
      */
     fun calculateCategoryInternationalFreight(
         products: List<ShipmentProductInput>,
@@ -410,12 +437,13 @@ object LandingCostEngine {
                     appliedRatePerKgBdtMinor = 0L,
                     totalCategoryGrossWeightKg = BigDecimal.ZERO,
                     totalCategoryFreightBdtMinor = 0L,
-                    productAllocationsBdtMinor = catProducts.associate { it.productId to 0L }
+                    productAllocationsBdtMinor = catProducts.associate { it.itemKey to 0L }
                 )
             }
 
             val totalCategoryWeight = catProducts.fold(BigDecimal.ZERO) { acc, p ->
-                acc.add(productWeightsKg[p.productId] ?: p.fallbackGrossWeightKg)
+                val weight = productWeightsKg[p.itemKey] ?: productWeightsKg[p.productId] ?: p.fallbackGrossWeightKg
+                acc.add(weight)
             }.setScale(3, RoundingMode.HALF_UP)
 
             val totalCategoryFreightMinor = totalCategoryWeight
@@ -424,9 +452,9 @@ object LandingCostEngine {
                 .longValueExact()
 
             val allocInputs = catProducts.map { p ->
-                val weight = productWeightsKg[p.productId] ?: p.fallbackGrossWeightKg
+                val weight = productWeightsKg[p.itemKey] ?: productWeightsKg[p.productId] ?: p.fallbackGrossWeightKg
                 AllocationItemInput(
-                    id = p.productId,
+                    id = p.itemKey,
                     name = p.productNameEn,
                     quantity = p.packedQuantity,
                     grossWeightKg = weight
@@ -475,35 +503,35 @@ object LandingCostEngine {
             )
         }
 
-        // 2. Summarize carton packaging list
+        // 2. Summarize carton packaging list (supports both product-level and variant-level itemKeys)
         val packagingSummary = summarizePackagingList(cartons)
 
-        // Resolve effective weight, CBM, and carton count per product
+        // Resolve effective weight, CBM, and carton count per itemKey (falls back to productId map when needed)
         val effectiveWeightMap = products.associate { p ->
-            val w = packagingSummary.productWeightMap[p.productId]
-            p.productId to (if (w != null && w > BigDecimal.ZERO) w else p.fallbackGrossWeightKg)
+            val w = packagingSummary.itemWeightMap[p.itemKey] ?: packagingSummary.productWeightMap[p.productId]
+            p.itemKey to (if (w != null && w > BigDecimal.ZERO) w else p.fallbackGrossWeightKg)
         }
         val effectiveCbmMap = products.associate { p ->
-            val c = packagingSummary.productCbmMap[p.productId]
-            p.productId to (if (c != null && c > BigDecimal.ZERO) c else p.fallbackCbm)
+            val c = packagingSummary.itemCbmMap[p.itemKey] ?: packagingSummary.productCbmMap[p.productId]
+            p.itemKey to (if (c != null && c > BigDecimal.ZERO) c else p.fallbackCbm)
         }
         val effectiveCartonCountMap = products.associate { p ->
-            val cnt = packagingSummary.productCartonCountMap[p.productId] ?: 0
-            p.productId to (if (cnt > 0) cnt else p.fallbackCartonCount)
+            val cnt = packagingSummary.itemCartonCountMap[p.itemKey] ?: packagingSummary.productCartonCountMap[p.productId] ?: 0
+            p.itemKey to (if (cnt > 0) cnt else p.fallbackCartonCount)
         }
 
-        // 3. Calculate Product Purchase Cost in Foreign & BDT Minor
-        val purchaseForeignByProduct = products.associate { p ->
-            p.productId to (p.packedQuantity.toLong() * p.unitPurchasePriceForeignMinor)
+        // 3. Calculate Product/Variant Purchase Cost in Foreign & BDT Minor
+        val purchaseForeignByKey = products.associate { p ->
+            p.itemKey to (p.packedQuantity.toLong() * p.unitPurchasePriceForeignMinor)
         }
-        val purchaseBdtByProduct = products.associate { p ->
-            val foreignTotal = purchaseForeignByProduct[p.productId] ?: 0L
-            p.productId to convertToBdtMinor(foreignTotal, p.purchaseCurrency, p.purchaseExchangeRateToBdt)
+        val purchaseBdtByKey = products.associate { p ->
+            val foreignTotal = purchaseForeignByKey[p.itemKey] ?: 0L
+            p.itemKey to convertToBdtMinor(foreignTotal, p.purchaseCurrency, p.purchaseExchangeRateToBdt)
         }
 
         // 4. Allocate Supplier-wise China Local Delivery
-        val chinaForeignByProduct = mutableMapOf<String, Long>()
-        val chinaBdtByProduct = mutableMapOf<String, Long>()
+        val chinaForeignByKey = mutableMapOf<String, Long>()
+        val chinaBdtByKey = mutableMapOf<String, Long>()
         val deliveriesBySupplier = supplierChinaDeliveries.groupBy { it.supplierId }
         val productsBySupplier = products.groupBy { it.supplierId }
 
@@ -511,8 +539,8 @@ object LandingCostEngine {
             val supDeliveries = deliveriesBySupplier[supplierId].orEmpty()
             for (delivery in supDeliveries) {
                 val (fMap, bMap) = allocateSupplierChinaDelivery(delivery, supProducts)
-                fMap.forEach { (pid, amt) -> chinaForeignByProduct[pid] = (chinaForeignByProduct[pid] ?: 0L) + amt }
-                bMap.forEach { (pid, amt) -> chinaBdtByProduct[pid] = (chinaBdtByProduct[pid] ?: 0L) + amt }
+                fMap.forEach { (key, amt) -> chinaForeignByKey[key] = (chinaForeignByKey[key] ?: 0L) + amt }
+                bMap.forEach { (key, amt) -> chinaBdtByKey[key] = (chinaBdtByKey[key] ?: 0L) + amt }
             }
         }
 
@@ -522,25 +550,23 @@ object LandingCostEngine {
             productWeightsKg = effectiveWeightMap,
             categoryRates = categoryFreightRates
         )
-        val freightBdtByProduct = mutableMapOf<String, Long>()
+        val freightBdtByKey = mutableMapOf<String, Long>()
         categoryFreightResults.forEach { res ->
-            res.productAllocationsBdtMinor.forEach { (pid, amt) ->
-                freightBdtByProduct[pid] = (freightBdtByProduct[pid] ?: 0L) + amt
+            res.productAllocationsBdtMinor.forEach { (key, amt) ->
+                freightBdtByKey[key] = (freightBdtByKey[key] ?: 0L) + amt
             }
         }
 
         // 6. Process Additional Import Expenses (BD Transport, Customs, C&F, Port, etc.)
-        // Guard against duplicate expense IDs!
         val seenExpenseIds = mutableSetOf<String>()
-        val bdTransportBdtByProduct = mutableMapOf<String, Long>()
-        val otherExpensesBdtByProduct = mutableMapOf<String, Long>()
+        val bdTransportBdtByKey = mutableMapOf<String, Long>()
+        val otherExpensesBdtByKey = mutableMapOf<String, Long>()
         val expenseAllocationsByExpenseId = mutableMapOf<String, List<AllocationResultItem>>()
 
         for (expense in expenses) {
             require(seenExpenseIds.add(expense.expenseId)) {
                 "Duplicate expense allocation detected for expenseId: ${expense.expenseId} (${expense.expenseName})"
             }
-            // Skip PRODUCT_PURCHASE as purchase value is kept strictly separate from import expenses
             if (expense.category == CostCategory.PRODUCT_PURCHASE) continue
 
             val targetProducts = if (expense.supplierId != null) {
@@ -552,16 +578,18 @@ object LandingCostEngine {
             val expenseBdt = expense.amountBdtMinor
             val allocInputs = targetProducts.map { p ->
                 val manualAmt = if (expense.allocationMethod == AllocationMethod.MANUAL) {
-                    expense.manualProductAllocationsBdtMinor[p.productId] ?: 0L
+                    expense.manualProductAllocationsBdtMinor[p.itemKey]
+                        ?: expense.manualProductAllocationsBdtMinor[p.productId]
+                        ?: 0L
                 } else null
                 AllocationItemInput(
-                    id = p.productId,
+                    id = p.itemKey,
                     name = p.productNameEn,
                     quantity = p.packedQuantity,
-                    grossWeightKg = effectiveWeightMap[p.productId] ?: BigDecimal.ZERO,
-                    cbm = effectiveCbmMap[p.productId] ?: BigDecimal.ZERO,
-                    cartonCount = effectiveCartonCountMap[p.productId] ?: 0,
-                    purchaseValueBdtMinor = purchaseBdtByProduct[p.productId] ?: 0L,
+                    grossWeightKg = effectiveWeightMap[p.itemKey] ?: BigDecimal.ZERO,
+                    cbm = effectiveCbmMap[p.itemKey] ?: BigDecimal.ZERO,
+                    cartonCount = effectiveCartonCountMap[p.itemKey] ?: 0,
+                    purchaseValueBdtMinor = purchaseBdtByKey[p.itemKey] ?: 0L,
                     manualAmountBdtMinor = manualAmt
                 )
             }
@@ -576,35 +604,34 @@ object LandingCostEngine {
             for (alloc in allocatedItems) {
                 when (expense.category) {
                     CostCategory.CHINA_DOMESTIC_TRANSPORT -> {
-                        chinaBdtByProduct[alloc.itemId] = (chinaBdtByProduct[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
+                        chinaBdtByKey[alloc.itemId] = (chinaBdtByKey[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
                     }
                     CostCategory.INTERNATIONAL_FREIGHT,
                     CostCategory.SEA_FREIGHT,
                     CostCategory.AIR_FREIGHT -> {
-                        // Only add if category freight wasn't already covering this or if entered as explicit freight cost
-                        freightBdtByProduct[alloc.itemId] = (freightBdtByProduct[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
+                        freightBdtByKey[alloc.itemId] = (freightBdtByKey[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
                     }
                     CostCategory.LOCAL_TRANSPORTATION,
                     CostCategory.BD_LOCAL_TRANSPORT -> {
-                        bdTransportBdtByProduct[alloc.itemId] = (bdTransportBdtByProduct[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
+                        bdTransportBdtByKey[alloc.itemId] = (bdTransportBdtByKey[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
                     }
                     else -> {
-                        otherExpensesBdtByProduct[alloc.itemId] = (otherExpensesBdtByProduct[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
+                        otherExpensesBdtByKey[alloc.itemId] = (otherExpensesBdtByKey[alloc.itemId] ?: 0L) + alloc.allocatedBdtMinor
                     }
                 }
             }
         }
 
-        // 7. Build per-product breakdown & quantity outcome valuations
+        // 7. Build per-product/variant breakdown & quantity outcome valuations
         val breakdowns = products.map { p ->
-            val pid = p.productId
-            val purchaseForeign = purchaseForeignByProduct[pid] ?: 0L
-            val purchaseBdt = purchaseBdtByProduct[pid] ?: 0L
-            val chinaForeign = chinaForeignByProduct[pid] ?: 0L
-            val chinaBdt = chinaBdtByProduct[pid] ?: 0L
-            val freightBdt = freightBdtByProduct[pid] ?: 0L
-            val bdTransportBdt = bdTransportBdtByProduct[pid] ?: 0L
-            val otherExpBdt = otherExpensesBdtByProduct[pid] ?: 0L
+            val key = p.itemKey
+            val purchaseForeign = purchaseForeignByKey[key] ?: 0L
+            val purchaseBdt = purchaseBdtByKey[key] ?: 0L
+            val chinaForeign = chinaForeignByKey[key] ?: 0L
+            val chinaBdt = chinaBdtByKey[key] ?: 0L
+            val freightBdt = freightBdtByKey[key] ?: 0L
+            val bdTransportBdt = bdTransportBdtByKey[key] ?: 0L
+            val otherExpBdt = otherExpensesBdtByKey[key] ?: 0L
 
             val totalAllocatedExpBdt = chinaBdt + freightBdt + bdTransportBdt + otherExpBdt
             val totalImportCostBdt = purchaseBdt + totalAllocatedExpBdt
@@ -614,8 +641,6 @@ object LandingCostEngine {
                 .divide(BigDecimal(p.packedQuantity), 0, RoundingMode.HALF_UP)
                 .longValueExact()
 
-            // Calculate quantity outcome valuations consistent with unitImportCostBdt
-            // Reconcile any rounding remainder onto the largest bucket so accounting balances to the exact paisa
             val rawGoodVal = p.goodQuantity.toLong() * unitImportCostBdt
             val rawDamagedVal = p.damagedQuantity.toLong() * unitImportCostBdt
             val rawMissingVal = p.missingQuantity.toLong() * unitImportCostBdt
@@ -638,7 +663,7 @@ object LandingCostEngine {
             }
 
             ProductLandingCostBreakdown(
-                productId = pid,
+                productId = p.productId,
                 variantId = p.variantId,
                 productNameEn = p.productNameEn,
                 productNameBn = p.productNameBn,
@@ -650,9 +675,9 @@ object LandingCostEngine {
                 damagedQuantity = p.damagedQuantity,
                 missingQuantity = p.missingQuantity,
                 pendingQuantity = p.pendingQuantity,
-                grossWeightKg = effectiveWeightMap[pid] ?: BigDecimal.ZERO,
-                cbm = effectiveCbmMap[pid] ?: BigDecimal.ZERO,
-                cartonCount = effectiveCartonCountMap[pid] ?: 0,
+                grossWeightKg = effectiveWeightMap[key] ?: BigDecimal.ZERO,
+                cbm = effectiveCbmMap[key] ?: BigDecimal.ZERO,
+                cartonCount = effectiveCartonCountMap[key] ?: 0,
                 purchaseCostForeignMinor = purchaseForeign,
                 purchaseCurrency = p.purchaseCurrency,
                 purchaseExchangeRateToBdt = p.purchaseExchangeRateToBdt,
