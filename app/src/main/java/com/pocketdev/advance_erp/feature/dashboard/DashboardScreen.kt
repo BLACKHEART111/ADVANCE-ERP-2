@@ -95,7 +95,8 @@ fun DashboardScreen(
     onNavigateToImports: () -> Unit,
     onNavigateToSales: () -> Unit,
     onNavigateToTransactions: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToLedger: () -> Unit = onNavigateToStockAdjust
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -224,9 +225,9 @@ fun DashboardScreen(
                 }
                 item {
                     DashboardQuickAction(
-                        label = if (isBangla) "স্টক সমন্বয়" else "Adjust Stock",
-                        icon = Icons.Default.Inventory2,
-                        onClick = onNavigateToStockAdjust
+                        label = if (isBangla) "লেজার" else "Ledger",
+                        icon = Icons.Default.ReceiptLong,
+                        onClick = onNavigateToLedger
                     )
                 }
                 item {

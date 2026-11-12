@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,6 +68,7 @@ fun PosDialog(
     var selectedWarehouse by remember { mutableStateOf(warehouses.firstOrNull()) }
     var selectedCustomer by remember { mutableStateOf<Customer?>(null) }
     var isWholesale by remember { mutableStateOf(false) }
+    var showCostAndProfit by remember { mutableStateOf(false) }
 
     val cartItems = remember { mutableStateListOf<PosCartItem>() }
     var barcodeInput by remember { mutableStateOf("") }
@@ -184,6 +187,17 @@ fun PosDialog(
                         },
                         label = { Text(if (isWholesale) "পাইকারি" else "খুচরা", maxLines = 1) }
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { showCostAndProfit = !showCostAndProfit },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (showCostAndProfit) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = "Cost & Profit Visibility",
+                            tint = if (showCostAndProfit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        )
+                    }
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close") }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
@@ -324,6 +338,38 @@ fun PosDialog(
                                         )
                                     }
                                     Text("Line total: ৳${Formatters.formatMinorUnit(item.lineTotalMinor)}", fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.End))
+
+                                    if (showCostAndProfit) {
+                                        val unitCostMinor = if (item.variant != null && item.variant.variantCostMinor > 0L) {
+                                            item.variant.variantCostMinor
+                                        } else {
+                                            item.product.purchasePriceMinor
+                                        }
+                                        val lineCostMinor = unitCostMinor * item.quantity
+                                        val lineProfitMinor = item.lineTotalMinor - lineCostMinor
+                                        val profitColor = if (lineProfitMinor >= 0) Color(0xFF16A34A) else Color(0xFFDC2626)
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "কেনা: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "লাভ: ৳${Formatters.formatMinorUnit(lineProfitMinor)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = profitColor
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -359,6 +405,33 @@ fun PosDialog(
                     ) {
                         Text("NET PAYABLE:", fontWeight = FontWeight.Bold)
                         Text("৳${Formatters.formatMinorUnit(netTotalMinor)}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+
+                    if (showCostAndProfit && cartItems.isNotEmpty()) {
+                        val totalCostMinor = cartItems.sumOf { item ->
+                            val unitCost = if (item.variant != null && item.variant.variantCostMinor > 0L) item.variant.variantCostMinor else item.product.purchasePriceMinor
+                            unitCost * item.quantity
+                        }
+                        val totalProfitMinor = netTotalMinor - totalCostMinor
+                        val totalProfitColor = if (totalProfitMinor >= 0) Color(0xFF16A34A) else Color(0xFFDC2626)
+                        val marginPct = if (netTotalMinor > 0) (totalProfitMinor.toDouble() / netTotalMinor.toDouble()) * 100 else 0.0
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFF86EFAC), RoundedCornerShape(8.dp))
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("মোট আনুমানিক লাভ:", fontWeight = FontWeight.Bold, color = Color(0xFF166534))
+                            Text(
+                                "৳${Formatters.formatMinorUnit(totalProfitMinor)} (${String.format(java.util.Locale.US, "%.1f", marginPct)}%)",
+                                fontWeight = FontWeight.Bold,
+                                color = totalProfitColor
+                            )
+                        }
                     }
 
                     Text("Quick Cash Tender:", style = MaterialTheme.typography.labelSmall)

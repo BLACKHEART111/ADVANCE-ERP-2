@@ -54,6 +54,9 @@ interface ImportShipmentDao {
     @Query("DELETE FROM shipment_cartons WHERE purchaseOrderId = :orderId AND cartonNumber = :cartonNumber")
     suspend fun deleteCartonByNumber(orderId: String, cartonNumber: String)
 
+    @Query("DELETE FROM shipment_cartons WHERE purchaseOrderId = :orderId")
+    suspend fun deleteCartonsForOrder(orderId: String)
+
     @Query("SELECT * FROM shipment_cartons WHERE shipmentId = :shipmentId ORDER BY cartonNumber ASC")
     fun getCartonsForShipment(shipmentId: String): Flow<List<ShipmentCarton>>
 

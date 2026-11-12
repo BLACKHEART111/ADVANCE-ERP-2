@@ -331,19 +331,39 @@ fun ProductDetailDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Financial Overview: Purchase Price & Selling Price
+                val effectivePurchaseDisplay = if (variants.isNotEmpty()) {
+                    val costs = variants.map { if (it.variantCostMinor > 0L) it.variantCostMinor else product.purchasePriceMinor }
+                    val minC = costs.minOrNull() ?: product.purchasePriceMinor
+                    val maxC = costs.maxOrNull() ?: product.purchasePriceMinor
+                    if (minC == maxC) Formatters.formatMoney(minC, currency, language)
+                    else "${Formatters.formatMoney(minC, currency, language)} – ${Formatters.formatMoney(maxC, currency, language)}"
+                } else {
+                    Formatters.formatMoney(product.purchasePriceMinor, currency, language)
+                }
+
+                val effectiveSellingDisplay = if (variants.isNotEmpty()) {
+                    val prices = variants.map { if (it.variantPriceMinor > 0L) it.variantPriceMinor else product.sellingPriceMinor }
+                    val minP = prices.minOrNull() ?: product.sellingPriceMinor
+                    val maxP = prices.maxOrNull() ?: product.sellingPriceMinor
+                    if (minP == maxP) Formatters.formatMoney(minP, currency, language)
+                    else "${Formatters.formatMoney(minP, currency, language)} – ${Formatters.formatMoney(maxP, currency, language)}"
+                } else {
+                    Formatters.formatMoney(product.sellingPriceMinor, currency, language)
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     DetailCard(
                         title = stringResource(R.string.purchase_price),
-                        value = Formatters.formatMoney(product.purchasePriceMinor, currency, language),
+                        value = effectivePurchaseDisplay,
                         color = SecondaryTeal,
                         modifier = Modifier.weight(1f)
                     )
                     DetailCard(
                         title = stringResource(R.string.selling_price),
-                        value = Formatters.formatMoney(product.sellingPriceMinor, currency, language),
+                        value = effectiveSellingDisplay,
                         color = PrimaryPurple,
                         modifier = Modifier.weight(1f)
                     )
@@ -607,24 +627,35 @@ fun ProductDetailDialog(
                                     }
                                 }
 
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                Column(
+                                    horizontalAlignment = Alignment.End
                                 ) {
+                                    val effectiveCost = if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
                                     Text(
-                                        text = Formatters.formatMoney(v.variantPriceMinor, currency, language),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = PrimaryPurple,
-                                        maxLines = 1,
-                                        softWrap = false
+                                        text = if (language == AppLanguage.BANGLA) "ক্রয়: ${Formatters.formatMoney(effectiveCost, currency, language)}" else "Buy: ${Formatters.formatMoney(effectiveCost, currency, language)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = SecondaryTeal,
+                                        fontWeight = FontWeight.Medium
                                     )
-                                    Icon(
-                                        imageVector = Icons.Default.ChevronRight,
-                                        contentDescription = "Details",
-                                        tint = TextMuted,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (language == AppLanguage.BANGLA) "বিক্রয়: ${Formatters.formatMoney(v.variantPriceMinor, currency, language)}" else "Sell: ${Formatters.formatMoney(v.variantPriceMinor, currency, language)}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = PrimaryPurple,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Default.ChevronRight,
+                                            contentDescription = "Details",
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                             }
                         }

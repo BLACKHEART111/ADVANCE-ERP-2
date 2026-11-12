@@ -10,6 +10,7 @@ import com.pocketdev.advance_erp.core.engine.LandedCostAllocationEngine
 import com.pocketdev.advance_erp.core.engine.LandingCostEngine
 import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
 import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
+import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import com.pocketdev.advance_erp.data.dao.CustomerDao
 import com.pocketdev.advance_erp.data.dao.ImportCostDao
 import com.pocketdev.advance_erp.data.dao.ImportShipmentDao
@@ -2232,6 +2233,175 @@ class ImportRepositoryImpl @Inject constructor(
 
     override suspend fun deletePurchaseCostItem(costItemId: String) {
         importCostDao.deleteCostItem(costItemId)
+    }
+
+    override suspend fun updatePurchaseOrder(
+        orderId: String,
+        supplierId: String,
+        currency: String,
+        exchangeRate: BigDecimal,
+        items: List<PurchaseOrderItemDraft>,
+        notes: String?,
+        status: PurchaseOrderStatus,
+        cartons: List<PoMixedCartonDraft>,
+        chinaDeliveryChargeMinor: Long,
+        categoryFreightRatesBdtMinor: Map<String, Long>,
+        handlingCostMinor: Long,
+        sampleCostMinor: Long,
+        attachments: String?
+    ): Result<Unit> = runCatching {
+        require(items.isNotEmpty()) { "Purchase order must contain at least 1 item" }
+        require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive: $exchangeRate" }
+
+        val existingOrder = purchaseOrderDao.getOrderById(orderId)
+            ?: throw IllegalArgumentException("Purchase order not found: $orderId")
+
+        var totalOriginalMinor = 0L
+        var totalBdtMinor = 0L
+
+        val poItems = items.map { draft ->
+            require(draft.quantity > 0) { "Quantity must be greater than 0" }
+            require(draft.unitPriceMinor > 0) { "Unit price must be greater than 0" }
+
+            val lineOriginalMinor = draft.quantity.toLong() * draft.unitPriceMinor
+            val lineBdtMinor = BigDecimal(lineOriginalMinor)
+                .multiply(exchangeRate)
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact()
+
+            totalOriginalMinor += lineOriginalMinor
+            totalBdtMinor += lineBdtMinor
+
+            PurchaseOrderItem(
+                id = "poi-${UUID.randomUUID()}",
+                purchaseOrderId = orderId,
+                productId = draft.productId,
+                variantId = draft.variantId,
+                quantity = draft.quantity,
+                unitPriceMinor = draft.unitPriceMinor,
+                totalAmountMinor = lineOriginalMinor,
+                totalBdtAmountMinor = lineBdtMinor,
+                receivedQuantity = 0,
+                cartonQuantity = draft.cartonQuantity,
+                pcsPerCarton = draft.pcsPerCarton,
+                grossWeightKg = draft.grossWeightKg.toPlainString(),
+                netWeightKg = draft.netWeightKg.toPlainString(),
+                cbm = draft.cbm.toPlainString()
+            )
+        }
+
+        val totalCartonsSum = if (cartons.isNotEmpty()) cartons.size else poItems.sumOf { it.cartonQuantity }
+        val totalGrossWeightSum = if (cartons.isNotEmpty()) {
+            cartons.fold(BigDecimal.ZERO) { acc, it -> acc.add(it.grossWeightKg) }
+        } else {
+            poItems.fold(BigDecimal.ZERO) { acc, it -> acc.add(BigDecimal(it.grossWeightKg.ifBlank { "0" })) }
+        }
+        val totalNetWeightSum = if (cartons.isNotEmpty()) {
+            cartons.fold(BigDecimal.ZERO) { acc, it -> acc.add(it.netWeightKg) }
+        } else {
+            poItems.fold(BigDecimal.ZERO) { acc, it -> acc.add(BigDecimal(it.netWeightKg.ifBlank { "0" })) }
+        }
+        val totalCbmSum = if (cartons.isNotEmpty()) {
+            cartons.fold(BigDecimal.ZERO) { acc, it ->
+                val cbm = if (it.lengthCm > BigDecimal.ZERO && it.widthCm > BigDecimal.ZERO && it.heightCm > BigDecimal.ZERO) {
+                    CbmCalculator.calculateCbm(it.lengthCm, it.widthCm, it.heightCm, 1)
+                } else BigDecimal.ZERO
+                acc.add(cbm)
+            }
+        } else {
+            poItems.fold(BigDecimal.ZERO) { acc, it -> acc.add(BigDecimal(it.cbm.ifBlank { "0" })) }
+        }
+
+        val updatedOrder = existingOrder.copy(
+            supplierId = supplierId,
+            status = status.name,
+            currency = currency,
+            exchangeRateToBdt = exchangeRate.toPlainString(),
+            totalAmountMinor = totalOriginalMinor,
+            totalBdtAmountMinor = totalBdtMinor,
+            notes = notes,
+            attachments = attachments ?: existingOrder.attachments,
+            totalCartons = totalCartonsSum,
+            totalGrossWeightKg = totalGrossWeightSum.toPlainString(),
+            totalNetWeightKg = totalNetWeightSum.toPlainString(),
+            totalCbm = totalCbmSum.toPlainString(),
+            updatedAt = System.currentTimeMillis()
+        )
+
+        // Replace order items
+        purchaseOrderDao.saveOrderWithItems(updatedOrder, poItems)
+
+        // Sync batch shipment summary if exists
+        val batchShipment = importShipmentDao.getBatchShipmentForOrder(orderId)
+        if (batchShipment != null) {
+            importShipmentDao.updateShipment(
+                batchShipment.copy(
+                    supplierId = supplierId,
+                    totalCartons = totalCartonsSum,
+                    totalQuantity = poItems.sumOf { it.quantity },
+                    totalGrossWeightKg = totalGrossWeightSum.toPlainString(),
+                    totalNetWeightKg = totalNetWeightSum.toPlainString(),
+                    totalCbm = totalCbmSum.toPlainString(),
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+
+        // Sync cartons if provided
+        if (cartons.isNotEmpty()) {
+            importShipmentDao.deleteCartonsForOrder(orderId)
+            val shipmentId = batchShipment?.id ?: "shp-${UUID.randomUUID()}"
+            cartons.forEach { ctn ->
+                if (ctn.lines.isNotEmpty()) {
+                    val lineInputs = ctn.lines.map {
+                        MixedCartonLineInput(
+                            productId = it.productId,
+                            variantId = it.variantId,
+                            productName = it.productName,
+                            quantity = it.quantity
+                        )
+                    }
+                    val allocated = CartonWeightAllocationEngine.allocateWeights(
+                        cartonGrossWeightKg = ctn.grossWeightKg,
+                        cartonNetWeightKg = ctn.netWeightKg,
+                        lines = lineInputs
+                    )
+                    val cbm = if (ctn.lengthCm > BigDecimal.ZERO && ctn.widthCm > BigDecimal.ZERO && ctn.heightCm > BigDecimal.ZERO) {
+                        CbmCalculator.calculateCbm(ctn.lengthCm, ctn.widthCm, ctn.heightCm, 1)
+                    } else BigDecimal.ZERO
+
+                    val totalQty = ctn.lines.sumOf { it.quantity }
+                    allocated.forEach { alloc ->
+                        val cartonId = "ctn-${UUID.randomUUID()}"
+                        val product = productDao.getProductById(alloc.productId)
+                        val resolvedCatId = product?.categoryId
+                        val resolvedCatName = resolvedCatId?.let { database.productCategoryDao().getCategoryById(it)?.nameEn }
+                        val cartonEntity = ShipmentCarton(
+                            id = cartonId,
+                            shipmentId = shipmentId,
+                            cartonNumber = ctn.cartonNumber,
+                            productId = alloc.productId,
+                            variantId = alloc.variantId,
+                            quantity = alloc.quantity,
+                            lengthCm = ctn.lengthCm.toPlainString(),
+                            widthCm = ctn.widthCm.toPlainString(),
+                            heightCm = ctn.heightCm.toPlainString(),
+                            grossWeightKg = alloc.allocatedGrossWeightKg.toPlainString(),
+                            netWeightKg = alloc.allocatedNetWeightKg.toPlainString(),
+                            cbm = cbm.toPlainString(),
+                            purchaseOrderId = orderId,
+                            isMixedCarton = ctn.lines.size > 1,
+                            totalCartonQuantity = totalQty,
+                            cartonGrossWeightKg = ctn.grossWeightKg.toPlainString(),
+                            supplierId = supplierId,
+                            categoryId = resolvedCatId,
+                            categoryName = resolvedCatName
+                        )
+                        importShipmentDao.insertCarton(cartonEntity)
+                    }
+                }
+            }
+        }
     }
 
     override suspend fun updatePurchaseOrderPacking(

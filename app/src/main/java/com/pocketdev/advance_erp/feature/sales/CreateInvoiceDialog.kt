@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -139,6 +141,7 @@ fun CreateInvoiceDialog(
     var isFullPaymentSelected by remember { mutableStateOf(false) }
     var paymentMethod by remember { mutableStateOf("CASH") } // CASH, BANK, MFS, CREDIT
     var notes by remember { mutableStateOf("") }
+    var showCostAndProfit by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Option C Credit Limit Control State
@@ -341,8 +344,20 @@ fun CreateInvoiceDialog(
                             )
                         }
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { showCostAndProfit = !showCostAndProfit },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (showCostAndProfit) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = "Cost & Profit Visibility",
+                                tint = if (showCostAndProfit) PrimaryPurple else TextMuted
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        }
                     }
                 }
 
@@ -712,6 +727,44 @@ fun CreateInvoiceDialog(
                                         shape = RoundedCornerShape(8.dp)
                                     )
                                 }
+
+                                if (showCostAndProfit && curProduct != null) {
+                                    val unitCostMinor = if (curVariant != null && curVariant.variantCostMinor > 0L) {
+                                        curVariant.variantCostMinor
+                                    } else {
+                                        curProduct.purchasePriceMinor
+                                    }
+                                    val qty = itemDraft.quantityStr.toIntOrNull() ?: 0
+                                    val priceMinor = runCatching { Money.parseFromString(itemDraft.unitPriceStr).minorUnits }.getOrDefault(0L)
+                                    val discMinor = runCatching { Money.parseFromString(itemDraft.discountStr).minorUnits }.getOrDefault(0L)
+                                    val lineGrossMinor = qty * priceMinor
+                                    val lineNetMinor = (lineGrossMinor - discMinor).coerceAtLeast(0L)
+                                    val lineCostMinor = unitCostMinor * qty
+                                    val lineProfitMinor = lineNetMinor - lineCostMinor
+                                    val profitColor = if (lineProfitMinor >= 0) Color(0xFF16A34A) else Color(0xFFDC2626)
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isBangla) "ক্রয়: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc" else "Cost: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextSecondary
+                                        )
+                                        Text(
+                                            text = if (isBangla) "আনুমানিক লাভ: ৳${Formatters.formatMinorUnit(lineProfitMinor)}" else "Profit: ৳${Formatters.formatMinorUnit(lineProfitMinor)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = profitColor
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -903,6 +956,31 @@ fun CreateInvoiceDialog(
                                 ) {
                                     Text("Due Amount / বকেয়া:", color = if (dueAmountMinor > 0) Color(0xFFFF8A80) else Color.White.copy(alpha = 0.8f))
                                     Text("৳" + Formatters.formatMinorUnit(dueAmountMinor), color = if (dueAmountMinor > 0) Color(0xFFFF8A80) else Color.White, fontWeight = FontWeight.Bold)
+                                }
+
+                                if (showCostAndProfit && itemsList.isNotEmpty()) {
+                                    val totalCostMinor = itemsList.sumOf { item ->
+                                        val prod = productsMap[item.productId]
+                                        val pVars = variantsByProduct[item.productId] ?: emptyList()
+                                        val curV = pVars.find { it.id == item.variantId }
+                                        val unitCost = if (curV != null && curV.variantCostMinor > 0L) curV.variantCostMinor else (prod?.purchasePriceMinor ?: 0L)
+                                        val q = item.quantityStr.toIntOrNull() ?: 0
+                                        unitCost * q
+                                    }
+                                    val totalProfitMinor = grandTotalMinor - totalCostMinor
+                                    val marginPct = if (grandTotalMinor > 0) (totalProfitMinor.toDouble() / grandTotalMinor.toDouble()) * 100 else 0.0
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = Color.White.copy(alpha = 0.2f))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Estimated Profit / আনুমানিক লাভ:", color = Color(0xFFA7F3D0), fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            "৳" + Formatters.formatMinorUnit(totalProfitMinor) + " (${String.format(java.util.Locale.US, "%.1f", marginPct)}%)",
+                                            color = Color(0xFFA7F3D0),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }

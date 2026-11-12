@@ -116,24 +116,57 @@ fun WarehouseReceivingDialog(
     // Initialize lines based on selected method
     val lines = remember(selectedMethod, cartons, poItems) {
         val list = mutableStateListOf<ReceivingLineState>()
-        if (selectedMethod == "CARTON_WISE" && cartons.isNotEmpty()) {
-            cartons.forEach { c ->
-                val prod = productsMap[c.productId]
-                val name = if (isBangla && !prod?.nameBn.isNullOrBlank()) prod?.nameBn!! else prod?.nameEn ?: c.productId
-                list.add(
-                    ReceivingLineState(
-                        cartonId = c.id,
-                        cartonNumber = c.cartonNumber,
-                        productId = c.productId,
-                        variantId = c.variantId,
-                        productName = name,
-                        expectedQty = c.quantity,
-                        receivedQtyStr = c.quantity.toString(),
-                        goodQtyStr = c.quantity.toString(),
-                        damagedQtyStr = "0",
-                        missingQtyStr = "0"
+        if (selectedMethod == "CARTON_WISE") {
+            if (cartons.isNotEmpty()) {
+                cartons.forEach { c ->
+                    val prod = productsMap[c.productId]
+                    val name = if (isBangla && !prod?.nameBn.isNullOrBlank()) prod?.nameBn!! else prod?.nameEn ?: c.productId
+                    list.add(
+                        ReceivingLineState(
+                            cartonId = c.id,
+                            cartonNumber = c.cartonNumber,
+                            productId = c.productId,
+                            variantId = c.variantId,
+                            productName = name,
+                            expectedQty = c.quantity,
+                            receivedQtyStr = c.quantity.toString(),
+                            goodQtyStr = c.quantity.toString(),
+                            damagedQtyStr = "0",
+                            missingQtyStr = "0"
+                        )
                     )
-                )
+                }
+            } else {
+                // Synthesize cartons from PO item packaging so carton inspection is never blank
+                var cartonCounter = 1
+                poItems.forEach { item ->
+                    val prod = productsMap[item.productId]
+                    val name = if (isBangla && !prod?.nameBn.isNullOrBlank()) prod?.nameBn!! else prod?.nameEn ?: item.productId
+                    val ctnCount = if (item.cartonQuantity > 0) item.cartonQuantity else 1
+                    val pcsPerCtn = if (item.pcsPerCarton > 0) item.pcsPerCarton else (item.quantity / ctnCount).coerceAtLeast(1)
+                    var remQty = item.quantity
+
+                    for (i in 1..ctnCount) {
+                        val thisCtnQty = if (i == ctnCount) remQty else pcsPerCtn.coerceAtMost(remQty)
+                        if (thisCtnQty > 0) {
+                            list.add(
+                                ReceivingLineState(
+                                    cartonId = null,
+                                    cartonNumber = "CTN-%02d".format(cartonCounter++),
+                                    productId = item.productId,
+                                    variantId = item.variantId,
+                                    productName = name,
+                                    expectedQty = thisCtnQty,
+                                    receivedQtyStr = thisCtnQty.toString(),
+                                    goodQtyStr = thisCtnQty.toString(),
+                                    damagedQtyStr = "0",
+                                    missingQtyStr = "0"
+                                )
+                            )
+                            remQty -= thisCtnQty
+                        }
+                    }
+                }
             }
         } else {
             // Physical Count method: lines per purchase order item

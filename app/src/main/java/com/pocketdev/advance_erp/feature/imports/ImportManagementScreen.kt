@@ -99,12 +99,7 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceipt
 
 enum class ImportModuleTab(val titleEn: String, val titleBn: String, val icon: ImageVector) {
     OVERVIEW("Overview", "সারসংক্ষেপ", Icons.Default.Dashboard),
-    PURCHASE_ORDERS("Purchase Orders", "ক্রয়াদেশ (চীন)", Icons.Default.ShoppingCart),
-    SHIPMENTS("Shipments", "আমদানি চালান", Icons.Default.FlightTakeoff),
-    CARTON_TRACKING("Cartons & CBM", "কার্টন ট্র্যাকিং", Icons.Default.ViewInAr),
-    FREIGHT_CUSTOMS("Cost Sheet", "আমদানি ব্যয়", Icons.Default.Shield),
-    LANDED_COST("Landed Cost Engine", "ল্যান্ডেড কস্ট ইঞ্জিন", Icons.Default.Calculate),
-    RECEIVING("Warehouse Receiving", "পণ্য গ্রহণ", Icons.Default.Warehouse),
+    PURCHASE_ORDERS("Purchase Orders", "ক্রয়াদেশ (PO)", Icons.Default.ShoppingCart),
     COST_LAYERS("Inventory Cost Layers", "কস্ট লেয়ার্স", Icons.Default.Layers)
 }
 
@@ -129,6 +124,8 @@ fun ImportManagementScreen(
     var showAddAdditionalCostDialog by remember { mutableStateOf(false) }
     var showCompletionDialog by remember { mutableStateOf(false) }
     var showShipmentWorkspaceDialog by remember { mutableStateOf(false) }
+    var editingPo by remember { mutableStateOf<PurchaseOrder?>(null) }
+    var poToShare by remember { mutableStateOf<PurchaseOrder?>(null) }
 
     // Preselected entities for dialogs
     var preselectedOrderIdForPayment by remember { mutableStateOf<String?>(null) }
@@ -327,16 +324,14 @@ fun ImportManagementScreen(
                                     }
                                     Button(
                                         onClick = {
-                                            preselectedOrderIdForShipment = null
-                                            preselectedSupplierIdForShipment = null
-                                            showCreateShipmentDialog = true
+                                            selectedTab = ImportModuleTab.COST_LAYERS
                                         },
                                         modifier = Modifier.weight(1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = DeepNavy),
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(vertical = 8.dp)
                                     ) {
-                                        Text(text = if (isBangla) "+ চালান" else "+ Shipment", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(text = if (isBangla) "কস্ট লেয়ার্স" else "Cost Layers", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -417,83 +412,15 @@ fun ImportManagementScreen(
                     }
 
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // Active Shipments Card
-                            ERPCard(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedTab = ImportModuleTab.SHIPMENTS },
-                                contentPadding = 14.dp
-                            ) {
-                                Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.FlightTakeoff, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isBangla) "চলমান চালান" else "In-Transit",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TextMuted
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "$activeShipmentsCount / ${uiState.shipments.size}",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Black,
-                                        color = DeepNavy
-                                    )
-                                    Text(
-                                        text = "${totalCbmSum.toPlainString()} m³ total volume",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = SecondaryTeal
-                                    )
-                                }
-                            }
+                        val activeCostLayersCount = uiState.costLayers.count { it.remainingQuantity > 0 }
+                        val totalValuationMinor = uiState.costLayers.filter { it.remainingQuantity > 0 }
+                            .sumOf { it.unitLandedCostBdtMinor * it.remainingQuantity }
+                        val totalRemainingPcs = uiState.costLayers.sumOf { it.remainingQuantity }
 
-                            // Capitalized Costs Card
-                            ERPCard(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedTab = ImportModuleTab.FREIGHT_CUSTOMS },
-                                contentPadding = 14.dp
-                            ) {
-                                Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Shield, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isBangla) "আমদানি ব্যয়" else "Import Costs",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TextMuted
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = Formatters.formatMoney(totalExpensesBdt, CurrencyCode.BDT, uiState.language),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Black,
-                                        color = PrimaryPurple
-                                    )
-                                    Text(
-                                        text = "${uiState.costItems.size} ${if (isBangla) "টি বিল ভাউচার" else "expense items"}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextSecondary
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Warehouse Receiving KPI
-                    item {
                         ERPCard(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedTab = ImportModuleTab.RECEIVING },
+                                .clickable { selectedTab = ImportModuleTab.COST_LAYERS },
                             contentPadding = 14.dp
                         ) {
                             Row(
@@ -503,10 +430,10 @@ fun ImportManagementScreen(
                             ) {
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Warehouse, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Layers, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = if (isBangla) "গুদামে পণ্য গ্রহণ ও কস্ট লেয়ার্স" else "Warehouse Receiving & Cost Layers",
+                                            text = if (isBangla) "ইনভেন্টরি কস্ট লেয়ার্স ও মজুদ মূল্যায়ন" else "Inventory Cost Layers & Valuation",
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = DeepNavy
@@ -514,22 +441,22 @@ fun ImportManagementScreen(
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "${uiState.warehouseReceipts.size} ${if (isBangla) "টি চালান গৃহীত হয়েছে • ${uiState.costLayers.size} টি কস্ট ব্যাচ সক্রিয়" else "Receipts Posted • ${uiState.costLayers.size} Cost Batches Active"}",
+                                        text = "$activeCostLayersCount ${if (isBangla) "টি সক্রিয় ব্যাচ • মোট $totalRemainingPcs পিস মজুদ" else "Active Batches • $totalRemainingPcs pcs in stock"}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(StatusSuccess.copy(alpha = 0.15f))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
+                                Column(horizontalAlignment = Alignment.End) {
                                     Text(
-                                        text = if (isBangla) "FIFO কস্টিং" else "FIFO Costing",
+                                        text = if (isBangla) "মোট মজুদ মূল্য" else "Total Valuation",
                                         style = MaterialTheme.typography.labelSmall,
+                                        color = TextMuted
+                                    )
+                                    Text(
+                                        text = Formatters.formatMoney(totalValuationMinor, CurrencyCode.BDT, uiState.language),
+                                        style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = StatusSuccess
+                                        color = PrimaryPurple
                                     )
                                 }
                             }
@@ -707,7 +634,8 @@ fun ImportManagementScreen(
                                     viewModel.confirmPurchaseOrder(orderId)
                                 },
                                 onSharePdf = {
-                                    viewModel.sharePurchaseOrderPdf(context, po)
+                                    viewModel.selectPurchaseOrder(po)
+                                    poToShare = po
                                 }
                             )
                         }
@@ -715,484 +643,7 @@ fun ImportManagementScreen(
                 }
 
                 // ==========================================
-                // TAB 2: SHIPMENTS
-                // ==========================================
-                if (selectedTab == ImportModuleTab.SHIPMENTS) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.import_shipments),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = if (isBangla) "এয়ার কার্গো এবং সমুদ্র কনসাইনমেন্ট" else "Air Cargo & Sea Consignments",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                            }
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (selectedShipment != null) {
-                                    OutlinedButton(
-                                        onClick = { showShipmentWorkspaceDialog = true },
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                                    ) {
-                                        Icon(Icons.Default.Calculate, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = if (isBangla) "ওয়ার্কস্পেস" else "Workspace",
-                                            fontSize = 12.sp,
-                                            color = SecondaryTeal,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { viewModel.sharePackingListPdf(context, selectedShipment) },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Share Packing List", tint = SecondaryTeal)
-                                    }
-                                }
-                                Button(
-                                    onClick = {
-                                        preselectedOrderIdForShipment = null
-                                        preselectedSupplierIdForShipment = null
-                                        showCreateShipmentDialog = true
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isBangla) "+ নতুন চালান" else "+ New Shipment",
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (uiState.shipments.isEmpty()) {
-                        item {
-                            ERPCard(contentPadding = 20.dp) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.LocalShipping,
-                                        contentDescription = null,
-                                        tint = PrimaryPurple.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text(
-                                        text = if (isBangla) "কোনো চালান এখনও বুক করা হয়নি" else "No Import Shipments Created Yet",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = DeepNavy
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = if (isBangla) "আপনার প্রথম এয়ার কার্গো বা সমুদ্র কনসাইনমেন্ট বুক করতে নিচের বাটনে চাপ দিন।" else "Tap the button below to book and track your first consignment.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextMuted,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(14.dp))
-                                    Button(
-                                        onClick = {
-                                            preselectedOrderIdForShipment = null
-                                            preselectedSupplierIdForShipment = null
-                                            showCreateShipmentDialog = true
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isBangla) "প্রথম চালান তৈরি করুন" else "Create First Shipment",
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        items(uiState.shipments) { shipment ->
-                            val isSelected = shipment.id == uiState.selectedShipmentId
-                            LiveShipmentCard(
-                                shipment = shipment,
-                                isSelected = isSelected,
-                                onSelect = {
-                                    viewModel.selectShipment(shipment.id)
-                                    showShipmentWorkspaceDialog = true
-                                },
-                                onSharePdf = { viewModel.sharePackingListPdf(context, shipment) }
-                            )
-                        }
-                    }
-                }
-
-                // ==========================================
-                // TAB 3: CARTONS & CBM TRACKING
-                // ==========================================
-                if (selectedTab == ImportModuleTab.CARTON_TRACKING) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ERPSectionHeader(
-                                title = stringResource(R.string.carton_tracking),
-                                subtitle = "Shipment: ${selectedShipment?.shipmentNumber ?: "None"} • Live CBM"
-                            )
-                            if (selectedShipment != null) {
-                                Button(
-                                    onClick = { showAddCartonDialog = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Add Carton", fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    if (selectedShipment != null) {
-                        item {
-                            ERPCard(backgroundColor = DeepNavy, contentPadding = 14.dp) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceAround
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Cartons", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-                                        Text("${selectedShipment.totalCartons}", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Total Volume", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-                                        Text("${selectedShipment.totalCbm} m³", color = SecondaryTeal, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                                    }
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Gross Weight", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-                                        Text("${selectedShipment.totalGrossWeightKg} kg", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                                    }
-                                }
-                            }
-                        }
-
-                        if (uiState.selectedShipmentCartons.isEmpty()) {
-                            item {
-                                ERPCard {
-                                    Text("No cartons found for ${selectedShipment.shipmentNumber}. Tap '+ Add Carton' to add.", color = TextMuted)
-                                }
-                            }
-                        } else {
-                            items(uiState.selectedShipmentCartons) { carton ->
-                                val product = uiState.products.find { it.id == carton.productId }
-                                ERPCard(contentPadding = 12.dp) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(carton.cartonNumber, fontWeight = FontWeight.Bold, color = DeepNavy)
-                                            Text("SKU: ${product?.nameEn ?: carton.productId}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                            Text("Dims: ${carton.lengthCm}×${carton.widthCm}×${carton.heightCm} cm", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                        }
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text("${carton.quantity} pcs", fontWeight = FontWeight.Bold, color = PrimaryPurple)
-                                            Text("${carton.cbm} m³ • ${carton.grossWeightKg} kg", style = MaterialTheme.typography.labelSmall, color = SecondaryTeal)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        item {
-                            ERPCard { Text("Please select a shipment to view cartons.", color = TextMuted) }
-                        }
-                    }
-                }
-
-                // ==========================================
-                // TAB 4: IMPORT COST SHEET
-                // ==========================================
-                if (selectedTab == ImportModuleTab.FREIGHT_CUSTOMS) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ERPSectionHeader(
-                                title = "Import Cost Sheet",
-                                subtitle = "Shipment: ${selectedShipment?.shipmentNumber ?: "None"}"
-                            )
-                            if (selectedShipment != null) {
-                                Button(
-                                    onClick = { showAddCostDialog = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Add Cost", fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    if (selectedShipment != null) {
-                        val totalBdt = uiState.costItems.sumOf { it.bdtAmountMinor }
-                        item {
-                            ERPCard(backgroundColor = Color(0xFFF1F5F9)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Total Import Expenses (BDT):", fontWeight = FontWeight.Bold, color = DeepNavy)
-                                    Text(
-                                        Formatters.formatMoney(totalBdt, CurrencyCode.BDT, uiState.language),
-                                        fontWeight = FontWeight.Black,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = PrimaryPurple
-                                    )
-                                }
-                            }
-                        }
-
-                        if (uiState.costItems.isEmpty()) {
-                            item {
-                                ERPCard {
-                                    Text("No cost records for this shipment yet. Tap '+ Add Cost' to record freight, duty, or handling.", color = TextMuted)
-                                }
-                            }
-                        } else {
-                            items(uiState.costItems) { cost ->
-                                ERPCard(contentPadding = 12.dp) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(cost.description, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                            Text("Category: ${cost.costCategory} • Method: ${cost.allocationMethod}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                            Text("A/C: ${cost.paymentAccount}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                                        }
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                Formatters.formatMoney(cost.bdtAmountMinor, CurrencyCode.BDT, uiState.language),
-                                                fontWeight = FontWeight.Bold,
-                                                color = DeepNavy
-                                            )
-                                            Text("${cost.currency} ${cost.amountMinor / 100}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ==========================================
-                // TAB 5: LANDED COST ENGINE
-                // ==========================================
-                if (selectedTab == ImportModuleTab.LANDED_COST) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ERPSectionHeader(
-                                title = stringResource(R.string.landed_cost),
-                                subtitle = "Shipment: ${selectedShipment?.shipmentNumber ?: "None"}"
-                            )
-                            if (selectedShipment != null) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    if (uiState.landedCostSnapshots.isNotEmpty()) {
-                                        IconButton(onClick = { viewModel.shareLandedCostPdf(context, selectedShipment) }) {
-                                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Share Landed Cost Report", tint = PrimaryPurple)
-                                        }
-                                    }
-                                    Button(
-                                        onClick = { viewModel.calculateLandedCost(selectedShipment.id) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Run Engine", fontSize = 12.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (selectedShipment != null) {
-                        if (uiState.landedCostSnapshots.isEmpty()) {
-                            item {
-                                ERPCard {
-                                    Column {
-                                        Text("No Landed Cost Snapshots generated yet.", fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            "Tap 'Run Engine' above to automatically distribute all freight, customs and port costs across products by CBM, Weight and Value.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondary
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            items(uiState.landedCostSnapshots) { snapshot ->
-                                ERPCard(contentPadding = 14.dp) {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Column {
-                                                Text(snapshot.productNameEn, fontWeight = FontWeight.Bold, color = DeepNavy)
-                                                Text("SKU: ${snapshot.sku} • Qty: ${snapshot.totalReceivedQuantity} pcs", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                                            }
-                                            Column(horizontalAlignment = Alignment.End) {
-                                                Text("True Unit Landed Cost", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                                Text(
-                                                    "${Formatters.formatMoney(snapshot.unitLandedCostBdtMinor, CurrencyCode.BDT, uiState.language)} / pc",
-                                                    fontWeight = FontWeight.Black,
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    color = PrimaryPurple
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Divider(color = ERPDivider)
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Column {
-                                                Text("FOB Factory Cost", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                                Text(Formatters.formatMoney(snapshot.totalPurchaseCostBdtMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                                            }
-                                            Column {
-                                                Text("Allocated Freight & Duty", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                                Text(Formatters.formatMoney(snapshot.totalAllocatedCostsBdtMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall, color = SecondaryTeal)
-                                            }
-                                            Column(horizontalAlignment = Alignment.End) {
-                                                Text("Total Batch Cost", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                                Text(Formatters.formatMoney(snapshot.totalLandedCostBdtMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ==========================================
-                // TAB 6: WAREHOUSE RECEIVING
-                // ==========================================
-                if (selectedTab == ImportModuleTab.RECEIVING) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ERPSectionHeader(
-                                title = stringResource(R.string.warehouse_receiving),
-                                subtitle = "Check-in to Central Warehouse • Stock-in & Audit"
-                            )
-                            if (selectedShipment != null) {
-                                Button(
-                                    onClick = { showReceivingDialog = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(Icons.Default.FactCheck, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Inspect & Receive", fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    if (uiState.warehouseReceipts.isEmpty()) {
-                        item {
-                            ERPCard {
-                                Text("No warehouse receipts posted yet. Tap 'Inspect & Receive' to check-in an arrived shipment into Room DB.", color = TextMuted)
-                            }
-                        }
-                    } else {
-                        items(uiState.warehouseReceipts) { receipt ->
-                            ERPCard(contentPadding = 14.dp) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(receipt.receiptNumber, fontWeight = FontWeight.Bold, color = DeepNavy)
-                                        Text("Warehouse: WH-DHK-01 • ${Formatters.formatDate(receipt.receiptDate, uiState.language)}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                        Text(receipt.notes ?: "Import check-in complete", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(onClick = { viewModel.shareReceivingReportPdf(context, receipt) }) {
-                                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Share Receiving Report", tint = SecondaryTeal)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .background(StatusSuccess.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = if (isBangla) "স্টকে পোস্টকৃত" else "POSTED TO STOCK",
-                                                color = StatusSuccess,
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ==========================================
-                // TAB 7: INVENTORY COST LAYERS
+                // TAB 2: INVENTORY COST LAYERS
                 // ==========================================
                 if (selectedTab == ImportModuleTab.COST_LAYERS) {
                     item {
@@ -1312,6 +763,48 @@ fun ImportManagementScreen(
         )
     }
 
+    if (editingPo != null) {
+        CreatePurchaseOrderDialog(
+            suppliers = uiState.suppliers,
+            products = uiState.products,
+            variants = uiState.productVariants,
+            categories = uiState.categories,
+            isBangla = isBangla,
+            editingOrder = editingPo,
+            initialEditingItems = uiState.selectedPoItems,
+            initialEditingCartons = uiState.selectedPoCartons,
+            onDismiss = { editingPo = null },
+            onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
+            onCreateFullProduct = viewModel::createFullProductFromPurchase,
+            onGenerateSku = viewModel::generateBaseSku,
+            onGenerateVariantSku = viewModel::generateVariantSku,
+            onGenerateBarcode = viewModel::generateBarcode,
+            onValidateSku = viewModel::isBaseSkuAvailable,
+            onValidateBarcode = viewModel::isBarcodeAvailable,
+            onAddNewVariant = viewModel::addNewVariantFromPurchase,
+            onAddNewCategory = viewModel::addNewCategory,
+            onUpdatePo = { ordId, supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments ->
+                viewModel.updatePurchaseOrder(
+                    orderId = ordId,
+                    supplierId = supId,
+                    currency = cur,
+                    exchangeRate = rate,
+                    items = items,
+                    notes = notes,
+                    status = status,
+                    cartons = cartons,
+                    chinaDeliveryChargeMinor = chinaDeliveryMinor,
+                    categoryFreightRatesBdtMinor = catRatesMinor,
+                    handlingCostMinor = handlingMinor,
+                    sampleCostMinor = sampleMinor,
+                    attachments = attachments
+                )
+                editingPo = null
+            },
+            onSavePo = { _, _, _, _, _, _, _, _, _ -> }
+        )
+    }
+
     if (showRecordPaymentDialog) {
         RecordSupplierPaymentDialog(
             suppliers = uiState.suppliers,
@@ -1348,7 +841,7 @@ fun ImportManagementScreen(
                     notes = notes,
                     onSuccess = { shipmentId, shipmentNumber ->
                         onSuccess(shipmentId, shipmentNumber)
-                        selectedTab = ImportModuleTab.SHIPMENTS
+                        selectedTab = ImportModuleTab.PURCHASE_ORDERS
                     },
                     onError = { err ->
                         onError(err)
@@ -1578,9 +1071,8 @@ fun ImportManagementScreen(
             },
             onAddAdditionalCost = { showAddAdditionalCostDialog = true },
             onCompletePo = { showCompletionDialog = true },
-            onSharePdf = { po ->
-                viewModel.sharePurchaseOrderPdf(context, po)
-            },
+            onEditFullPo = { po -> editingPo = po },
+            onSharePdf = { po -> poToShare = po },
             onCancelPo = { orderId, reason ->
                 viewModel.cancelPurchaseOrder(orderId, reason)
             },
@@ -1590,13 +1082,28 @@ fun ImportManagementScreen(
             onSelectShipment = { shp ->
                 viewModel.selectPurchaseOrder(null)
                 viewModel.selectShipment(shp.id)
-                selectedTab = ImportModuleTab.SHIPMENTS
+                selectedTab = ImportModuleTab.PURCHASE_ORDERS
             },
             onDeleteCarton = viewModel::deleteCarton,
             onDeleteCostItem = { costId -> viewModel.deleteCostItem(selectedPo.id, costId) },
             onUpdatePacking = { ctn, gross, net, cbm -> viewModel.updateOrderPacking(selectedPo.id, ctn, gross, net, cbm) },
             onUpdatePoItem = { itemId, q, p, c, g -> viewModel.updatePoItem(selectedPo.id, itemId, q, p, c, g) },
             onDeletePoItem = { itemId -> viewModel.deletePoItem(selectedPo.id, itemId) }
+        )
+    }
+
+    val currentPoToShare = poToShare
+    if (currentPoToShare != null) {
+        val shareItems by viewModel.getItemsForOrder(currentPoToShare.id).collectAsState(initial = emptyList())
+        val supplier = uiState.suppliers.find { it.id == currentPoToShare.supplierId }
+        PoShareDialog(
+            order = currentPoToShare,
+            items = shareItems.ifEmpty { uiState.selectedPoItems },
+            productsMap = uiState.products.associateBy { it.id },
+            supplier = supplier,
+            businessProfile = uiState.businessProfile,
+            isBangla = isBangla,
+            onDismiss = { poToShare = null }
         )
     }
 }
@@ -1724,21 +1231,31 @@ private fun LivePurchaseOrderCard(
                 }
             }
 
-            // Quick Confirm Action for Draft POs
-            if (order.status == "DRAFT") {
-                Spacer(modifier = Modifier.height(10.dp))
-                Divider(color = ERPDivider.copy(alpha = 0.5f))
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            Spacer(modifier = Modifier.height(10.dp))
+            Divider(color = ERPDivider.copy(alpha = 0.5f))
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onSharePdf,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SecondaryTeal),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
+                    Icon(Icons.Default.Share, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (isBangla) "খসড়া অবস্থায় আছে" else "Order is in Draft state",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        text = if (isBangla) "শেয়ার ও এক্সপোর্ট" else "Share PO",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SecondaryTeal
                     )
+                }
+
+                if (order.status == "DRAFT") {
                     Button(
                         onClick = { onConfirmOrder(order.id) },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),

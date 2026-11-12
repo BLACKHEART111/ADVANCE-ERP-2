@@ -74,6 +74,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.pocketdev.advance_erp.R
+import com.pocketdev.advance_erp.core.model.CurrencyCode
+import com.pocketdev.advance_erp.core.designsystem.DeepNavy
 import com.pocketdev.advance_erp.core.designsystem.ERPActionButton
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPButtonVariant
@@ -1237,6 +1239,35 @@ private fun CompactStockProductCard(
                     value = "${Formatters.formatNumber(item.availableQuantity.toLong(), language)} ${item.unit}",
                     valueColor = if (item.availableQuantity > 0) SecondaryTeal else StatusError
                 )
+            }
+
+            if (item.minCostMinor > 0L || item.maxCostMinor > 0L) {
+                Spacer(modifier = Modifier.height(4.dp))
+                val costText = if (item.minCostMinor == item.maxCostMinor || item.minCostMinor == 0L) {
+                    val cost = if (item.maxCostMinor > 0L) item.maxCostMinor else item.minCostMinor
+                    Formatters.formatMoney(cost, CurrencyCode.BDT, language)
+                } else {
+                    "${Formatters.formatMoney(item.minCostMinor, CurrencyCode.BDT, language)} – ${Formatters.formatMoney(item.maxCostMinor, CurrencyCode.BDT, language)}"
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (language == AppLanguage.BANGLA) "কেনা / ল্যান্ডিং খরচ:" else "Cost / Landed:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = costText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DeepNavy
+                    )
+                }
             }
         }
     }

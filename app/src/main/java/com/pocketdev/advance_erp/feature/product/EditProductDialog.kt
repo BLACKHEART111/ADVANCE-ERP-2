@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,6 +30,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import java.util.UUID
+import com.pocketdev.advance_erp.core.model.CurrencyCode
+import com.pocketdev.advance_erp.core.util.Formatters
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -84,6 +87,7 @@ fun EditProductDialog(
     initialImages: List<ProductImage>,
     categories: List<ProductCategory>,
     language: AppLanguage,
+    initialVariantStock: Map<String, Int> = emptyMap(),
     onDismiss: () -> Unit,
     onGenerateSku: suspend (categoryId: String, nameEn: String) -> String,
     onGenerateBarcode: suspend () -> String,
@@ -142,7 +146,9 @@ fun EditProductDialog(
                     costMinor = it.variantCostMinor,
                     priceMinor = it.variantPriceMinor,
                     barcode = it.barcode,
-                    qrCode = it.qrCode
+                    qrCode = it.qrCode,
+                    existingStock = initialVariantStock[it.id] ?: 0,
+                    isExistingVariant = true
                 )
             })
         }
@@ -161,6 +167,7 @@ fun EditProductDialog(
     var varBarcode by remember { mutableStateOf("") }
     var varCostStr by remember { mutableStateOf("") }
     var varPriceStr by remember { mutableStateOf("") }
+    var varStockStr by remember { mutableStateOf("") }
 
     fun resetVariantForm() {
         editingVariantIndex = null
@@ -170,6 +177,7 @@ fun EditProductDialog(
         varBarcode = ""
         varCostStr = purchasePriceStr
         varPriceStr = sellingPriceStr
+        varStockStr = ""
     }
 
     LaunchedEffect(varColor, varSize, baseSku) {
@@ -453,7 +461,11 @@ fun EditProductDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp)
+                    ) {
                         Text(
                             text = if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট সমূহ (${variants.size})" else "Product Variants (${variants.size})",
                             style = MaterialTheme.typography.titleSmall,
@@ -467,13 +479,23 @@ fun EditProductDialog(
                         )
                     }
                     ERPActionButton(
-                        text = if (language == AppLanguage.BANGLA) "+ ভ্যারিয়েন্ট যোগ" else "+ Add Variant",
-                        icon = Icons.Default.Add,
-                        onClick = {
-                            resetVariantForm()
-                            showVariantForm = true
+                        text = if (showVariantForm && editingVariantIndex == null) {
+                            if (language == AppLanguage.BANGLA) "বাতিল" else "Cancel"
+                        } else {
+                            if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট যোগ" else "Add Variant"
                         },
-                        variant = ERPButtonVariant.SECONDARY
+                        icon = if (showVariantForm && editingVariantIndex == null) Icons.Default.Close else Icons.Default.Add,
+                        onClick = {
+                            if (showVariantForm && editingVariantIndex == null) {
+                                showVariantForm = false
+                                resetVariantForm()
+                            } else {
+                                resetVariantForm()
+                                showVariantForm = true
+                            }
+                        },
+                        variant = if (showVariantForm && editingVariantIndex == null) ERPButtonVariant.GHOST else ERPButtonVariant.SECONDARY,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     )
                 }
 
@@ -489,7 +511,7 @@ fun EditProductDialog(
                             .padding(12.dp)
                     ) {
                         Text(
-                            text = if (language == AppLanguage.BANGLA) "কোনো ভ্যারিয়েন্ট নেই। নতুন ভ্যারিয়েন্ট যোগ করতে উপরের '+ ভ্যারিয়েন্ট যোগ' বাটনে চাপুন।" else "No variants added. Tap '+ Add Variant' above to add color/size variants.",
+                            text = if (language == AppLanguage.BANGLA) "কোনো ভ্যারিয়েন্ট নেই। নতুন ভ্যারিয়েন্ট যোগ করতে উপরের 'ভ্যারিয়েন্ট যোগ' বাটনে চাপুন।" else "No variants added. Tap 'Add Variant' above to add color/size variants.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted
                         )
@@ -531,15 +553,41 @@ fun EditProductDialog(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = TextSecondary
                                         )
+                                        val costFmt = Formatters.formatMoney(v.costMinor, CurrencyCode.BDT, language)
+                                        val priceFmt = Formatters.formatMoney(v.priceMinor, CurrencyCode.BDT, language)
                                         Text(
                                             text = if (language == AppLanguage.BANGLA)
-                                                "ক্রয়: ৳${v.costMinor / 100.0} | বিক্রয়: ৳${v.priceMinor / 100.0}"
+                                                "ক্রয়: $costFmt | বিক্রয়: $priceFmt"
                                             else
-                                                "Cost: ৳${v.costMinor / 100.0} | Price: ৳${v.priceMinor / 100.0}",
+                                                "Cost: $costFmt | Price: $priceFmt",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.SemiBold,
                                             color = PrimaryPurple
                                         )
+                                        if (v.existingStock > 0 || v.initialStock > 0) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
+                                                if (v.existingStock > 0) {
+                                                    Text(
+                                                        text = if (language == AppLanguage.BANGLA) "মজুদ: ${v.existingStock} $unit" else "Stock: ${v.existingStock} $unit",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = SecondaryTeal,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                                if (v.initialStock > 0) {
+                                                    Text(
+                                                        text = if (language == AppLanguage.BANGLA) "(+${v.initialStock} $unit যোগ হবে)" else "(+${v.initialStock} $unit to add)",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = PrimaryPurple,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(
@@ -551,6 +599,7 @@ fun EditProductDialog(
                                                 varBarcode = v.barcode ?: ""
                                                 varCostStr = (v.costMinor / 100.0).toString()
                                                 varPriceStr = (v.priceMinor / 100.0).toString()
+                                                varStockStr = if (v.initialStock > 0) v.initialStock.toString() else ""
                                                 showVariantForm = true
                                             }
                                         ) {
@@ -726,6 +775,43 @@ fun EditProductDialog(
                             )
                         }
 
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        val currentEditingStock = editingVariantIndex?.let { idx ->
+                            variants.getOrNull(idx)?.let { initialVariantStock[it.id] ?: 0 }
+                        } ?: 0
+
+                        OutlinedTextField(
+                            value = varStockStr,
+                            onValueChange = { varStockStr = it.filter { ch -> ch.isDigit() } },
+                            label = {
+                                Text(
+                                    if (editingVariantIndex != null) {
+                                        if (language == AppLanguage.BANGLA) "অতিরিক্ত মজুদ যোগ করুন ($unit)" else "Add Extra Stock ($unit)"
+                                    } else {
+                                        if (language == AppLanguage.BANGLA) "প্রারম্ভিক মজুদ ($unit)" else "Initial Stock ($unit)"
+                                    }
+                                )
+                            },
+                            placeholder = { Text("0") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = RoundedCornerShape(8.dp),
+                            supportingText = {
+                                if (editingVariantIndex != null && currentEditingStock > 0) {
+                                    Text(
+                                        text = if (language == AppLanguage.BANGLA)
+                                            "বর্তমান মজুদ: $currentEditingStock $unit (নতুন যোগ করলে এই ক্রয়মূল্যে আলাদা ব্যাচ তৈরি হবে)"
+                                        else
+                                            "Current stock: $currentEditingStock $unit (added stock creates a separate cost layer)",
+                                        color = TextSecondary,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        )
+
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Row(
@@ -753,6 +839,7 @@ fun EditProductDialog(
                                             ?: (purchasePriceStr.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
                                         val pMinor = (varPriceStr.toDoubleOrNull()?.times(100))?.toLong()
                                             ?: (sellingPriceStr.toDoubleOrNull()?.times(100))?.toLong() ?: 0L
+                                        val stockInput = varStockStr.toIntOrNull() ?: 0
 
                                         val editIdx = editingVariantIndex
                                         if (editIdx != null && editIdx in variants.indices) {
@@ -763,7 +850,8 @@ fun EditProductDialog(
                                                 size = varSize.trim(),
                                                 costMinor = cMinor,
                                                 priceMinor = pMinor,
-                                                barcode = varBarcode.trim().ifBlank { null }
+                                                barcode = varBarcode.trim().ifBlank { null },
+                                                initialStock = stockInput
                                             )
                                         } else {
                                             variants.add(
@@ -774,7 +862,8 @@ fun EditProductDialog(
                                                     size = varSize.trim(),
                                                     costMinor = cMinor,
                                                     priceMinor = pMinor,
-                                                    barcode = varBarcode.trim().ifBlank { null }
+                                                    barcode = varBarcode.trim().ifBlank { null },
+                                                    initialStock = stockInput
                                                 )
                                             )
                                         }

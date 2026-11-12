@@ -108,8 +108,8 @@ object ImportPdfGenerator {
         canvas.drawText(rightLabel, PAGE_WIDTH - 195f, footerY + 16f, paint)
     }
 
-    // 1. PURCHASE ORDER PDF
-    fun generatePurchaseOrderPdf(
+    // 1. PURCHASE ORDER PDF (Company Internal Audit Copy)
+    fun generateCompanyInternalOrderPdf(
         context: Context,
         order: PurchaseOrder,
         items: List<PurchaseOrderItem>,
@@ -125,7 +125,7 @@ object ImportPdfGenerator {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
 
-        val docTitle = if (isBangla) "বৈদেশিক ক্রয়াদেশ / PURCHASE ORDER" else "COMMERCIAL PURCHASE ORDER"
+        val docTitle = if (isBangla) "অভ্যন্তরীণ ক্রয়াদেশ অডিট / INTERNAL PO AUDIT" else "COMPANY INTERNAL PURCHASE ORDER AUDIT"
         drawBrandHeader(
             context, canvas, paint, businessProfile,
             docTitle, order.poNumber, dateFormat.format(Date(order.orderDate))
@@ -266,11 +266,178 @@ object ImportPdfGenerator {
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "${order.poNumber}.pdf")
+        val file = File(dir, "Internal_${order.poNumber}.pdf")
         FileOutputStream(file).use { out -> document.writeTo(out) }
         document.close()
         return file
     }
+
+    // Supplier Commercial Copy (Strictly in CNY/USD, NO BDT, NO FX Rates, with Delivery Instructions)
+    fun generateSupplierCommercialOrderPdf(
+        context: Context,
+        order: PurchaseOrder,
+        items: List<PurchaseOrderItem>,
+        productsMap: Map<String, Product>,
+        supplier: Supplier?,
+        businessProfile: BusinessProfile?
+    ): File {
+        val document = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, 1).create()
+        val page = document.startPage(pageInfo)
+        val canvas = page.canvas
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
+
+        drawBrandHeader(
+            context, canvas, paint, businessProfile,
+            "SUPPLIER PURCHASE ORDER / 采购订单", order.poNumber, dateFormat.format(Date(order.orderDate))
+        )
+
+        val boxY = 135f
+        paint.color = Color.parseColor("#F8FAFC")
+        canvas.drawRoundRect(RectF(36f, boxY, PAGE_WIDTH - 36f, boxY + 74f), 8f, 8f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.parseColor("#E2E8F0")
+        canvas.drawRoundRect(RectF(36f, boxY, PAGE_WIDTH - 36f, boxY + 74f), 8f, 8f, paint)
+        paint.style = Paint.Style.FILL
+
+        paint.color = Color.parseColor("#263849")
+        paint.textSize = 10f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("SUPPLIER / OVERSEAS FACTORY:", 48f, boxY + 18f, paint)
+
+        paint.color = Color.parseColor("#1A202C")
+        paint.textSize = 12f
+        canvas.drawText(supplier?.companyName ?: "China Manufacturing Factory", 48f, boxY + 36f, paint)
+
+        paint.color = Color.parseColor("#718096")
+        paint.textSize = 9.5f
+        paint.typeface = Typeface.DEFAULT
+        val supContact = "Attn: ${supplier?.contactPerson ?: "Export Manager"}  |  Tel: ${supplier?.phone ?: "+86-000-0000"}"
+        val supAddress = "${supplier?.address ?: "Guangzhou, Guangdong"} • ${supplier?.country ?: "China"}"
+        canvas.drawText(supContact, 48f, boxY + 52f, paint)
+        canvas.drawText(supAddress, 48f, boxY + 66f, paint)
+
+        // Meta on Right (Commercial Currency, Packing Marks - STRICTLY NO BDT)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = Color.parseColor("#792B87")
+        canvas.drawText("PO STATUS: ${order.status}", 350f, boxY + 18f, paint)
+        paint.color = Color.parseColor("#2D3748")
+        paint.textSize = 9.5f
+        paint.typeface = Typeface.DEFAULT
+        canvas.drawText("Commercial Currency: ${order.currency}", 350f, boxY + 36f, paint)
+        canvas.drawText("Total Cartons: ${order.totalCartons} CTN", 350f, boxY + 52f, paint)
+        canvas.drawText("Est. Gross Weight: ${order.totalGrossWeightKg} KG", 350f, boxY + 66f, paint)
+
+        // Commercial Table Header
+        val tableY = 225f
+        paint.color = Color.parseColor("#EDF2F7")
+        canvas.drawRect(36f, tableY, PAGE_WIDTH - 36f, tableY + 24f, paint)
+
+        paint.color = Color.parseColor("#2D3748")
+        paint.textSize = 9f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+        canvas.drawText("#", 44f, tableY + 16f, paint)
+        canvas.drawText("ITEM DESCRIPTION / SPECIFICATION", 66f, tableY + 16f, paint)
+        canvas.drawText("MODEL / SKU", 260f, tableY + 16f, paint)
+        canvas.drawText("PACKING", 340f, tableY + 16f, paint)
+        canvas.drawText("QTY (PCS)", 395f, tableY + 16f, paint)
+        canvas.drawText("UNIT (${order.currency})", 450f, tableY + 16f, paint)
+        canvas.drawText("TOTAL (${order.currency})", 515f, tableY + 16f, paint)
+
+        // Table Rows
+        var currentY = tableY + 24f
+        paint.typeface = Typeface.DEFAULT
+        paint.textSize = 9f
+
+        items.forEachIndexed { index, item ->
+            if (index % 2 == 0) {
+                paint.color = Color.parseColor("#FAFAFA")
+                canvas.drawRect(36f, currentY, PAGE_WIDTH - 36f, currentY + 22f, paint)
+            }
+
+            paint.color = Color.parseColor("#4A5568")
+            canvas.drawText("${index + 1}", 44f, currentY + 15f, paint)
+
+            val product = productsMap[item.productId]
+            val pName = product?.nameEn ?: item.productId
+            val truncated = if (pName.length > 32) pName.take(30) + ".." else pName
+
+            paint.color = Color.parseColor("#1A202C")
+            canvas.drawText(truncated, 66f, currentY + 15f, paint)
+
+            paint.color = Color.parseColor("#718096")
+            canvas.drawText(product?.baseSku ?: "SKU", 260f, currentY + 15f, paint)
+
+            val packingStr = if (item.cartonQuantity > 0) "${item.cartonQuantity} CTN" else "-"
+            canvas.drawText(packingStr, 340f, currentY + 15f, paint)
+
+            paint.color = Color.parseColor("#1A202C")
+            canvas.drawText("${item.quantity}", 398f, currentY + 15f, paint)
+
+            val unitStr = Formatters.formatMinorUnit(item.unitPriceMinor)
+            canvas.drawText(unitStr, 450f, currentY + 15f, paint)
+
+            paint.color = Color.parseColor("#792B87")
+            val totalStr = Formatters.formatMinorUnit(item.totalAmountMinor)
+            canvas.drawText(totalStr, 515f, currentY + 15f, paint)
+
+            currentY += 22f
+        }
+
+        // Commercial Totals & Instructions Card
+        val totalBoxY = (currentY + 15f).coerceAtLeast(360f)
+        paint.color = Color.parseColor("#F1F5F9")
+        canvas.drawRoundRect(RectF(36f, totalBoxY, PAGE_WIDTH - 36f, totalBoxY + 104f), 8f, 8f, paint)
+
+        // Left Side: Delivery Instructions & Payment Terms
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = Color.parseColor("#263849")
+        paint.textSize = 9.5f
+        canvas.drawText("DELIVERY & SHIPPING INSTRUCTIONS (国内交货指引):", 48f, totalBoxY + 20f, paint)
+
+        paint.typeface = Typeface.DEFAULT
+        paint.textSize = 8.5f
+        paint.color = Color.parseColor("#4A5568")
+        val notesStr = order.notes ?: "[Terms: 30% Advance Deposit, 70% before dispatch]"
+        val termsLine = if (notesStr.length > 55) notesStr.take(53) + ".." else notesStr
+        canvas.drawText("• Payment Terms: $termsLine", 48f, totalBoxY + 38f, paint)
+        canvas.drawText("• Forwarder Warehouse: Guangzhou Baiyun / Yiwu Port Cargo Terminal", 48f, totalBoxY + 54f, paint)
+        canvas.drawText("• Shipping Marks: [${businessProfile?.companyName ?: "IMPORT CO"}] / ${order.poNumber} / CTG PORT", 48f, totalBoxY + 70f, paint)
+        canvas.drawText("• Please inspect packing quality before handover to logistics forwarder.", 48f, totalBoxY + 86f, paint)
+
+        // Right Side: Grand Totals in Foreign Currency Only
+        val totalQty = items.sumOf { it.quantity }
+        paint.textSize = 10f
+        paint.color = Color.parseColor("#4A5568")
+        canvas.drawText("Total Items / Quantity:", 370f, totalBoxY + 24f, paint)
+        canvas.drawText("$totalQty pcs", PAGE_WIDTH - 48f - paint.measureText("$totalQty pcs"), totalBoxY + 24f, paint)
+
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = Color.parseColor("#792B87")
+        paint.textSize = 12f
+        canvas.drawText("TOTAL (${order.currency}):", 370f, totalBoxY + 52f, paint)
+        val origTotalStr = "${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}"
+        canvas.drawText(origTotalStr, PAGE_WIDTH - 48f - paint.measureText(origTotalStr), totalBoxY + 52f, paint)
+
+        val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
+        val file = File(dir, "Supplier_${order.poNumber}.pdf")
+        FileOutputStream(file).use { out -> document.writeTo(out) }
+        document.close()
+        return file
+    }
+
+    // Backward-compatible alias
+    fun generatePurchaseOrderPdf(
+        context: Context,
+        order: PurchaseOrder,
+        items: List<PurchaseOrderItem>,
+        productsMap: Map<String, Product>,
+        supplier: Supplier?,
+        businessProfile: BusinessProfile?,
+        isBangla: Boolean = false
+    ): File = generateCompanyInternalOrderPdf(context, order, items, productsMap, supplier, businessProfile, isBangla)
 
     // 2. SUPPLIER PAYMENT RECEIPT VOUCHER PDF
     fun generateSupplierPaymentReceiptPdf(

@@ -23,7 +23,9 @@ data class StockItemOverview(
     val totalReserved: Int,
     val availableQuantity: Int,
     val isLowStock: Boolean,
-    val primaryImageUri: String? = null
+    val primaryImageUri: String? = null,
+    val minCostMinor: Long = 0L,
+    val maxCostMinor: Long = 0L
 )
 
 @Dao
@@ -39,7 +41,17 @@ interface StockBalanceDao {
                COALESCE(SUM(sb.reservedQuantity), 0) as totalReserved,
                COALESCE(SUM(sb.quantity - sb.reservedQuantity), 0) as availableQuantity,
                CASE WHEN COALESCE(SUM(sb.quantity), 0) <= p.minStockAlert THEN 1 ELSE 0 END as isLowStock,
-               (SELECT pi.imageUri FROM product_images pi WHERE pi.productId = p.id AND pi.variantId IS NULL ORDER BY pi.isPrimary DESC, pi.sortOrder ASC LIMIT 1) as primaryImageUri
+               (SELECT pi.imageUri FROM product_images pi WHERE pi.productId = p.id AND pi.variantId IS NULL ORDER BY pi.isPrimary DESC, pi.sortOrder ASC LIMIT 1) as primaryImageUri,
+               COALESCE(
+                   (SELECT MIN(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MIN(pv.variantCostMinor) FROM product_variants pv WHERE pv.productId = p.id AND pv.variantCostMinor > 0),
+                   p.purchasePriceMinor
+               ) as minCostMinor,
+               COALESCE(
+                   (SELECT MAX(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MAX(pv.variantCostMinor) FROM product_variants pv WHERE pv.productId = p.id AND pv.variantCostMinor > 0),
+                   p.purchasePriceMinor
+               ) as maxCostMinor
         FROM products p
         INNER JOIN product_categories c ON p.categoryId = c.id
         LEFT JOIN stock_balances sb ON sb.productId = p.id
@@ -59,7 +71,19 @@ interface StockBalanceDao {
                COALESCE(SUM(sb.reservedQuantity), 0) as totalReserved,
                COALESCE(SUM(sb.quantity - sb.reservedQuantity), 0) as availableQuantity,
                CASE WHEN COALESCE(SUM(sb.quantity), 0) <= p.minStockAlert THEN 1 ELSE 0 END as isLowStock,
-               (SELECT pi.imageUri FROM product_images pi WHERE pi.productId = p.id AND pi.variantId IS NULL ORDER BY pi.isPrimary DESC, pi.sortOrder ASC LIMIT 1) as primaryImageUri
+               (SELECT pi.imageUri FROM product_images pi WHERE pi.productId = p.id AND pi.variantId IS NULL ORDER BY pi.isPrimary DESC, pi.sortOrder ASC LIMIT 1) as primaryImageUri,
+               COALESCE(
+                   (SELECT MIN(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.warehouseId = :warehouseId AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MIN(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MIN(pv.variantCostMinor) FROM product_variants pv WHERE pv.productId = p.id AND pv.variantCostMinor > 0),
+                   p.purchasePriceMinor
+               ) as minCostMinor,
+               COALESCE(
+                   (SELECT MAX(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.warehouseId = :warehouseId AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MAX(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MAX(pv.variantCostMinor) FROM product_variants pv WHERE pv.productId = p.id AND pv.variantCostMinor > 0),
+                   p.purchasePriceMinor
+               ) as maxCostMinor
         FROM products p
         INNER JOIN product_categories c ON p.categoryId = c.id
         LEFT JOIN stock_balances sb ON sb.productId = p.id AND sb.warehouseId = :warehouseId
@@ -79,7 +103,17 @@ interface StockBalanceDao {
                COALESCE(SUM(sb.reservedQuantity), 0) as totalReserved,
                COALESCE(SUM(sb.quantity - sb.reservedQuantity), 0) as availableQuantity,
                1 as isLowStock,
-               (SELECT pi.imageUri FROM product_images pi WHERE pi.productId = p.id AND pi.variantId IS NULL ORDER BY pi.isPrimary DESC, pi.sortOrder ASC LIMIT 1) as primaryImageUri
+               (SELECT pi.imageUri FROM product_images pi WHERE pi.productId = p.id AND pi.variantId IS NULL ORDER BY pi.isPrimary DESC, pi.sortOrder ASC LIMIT 1) as primaryImageUri,
+               COALESCE(
+                   (SELECT MIN(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MIN(pv.variantCostMinor) FROM product_variants pv WHERE pv.productId = p.id AND pv.variantCostMinor > 0),
+                   p.purchasePriceMinor
+               ) as minCostMinor,
+               COALESCE(
+                   (SELECT MAX(icl.unitLandedCostBdtMinor) FROM inventory_cost_layers icl WHERE icl.productId = p.id AND icl.remainingQuantity > 0 AND icl.isActive = 1),
+                   (SELECT MAX(pv.variantCostMinor) FROM product_variants pv WHERE pv.productId = p.id AND pv.variantCostMinor > 0),
+                   p.purchasePriceMinor
+               ) as maxCostMinor
         FROM products p
         INNER JOIN product_categories c ON p.categoryId = c.id
         LEFT JOIN stock_balances sb ON sb.productId = p.id

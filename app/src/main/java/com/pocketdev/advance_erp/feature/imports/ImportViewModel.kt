@@ -57,6 +57,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -65,15 +66,6 @@ import java.math.BigDecimal
 import java.util.UUID
 import javax.inject.Inject
 
-data class PoMixedCartonDraft(
-    val cartonNumber: String,
-    val grossWeightKg: BigDecimal,
-    val netWeightKg: BigDecimal = grossWeightKg,
-    val lengthCm: BigDecimal = BigDecimal.ZERO,
-    val widthCm: BigDecimal = BigDecimal.ZERO,
-    val heightCm: BigDecimal = BigDecimal.ZERO,
-    val lines: List<MixedCartonLineDraft>
-)
 
 data class ImportUiState(
     val purchaseOrders: List<PurchaseOrder> = emptyList(),
@@ -283,6 +275,10 @@ class ImportViewModel @Inject constructor(
         }
     }
 
+    fun getItemsForOrder(orderId: String): kotlinx.coroutines.flow.Flow<List<PurchaseOrderItem>> {
+        return importRepository.getItemsForOrder(orderId)
+    }
+
     fun selectPurchaseOrder(order: PurchaseOrder?) {
         if (order == null) {
             _uiState.update {
@@ -465,6 +461,52 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, userMessage = msg) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun updatePurchaseOrder(
+        orderId: String,
+        supplierId: String,
+        currency: String,
+        exchangeRate: BigDecimal,
+        items: List<PurchaseOrderItemDraft>,
+        notes: String?,
+        status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED,
+        cartons: List<PoMixedCartonDraft> = emptyList(),
+        chinaDeliveryChargeMinor: Long = 0L,
+        categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap(),
+        handlingCostMinor: Long = 0L,
+        sampleCostMinor: Long = 0L,
+        attachments: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.updatePurchaseOrder(
+                    orderId = orderId,
+                    supplierId = supplierId,
+                    currency = currency,
+                    exchangeRate = exchangeRate,
+                    items = items,
+                    notes = notes,
+                    status = status,
+                    cartons = cartons,
+                    chinaDeliveryChargeMinor = chinaDeliveryChargeMinor,
+                    categoryFreightRatesBdtMinor = categoryFreightRatesBdtMinor,
+                    handlingCostMinor = handlingCostMinor,
+                    sampleCostMinor = sampleCostMinor,
+                    attachments = attachments
+                ).getOrThrow()
+
+                val updatedPo = importRepository.getPurchaseOrderById(orderId)
+                if (updatedPo != null && _uiState.value.selectedPo?.id == orderId) {
+                    _uiState.update { it.copy(selectedPo = updatedPo) }
+                }
+
+                _uiState.update { it.copy(isLoading = false, userMessage = "Purchase order updated successfully!") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Error updating PO: ${e.message}") }
             }
         }
     }

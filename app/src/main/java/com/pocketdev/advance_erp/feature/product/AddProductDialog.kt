@@ -1205,14 +1205,14 @@ fun AddProductDialog(
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = TextSecondary
                                             )
-                                            if (v.priceMinor > 0L) {
-                                                Text(
-                                                    text = "• ৳ ${Formatters.formatMoney(v.priceMinor, CurrencyCode.BDT, language)}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = PrimaryPurple
-                                                )
-                                            }
+                                            val costFmt = Formatters.formatMoney(v.costMinor, CurrencyCode.BDT, language)
+                                            val priceFmt = Formatters.formatMoney(v.priceMinor, CurrencyCode.BDT, language)
+                                            Text(
+                                                text = if (language == AppLanguage.BANGLA) "ক্রয়: $costFmt • বিক্রয়: $priceFmt" else "Cost: $costFmt • Sell: $priceFmt",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = PrimaryPurple
+                                            )
                                         }
                                     }
 

@@ -138,6 +138,7 @@ fun PurchaseOrderDetailDialog(
     onSharePdf: (order: PurchaseOrder) -> Unit,
     onCancelPo: (orderId: String, reason: String?) -> Unit,
     onDuplicatePo: ((orderId: String) -> Unit)? = null,
+    onEditFullPo: ((order: PurchaseOrder) -> Unit)? = null,
     onSelectShipment: ((ImportShipment) -> Unit)? = null,
     onDeleteCarton: ((orderId: String, cartonNumber: String) -> Unit)? = null,
     onDeleteCostItem: ((costItemId: String) -> Unit)? = null,
@@ -398,6 +399,40 @@ fun PurchaseOrderDetailDialog(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
+                                }
+
+                                if (!order.attachments.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    HorizontalDivider(color = ERPDivider)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = if (isBangla) "সংযুক্ত ইনভয়েস / ডকুমেন্টস:" else "Attached Documents / Invoices:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepNavy
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    val files = order.attachments.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                                    files.forEach { fileRef ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Info, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = fileRef,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = DeepNavy,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
                                 }
                             }
                         }
@@ -1418,6 +1453,50 @@ fun PurchaseOrderDetailDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Button(
+                                onClick = { onSharePdf(order) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .defaultMinSize(minHeight = 44.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isBangla) "শেয়ার PO" else "Share PO",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (onEditFullPo != null && order.status != PurchaseOrderStatus.CANCELLED.name) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onEditFullPo(order)
+                                        onDismiss()
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .defaultMinSize(minHeight = 44.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryPurple),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isBangla) "PO এডিট" else "Edit PO",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
                             if (onDuplicatePo != null) {
                                 OutlinedButton(
                                     onClick = {

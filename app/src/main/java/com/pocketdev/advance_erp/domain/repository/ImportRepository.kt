@@ -83,6 +83,16 @@ data class ShipmentCartonDraft(
     val categoryName: String? = null
 )
 
+data class PoMixedCartonDraft(
+    val cartonNumber: String,
+    val grossWeightKg: BigDecimal,
+    val netWeightKg: BigDecimal = grossWeightKg,
+    val lengthCm: BigDecimal = BigDecimal.ZERO,
+    val widthCm: BigDecimal = BigDecimal.ZERO,
+    val heightCm: BigDecimal = BigDecimal.ZERO,
+    val lines: List<MixedCartonLineDraft>
+)
+
 data class ReceiptItemDraft(
     val cartonId: String? = null,
     val productId: String,
@@ -231,6 +241,22 @@ interface ImportRepository {
     suspend fun deleteCarton(cartonId: String)
     suspend fun deleteCartonByNumber(orderId: String, cartonNumber: String)
     suspend fun deletePurchaseCostItem(costItemId: String)
+    suspend fun updatePurchaseOrder(
+        orderId: String,
+        supplierId: String,
+        currency: String,
+        exchangeRate: BigDecimal,
+        items: List<PurchaseOrderItemDraft>,
+        notes: String?,
+        status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED,
+        cartons: List<PoMixedCartonDraft> = emptyList(),
+        chinaDeliveryChargeMinor: Long = 0L,
+        categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap(),
+        handlingCostMinor: Long = 0L,
+        sampleCostMinor: Long = 0L,
+        attachments: String? = null
+    ): Result<Unit>
+
     suspend fun updatePurchaseOrderPacking(orderId: String, totalCartons: Int, grossWeightKg: String, netWeightKg: String, cbm: String)
     suspend fun updatePurchaseOrderItem(itemId: String, quantity: Int, unitPriceMinor: Long, cartonQuantity: Int, grossWeightKg: String)
     suspend fun deletePurchaseOrderItem(itemId: String)
