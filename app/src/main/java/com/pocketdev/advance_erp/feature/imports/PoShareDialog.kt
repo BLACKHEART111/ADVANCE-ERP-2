@@ -31,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +64,9 @@ import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.util.ImportExcelGenerator
 import com.pocketdev.advance_erp.core.util.ImportPdfGenerator
+import com.pocketdev.advance_erp.core.util.PoAttachmentInfo
+import com.pocketdev.advance_erp.core.util.PoAttachmentKind
+import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
@@ -70,13 +74,36 @@ import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.Supplier
 import java.io.File
 
-private fun shareFileToApp(context: Context, file: File, mimeType: String, chooserTitle: String) {
+private fun shareFileToApp(
+    context: Context,
+    file: File,
+    mimeType: String,
+    chooserTitle: String,
+    includeAttachments: Boolean = false,
+    attachments: List<PoAttachmentInfo> = emptyList()
+) {
     try {
         if (!file.exists() || file.length() <= 0L) {
             Toast.makeText(context, "ফাইল তৈরি বা পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
             return
         }
-        ImportPdfGenerator.launchShareChooser(context, file, mimeType, chooserTitle)
+        if (!includeAttachments || attachments.isEmpty()) {
+            ImportPdfGenerator.launchShareChooser(context, file, mimeType, chooserTitle)
+            return
+        }
+        val extraFiles = attachments.mapNotNull { info ->
+            info.localFile?.takeIf { it.exists() && it.length() > 0L }?.let { local ->
+                local to PoAttachmentStorage.getMimeTypeForFile(local)
+            }
+        }
+        val linkLines = attachments.filter { it.kind == PoAttachmentKind.LINK }.map { it.rawValue }
+        val extraText = if (linkLines.isNotEmpty()) linkLines.joinToString("\n") else null
+        ImportPdfGenerator.launchShareFilesChooser(
+            context = context,
+            files = listOf(file to mimeType) + extraFiles,
+            chooserTitle = chooserTitle,
+            extraText = extraText
+        )
     } catch (t: Throwable) {
         Toast.makeText(context, "শেয়ার করতে সমস্যা হয়েছে: ${t.message ?: t::class.java.simpleName}", Toast.LENGTH_LONG).show()
     }
@@ -103,6 +130,12 @@ fun PoShareDialog(
     var isExporting by remember { mutableStateOf(false) }
     var exportError by remember { mutableStateOf<String?>(null) }
     val isLocalOrder = order.currency == "BDT"
+    val attachmentInfos = remember(order.attachments) {
+        PoAttachmentStorage.parseAttachments(order.attachments)
+            .map { PoAttachmentStorage.inspectAttachment(it) }
+            .filter { it.localFile != null || it.kind == PoAttachmentKind.LINK }
+    }
+    var includeAttachments by remember(order.id) { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -299,6 +332,34 @@ fun PoShareDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Action Buttons
+                if (attachmentInfos.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFF8FAFC))
+                            .clickable { includeAttachments = !includeAttachments }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = includeAttachments,
+                            onCheckedChange = { includeAttachments = it }
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isBangla)
+                                "PO-এর সংযুক্ত ফাইল/ছবিও একসাথে শেয়ার করুন (${attachmentInfos.size}টি)"
+                            else
+                                "Also share attached files/photos (${attachmentInfos.size})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = DeepNavy,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
                 Text(
                     text = if (isBangla) "এক্সপোর্ট ও শেয়ারের মাধ্যম নির্বাচন করুন:" else "Select Export & Sharing Format:",
                     style = MaterialTheme.typography.labelSmall,
@@ -344,7 +405,14 @@ fun PoShareDialog(
                                         "Share Supplier Commercial PO PDF"
                                     else
                                         "Share Internal Audit PO PDF"
-                                    shareFileToApp(context, pdfFile, "application/pdf", title)
+                                    shareFileToApp(
+                                        context = context,
+                                        file = pdfFile,
+                                        mimeType = "application/pdf",
+                                        chooserTitle = title,
+                                        includeAttachments = includeAttachments,
+                                        attachments = attachmentInfos
+                                    )
                                 } catch (t: Throwable) {
                                     val msg = t.message ?: t::class.java.simpleName
                                     exportError = if (isBangla) "PDF তৈরি করতে সমস্যা হয়েছে: $msg" else "PDF export failed: $msg"
@@ -387,7 +455,14 @@ fun PoShareDialog(
                                         "Share Supplier Commercial PO (Excel)"
                                     else
                                         "Share Internal Audit PO (Excel)"
-                                    shareFileToApp(context, xlsxFile, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", title)
+                                    shareFileToApp(
+                                        context = context,
+                                        file = xlsxFile,
+                                        mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        chooserTitle = title,
+                                        includeAttachments = includeAttachments,
+                                        attachments = attachmentInfos
+                                    )
                                 } catch (t: Throwable) {
                                     val msg = t.message ?: t::class.java.simpleName
                                     exportError = if (isBangla) "Excel তৈরি করতে সমস্যা হয়েছে: $msg" else "Excel export failed: $msg"

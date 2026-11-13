@@ -142,7 +142,8 @@ interface ImportRepository {
         exchangeRate: BigDecimal,
         items: List<PurchaseOrderItemDraft>,
         notes: String?,
-        status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED
+        status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED,
+        attachments: String? = null
     ): String
     suspend fun duplicatePurchaseOrder(orderId: String): String
     suspend fun updatePurchaseOrderStatus(orderId: String, status: PurchaseOrderStatus)

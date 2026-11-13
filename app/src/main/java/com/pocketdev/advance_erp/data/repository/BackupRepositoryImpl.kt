@@ -63,6 +63,8 @@ class BackupRepositoryImpl @Inject constructor(
 
         val imagesDir = File(context.filesDir, "product_images")
         val imageFiles = if (imagesDir.exists()) imagesDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
+        val poAttachmentsDir = File(context.filesDir, "po_attachments")
+        val poAttachmentFiles = if (poAttachmentsDir.exists()) poAttachmentsDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
         val avatarFiles = context.filesDir.listFiles()?.filter { it.isFile && (it.name.startsWith("avatar_") || it.name.endsWith(".jpg") || it.name.endsWith(".png")) && !it.name.endsWith(".zip") } ?: emptyList()
 
         val schemaVersion = database.openHelper.readableDatabase.version
@@ -89,6 +91,14 @@ class BackupRepositoryImpl @Inject constructor(
                 val avEntry = ZipEntry("avatars/${av.name}")
                 zos.putNextEntry(avEntry)
                 FileInputStream(av).use { fis -> fis.copyTo(zos) }
+                zos.closeEntry()
+            }
+
+            // Entry M..K: PO Attachments (Invoices, PDFs & Photos)
+            for (att in poAttachmentFiles) {
+                val attEntry = ZipEntry("po_attachments/${att.name}")
+                zos.putNextEntry(attEntry)
+                FileInputStream(att).use { fis -> fis.copyTo(zos) }
                 zos.closeEntry()
             }
 
@@ -393,8 +403,9 @@ class BackupRepositoryImpl @Inject constructor(
                         }
                     }
 
-                    // Extract product images & avatars
+                    // Extract product images, PO attachments & avatars
                     val targetImagesDir = File(context.filesDir, "product_images").apply { if (!exists()) mkdirs() }
+                    val targetPoAttachmentsDir = File(context.filesDir, "po_attachments").apply { if (!exists()) mkdirs() }
                     val entries = zip.entries()
                     while (entries.hasMoreElements()) {
                         val entry = entries.nextElement()
@@ -404,6 +415,15 @@ class BackupRepositoryImpl @Inject constructor(
                             val destImgFile = File(targetImagesDir, imgFileName)
                             zip.getInputStream(entry).use { input ->
                                 FileOutputStream(destImgFile).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                        } else if (entry.name.startsWith("po_attachments/") && !entry.isDirectory) {
+                            val attFileName = safeBackupEntryFileName(entry.name, "po_attachments/")
+                                ?: throw IllegalArgumentException("Unsafe backup PO attachment path")
+                            val destAttFile = File(targetPoAttachmentsDir, attFileName)
+                            zip.getInputStream(entry).use { input ->
+                                FileOutputStream(destAttFile).use { output ->
                                     input.copyTo(output)
                                 }
                             }
@@ -535,9 +555,9 @@ internal fun isSafeBackupZipEntry(name: String): Boolean {
     val parts = name.split('/')
     if (parts.any { it == "." || it == ".." }) return false
     if (name == "metadata.json" || name == "database/advance_erp.db") return true
-    if (name == "product_images/" || name == "avatars/") return true
+    if (name == "product_images/" || name == "avatars/" || name == "po_attachments/") return true
     return (parts.size == 2 && parts[1].isNotBlank() &&
-        (parts[0] == "product_images" || parts[0] == "avatars"))
+        (parts[0] == "product_images" || parts[0] == "avatars" || parts[0] == "po_attachments"))
 }
 
 private fun safeBackupEntryFileName(entryName: String, prefix: String): String? {

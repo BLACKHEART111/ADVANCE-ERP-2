@@ -378,12 +378,21 @@ class ImportViewModel @Inject constructor(
         status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED,
         cartons: List<PoMixedCartonDraft> = emptyList(),
         chinaDeliveryChargeMinor: Long = 0L,
-        categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap()
+        categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap(),
+        attachments: String? = null
     ) {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
-                val orderId = importRepository.createPurchaseOrder(supplierId, currency, exchangeRate, items, notes, status)
+                val orderId = importRepository.createPurchaseOrder(
+                    supplierId = supplierId,
+                    currency = currency,
+                    exchangeRate = exchangeRate,
+                    items = items,
+                    notes = notes,
+                    status = status,
+                    attachments = attachments
+                )
 
                 // 1. Auto-save cartons (including mixed-variant cartons) into the PO and its linked Import Shipment
                 for (ctn in cartons) {

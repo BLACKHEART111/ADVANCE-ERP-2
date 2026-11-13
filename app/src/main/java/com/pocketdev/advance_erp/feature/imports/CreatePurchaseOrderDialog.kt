@@ -89,6 +89,7 @@ import com.pocketdev.advance_erp.domain.repository.MixedCartonLineDraft
 import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
 import com.pocketdev.advance_erp.core.model.AppLanguage
+import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.feature.product.AddProductDialog
 import com.pocketdev.advance_erp.feature.product.GalleryItemDraft
 import com.pocketdev.advance_erp.feature.product.NewVariantDraft
@@ -224,7 +225,8 @@ fun CreatePurchaseOrderDialog(
         status: PurchaseOrderStatus,
         cartons: List<PoMixedCartonDraft>,
         chinaDeliveryChargeMinor: Long,
-        categoryFreightRatesBdtMinor: Map<String, Long>
+        categoryFreightRatesBdtMinor: Map<String, Long>,
+        attachments: String?
     ) -> Unit
 ) {
     val isEditing = editingOrder != null
@@ -249,7 +251,7 @@ fun CreatePurchaseOrderDialog(
     var handlingCostStr by remember(editingOrder?.id) { mutableStateOf("0") }
     var sampleCostStr by remember(editingOrder?.id) { mutableStateOf("0") }
     var forwarderAddressStr by remember(editingOrder?.id) { mutableStateOf(parsedNotes.forwarderAddress) }
-    var attachmentsStr by remember(editingOrder?.id) { mutableStateOf(editingOrder?.attachments ?: "") }
+    var attachmentsList by remember(editingOrder?.id) { mutableStateOf(PoAttachmentStorage.parseAttachments(editingOrder?.attachments)) }
     var selectedPaymentTerm by remember(editingOrder?.id) { mutableStateOf(parsedNotes.paymentTerm) }
     var notes by remember(editingOrder?.id) { mutableStateOf(parsedNotes.userNotes) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -585,6 +587,7 @@ fun CreatePurchaseOrderDialog(
             val noteParts = listOfNotNull(termsNote, forwarderNote.ifBlank { null }, notes.trim().ifBlank { null })
             val combinedNotes = noteParts.joinToString(" • ")
 
+            val serializedAttachments = PoAttachmentStorage.serializeAttachments(attachmentsList)
             if (isEditing && onUpdatePo != null && editingOrder != null) {
                 onUpdatePo(
                     editingOrder.id,
@@ -599,7 +602,7 @@ fun CreatePurchaseOrderDialog(
                     catRatesMinorMap,
                     handlingMinor,
                     sampleMinor,
-                    attachmentsStr.ifBlank { null }
+                    serializedAttachments
                 )
             } else {
                 onSavePo(
@@ -611,7 +614,8 @@ fun CreatePurchaseOrderDialog(
                     targetStatus,
                     finalCartonDrafts,
                     chinaDeliveryMinor,
-                    catRatesMinorMap
+                    catRatesMinorMap,
+                    serializedAttachments
                 )
             }
             onDismiss()
@@ -2142,13 +2146,10 @@ fun CreatePurchaseOrderDialog(
                     }
 
                     item {
-                        OutlinedTextField(
-                            value = attachmentsStr,
-                            onValueChange = { attachmentsStr = it },
-                            label = { Text(if (isBangla) "ইনভয়েস / প্যাকিং লিস্ট ডকুমেন্টের লিংক বা ফাইল নাম" else "Invoice / Packing List Attachment Link or Filename") },
-                            supportingText = { Text(if (isBangla) "কমা দিয়ে একাধিক ফাইল যুক্ত করতে পারেন" else "Comma-separated files or links", fontSize = 10.sp) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                        PoAttachmentPickerSection(
+                            attachments = attachmentsList,
+                            onAttachmentsChanged = { attachmentsList = it },
+                            isBangla = isBangla
                         )
                     }
 

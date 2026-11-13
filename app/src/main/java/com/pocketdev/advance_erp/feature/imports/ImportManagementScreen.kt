@@ -749,7 +749,7 @@ fun ImportManagementScreen(
             onValidateBarcode = viewModel::isBarcodeAvailable,
             onAddNewVariant = viewModel::addNewVariantFromPurchase,
             onAddNewCategory = viewModel::addNewCategory,
-            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor ->
+            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, attachments ->
                 viewModel.createPurchaseOrder(
                     supplierId = supId,
                     currency = cur,
@@ -759,7 +759,8 @@ fun ImportManagementScreen(
                     status = status,
                     cartons = cartons,
                     chinaDeliveryChargeMinor = chinaDeliveryMinor,
-                    categoryFreightRatesBdtMinor = catRatesMinor
+                    categoryFreightRatesBdtMinor = catRatesMinor,
+                    attachments = attachments
                 )
             }
         )
@@ -824,7 +825,7 @@ fun ImportManagementScreen(
                 editingPoCartonsSnapshot = emptyList()
                 editingPoCostsSnapshot = emptyList()
             },
-            onSavePo = { _, _, _, _, _, _, _, _, _ -> }
+            onSavePo = { _, _, _, _, _, _, _, _, _, _ -> }
         )
     }
 

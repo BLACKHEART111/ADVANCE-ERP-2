@@ -89,6 +89,7 @@ import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
+import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
 import com.pocketdev.advance_erp.data.entity.DamageRecord
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
@@ -411,28 +412,12 @@ fun PurchaseOrderDetailDialog(
                                         fontWeight = FontWeight.Bold,
                                         color = DeepNavy
                                     )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    val files = order.attachments.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                                    files.forEach { fileRef ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.Info, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = fileRef,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = DeepNavy,
-                                                fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    val files = PoAttachmentStorage.parseAttachments(order.attachments)
+                                    PoAttachmentCards(
+                                        attachments = files,
+                                        isBangla = isBangla
+                                    )
                                 }
                             }
                         }

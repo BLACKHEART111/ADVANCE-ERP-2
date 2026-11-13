@@ -136,7 +136,8 @@ class ImportRepositoryImpl @Inject constructor(
         exchangeRate: BigDecimal,
         items: List<PurchaseOrderItemDraft>,
         notes: String?,
-        status: PurchaseOrderStatus
+        status: PurchaseOrderStatus,
+        attachments: String?
     ): String {
         require(items.isNotEmpty()) { "Purchase order must contain at least 1 item" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive: $exchangeRate" }
@@ -197,6 +198,7 @@ class ImportRepositoryImpl @Inject constructor(
             paidBdtAmountMinor = 0L,
             orderDate = System.currentTimeMillis(),
             notes = notes,
+            attachments = attachments?.takeIf { it.isNotBlank() },
             isActualCostFinalized = false,
             totalCartons = totalCartonsSum,
             totalGrossWeightKg = totalGrossWeightSum.toPlainString(),
@@ -2467,7 +2469,7 @@ class ImportRepositoryImpl @Inject constructor(
             totalAmountMinor = totalOriginalMinor,
             totalBdtAmountMinor = totalBdtMinor,
             notes = notes,
-            attachments = attachments ?: existingOrder.attachments,
+            attachments = attachments?.takeIf { it.isNotBlank() },
             totalCartons = totalCartonsSum,
             totalGrossWeightKg = totalGrossWeightSum.toPlainString(),
             totalNetWeightKg = totalNetWeightSum.toPlainString(),

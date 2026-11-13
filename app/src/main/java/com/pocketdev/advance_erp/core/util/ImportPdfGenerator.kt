@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
+import android.net.Uri
 import androidx.core.content.FileProvider
 import com.pocketdev.advance_erp.R
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
@@ -1576,6 +1577,60 @@ object ImportPdfGenerator {
     fun launchShareChooser(context: Context, file: File, mimeType: String, chooserTitle: String) {
         require(file.exists() && file.length() > 0L) { "Generated file is empty or missing" }
         val sendIntent = createShareFileIntent(context, file, mimeType)
+        val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (context.findActivity() == null) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        context.startActivity(chooser)
+    }
+
+    fun launchShareFilesChooser(
+        context: Context,
+        files: List<Pair<File, String>>,
+        chooserTitle: String,
+        extraText: String? = null
+    ) {
+        val validFiles = files.filter { it.first.exists() && it.first.length() > 0L }
+        require(validFiles.isNotEmpty()) { "Generated file is empty or missing" }
+
+        if (validFiles.size == 1 && extraText.isNullOrBlank()) {
+            launchShareChooser(context, validFiles[0].first, validFiles[0].second, chooserTitle)
+            return
+        }
+
+        val uris = ArrayList<Uri>(validFiles.size)
+        var clipData: ClipData? = null
+        for ((file, _) in validFiles) {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            uris.add(uri)
+            if (clipData == null) {
+                clipData = ClipData.newRawUri("", uri)
+            } else {
+                clipData.addItem(ClipData.Item(uri))
+            }
+        }
+
+        val sendIntent = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).apply {
+                type = validFiles[0].second
+                putExtra(Intent.EXTRA_STREAM, uris[0])
+            }
+        } else {
+            val distinctMimes = validFiles.map { it.second }.distinct()
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = if (distinctMimes.size == 1) distinctMimes[0] else "*/*"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            }
+        }.apply {
+            this.clipData = clipData
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (!extraText.isNullOrBlank()) {
+                putExtra(Intent.EXTRA_TEXT, extraText)
+            }
+        }
+
         val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (context.findActivity() == null) {

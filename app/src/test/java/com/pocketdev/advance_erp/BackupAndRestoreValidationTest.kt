@@ -16,8 +16,10 @@ class BackupAndRestoreValidationTest {
     fun backupZipRejectsPathTraversalAndUnknownEntries() {
         assertTrue(isSafeBackupZipEntry("database/advance_erp.db"))
         assertTrue(isSafeBackupZipEntry("product_images/item_01.jpg"))
+        assertTrue(isSafeBackupZipEntry("po_attachments/po_123__invoice.pdf"))
         assertTrue(isSafeBackupZipEntry("avatars/avatar_user.jpg"))
         assertFalse(isSafeBackupZipEntry("product_images/../../database.db"))
+        assertFalse(isSafeBackupZipEntry("po_attachments/../../database.db"))
         assertFalse(isSafeBackupZipEntry("avatars/..\\database.db"))
         assertFalse(isSafeBackupZipEntry("/database/advance_erp.db"))
         assertFalse(isSafeBackupZipEntry("database/other.db"))
