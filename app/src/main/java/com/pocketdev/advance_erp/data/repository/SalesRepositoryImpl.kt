@@ -183,7 +183,11 @@ class SalesRepositoryImpl @Inject constructor(
         return try {
             val invoiceId = db.withTransaction {
                 val id = createInvoice(draft)
-                val postResult = postInvoice(id)
+                val postResult = postInvoiceInternal(
+                    invoiceId = id,
+                    paymentMethod = draft.paymentMethod,
+                    paymentAccountId = draft.paymentAccountId
+                )
                 if (postResult.isFailure) {
                     throw postResult.exceptionOrNull() ?: IllegalStateException("Failed to post invoice")
                 }
@@ -268,7 +272,14 @@ class SalesRepositoryImpl @Inject constructor(
     override fun getInvoiceItemsFlow(invoiceId: String): Flow<List<SalesInvoiceItem>> =
         salesDao.getItemsForInvoiceFlow(invoiceId)
 
-    override suspend fun postInvoice(invoiceId: String): Result<Unit> {
+    override suspend fun postInvoice(invoiceId: String): Result<Unit> =
+        postInvoiceInternal(invoiceId, paymentMethod = "CASH", paymentAccountId = "coa-1010")
+
+    private suspend fun postInvoiceInternal(
+        invoiceId: String,
+        paymentMethod: String,
+        paymentAccountId: String
+    ): Result<Unit> {
         return try {
             val invoice = salesDao.getInvoiceById(invoiceId)
                 ?: return Result.failure(IllegalArgumentException("Invoice not found"))
@@ -465,6 +476,8 @@ class SalesRepositoryImpl @Inject constructor(
             val arDue = invoice.dueAmountMinor
 
             if (cashPaid > 0L) {
+                val resolvedMethod = paymentMethod.ifBlank { "CASH" }
+                val resolvedAccountId = paymentAccountId.ifBlank { "coa-1010" }
                 val paymentId = UUID.randomUUID().toString()
                 val paymentNumber = generatePaymentNumber()
                 val payment = CustomerPayment(
@@ -476,8 +489,8 @@ class SalesRepositoryImpl @Inject constructor(
                     allocatedAmountMinor = cashPaid,
                     unallocatedCreditMinor = 0L,
                     paymentDate = now,
-                    paymentMethod = "CASH",
-                    accountId = "coa-1010",
+                    paymentMethod = resolvedMethod,
+                    accountId = resolvedAccountId,
                     referenceNote = "Initial payment on Invoice #${invoice.invoiceNumber}",
                     isAdvance = false,
                     isPosted = true
@@ -495,16 +508,16 @@ class SalesRepositoryImpl @Inject constructor(
             }
 
             // 3. Double-Entry Accounting Integration
-            // Entry A: Sales Revenue, Accounts Receivable, and Cash Received
+            // Entry A: Sales Revenue, Accounts Receivable, and Cash/Bank/MFS Received
             val revenueLines = mutableListOf<JournalLineDraft>()
 
             if (cashPaid > 0L) {
                 revenueLines.add(
                     JournalLineDraft(
-                        accountId = "coa-1010",
+                        accountId = paymentAccountId.ifBlank { "coa-1010" },
                         isDebit = true,
                         amountMinor = cashPaid,
-                        description = "Cash Received: Inv #${invoice.invoiceNumber}"
+                        description = "Payment Received (${paymentMethod.ifBlank { "CASH" }}): Inv #${invoice.invoiceNumber}"
                     )
                 )
             }

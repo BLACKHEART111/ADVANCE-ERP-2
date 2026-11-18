@@ -17,6 +17,21 @@ enum class NormalBalance {
     DEBIT, CREDIT
 }
 
+/**
+ * Classifies "money" (liquid) accounts that can receive or pay funds: cash drawers,
+ * bank accounts and mobile financial services (bKash, Nagad, Rocket ...).
+ * Stored in [ChartOfAccount.accountSubType]; null means a regular ledger account.
+ */
+enum class LiquidAccountKind(val titleEn: String, val titleBn: String) {
+    CASH("Cash", "নগদ"),
+    BANK("Bank", "ব্যাংক"),
+    MOBILE_BANKING("Mobile Banking", "মোবাইল ব্যাংকিং");
+
+    companion object {
+        fun from(value: String?): LiquidAccountKind? = entries.firstOrNull { it.name == value }
+    }
+}
+
 @Entity(
     tableName = "chart_of_accounts",
     indices = [
@@ -32,8 +47,18 @@ data class ChartOfAccount(
     val accountType: String,
     val normalBalance: String,
     val description: String? = null,
-    val isActive: Boolean = true
-)
+    val isActive: Boolean = true,
+    /** CASH / BANK / MOBILE_BANKING for money accounts, null for regular ledger accounts. */
+    val accountSubType: String? = null,
+    /** Bank or MFS provider name, e.g. "Dutch-Bangla Bank PLC" or "bKash". */
+    val institutionName: String? = null,
+    val branchName: String? = null,
+    /** Bank account number or MFS wallet number. */
+    val accountNumber: String? = null
+) {
+    val liquidKind: LiquidAccountKind? get() = LiquidAccountKind.from(accountSubType)
+    val isLiquid: Boolean get() = liquidKind != null
+}
 
 @Entity(
     tableName = "journal_entries",

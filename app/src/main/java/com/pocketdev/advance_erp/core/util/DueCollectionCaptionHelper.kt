@@ -153,6 +153,8 @@ object DueCollectionCaptionHelper {
             "BKASH" -> "বিকাশ (bKash)"
             "NAGAD" -> "নগদ (Nagad)"
             "ROCKET" -> "রকেট (Rocket)"
+            "UPAY" -> "উপায় (Upay)"
+            "MFS" -> "মোবাইল ব্যাংকিং (MFS)"
             "CHEQUE" -> "চেক (Cheque)"
             else -> method
         }

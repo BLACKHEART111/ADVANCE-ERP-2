@@ -1299,4 +1299,42 @@ object DatabaseMigrations {
             )
         }
     }
+
+    /**
+     * v13: Cash / Bank / Mobile-banking classification on chart_of_accounts so that payment
+     * screens can list every money account dynamically (any Bangladeshi bank, bKash, Nagad ...).
+     */
+    val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE chart_of_accounts ADD COLUMN accountSubType TEXT")
+            db.execSQL("ALTER TABLE chart_of_accounts ADD COLUMN institutionName TEXT")
+            db.execSQL("ALTER TABLE chart_of_accounts ADD COLUMN branchName TEXT")
+            db.execSQL("ALTER TABLE chart_of_accounts ADD COLUMN accountNumber TEXT")
+            ensureLiquidAccountDefaults(db)
+        }
+    }
+
+    /**
+     * Idempotent: tags the built-in cash/bank accounts and makes sure default bKash / Nagad
+     * wallets exist. Safe to call on every open (only touches rows that are still untagged).
+     */
+    fun ensureLiquidAccountDefaults(db: SupportSQLiteDatabase) {
+        try {
+            db.execSQL("UPDATE chart_of_accounts SET accountSubType = 'CASH' WHERE id = 'coa-1010' AND accountSubType IS NULL")
+            db.execSQL("UPDATE chart_of_accounts SET accountSubType = 'BANK', institutionName = COALESCE(institutionName, 'The City Bank PLC') WHERE id = 'coa-1020' AND accountSubType IS NULL")
+            db.execSQL("UPDATE chart_of_accounts SET accountSubType = 'BANK', institutionName = COALESCE(institutionName, 'Islami Bank Bangladesh PLC') WHERE id = 'coa-1030' AND accountSubType IS NULL")
+            db.execSQL("""
+                INSERT OR IGNORE INTO chart_of_accounts
+                (id, accountCode, nameEn, nameBn, accountType, normalBalance, description, isActive, accountSubType, institutionName, branchName, accountNumber)
+                VALUES ('coa-1060', '1060', 'bKash Account', 'বিকাশ অ্যাকাউন্ট', 'ASSET', 'DEBIT', 'bKash merchant / personal wallet', 1, 'MOBILE_BANKING', 'bKash', NULL, NULL)
+            """.trimIndent())
+            db.execSQL("""
+                INSERT OR IGNORE INTO chart_of_accounts
+                (id, accountCode, nameEn, nameBn, accountType, normalBalance, description, isActive, accountSubType, institutionName, branchName, accountNumber)
+                VALUES ('coa-1061', '1061', 'Nagad Account', 'নগদ অ্যাকাউন্ট', 'ASSET', 'DEBIT', 'Nagad merchant / personal wallet', 1, 'MOBILE_BANKING', 'Nagad', NULL, NULL)
+            """.trimIndent())
+        } catch (_: Exception) {
+            // Columns missing (pre-v13 schema) – migration will handle it.
+        }
+    }
 }

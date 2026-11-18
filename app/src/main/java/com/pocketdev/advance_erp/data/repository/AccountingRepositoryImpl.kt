@@ -1,11 +1,13 @@
 package com.pocketdev.advance_erp.data.repository
 
+import androidx.room.withTransaction
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import com.pocketdev.advance_erp.data.dao.AccountingDao
 import com.pocketdev.advance_erp.data.entity.AccountType
 import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.JournalEntry
 import com.pocketdev.advance_erp.data.entity.JournalLine
+import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
 import com.pocketdev.advance_erp.data.entity.NormalBalance
 import com.pocketdev.advance_erp.data.entity.TrialBalanceItem
 import com.pocketdev.advance_erp.domain.repository.AccountingRepository
@@ -33,22 +35,148 @@ class AccountingRepositoryImpl @Inject constructor(
         normalBalance: NormalBalance,
         description: String?
     ): String {
-        val existing = accountingDao.getAccountByCode(code)
-        require(existing == null) { "Account code already exists: $code" }
+        val cleanCode = code.trim()
+        require(cleanCode.isNotBlank()) { "Account code is required" }
+        require(cleanCode.all { it.isDigit() }) { "Account code must contain digits only" }
+        require(nameEn.isNotBlank()) { "Account name is required" }
+        val existing = accountingDao.getAccountByCode(cleanCode)
+        require(existing == null) { "Account code already exists: $cleanCode" }
 
-        val id = "coa-$code"
+        val id = "coa-$cleanCode"
+        require(accountingDao.getAccountById(id) == null) { "Account already exists: $id" }
         val account = ChartOfAccount(
             id = id,
-            accountCode = code,
-            nameEn = nameEn,
-            nameBn = nameBn,
+            accountCode = cleanCode,
+            nameEn = nameEn.trim(),
+            nameBn = nameBn.trim().ifBlank { nameEn.trim() },
             accountType = type.name,
             normalBalance = normalBalance.name,
-            description = description,
+            description = description?.trim()?.ifBlank { null },
             isActive = true
         )
         accountingDao.insertAccount(account)
         return id
+    }
+
+    override fun getLiquidAccounts(): Flow<List<ChartOfAccount>> = accountingDao.getLiquidAccounts()
+
+    override suspend fun createLiquidAccount(
+        kind: LiquidAccountKind,
+        nameEn: String,
+        nameBn: String,
+        institutionName: String?,
+        branchName: String?,
+        accountNumber: String?,
+        description: String?,
+        openingBalanceMinor: Long
+    ): String {
+        require(nameEn.isNotBlank()) { "Account name is required" }
+        require(openingBalanceMinor >= 0L) { "Opening balance cannot be negative" }
+        if (kind != LiquidAccountKind.CASH) {
+            require(!institutionName.isNullOrBlank()) {
+                if (kind == LiquidAccountKind.BANK) "Please select a bank" else "Please select a mobile banking provider"
+            }
+        }
+        val cleanNumber = accountNumber?.trim()?.ifBlank { null }
+        if (cleanNumber != null) {
+            val duplicate = accountingDao.getLiquidAccountsSync().firstOrNull {
+                it.accountNumber == cleanNumber && it.institutionName.equals(institutionName, ignoreCase = true)
+            }
+            require(duplicate == null) { "This account number already exists: ${duplicate?.nameEn}" }
+        }
+
+        return database.withTransaction {
+            val code = suggestNextAccountCode(AccountType.ASSET, kind)
+            val id = "coa-$code"
+            accountingDao.insertAccount(
+                ChartOfAccount(
+                    id = id,
+                    accountCode = code,
+                    nameEn = nameEn.trim(),
+                    nameBn = nameBn.trim().ifBlank { nameEn.trim() },
+                    accountType = AccountType.ASSET.name,
+                    normalBalance = NormalBalance.DEBIT.name,
+                    description = description?.trim()?.ifBlank { null },
+                    isActive = true,
+                    accountSubType = kind.name,
+                    institutionName = institutionName?.trim()?.ifBlank { null },
+                    branchName = branchName?.trim()?.ifBlank { null },
+                    accountNumber = cleanNumber
+                )
+            )
+
+            if (openingBalanceMinor > 0L) {
+                postJournalEntry(
+                    entryDate = System.currentTimeMillis(),
+                    descEn = "Opening balance - ${nameEn.trim()}",
+                    descBn = "প্রারম্ভিক জের - ${nameBn.trim().ifBlank { nameEn.trim() }}",
+                    referenceType = "OPENING_BALANCE",
+                    referenceId = id,
+                    lines = listOf(
+                        JournalLineDraft(id, true, openingBalanceMinor, "Opening balance"),
+                        JournalLineDraft(OWNER_CAPITAL_ACCOUNT_ID, false, openingBalanceMinor, "Opening balance - ${nameEn.trim()}")
+                    )
+                )
+            }
+            id
+        }
+    }
+
+    override suspend fun updateAccount(account: ChartOfAccount) {
+        val existing = accountingDao.getAccountById(account.id)
+            ?: throw IllegalArgumentException("Account not found: ${account.id}")
+        require(account.nameEn.isNotBlank()) { "Account name is required" }
+        if (!account.isActive && existing.isActive) {
+            require(account.id !in PROTECTED_ACCOUNT_IDS) {
+                "${existing.nameEn} is a system account and cannot be deactivated"
+            }
+        }
+        // Code, type and normal balance are immutable to keep posted journals consistent.
+        accountingDao.updateAccount(
+            existing.copy(
+                nameEn = account.nameEn.trim(),
+                nameBn = account.nameBn.trim().ifBlank { account.nameEn.trim() },
+                description = account.description?.trim()?.ifBlank { null },
+                isActive = account.isActive,
+                institutionName = account.institutionName?.trim()?.ifBlank { null },
+                branchName = account.branchName?.trim()?.ifBlank { null },
+                accountNumber = account.accountNumber?.trim()?.ifBlank { null }
+            )
+        )
+    }
+
+    override suspend fun suggestNextAccountCode(type: AccountType, kind: LiquidAccountKind?): String {
+        val used = accountingDao.getAllAccountsSync().map { it.accountCode }.toSet()
+        val start = when (kind) {
+            LiquidAccountKind.CASH -> 1011
+            LiquidAccountKind.BANK -> 1021
+            LiquidAccountKind.MOBILE_BANKING -> 1062
+            null -> when (type) {
+                AccountType.ASSET -> 1300
+                AccountType.LIABILITY -> 2040
+                AccountType.EQUITY -> 3030
+                AccountType.REVENUE -> 4040
+                AccountType.EXPENSE -> 5200
+            }
+        }
+        val rangeEnd = (start / 1000) * 1000 + 999
+        var candidate = start
+        while (candidate <= rangeEnd && candidate.toString() in used) candidate++
+        require(candidate <= rangeEnd) { "No free account code left in ${type.titleEn} range" }
+        return candidate.toString()
+    }
+
+    companion object {
+        const val OWNER_CAPITAL_ACCOUNT_ID = "coa-3010"
+
+        /** Accounts referenced directly by posting logic – must stay active. */
+        val PROTECTED_ACCOUNT_IDS = setOf(
+            "coa-1010", "coa-1020", "coa-1040", "coa-1050", "coa-1210", "coa-1220",
+            "coa-2010", "coa-2020", "coa-2030", "coa-3010", "coa-3020",
+            "coa-4010", "coa-4020", "coa-4030",
+            "coa-5010", "coa-5020", "coa-5030", "coa-5040", "coa-5050", "coa-5090",
+            "coa-5110", "coa-5120", "coa-5130", "coa-5140", "coa-5150", "coa-5190"
+        )
     }
 
     override fun getAllJournalEntries(): Flow<List<JournalEntry>> = accountingDao.getAllJournalEntries()

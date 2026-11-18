@@ -58,6 +58,14 @@ class DatabaseMigrationVerificationTest {
         val m1011 = DatabaseMigrations.MIGRATION_10_11
         assertEquals(10, m1011.startVersion)
         assertEquals(11, m1011.endVersion)
+
+        val m1112 = DatabaseMigrations.MIGRATION_11_12
+        assertEquals(11, m1112.startVersion)
+        assertEquals(12, m1112.endVersion)
+
+        val m1213 = DatabaseMigrations.MIGRATION_12_13
+        assertEquals(12, m1213.startVersion)
+        assertEquals(13, m1213.endVersion)
     }
 
     @Test
@@ -122,7 +130,13 @@ class DatabaseMigrationVerificationTest {
         DatabaseMigrations.MIGRATION_8_9.migrate(mockDb)
         DatabaseMigrations.MIGRATION_9_10.migrate(mockDb)
         DatabaseMigrations.MIGRATION_10_11.migrate(mockDb)
+        DatabaseMigrations.MIGRATION_11_12.migrate(mockDb)
+        DatabaseMigrations.MIGRATION_12_13.migrate(mockDb)
 
         assertTrue("Expected multiple SQL statements to be executed across migrations", executedSqlList.size > 30)
+        assertTrue(
+            "MIGRATION_12_13 must add accountSubType column",
+            executedSqlList.any { it.contains("ALTER TABLE chart_of_accounts ADD COLUMN accountSubType") }
+        )
     }
 }

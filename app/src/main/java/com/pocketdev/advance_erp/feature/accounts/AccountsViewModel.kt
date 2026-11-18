@@ -17,6 +17,7 @@ import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
 import com.pocketdev.advance_erp.data.entity.JournalEntry
+import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
 import com.pocketdev.advance_erp.data.entity.NormalBalance
 import com.pocketdev.advance_erp.data.entity.TrialBalanceItem
 import com.pocketdev.advance_erp.domain.model.AgingReport
@@ -42,6 +43,7 @@ import javax.inject.Inject
 
 data class AccountsUiState(
     val accounts: List<ChartOfAccount> = emptyList(),
+    val liquidAccounts: List<ChartOfAccount> = emptyList(),
     val journalEntries: List<JournalEntry> = emptyList(),
     val trialBalance: List<TrialBalanceItem> = emptyList(),
     val totalTrialDebit: Long = 0L,
@@ -94,8 +96,12 @@ class AccountsViewModel @Inject constructor(
                 financialRepository.getAllTransfers(),
                 financialRepository.getAllReconciliations()
             ) { accounts, entries, expenses, transfers, reconciliations ->
+                val liquid = accounts
+                    .filter { it.liquidKind != null }
+                    .sortedWith(compareBy({ it.liquidKind?.ordinal ?: 99 }, { it.accountCode }))
                 _uiState.value.copy(
                     accounts = accounts,
+                    liquidAccounts = liquid,
                     journalEntries = entries,
                     expenses = expenses,
                     transfers = transfers,
@@ -468,18 +474,75 @@ class AccountsViewModel @Inject constructor(
         nameBn: String,
         type: AccountType,
         normalBalance: NormalBalance,
-        desc: String?
+        desc: String?,
+        onSuccess: (() -> Unit)? = null
     ) {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
                 accountingRepository.createAccount(code, nameEn, nameBn, type, normalBalance, desc)
                 refreshTrialBalance()
+                loadFinancialStatements()
                 _uiState.update { it.copy(isLoading = false, userMessage = "Account created in Chart of Accounts!") }
+                onSuccess?.invoke()
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
             }
         }
+    }
+
+    fun createLiquidAccount(
+        kind: LiquidAccountKind,
+        nameEn: String,
+        nameBn: String,
+        institutionName: String?,
+        branchName: String?,
+        accountNumber: String?,
+        description: String?,
+        openingBalanceMinor: Long,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                val newId = accountingRepository.createLiquidAccount(
+                    kind = kind,
+                    nameEn = nameEn,
+                    nameBn = nameBn,
+                    institutionName = institutionName,
+                    branchName = branchName,
+                    accountNumber = accountNumber,
+                    description = description,
+                    openingBalanceMinor = openingBalanceMinor
+                )
+                refreshTrialBalance()
+                loadFinancialStatements()
+                selectBankAccountForBook(newId)
+                _uiState.update { it.copy(isLoading = false, userMessage = "${kind.titleEn} account added: $nameEn") }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun updateAccount(account: ChartOfAccount, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                accountingRepository.updateAccount(account)
+                refreshTrialBalance()
+                loadFinancialStatements()
+                _uiState.update { it.copy(isLoading = false, userMessage = "Account updated: ${account.nameEn}") }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = "Update Error: ${e.message}") }
+            }
+        }
+    }
+
+    suspend fun suggestNextAccountCode(type: AccountType, kind: LiquidAccountKind? = null): String {
+        return accountingRepository.suggestNextAccountCode(type, kind)
     }
 
     fun clearMessage() {

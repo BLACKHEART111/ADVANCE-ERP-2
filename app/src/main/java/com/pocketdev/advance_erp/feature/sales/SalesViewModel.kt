@@ -16,6 +16,7 @@ import com.pocketdev.advance_erp.data.dao.ProductVariantDao
 import com.pocketdev.advance_erp.data.dao.StockBalanceDao
 import com.pocketdev.advance_erp.data.dao.WarehouseDao
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
+import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.CustomerPayment
 import com.pocketdev.advance_erp.data.entity.PaymentAllocation
@@ -26,6 +27,7 @@ import com.pocketdev.advance_erp.data.entity.SalesInvoiceItem
 import com.pocketdev.advance_erp.data.entity.SalesReturn
 import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Warehouse
+import com.pocketdev.advance_erp.domain.repository.AccountingRepository
 import com.pocketdev.advance_erp.domain.repository.CustomerLedgerEntry
 import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
 import com.pocketdev.advance_erp.domain.repository.CustomerSummary
@@ -56,6 +58,7 @@ data class SalesUiState(
     val stockBalances: List<StockBalance> = emptyList(),
     val payments: List<CustomerPayment> = emptyList(),
     val returns: List<SalesReturn> = emptyList(),
+    val liquidAccounts: List<ChartOfAccount> = emptyList(),
     val selectedCustomerSummary: CustomerSummary? = null,
     val selectedInvoice: SalesInvoice? = null,
     val selectedInvoiceItems: List<SalesInvoiceItem> = emptyList(),
@@ -84,6 +87,7 @@ class SalesViewModel @Inject constructor(
     private val warehouseDao: WarehouseDao,
     private val stockBalanceDao: StockBalanceDao,
     private val businessProfileDao: BusinessProfileDao,
+    private val accountingRepository: AccountingRepository,
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
@@ -174,6 +178,12 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             businessProfileDao.getProfile().collect { profile ->
                 _uiState.update { it.copy(businessProfile = profile) }
+            }
+        }
+
+        viewModelScope.launch {
+            accountingRepository.getLiquidAccounts().collect { accounts ->
+                _uiState.update { it.copy(liquidAccounts = accounts.filter { acc -> acc.isActive }) }
             }
         }
     }

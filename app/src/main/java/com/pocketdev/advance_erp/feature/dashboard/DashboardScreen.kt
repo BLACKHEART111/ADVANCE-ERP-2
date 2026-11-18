@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Today
@@ -212,7 +213,7 @@ fun DashboardScreen(
                 item {
                     DashboardQuickAction(
                         label = if (isBangla) "নতুন বিক্রয়" else "New Sale",
-                        icon = Icons.Default.PointOfSale,
+                        icon = Icons.Default.ShoppingBag,
                         onClick = onNavigateToSales
                     )
                 }

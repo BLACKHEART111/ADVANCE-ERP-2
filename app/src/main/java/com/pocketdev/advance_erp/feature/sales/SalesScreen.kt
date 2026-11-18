@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.AlertDialog
@@ -167,7 +166,7 @@ fun SalesScreen(
                         contentColor = Color.White,
                         icon = {
                             Icon(
-                                imageVector = Icons.Default.Storefront,
+                                imageVector = Icons.Default.PointOfSale,
                                 contentDescription = "POS Mode",
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp)
@@ -280,6 +279,7 @@ fun SalesScreen(
                     2 -> PaymentsTab(
                         payments = uiState.payments,
                         customers = uiState.customers,
+                        liquidAccounts = uiState.liquidAccounts,
                         isBangla = isBangla,
                         language = uiState.language,
                         onShareReceipt = { pay ->
@@ -379,6 +379,7 @@ fun SalesScreen(
             products = uiState.products,
             variants = uiState.variants,
             stockBalances = uiState.stockBalances,
+            liquidAccounts = uiState.liquidAccounts,
             customerSummary = uiState.selectedCustomerSummary,
             isBangla = isBangla,
             onDismiss = { showCreateInvoiceDialog = false },
@@ -403,6 +404,7 @@ fun SalesScreen(
         RecordCustomerPaymentDialog(
             customers = uiState.customers,
             invoices = uiState.invoices,
+            liquidAccounts = uiState.liquidAccounts,
             preselectedInvoice = uiState.selectedInvoice,
             preselectedCustomerId = collectDueCustomerId,
             nextPaymentNumber = uiState.nextPaymentNumber,
@@ -822,6 +824,7 @@ fun isSameCalendarDay(t1: Long, t2: Long): Boolean {
 private fun PaymentsTab(
     payments: List<CustomerPayment>,
     customers: List<Customer>,
+    liquidAccounts: List<com.pocketdev.advance_erp.data.entity.ChartOfAccount> = emptyList(),
     isBangla: Boolean,
     language: AppLanguage = AppLanguage.BANGLA,
     onShareReceipt: (CustomerPayment) -> Unit,
@@ -839,6 +842,7 @@ private fun PaymentsTab(
     var voidReason by remember { mutableStateOf("") }
 
     val customersMap = remember(customers) { customers.associateBy { it.id } }
+    val accountsMap = remember(liquidAccounts) { liquidAccounts.associateBy { it.id } }
 
     val filteredPayments = remember(
         payments,
@@ -879,7 +883,13 @@ private fun PaymentsTab(
             val matchesMethod = when (selectedMethodFilter) {
                 "ALL" -> true
                 "VOIDED" -> pay.isVoided
-                "MFS" -> !pay.isVoided && (pay.paymentMethod.equals("BKASH", ignoreCase = true) || pay.paymentMethod.equals("NAGAD", ignoreCase = true))
+                "MFS" -> !pay.isVoided && (
+                    pay.paymentMethod.equals("BKASH", ignoreCase = true) ||
+                        pay.paymentMethod.equals("NAGAD", ignoreCase = true) ||
+                        pay.paymentMethod.equals("ROCKET", ignoreCase = true) ||
+                        pay.paymentMethod.equals("UPAY", ignoreCase = true) ||
+                        pay.paymentMethod.equals("MFS", ignoreCase = true)
+                    )
                 else -> !pay.isVoided && pay.paymentMethod.equals(selectedMethodFilter, ignoreCase = true)
             }
 
@@ -1426,8 +1436,12 @@ private fun PaymentsTab(
                                 )
                             }
                         }
+                        val accLabel = accountsMap[pay.accountId]?.let { acc ->
+                            if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn
+                        }
+                        val methodAndAccount = if (accLabel != null) "${pay.paymentMethod} ($accLabel)" else pay.paymentMethod
                         Text(
-                            text = "${pay.paymentMethod} • ${dateFormat.format(Date(pay.paymentDate))}",
+                            text = "$methodAndAccount • ${dateFormat.format(Date(pay.paymentDate))}",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextMuted
                         )

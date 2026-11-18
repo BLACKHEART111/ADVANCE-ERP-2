@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.JournalEntry
 import com.pocketdev.advance_erp.data.entity.JournalLine
@@ -31,6 +32,22 @@ interface AccountingDao {
 
     @Query("SELECT * FROM chart_of_accounts WHERE accountCode = :code")
     suspend fun getAccountByCode(code: String): ChartOfAccount?
+
+    @Update
+    suspend fun updateAccount(account: ChartOfAccount)
+
+    /** Cash, bank and mobile-banking accounts (money accounts), ordered by kind then code. */
+    @Query("""
+        SELECT * FROM chart_of_accounts WHERE accountSubType IS NOT NULL
+        ORDER BY CASE accountSubType WHEN 'CASH' THEN 0 WHEN 'BANK' THEN 1 ELSE 2 END, accountCode ASC
+    """)
+    fun getLiquidAccounts(): Flow<List<ChartOfAccount>>
+
+    @Query("SELECT * FROM chart_of_accounts WHERE accountSubType IS NOT NULL ORDER BY accountCode ASC")
+    suspend fun getLiquidAccountsSync(): List<ChartOfAccount>
+
+    @Query("SELECT COUNT(*) FROM journal_lines WHERE accountId = :accountId")
+    suspend fun getLineCountForAccount(accountId: String): Int
 
     // Journal Entries & Lines
     @Insert(onConflict = OnConflictStrategy.REPLACE)

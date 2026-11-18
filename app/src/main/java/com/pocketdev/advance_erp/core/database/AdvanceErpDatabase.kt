@@ -150,7 +150,7 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
         // Phase 08 Smart Suggestions:
         SavedSuggestion::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class AdvanceErpDatabase : RoomDatabase() {
@@ -218,7 +218,8 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                     DatabaseMigrations.MIGRATION_8_9,
                     DatabaseMigrations.MIGRATION_9_10,
                     DatabaseMigrations.MIGRATION_10_11,
-                    DatabaseMigrations.MIGRATION_11_12
+                    DatabaseMigrations.MIGRATION_11_12,
+                    DatabaseMigrations.MIGRATION_12_13
                 )
                 .addCallback(object : Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {
@@ -274,6 +275,9 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
             if (coaCount < 27) {
                 DatabaseMigrations.seedStandardAccounts(db)
             }
+
+            // Cash / Bank / Mobile-banking tagging + default bKash & Nagad wallets
+            DatabaseMigrations.ensureLiquidAccountDefaults(db)
 
             // Ensure fallback Uncategorized category exists
             db.execSQL("""

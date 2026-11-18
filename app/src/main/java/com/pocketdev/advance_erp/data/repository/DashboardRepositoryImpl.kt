@@ -190,7 +190,11 @@ class DashboardRepositoryImpl @Inject constructor(
                 emptyList()
             }
 
-            val cashBankIds = setOf("coa-1010", "coa-1020", "coa-1030")
+            val cashBankIds = try {
+                accountingDao.getLiquidAccountsSync().map { it.id }.toSet()
+            } catch (e: Exception) {
+                emptySet()
+            }.ifEmpty { setOf("coa-1010", "coa-1020", "coa-1030") }
             val cashBankLines = activeLinesUpTo.filter { it.accountId in cashBankIds }
             val closingCashBankMinor = cashBankLines.filter { it.isDebit }.sumOf { it.amountMinor } -
                     cashBankLines.filter { !it.isDebit }.sumOf { it.amountMinor }

@@ -36,9 +36,9 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.PowerSettingsNew
@@ -99,7 +99,7 @@ enum class DrawerDestination(
     SHIPMENTS("shipments", Icons.Default.FlightTakeoff, R.string.nav_shipments),
     CUSTOMERS("customers", Icons.Default.Group, R.string.nav_customers),
     SUPPLIERS("suppliers", Icons.Default.Storefront, R.string.nav_suppliers),
-    SALES("sales", Icons.Default.PointOfSale, R.string.nav_sales),
+    SALES("sales", Icons.Default.ShoppingBag, R.string.nav_sales),
     ACCOUNTS("accounts", Icons.Default.AccountBalance, R.string.nav_accounts),
     LEDGER("ledger", Icons.Default.MenuBook, R.string.nav_ledger),
     REPORTS("reports", Icons.Default.Assessment, R.string.nav_reports),

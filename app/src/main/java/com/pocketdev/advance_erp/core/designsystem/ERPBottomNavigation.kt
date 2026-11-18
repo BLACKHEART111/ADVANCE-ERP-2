@@ -20,7 +20,7 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,7 +47,7 @@ enum class BottomNavDestination(
 ) {
     DASHBOARD("dashboard", Icons.Default.Dashboard, R.string.nav_dashboard),
     INVENTORY("inventory", Icons.Default.Inventory2, R.string.nav_inventory),
-    SALES("sales", Icons.Default.PointOfSale, R.string.nav_sales),
+    SALES("sales", Icons.Default.ShoppingBag, R.string.nav_sales),
     ACCOUNTS("accounts", Icons.Default.AccountBalance, R.string.nav_accounts),
     MORE("more", Icons.Default.MoreHoriz, R.string.nav_more)
 }

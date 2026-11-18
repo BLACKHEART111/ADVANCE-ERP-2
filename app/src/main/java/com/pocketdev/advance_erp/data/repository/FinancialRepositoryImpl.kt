@@ -249,20 +249,19 @@ class FinancialRepositoryImpl @Inject constructor(
     private suspend fun getBookForAccount(accountId: String, fromDate: Long, toDate: Long): List<CashBankBookEntry> {
         val account = accountingDao.getAccountById(accountId) ?: return emptyList()
         val allPostedLines = accountingDao.getActivePostedLines().filter { it.accountId == accountId }
-        val entriesMap = accountingDao.getAllJournalEntries().let { flow ->
-            // Fetch sync by reading active entries
-            emptyMap<String, Long>()
-        }
 
-        // Get journal entries to associate entry dates
-        val activeEntries = accountingDao.getAllJournalEntries()
-        // Sort chronologically
+        val linesWithDates = allPostedLines.map { line ->
+            val je = accountingDao.getJournalEntryById(line.journalEntryId)
+            val entryDate = je?.entryDate ?: je?.createdAt ?: 0L
+            val createdAt = je?.createdAt ?: entryDate
+            Triple(line, je, entryDate to createdAt)
+        }.sortedWith(compareBy({ it.third.first }, { it.third.second }, { it.first.id }))
+
         var runningBal = 0L
         val bookEntries = mutableListOf<CashBankBookEntry>()
 
-        for (line in allPostedLines) {
-            val je = accountingDao.getJournalEntryById(line.journalEntryId)
-            val entryDate = je?.entryDate ?: je?.createdAt ?: System.currentTimeMillis()
+        for ((line, je, dates) in linesWithDates) {
+            val entryDate = dates.first
             val receipt = if (line.isDebit) line.amountMinor else 0L
             val payment = if (!line.isDebit) line.amountMinor else 0L
             runningBal += (receipt - payment)
@@ -284,7 +283,7 @@ class FinancialRepositoryImpl @Inject constructor(
             }
         }
 
-        return bookEntries.sortedBy { it.date }
+        return bookEntries
     }
 
     override suspend fun getAccountBalanceMinor(accountId: String): Long {
@@ -683,8 +682,9 @@ class FinancialRepositoryImpl @Inject constructor(
         val netFinancing = 0L
         val netChange = netOperations + netInvesting + netFinancing
 
-        // Cash & Bank accounts: 1010, 1020, 1030
-        val cashBankIds = listOf("coa-1010", "coa-1020", "coa-1030")
+        // All Cash, Bank & Mobile-banking accounts
+        val cashBankIds = accountingDao.getLiquidAccountsSync().map { it.id }.toSet()
+            .ifEmpty { setOf("coa-1010", "coa-1020", "coa-1030") }
         val allPostedLines = accountingDao.getActivePostedLines().filter { it.accountId in cashBankIds }
 
         var openingBal = 0L

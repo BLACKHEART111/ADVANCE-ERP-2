@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -81,9 +83,12 @@ import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import com.pocketdev.advance_erp.core.model.BangladeshBanks
 import com.pocketdev.advance_erp.core.model.Money
 import com.pocketdev.advance_erp.core.util.Formatters
+import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.StockBalance
@@ -119,6 +124,7 @@ fun CreateInvoiceDialog(
     products: List<Product>,
     variants: List<ProductVariant> = emptyList(),
     stockBalances: List<StockBalance> = emptyList(),
+    liquidAccounts: List<ChartOfAccount> = emptyList(),
     customerSummary: CustomerSummary? = null,
     isBangla: Boolean,
     onDismiss: () -> Unit,
@@ -140,6 +146,7 @@ fun CreateInvoiceDialog(
     var paidAmountStr by remember { mutableStateOf("0.00") }
     var isFullPaymentSelected by remember { mutableStateOf(false) }
     var paymentMethod by remember { mutableStateOf("CASH") } // CASH, BANK, MFS, CREDIT
+    var selectedPaymentAccountId by remember { mutableStateOf("coa-1010") }
     var notes by remember { mutableStateOf("") }
     var showCostAndProfit by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -275,10 +282,21 @@ fun CreateInvoiceDialog(
             return null
         }
 
-        val paymentAccountId = when (paymentMethod) {
-            "BANK" -> "coa-1020"
-            "MFS" -> "coa-1030"
+        val resolvedAccount = liquidAccounts.find { it.id == selectedPaymentAccountId }
+        val resolvedAccountId = when (paymentMethod) {
+            "CASH" -> resolvedAccount?.takeIf { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
+            "BANK" -> resolvedAccount?.takeIf { it.liquidKind == LiquidAccountKind.BANK }?.id
+                ?: liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.BANK }?.id
+                ?: "coa-1020"
+            "MFS" -> resolvedAccount?.takeIf { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }?.id
+                ?: liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }?.id
+                ?: "coa-1060"
             else -> "coa-1010"
+        }
+        val resolvedPaymentMethod = if (paymentMethod == "MFS") {
+            liquidAccounts.find { it.id == resolvedAccountId }?.let { BangladeshBanks.inferPaymentMethod(it) } ?: "MFS"
+        } else {
+            paymentMethod
         }
 
         return SalesInvoiceDraft(
@@ -288,8 +306,8 @@ fun CreateInvoiceDialog(
             discountMinor = invDiscountMinor,
             additionalChargesMinor = addChargesMinor,
             paidAmountMinor = currentPaidMinor,
-            paymentMethod = paymentMethod,
-            paymentAccountId = paymentAccountId,
+            paymentMethod = resolvedPaymentMethod,
+            paymentAccountId = resolvedAccountId,
             notes = notes.ifBlank { null },
             items = draftItems,
             newCustomerDraft = pendingNewCustomerDraft
@@ -840,9 +858,17 @@ fun CreateInvoiceDialog(
                                                         .clip(RoundedCornerShape(8.dp))
                                                         .clickable {
                                                             paymentMethod = code
-                                                            if (code == "CREDIT") {
-                                                                isFullPaymentSelected = false
-                                                                paidAmountStr = "0.00"
+                                                            when (code) {
+                                                                "CREDIT" -> {
+                                                                    isFullPaymentSelected = false
+                                                                    paidAmountStr = "0.00"
+                                                                }
+                                                                "CASH" -> selectedPaymentAccountId =
+                                                                    liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
+                                                                "BANK" -> selectedPaymentAccountId =
+                                                                    liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.BANK }?.id ?: "coa-1020"
+                                                                "MFS" -> selectedPaymentAccountId =
+                                                                    liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }?.id ?: "coa-1060"
                                                             }
                                                         },
                                                     color = if (isSelected) PrimaryPurple else ERPBackground,
@@ -866,6 +892,42 @@ fun CreateInvoiceDialog(
                                 }
 
                                 Spacer(modifier = Modifier.height(8.dp))
+
+                                val channelAccounts = when (paymentMethod) {
+                                    "CASH" -> liquidAccounts.filter { it.liquidKind == LiquidAccountKind.CASH }
+                                    "BANK" -> liquidAccounts.filter { it.liquidKind == LiquidAccountKind.BANK }
+                                    "MFS" -> liquidAccounts.filter { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }
+                                    else -> emptyList()
+                                }
+                                if (paymentMethod != "CREDIT" && channelAccounts.isNotEmpty()) {
+                                    Text(
+                                        text = if (isBangla) "জমার হিসাব নির্বাচন করুন:" else "Deposit To Account:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(channelAccounts) { acc ->
+                                            val isAccSel = selectedPaymentAccountId == acc.id
+                                            Surface(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .clickable { selectedPaymentAccountId = acc.id },
+                                                color = if (isAccSel) SecondaryTeal else ERPBackground,
+                                                border = if (isAccSel) null else androidx.compose.foundation.BorderStroke(1.dp, DeepNavy.copy(alpha = 0.12f))
+                                            ) {
+                                                Text(
+                                                    text = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isAccSel) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isAccSel) Color.White else TextPrimary,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),

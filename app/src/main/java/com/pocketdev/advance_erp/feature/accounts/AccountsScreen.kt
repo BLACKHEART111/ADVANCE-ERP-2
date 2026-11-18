@@ -1,7 +1,9 @@
 package com.pocketdev.advance_erp.feature.accounts
 
 import android.content.Context
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,13 +17,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Check
@@ -32,6 +38,7 @@ import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Security
@@ -43,6 +50,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +80,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -80,6 +92,7 @@ import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPCard
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.ERPLoadingState
+import com.pocketdev.advance_erp.core.designsystem.ERPSearchBar
 import com.pocketdev.advance_erp.core.designsystem.ERPSectionHeader
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
@@ -101,7 +114,9 @@ import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.ExpenseCategory
 import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
 import com.pocketdev.advance_erp.data.entity.JournalEntry
+import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
 import com.pocketdev.advance_erp.data.entity.NormalBalance
+import com.pocketdev.advance_erp.data.entity.TrialBalanceItem
 import com.pocketdev.advance_erp.domain.repository.JournalLineDraft
 import java.io.File
 import java.math.BigDecimal
@@ -118,6 +133,16 @@ enum class AccountsTab(val titleEn: String, val titleBn: String, val icon: Image
     BACKUP_RESTORE("Backup & Safety", "ব্যাকআপ ও নিরাপত্তা", Icons.Default.Security)
 }
 
+private enum class CoaFilterCategory(val titleEn: String, val titleBn: String) {
+    ALL("All", "সকল"),
+    LIQUID("Cash & Bank", "নগদ ও ব্যাংক"),
+    ASSET("Assets", "সম্পদ"),
+    LIABILITY("Liabilities", "দায়"),
+    EQUITY("Equity", "মূলধন"),
+    REVENUE("Revenue", "আয়"),
+    EXPENSE("Expense", "ব্যয়")
+}
+
 @Composable
 fun AccountsScreen(
     modifier: Modifier = Modifier,
@@ -126,10 +151,19 @@ fun AccountsScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val isBangla = uiState.language == AppLanguage.BANGLA
     var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
 
     // Dialog state
     var showNewAccountDialog by remember { mutableStateOf(false) }
+    var newAccountInitialKind by remember { mutableStateOf<LiquidAccountKind?>(LiquidAccountKind.BANK) }
+    var newAccountGeneralMode by remember { mutableStateOf(false) }
+    var editingAccount by remember { mutableStateOf<ChartOfAccount?>(null) }
+    var detailAccount by remember { mutableStateOf<ChartOfAccount?>(null) }
+
+    var coaSearchQuery by remember { mutableStateOf("") }
+    var coaCategoryFilter by remember { mutableStateOf(CoaFilterCategory.ALL) }
+
     var showNewJournalDialog by remember { mutableStateOf(false) }
     var showRecordExpenseDialog by remember { mutableStateOf(false) }
     var showTransferDialog by remember { mutableStateOf(false) }
@@ -141,6 +175,32 @@ fun AccountsScreen(
     var backupToRestore by remember { mutableStateOf<BackupRecord?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val trialBalanceMap = remember(uiState.trialBalance) {
+        uiState.trialBalance.associateBy { it.accountId }
+    }
+
+    val filteredCoaAccounts = remember(uiState.accounts, coaSearchQuery, coaCategoryFilter) {
+        val q = coaSearchQuery.trim().lowercase()
+        uiState.accounts.filter { acc ->
+            val matchesCat = when (coaCategoryFilter) {
+                CoaFilterCategory.ALL -> true
+                CoaFilterCategory.LIQUID -> acc.liquidKind != null
+                CoaFilterCategory.ASSET -> acc.accountType == AccountType.ASSET.name
+                CoaFilterCategory.LIABILITY -> acc.accountType == AccountType.LIABILITY.name
+                CoaFilterCategory.EQUITY -> acc.accountType == AccountType.EQUITY.name
+                CoaFilterCategory.REVENUE -> acc.accountType == AccountType.REVENUE.name
+                CoaFilterCategory.EXPENSE -> acc.accountType == AccountType.EXPENSE.name
+            }
+            val matchesQuery = q.isBlank() ||
+                acc.accountCode.lowercase().contains(q) ||
+                acc.nameEn.lowercase().contains(q) ||
+                acc.nameBn.contains(q) ||
+                acc.institutionName?.lowercase()?.contains(q) == true ||
+                acc.accountNumber?.lowercase()?.contains(q) == true
+            matchesCat && matchesQuery
+        }
+    }
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let {
@@ -194,19 +254,19 @@ fun AccountsScreen(
                             color = Color.White
                         )
                         Text(
-                            text = "Phase 04 Complete Financial Engine & Local Backup",
+                            text = if (isBangla) "ডাবল-এন্ট্রি হিসাব, নগদ ও ব্যাংক, ব্যয় ও রিপোর্ট" else "Double-Entry GL, Cash & Bank, Expenses & Reports",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.75f)
+                            color = Color.White.copy(alpha = 0.78f)
                         )
                     }
 
                     Box(
                         modifier = Modifier
-                            .background(PrimaryPurple.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .background(PrimaryPurple.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Text(
-                            text = "Room DB v4",
+                            text = "${uiState.accounts.count { it.isActive }} A/Cs",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White,
                             fontWeight = FontWeight.Bold
@@ -270,102 +330,213 @@ fun AccountsScreen(
                 // TAB 1: CASH & BANK
                 // ==========================================
                 if (selectedTab == AccountsTab.CASH_BANK) {
+                    val activeLiquidAccounts = uiState.liquidAccounts.filter { it.isActive }
+                    val totalLiquidMinor = activeLiquidAccounts.sumOf { acc ->
+                        val tb = trialBalanceMap[acc.id]
+                        (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
+                    }
+                    val totalCashMinor = activeLiquidAccounts
+                        .filter { it.liquidKind == LiquidAccountKind.CASH }
+                        .sumOf { acc ->
+                            val tb = trialBalanceMap[acc.id]
+                            (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
+                        }
+                    val totalBankMinor = activeLiquidAccounts
+                        .filter { it.liquidKind == LiquidAccountKind.BANK }
+                        .sumOf { acc ->
+                            val tb = trialBalanceMap[acc.id]
+                            (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
+                        }
+                    val totalMfsMinor = activeLiquidAccounts
+                        .filter { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }
+                        .sumOf { acc ->
+                            val tb = trialBalanceMap[acc.id]
+                            (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
+                        }
+
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             ERPSectionHeader(
-                                modifier = Modifier.weight(1f),
                                 title = stringResource(R.string.cash_and_bank),
-                                subtitle = "Cash Vault, Bank Books & Funds Transfers"
+                                subtitle = if (isBangla) "নগদ, ব্যাংক, বিকাশ/নগদ ও তহবিল স্থানান্তর" else "Cash Vaults, Banks, bKash/Nagad & Transfers"
                             )
-                            Button(
-                                onClick = { showTransferDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
-                                shape = RoundedCornerShape(10.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Transfer Funds", fontSize = 12.sp)
+                                Button(
+                                    onClick = {
+                                        newAccountInitialKind = LiquidAccountKind.BANK
+                                        newAccountGeneralMode = false
+                                        showNewAccountDialog = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (isBangla) "ব্যাংক / বিকাশ যোগ" else "Add Bank / MFS", fontSize = 12.sp, maxLines = 1)
+                                }
+                                Button(
+                                    onClick = { showTransferDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (isBangla) "ফান্ড ট্রান্সফার" else "Transfer Funds", fontSize = 12.sp, maxLines = 1)
+                                }
                             }
                         }
                     }
 
-                    // Account Balances
+                    // Total Liquid Summary Card
                     item {
-                        AccountBalanceCard(
-                            accountName = "City Bank Corporate (Import LC)",
-                            accountNumber = "coa-1020",
-                            balanceMinor = uiState.trialBalance.find { it.accountId == "coa-1020" }?.netDebitMinor ?: 0L,
-                            accountType = "Primary Import LC Bank",
-                            color = SecondaryTeal,
-                            language = uiState.language
-                        )
+                        ERPCard(backgroundColor = DeepNavy, contentPadding = 14.dp) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = if (isBangla) "মোট তরল তহবিল (Cash + Bank + MFS)" else "Total Liquid Balance (Cash + Bank + MFS)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.75f)
+                                )
+                                Text(
+                                    text = Formatters.formatMoney(totalLiquidMinor, CurrencyCode.BDT, uiState.language),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    LiquidSummaryPill(
+                                        label = if (isBangla) "নগদ" else "Cash",
+                                        amount = Formatters.formatMoney(totalCashMinor, CurrencyCode.BDT, uiState.language),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    LiquidSummaryPill(
+                                        label = if (isBangla) "ব্যাংক" else "Bank",
+                                        amount = Formatters.formatMoney(totalBankMinor, CurrencyCode.BDT, uiState.language),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    LiquidSummaryPill(
+                                        label = "bKash/MFS",
+                                        amount = Formatters.formatMoney(totalMfsMinor, CurrencyCode.BDT, uiState.language),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
                     }
-                    item {
+
+                    // Dynamic Cash, Bank & MFS Accounts
+                    items(uiState.liquidAccounts, key = { it.id }) { acc ->
+                        val tb = trialBalanceMap[acc.id]
+                        val balMinor = (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
+                        val accentColor = when (acc.liquidKind) {
+                            LiquidAccountKind.CASH -> DeepNavy
+                            LiquidAccountKind.BANK -> SecondaryTeal
+                            LiquidAccountKind.MOBILE_BANKING -> PrimaryPurple
+                            null -> DeepNavy
+                        }
+                        val subDetails = buildList {
+                            add(acc.accountCode)
+                            acc.institutionName?.let { add(it) }
+                            acc.branchName?.let { add(it) }
+                            acc.accountNumber?.let { add("A/C $it") }
+                            if (!acc.isActive) add(if (isBangla) "নিষ্ক্রিয়" else "Inactive")
+                        }.joinToString(" • ")
+
                         AccountBalanceCard(
-                            accountName = "Islami Bank Bangladesh Ltd.",
-                            accountNumber = "coa-1030",
-                            balanceMinor = uiState.trialBalance.find { it.accountId == "coa-1030" }?.netDebitMinor ?: 0L,
-                            accountType = "Corporate Reserve A/C",
-                            color = PrimaryPurple,
-                            language = uiState.language
-                        )
-                    }
-                    item {
-                        AccountBalanceCard(
-                            accountName = "Cash in Hand & Tejgaon Vault",
-                            accountNumber = "coa-1010",
-                            balanceMinor = uiState.trialBalance.find { it.accountId == "coa-1010" }?.netDebitMinor ?: 0L,
-                            accountType = "Liquid Petty Cash",
-                            color = DeepNavy,
-                            language = uiState.language
+                            accountName = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn,
+                            accountSubtitle = subDetails,
+                            balanceMinor = balMinor,
+                            kind = acc.liquidKind ?: LiquidAccountKind.CASH,
+                            isActive = acc.isActive,
+                            color = accentColor,
+                            language = uiState.language,
+                            onClick = { detailAccount = acc }
                         )
                     }
 
                     // Cash & Bank Book Section
+                    val selectedBookAccount = uiState.liquidAccounts.find { it.id == uiState.selectedBankAccountId }
+                        ?: uiState.liquidAccounts.firstOrNull()
+                    val isCashBookSelected = selectedBookAccount?.id == "coa-1010"
+                    val displayedBookEntries = if (isCashBookSelected) uiState.cashBookEntries else uiState.bankBookEntries
+
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ERPSectionHeader(
-                                modifier = Modifier.weight(1f),
-                                title = "Cash & Bank Book",
-                                subtitle = "Running Ledger Balance with Receipts & Payments"
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ERPSectionHeader(
+                                    modifier = Modifier.weight(1f),
+                                    title = if (isBangla) "ক্যাশ ও ব্যাংক বই (Ledger)" else "Cash & Bank Book",
+                                    subtitle = selectedBookAccount?.let {
+                                        if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn
+                                    } ?: "Running Balance"
+                                )
                                 OutlinedButton(
-                                    onClick = { viewModel.exportFinancialCsv(context, "CASH_BOOK") },
+                                    onClick = {
+                                        viewModel.exportFinancialCsv(
+                                            context,
+                                            if (isCashBookSelected) "CASH_BOOK" else "BANK_BOOK"
+                                        )
+                                    },
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Cash CSV", fontSize = 11.sp)
+                                    Text("CSV", fontSize = 11.sp)
                                 }
-                                OutlinedButton(
-                                    onClick = { viewModel.exportFinancialCsv(context, "BANK_BOOK") },
-                                    shape = RoundedCornerShape(8.dp)
+                            }
+
+                            if (uiState.liquidAccounts.isNotEmpty()) {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    contentPadding = PaddingValues(vertical = 4.dp)
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Bank CSV", fontSize = 11.sp)
+                                    items(uiState.liquidAccounts, key = { "book-${it.id}" }) { acc ->
+                                        val isSel = selectedBookAccount?.id == acc.id
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(if (isSel) SecondaryTeal else Color.White)
+                                                .border(1.dp, if (isSel) SecondaryTeal else ERPDivider, RoundedCornerShape(16.dp))
+                                                .clickable { viewModel.selectBankAccountForBook(acc.id) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn,
+                                                color = if (isSel) Color.White else TextPrimary,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
 
-                    if (uiState.cashBookEntries.isEmpty() && uiState.bankBookEntries.isEmpty()) {
+                    if (displayedBookEntries.isEmpty()) {
                         item {
                             ERPCard {
-                                Text("No cash/bank book transactions in the current period.", color = TextMuted)
+                                Text(
+                                    text = if (isBangla) "নির্বাচিত অ্যাকাউন্টে সাম্প্রতিক কোনো লেনদেন নেই।" else "No transactions recorded for this account in the current period.",
+                                    color = TextMuted
+                                )
                             }
                         }
                     } else {
-                        items(uiState.cashBookEntries.take(15)) { entry ->
+                        items(displayedBookEntries.reversed().take(20), key = { it.id }) { entry ->
                             ERPCard(contentPadding = 10.dp) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -376,6 +547,7 @@ fun AccountsScreen(
                                         Text("${entry.referenceNumber} • ${entry.description}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatDate(entry.date, uiState.language), style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                     }
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Column(horizontalAlignment = Alignment.End) {
                                         if (entry.receiptMinor > 0L) {
                                             Text("+ ${Formatters.formatMoney(entry.receiptMinor, CurrencyCode.BDT, uiState.language)}", color = StatusSuccess, fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -686,6 +858,8 @@ fun AccountsScreen(
                 // TAB 5: CHART OF ACCOUNTS
                 // ==========================================
                 if (selectedTab == AccountsTab.CHART_OF_ACCOUNTS) {
+                    val filteredAccounts = filteredCoaAccounts
+
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -695,61 +869,105 @@ fun AccountsScreen(
                             ERPSectionHeader(
                                 modifier = Modifier.weight(1f),
                                 title = stringResource(R.string.chart_of_accounts),
-                                subtitle = "Asset, Liability, Equity, Revenue & Expense"
+                                subtitle = if (isBangla) "সম্পদ, দায়, মূলধন, আয় ও ব্যয়ের হিসাব" else "Assets, Liabilities, Equity, Revenue & Expenses"
                             )
                             Button(
-                                onClick = { showNewAccountDialog = true },
+                                onClick = {
+                                    newAccountInitialKind = LiquidAccountKind.BANK
+                                    newAccountGeneralMode = false
+                                    showNewAccountDialog = true
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("New A/C", fontSize = 12.sp)
+                                Text(if (isBangla) "নতুন A/C" else "New A/C", fontSize = 12.sp)
                             }
                         }
                     }
 
-                    items(uiState.accounts) { acc ->
-                        ERPCard(contentPadding = 12.dp) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(acc.accountCode, fontWeight = FontWeight.Black, color = DeepNavy, fontSize = 11.sp)
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(acc.nameEn, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                        Text(acc.nameBn, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                                    }
-                                }
+                    item {
+                        ERPSearchBar(
+                            query = coaSearchQuery,
+                            onQueryChange = { coaSearchQuery = it },
+                            placeholder = if (isBangla) "কোড, নাম, ব্যাংক বা অ্যাকাউন্ট নং খুঁজুন..." else "Search by code, name, bank or A/C #..."
+                        )
+                    }
 
-                                Column(horizontalAlignment = Alignment.End) {
-                                    val typeColor = when (acc.accountType) {
-                                        "ASSET" -> StatusSuccess
-                                        "LIABILITY" -> PrimaryPurple
-                                        "EQUITY" -> DeepNavy
-                                        "REVENUE" -> SecondaryTeal
-                                        else -> Color(0xFFE11D48)
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .background(typeColor.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(acc.accountType, color = typeColor, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                                    }
-                                    Text("Normal: ${acc.normalBalance}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                    item {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(vertical = 2.dp)
+                        ) {
+                            items(CoaFilterCategory.entries) { cat ->
+                                val count = when (cat) {
+                                    CoaFilterCategory.ALL -> uiState.accounts.size
+                                    CoaFilterCategory.LIQUID -> uiState.accounts.count { it.liquidKind != null }
+                                    CoaFilterCategory.ASSET -> uiState.accounts.count { it.accountType == AccountType.ASSET.name }
+                                    CoaFilterCategory.LIABILITY -> uiState.accounts.count { it.accountType == AccountType.LIABILITY.name }
+                                    CoaFilterCategory.EQUITY -> uiState.accounts.count { it.accountType == AccountType.EQUITY.name }
+                                    CoaFilterCategory.REVENUE -> uiState.accounts.count { it.accountType == AccountType.REVENUE.name }
+                                    CoaFilterCategory.EXPENSE -> uiState.accounts.count { it.accountType == AccountType.EXPENSE.name }
+                                }
+                                val isSel = coaCategoryFilter == cat
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(if (isSel) PrimaryPurple else Color.White)
+                                        .border(1.dp, if (isSel) PrimaryPurple else ERPDivider, RoundedCornerShape(18.dp))
+                                        .clickable { coaCategoryFilter = cat }
+                                        .padding(horizontal = 11.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "${if (isBangla) cat.titleBn else cat.titleEn} ($count)",
+                                        color = if (isSel) Color.White else TextPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                                    )
                                 }
                             }
+                        }
+                    }
+
+                    if (filteredAccounts.isEmpty()) {
+                        item {
+                            ERPCard {
+                                Text(
+                                    text = if (isBangla) "কোনো অ্যাকাউন্ট পাওয়া যায়নি।" else "No matching accounts found.",
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                    } else if (coaCategoryFilter == CoaFilterCategory.ALL && coaSearchQuery.isBlank()) {
+                        AccountType.entries.forEach { groupType ->
+                            val groupAccounts = filteredAccounts.filter { it.accountType == groupType.name }
+                            if (groupAccounts.isNotEmpty()) {
+                                item(key = "header-${groupType.name}") {
+                                    CoaGroupHeader(
+                                        accountType = groupType,
+                                        count = groupAccounts.size,
+                                        isBangla = isBangla
+                                    )
+                                }
+                                items(groupAccounts, key = { it.id }) { acc ->
+                                    ChartOfAccountCard(
+                                        account = acc,
+                                        trialItem = trialBalanceMap[acc.id],
+                                        language = uiState.language,
+                                        onClick = { detailAccount = acc }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        items(filteredAccounts, key = { it.id }) { acc ->
+                            ChartOfAccountCard(
+                                account = acc,
+                                trialItem = trialBalanceMap[acc.id],
+                                language = uiState.language,
+                                onClick = { detailAccount = acc }
+                            )
                         }
                     }
                 }
@@ -1144,10 +1362,78 @@ fun AccountsScreen(
         )
     }
 
+    // New Account Dialog (Create Cash / Bank / MFS or GL Account)
+    if (showNewAccountDialog) {
+        CreateOrEditAccountDialog(
+            editingAccount = null,
+            initialLiquidKind = newAccountInitialKind,
+            initialGeneralMode = newAccountGeneralMode,
+            isBangla = isBangla,
+            suggestCode = { type, kind -> viewModel.suggestNextAccountCode(type, kind) },
+            onDismiss = { showNewAccountDialog = false },
+            onCreateLiquidAccount = { kind, nameEn, nameBn, inst, branch, accNo, desc, openBal ->
+                viewModel.createLiquidAccount(
+                    kind = kind,
+                    nameEn = nameEn,
+                    nameBn = nameBn,
+                    institutionName = inst,
+                    branchName = branch,
+                    accountNumber = accNo,
+                    description = desc,
+                    openingBalanceMinor = openBal,
+                    onSuccess = { showNewAccountDialog = false }
+                )
+            },
+            onCreateGeneralAccount = { code, nameEn, nameBn, type, normalBal, desc ->
+                viewModel.createAccount(
+                    code = code,
+                    nameEn = nameEn,
+                    nameBn = nameBn,
+                    type = type,
+                    normalBalance = normalBal,
+                    desc = desc,
+                    onSuccess = { showNewAccountDialog = false }
+                )
+            },
+            onUpdateAccount = {}
+        )
+    }
+
+    // Edit Account Dialog
+    editingAccount?.let { targetAccount ->
+        CreateOrEditAccountDialog(
+            editingAccount = targetAccount,
+            initialLiquidKind = targetAccount.liquidKind,
+            initialGeneralMode = targetAccount.liquidKind == null,
+            isBangla = isBangla,
+            suggestCode = { type, kind -> viewModel.suggestNextAccountCode(type, kind) },
+            onDismiss = { editingAccount = null },
+            onCreateLiquidAccount = { _, _, _, _, _, _, _, _ -> },
+            onCreateGeneralAccount = { _, _, _, _, _, _ -> },
+            onUpdateAccount = { updated ->
+                viewModel.updateAccount(updated) { editingAccount = null }
+            }
+        )
+    }
+
+    // Account Detail Modal
+    detailAccount?.let { acc ->
+        AccountDetailDialog(
+            account = acc,
+            trialItem = trialBalanceMap[acc.id],
+            language = uiState.language,
+            onDismiss = { detailAccount = null },
+            onEdit = {
+                detailAccount = null
+                editingAccount = acc
+            }
+        )
+    }
+
     // Record Expense Dialog
     if (showRecordExpenseDialog) {
         RecordExpenseDialog(
-            accounts = uiState.accounts,
+            accounts = uiState.accounts.filter { it.isActive },
             onDismiss = { showRecordExpenseDialog = false },
             onConfirm = { cat, descEn, descBn, amtMinor, curr, rate, payAcc, expAcc, date, ref, notes ->
                 viewModel.recordExpense(cat, descEn, descBn, amtMinor, curr, rate, payAcc, expAcc, date, ref, notes)
@@ -1158,7 +1444,8 @@ fun AccountsScreen(
     // Transfer Funds Dialog
     if (showTransferDialog) {
         AccountTransferDialog(
-            accounts = uiState.accounts.filter { it.accountType == "ASSET" },
+            accounts = uiState.liquidAccounts.filter { it.isActive }
+                .ifEmpty { uiState.accounts.filter { it.isActive && it.accountType == "ASSET" } },
             onDismiss = { showTransferDialog = false },
             onConfirm = { src, dst, amt, date, ref, notes ->
                 viewModel.transferFunds(src, dst, amt, date, ref, notes)
@@ -1169,7 +1456,9 @@ fun AccountsScreen(
     // Start Reconciliation Dialog
     if (showReconciliationDialog) {
         StartReconciliationDialog(
-            bankAccounts = uiState.accounts.filter { it.accountCode in listOf("1020", "1030") },
+            bankAccounts = uiState.liquidAccounts.filter {
+                it.isActive && it.liquidKind != LiquidAccountKind.CASH
+            }.ifEmpty { uiState.accounts.filter { it.accountCode in listOf("1020", "1030") } },
             onDismiss = { showReconciliationDialog = false },
             onConfirm = { accId, start, end, openBal, closeBal, notes ->
                 viewModel.startReconciliation(accId, start, end, openBal, closeBal, notes)
@@ -1190,7 +1479,7 @@ fun AccountsScreen(
     // New Journal Entry Dialog
     if (showNewJournalDialog) {
         NewJournalEntryDialog(
-            accounts = uiState.accounts,
+            accounts = uiState.accounts.filter { it.isActive },
             onDismiss = { showNewJournalDialog = false },
             onConfirm = { descEn, descBn, lines ->
                 viewModel.postManualJournalEntry(descEn, descBn, lines)
@@ -1200,30 +1489,308 @@ fun AccountsScreen(
 }
 
 @Composable
+private fun LiquidSummaryPill(
+    label: String,
+    amount: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
+        Text(amount, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 private fun AccountBalanceCard(
     accountName: String,
-    accountNumber: String,
+    accountSubtitle: String,
     balanceMinor: Long,
-    accountType: String,
+    kind: LiquidAccountKind,
+    isActive: Boolean,
     color: Color,
-    language: AppLanguage
+    language: AppLanguage,
+    onClick: () -> Unit
 ) {
-    ERPCard(contentPadding = 14.dp) {
+    val icon = when (kind) {
+        LiquidAccountKind.CASH -> Icons.Default.AccountBalanceWallet
+        LiquidAccountKind.BANK -> Icons.Default.AccountBalance
+        LiquidAccountKind.MOBILE_BANKING -> Icons.Default.PhoneAndroid
+    }
+    ERPCard(
+        contentPadding = 14.dp,
+        onClick = onClick
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(text = accountName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Text(text = "$accountNumber • $accountType", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(color.copy(alpha = if (isActive) 0.12f else 0.06f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = if (isActive) color else TextMuted, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = accountName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isActive) TextPrimary else TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = accountSubtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = Formatters.formatMoney(balanceMinor, CurrencyCode.BDT, language),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = color
+                color = if (isActive) color else TextMuted
             )
+        }
+    }
+}
+
+@Composable
+private fun CoaGroupHeader(
+    accountType: AccountType,
+    count: Int,
+    isBangla: Boolean
+) {
+    val accent = accountTypeColor(accountType.name)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(accent, RoundedCornerShape(3.dp))
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (isBangla) "${accountType.titleBn} (${accountType.titleEn})" else accountType.titleEn.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = DeepNavy
+            )
+        }
+        Box(
+            modifier = Modifier
+                .background(accent.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = "$count",
+                color = accent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChartOfAccountCard(
+    account: ChartOfAccount,
+    trialItem: TrialBalanceItem?,
+    language: AppLanguage,
+    onClick: () -> Unit
+) {
+    val isBangla = language == AppLanguage.BANGLA
+    val typeColor = accountTypeColor(account.accountType)
+    val netBalanceMinor = if (account.normalBalance == NormalBalance.DEBIT.name) {
+        (trialItem?.totalDebitMinor ?: 0L) - (trialItem?.totalCreditMinor ?: 0L)
+    } else {
+        (trialItem?.totalCreditMinor ?: 0L) - (trialItem?.totalDebitMinor ?: 0L)
+    }
+
+    val primaryName = if (isBangla && account.nameBn.isNotBlank()) account.nameBn else account.nameEn
+    val secondaryLine = buildList {
+        val alt = if (isBangla) account.nameEn else account.nameBn
+        if (alt.isNotBlank() && alt != primaryName) add(alt)
+        account.institutionName?.takeIf { it !in primaryName }?.let { add(it) }
+        account.accountNumber?.let { add("A/C $it") }
+    }.joinToString(" • ")
+
+    ERPCard(contentPadding = 12.dp, onClick = onClick) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .widthIn(min = 50.dp)
+                    .background(typeColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = account.accountCode,
+                    fontWeight = FontWeight.Black,
+                    color = typeColor,
+                    fontSize = 12.sp,
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = primaryName,
+                    fontWeight = FontWeight.Bold,
+                    color = if (account.isActive) TextPrimary else TextMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (secondaryLine.isNotBlank()) {
+                    Text(
+                        text = secondaryLine,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(top = 3.dp)
+                ) {
+                    account.liquidKind?.let { kind ->
+                        Box(
+                            modifier = Modifier
+                                .background(SecondaryTeal.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = if (isBangla) kind.titleBn else kind.titleEn,
+                                color = SecondaryTeal,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    if (!account.isActive) {
+                        Box(
+                            modifier = Modifier
+                                .background(StatusError.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = if (isBangla) "নিষ্ক্রিয়" else "INACTIVE",
+                                color = StatusError,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = Formatters.formatMoney(netBalanceMinor, CurrencyCode.BDT, language),
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (netBalanceMinor < 0L) StatusError else DeepNavy
+                )
+                Text(
+                    text = "${account.accountType} • ${if (account.normalBalance == "DEBIT") "Dr" else "Cr"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = typeColor,
+                    fontSize = 10.sp
+                )
+            }
+        }
+    }
+}
+
+private fun accountTypeColor(accountType: String): Color = when (accountType) {
+    "ASSET" -> StatusSuccess
+    "LIABILITY" -> PrimaryPurple
+    "EQUITY" -> DeepNavy
+    "REVENUE" -> SecondaryTeal
+    else -> Color(0xFFE11D48)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AccountDropdownField(
+    label: String,
+    accounts: List<ChartOfAccount>,
+    selectedAccountId: String,
+    onSelect: (ChartOfAccount) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = accounts.find { it.id == selectedAccountId }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = selected?.let { acc ->
+                val inst = acc.institutionName?.takeIf { it !in acc.nameEn }?.let { " • $it" } ?: ""
+                "${acc.accountCode} - ${acc.nameEn}$inst"
+            } ?: "Select Account",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp)
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            accounts.forEach { acc ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text("${acc.accountCode} • ${acc.nameEn}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            val sub = listOfNotNull(acc.liquidKind?.titleEn, acc.institutionName, acc.accountNumber?.let { "A/C $it" })
+                                .joinToString(" • ")
+                            if (sub.isNotBlank()) {
+                                Text(sub, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                            }
+                        }
+                    },
+                    onClick = {
+                        onSelect(acc)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
@@ -1253,7 +1820,14 @@ private fun RecordExpenseDialog(
     var amountStr by remember { mutableStateOf("") }
     var currency by remember { mutableStateOf("BDT") }
     var exchangeRate by remember { mutableStateOf("1.0000") }
-    var paymentAccountId by remember { mutableStateOf(accounts.find { it.accountCode == "1010" }?.id ?: accounts.firstOrNull()?.id ?: "") }
+    val paymentAccounts = remember(accounts) {
+        val liquid = accounts.filter { it.liquidKind != null }
+        val others = accounts.filter { it.liquidKind == null && it.accountType in listOf("ASSET", "LIABILITY") }
+        liquid + others
+    }
+    var paymentAccountId by remember(paymentAccounts) {
+        mutableStateOf(paymentAccounts.find { it.accountCode == "1010" }?.id ?: paymentAccounts.firstOrNull()?.id ?: "")
+    }
     var refNumber by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -1265,7 +1839,11 @@ private fun RecordExpenseDialog(
             modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text("Record Operating Expense", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -1325,22 +1903,12 @@ private fun RecordExpenseDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("Payment Account:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                val paymentAccounts = accounts.filter { it.accountType in listOf("ASSET", "LIABILITY") }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(paymentAccounts.take(4)) { acc ->
-                        val isSel = paymentAccountId == acc.id
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) SecondaryTeal else Color(0xFFF1F5F9))
-                                .clickable { paymentAccountId = acc.id }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            Text(acc.nameEn, color = if (isSel) Color.White else TextPrimary, fontSize = 11.sp)
-                        }
-                    }
-                }
+                AccountDropdownField(
+                    label = "Payment Account (Cash / Bank / MFS)",
+                    accounts = paymentAccounts,
+                    selectedAccountId = paymentAccountId,
+                    onSelect = { paymentAccountId = it.id }
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -1421,39 +1989,21 @@ private fun AccountTransferDialog(
                 Text("Inter-Account Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("From (Source Account):", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(accounts) { acc ->
-                        val isSel = sourceId == acc.id
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) PrimaryPurple else Color(0xFFF1F5F9))
-                                .clickable { sourceId = acc.id }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            Text(acc.nameEn, color = if (isSel) Color.White else TextPrimary, fontSize = 11.sp)
-                        }
-                    }
-                }
+                AccountDropdownField(
+                    label = "From (Source Account)",
+                    accounts = accounts,
+                    selectedAccountId = sourceId,
+                    onSelect = { sourceId = it.id }
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("To (Destination Account):", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(accounts) { acc ->
-                        val isSel = destId == acc.id
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) SecondaryTeal else Color(0xFFF1F5F9))
-                                .clickable { destId = acc.id }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            Text(acc.nameEn, color = if (isSel) Color.White else TextPrimary, fontSize = 11.sp)
-                        }
-                    }
-                }
+                AccountDropdownField(
+                    label = "To (Destination Account)",
+                    accounts = accounts,
+                    selectedAccountId = destId,
+                    onSelect = { destId = it.id }
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -1529,22 +2079,12 @@ private fun StartReconciliationDialog(
                 Text("Start Bank Reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("Bank Account:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    bankAccounts.forEach { acc ->
-                        val isSel = selectedAccId == acc.id
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSel) SecondaryTeal.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
-                                .clickable { selectedAccId = acc.id }
-                                .padding(8.dp)
-                        ) {
-                            Text(acc.nameEn, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
+                AccountDropdownField(
+                    label = "Bank / MFS Account",
+                    accounts = bankAccounts,
+                    selectedAccountId = selectedAccId,
+                    onSelect = { selectedAccId = it.id }
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -1684,41 +2224,23 @@ private fun NewJournalEntryDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("Debit Account:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    accounts.take(3).forEach { acc ->
-                        val isSel = debitAccountId == acc.id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
-                                .clickable { debitAccountId = acc.id }
-                                .padding(8.dp)
-                        ) {
-                            Text("${acc.accountCode} - ${acc.nameEn}", style = MaterialTheme.typography.bodySmall, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
-                        }
-                    }
-                }
+                Text("Debit & Credit Accounts:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                Spacer(modifier = Modifier.height(6.dp))
+                AccountDropdownField(
+                    label = "Debit Account (Dr)",
+                    accounts = accounts,
+                    selectedAccountId = debitAccountId,
+                    onSelect = { debitAccountId = it.id }
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Text("Credit Account:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    accounts.drop(1).take(3).forEach { acc ->
-                        val isSel = creditAccountId == acc.id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSel) SecondaryTeal.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
-                                .clickable { creditAccountId = acc.id }
-                                .padding(8.dp)
-                        ) {
-                            Text("${acc.accountCode} - ${acc.nameEn}", style = MaterialTheme.typography.bodySmall, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
-                        }
-                    }
-                }
+                AccountDropdownField(
+                    label = "Credit Account (Cr)",
+                    accounts = accounts,
+                    selectedAccountId = creditAccountId,
+                    onSelect = { creditAccountId = it.id }
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
