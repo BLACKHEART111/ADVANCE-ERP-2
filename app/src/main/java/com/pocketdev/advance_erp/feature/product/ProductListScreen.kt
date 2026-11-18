@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,6 +60,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -82,6 +86,7 @@ import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.entity.ProductCategory
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProductListScreen(
     viewModel: ProductViewModel,
@@ -328,50 +333,54 @@ fun ProductListScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                Row(
+                                // Metadata wraps as complete items instead of consuming the price width.
+                                FlowRow(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Box(
+                                        modifier = Modifier
+                                            .background(PrimaryPurple.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .background(PrimaryPurple.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = if (state.language == AppLanguage.BANGLA) product.categoryNameBn else product.categoryNameEn,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = PrimaryPurple,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-
                                         Text(
-                                            text = "SKU: ${product.baseSku}",
+                                            text = if (state.language == AppLanguage.BANGLA) product.categoryNameBn else product.categoryNameEn,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = TextSecondary
+                                            color = PrimaryPurple,
+                                            fontWeight = FontWeight.SemiBold
                                         )
-
-                                        if (product.variantCount > 0) {
-                                            Text(
-                                                text = "• ${product.variantCount} variants",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = SecondaryTeal
-                                            )
-                                        }
                                     }
 
                                     Text(
-                                        text = Formatters.formatMoney(product.sellingPriceMinor, state.currency, state.language),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = PrimaryPurple
+                                        text = "SKU: ${product.baseSku}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextSecondary
                                     )
+
+                                    if (product.variantCount > 0) {
+                                        Text(
+                                            text = if (state.language == AppLanguage.BANGLA)
+                                                "${Formatters.formatNumber(product.variantCount.toLong(), state.language)} ভ্যারিয়েন্ট"
+                                            else "${product.variantCount} variants",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = SecondaryTeal
+                                        )
+                                    }
                                 }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = Formatters.formatMoney(product.sellingPriceMinor, state.currency, state.language),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PrimaryPurple,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.End,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
