@@ -73,6 +73,8 @@ fun RecordCustomerPaymentDialog(
     preselectedCustomerId: String? = null,
     nextPaymentNumber: String? = null,
     isBangla: Boolean = false,
+    isSaving: Boolean = false,
+    saveError: String? = null,
     onDismiss: () -> Unit,
     onSubmit: (CustomerPaymentDraft) -> Unit
 ) {
@@ -106,6 +108,11 @@ fun RecordCustomerPaymentDialog(
     var referenceNote by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    var allocationInvoiceId by remember(selectedCustomerId, preselectedInvoice?.id) {
+        mutableStateOf(preselectedInvoice?.takeIf { it.customerId == selectedCustomerId }?.id)
+    }
+    var invoiceExpanded by remember { mutableStateOf(false) }
+    val allocationInvoice = invoices.firstOrNull { it.id == allocationInvoiceId && it.customerId == selectedCustomerId && it.isPosted && it.status != "CANCELLED" && it.dueAmountMinor > 0 }
     val selectedCustomer = customers.find { it.id == selectedCustomerId }
     val unpaidInvoicesForCustomer = remember(selectedCustomerId, invoices) {
         invoices.filter {
@@ -344,6 +351,19 @@ fun RecordCustomerPaymentDialog(
                         )
                     }
 
+                    item {
+                        ExposedDropdownMenuBox(expanded=invoiceExpanded,onExpandedChange={invoiceExpanded=it}) {
+                            OutlinedTextField(value=allocationInvoice?.invoiceNumber ?: if(isBangla) "সাধারণ আদায় / unallocated credit" else "Standalone / unallocated credit",
+                                onValueChange={},readOnly=true, label={Text(if(isBangla) "ইনভয়েসে বরাদ্দ (ঐচ্ছিক)" else "Allocate to invoice (optional)")},
+                                modifier=Modifier.menuAnchor().fillMaxWidth(),trailingIcon={ExposedDropdownMenuDefaults.TrailingIcon(invoiceExpanded)})
+                            ExposedDropdownMenu(expanded=invoiceExpanded,onDismissRequest={invoiceExpanded=false}) {
+                                DropdownMenuItem(text={Text(if(isBangla)"কোনো invoice-এ বরাদ্দ নয়" else "Do not allocate")},onClick={allocationInvoiceId=null;invoiceExpanded=false})
+                                unpaidInvoicesForCustomer.filter { it.isPosted && it.status!="CANCELLED" }.forEach { invoice ->
+                                    DropdownMenuItem(text={Text(invoice.invoiceNumber+" • ৳"+Formatters.formatMinorUnit(invoice.dueAmountMinor))},onClick={allocationInvoiceId=invoice.id;invoiceExpanded=false})
+                                }
+                            }
+                        }
+                    }
                     // Open Invoices preview
                     if (unpaidInvoicesForCustomer.isNotEmpty()) {
                         item {
@@ -371,7 +391,7 @@ fun RecordCustomerPaymentDialog(
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = if (isBangla) "পেমেন্ট স্বয়ংক্রিয়ভাবে ক্রমানুসারে ইনভয়েসে সমন্বয় হবে।" else "Payments will be automatically applied FIFO against open invoices.",
+                                        text = if (isBangla) "শুধু নির্বাচিত invoice-এ বরাদ্দ হবে। না বাছলে আলাদা credit থাকবে; স্বয়ংক্রিয় FIFO নয়।" else "Only the selected invoice is allocated. Otherwise the receipt remains unallocated credit; no automatic FIFO.",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = TextMuted
                                     )
@@ -380,9 +400,9 @@ fun RecordCustomerPaymentDialog(
                         }
                     }
 
-                    if (errorMessage != null) {
+                    if (errorMessage != null || saveError != null) {
                         item {
-                            Text(errorMessage!!, color = Color.Red, style = MaterialTheme.typography.bodySmall)
+                            Text(saveError ?: errorMessage.orEmpty(), color = Color.Red, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -400,6 +420,7 @@ fun RecordCustomerPaymentDialog(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
+                        enabled = !isSaving,
                         onClick = {
                             val amount = runCatching { Money.parseFromString(amountStr).minorUnits }.getOrDefault(0L)
                             if (amount <= 0) {
@@ -411,8 +432,12 @@ fun RecordCustomerPaymentDialog(
                                 return@Button
                             }
 
-                            val allocations = if (preselectedInvoice != null) {
-                                listOf(InvoiceAllocationDraft(preselectedInvoice.id, minOf(amount, preselectedInvoice.dueAmountMinor)))
+                            if (allocationInvoiceId != null && allocationInvoice == null) {
+                                errorMessage = if (isBangla) "নির্বাচিত invoice-এর বকেয়া বদলেছে। আবার নির্বাচন করুন।" else "The selected invoice due has changed. Select it again."
+                                return@Button
+                            }
+                            val allocations = if (allocationInvoice != null) {
+                                listOf(InvoiceAllocationDraft(allocationInvoice.id, minOf(amount, allocationInvoice.dueAmountMinor)))
                             } else emptyList()
 
                             onSubmit(

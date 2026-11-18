@@ -1,5 +1,16 @@
 package com.pocketdev.advance_erp.feature.controlcenter
 
+import com.pocketdev.advance_erp.domain.model.LedgerReport
+import com.pocketdev.advance_erp.domain.repository.SalesRepository
+import com.pocketdev.advance_erp.domain.repository.ImportRepository
+import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
+import com.pocketdev.advance_erp.data.entity.PaymentMethod
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.CancellationException
+import java.math.BigDecimal
 import android.content.Context
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
@@ -42,19 +53,68 @@ import javax.inject.Inject
 @HiltViewModel
 class BusinessControlCenterViewModel @Inject constructor(
     private val repository: BusinessControlCenterRepository,
+    private val salesRepository: SalesRepository,
+    private val importRepository: ImportRepository,
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _filterState = MutableStateFlow(ControlCenterFilterState())
     val filterState: StateFlow<ControlCenterFilterState> = _filterState.asStateFlow()
 
-    val transactions: StateFlow<List<UnifiedTransactionItem>> = _filterState
-        .flatMapLatest { filter -> repository.getTransactions(filter) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val refresh = MutableStateFlow(0)
+    val report: StateFlow<LedgerReport> = kotlinx.coroutines.flow.combine(_filterState.debounce(180), refresh) { filter, _ -> filter }
+        .flatMapLatest { filter -> repository.getLedgerReport(filter)
+            .onStart { emit(LedgerReport(filter = filter, isLoading = true)) }
+            .catch { error ->
+                if (error is CancellationException) throw error
+                emit(LedgerReport(filter = filter, error = error.message ?: "Ledger loading failed"))
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LedgerReport(isLoading = true))
+    val transactions = report.map { it.transactions }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val summaryDashboard = report.map { it.summary }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BusinessSummaryDashboardData())
+    val paymentInvoices = salesRepository.getAllInvoices().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val paymentOrders = importRepository.getAllPurchaseOrders().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _paymentSaving = MutableStateFlow(false)
+    val paymentSaving = _paymentSaving.asStateFlow()
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError = _actionError.asStateFlow()
+    fun dismissActionError() { _actionError.value = null }
+    private var detailJob: kotlinx.coroutines.Job? = null
+    private var detailRequest = 0L
+    private val _detailLoading = MutableStateFlow(false)
+    val detailLoading = _detailLoading.asStateFlow()
+    private val _paymentError = MutableStateFlow<String?>(null)
+    val paymentError = _paymentError.asStateFlow()
 
-    val summaryDashboard: StateFlow<BusinessSummaryDashboardData> = _filterState
-        .flatMapLatest { filter -> repository.getSummaryDashboard(filter) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BusinessSummaryDashboardData())
+    fun retry() { refresh.value++ }
+    fun clearPaymentError() { _paymentError.value = null }
+    fun selectParty(id: String?, supplier: Boolean) {
+        updateFilter(_filterState.value.copy(category = if (supplier) ReportCategory.SUPPLIER_LEDGER else ReportCategory.CUSTOMER_LEDGER,
+            selectedCustomerId = if (supplier) null else id, selectedSupplierId = if (supplier) id else null))
+    }
+    private fun submitPayment(action: suspend () -> Unit, onSuccess: () -> Unit) {
+        if (_paymentSaving.value) return
+        _paymentSaving.value = true
+        _paymentError.value = null
+        viewModelScope.launch {
+            try { action(); retry(); onSuccess() }
+            catch (error: CancellationException) { throw error }
+            catch (error: Exception) { _paymentError.value = error.message ?: "Payment could not be saved" }
+            finally { _paymentSaving.value = false }
+        }
+    }
+    fun collectPayment(draft: CustomerPaymentDraft, onSuccess: () -> Unit) = submitPayment({ salesRepository.recordCustomerPayment(draft); Unit }, onSuccess)
+    fun paySupplier(supplierId: String, orderId: String?, amount: Long, currency: String, rate: BigDecimal,
+        method: PaymentMethod, account: String, reference: String?, notes: String?, onSuccess: () -> Unit) =
+        submitPayment({ importRepository.recordSupplierPayment(supplierId, orderId, amount, currency, rate, method, account, reference, notes); Unit }, onSuccess)
+
+    private fun readyReport(includeSensitive: Boolean = false): LedgerReport {
+        val snapshot = report.value
+        check(!snapshot.isLoading && snapshot.error == null && snapshot.filter == _filterState.value) { "Wait for the current ledger to finish loading" }
+        check(snapshot.filter.financialMetric !in setOf(com.pocketdev.advance_erp.domain.model.FinancialMetricFilter.PROFIT,com.pocketdev.advance_erp.domain.model.FinancialMetricFilter.LOSS) ||
+            (includeSensitive && SecurityManager.canViewProfit(userRole.value))) { "Authenticate profit access before using this filtered report" }
+        return snapshot
+    }
 
     val customers: StateFlow<List<Customer>> = repository.getAllCustomers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -72,7 +132,7 @@ class BusinessControlCenterViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val userRole: StateFlow<UserRole> = preferencesRepository.selectedUserRole
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserRole.OWNER_ADMIN)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserRole.SALES_OPERATOR)
 
     val appLanguage: StateFlow<AppLanguage> = preferencesRepository.selectedLanguage
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppLanguage.BANGLA)
@@ -89,12 +149,22 @@ class BusinessControlCenterViewModel @Inject constructor(
     private val _isExporting = MutableStateFlow(false)
     val isExporting: StateFlow<Boolean> = _isExporting.asStateFlow()
 
-    fun updateFilter(filter: ControlCenterFilterState) {
-        _filterState.value = filter
+    fun updateFilter(requested: ControlCenterFilterState) {
+        val filter = when {
+            requested.selectedSupplierId != null && requested.category == ReportCategory.CUSTOMER_LEDGER -> requested.copy(category=ReportCategory.SUPPLIER_LEDGER)
+            requested.selectedCustomerId != null && requested.category == ReportCategory.SUPPLIER_LEDGER && requested.selectedSupplierId == null -> requested.copy(category=ReportCategory.CUSTOMER_LEDGER)
+            else -> requested
+        }
+        _filterState.value = filter.copy(
+            selectedCustomerId = if (filter.category == ReportCategory.SUPPLIER_LEDGER) null else filter.selectedCustomerId,
+            selectedSupplierId = when { filter.category == ReportCategory.SUPPLIER_LEDGER -> filter.selectedSupplierId; filter.category == ReportCategory.CUSTOMER_LEDGER || filter.selectedCustomerId != null -> null; else -> filter.selectedSupplierId },
+            financialMetric = if (filter.financialMetric in setOf(com.pocketdev.advance_erp.domain.model.FinancialMetricFilter.OPENING_BALANCE, com.pocketdev.advance_erp.domain.model.FinancialMetricFilter.CLOSING_BALANCE)) com.pocketdev.advance_erp.domain.model.FinancialMetricFilter.ALL else filter.financialMetric)
     }
 
     fun selectCategory(category: ReportCategory) {
-        _filterState.value = _filterState.value.copy(category = category)
+        updateFilter(_filterState.value.copy(category = category,
+            selectedCustomerId = if(category==ReportCategory.SUPPLIER_LEDGER) null else _filterState.value.selectedCustomerId,
+            selectedSupplierId = if(category==ReportCategory.CUSTOMER_LEDGER) null else _filterState.value.selectedSupplierId))
     }
 
     fun selectDateRange(option: DateRangeOption, customStart: Long? = null, customEnd: Long? = null) {
@@ -140,7 +210,7 @@ class BusinessControlCenterViewModel @Inject constructor(
     }
 
     fun resetFilters() {
-        _filterState.value = ControlCenterFilterState()
+        _filterState.value = ControlCenterFilterState(category = _filterState.value.category)
     }
 
     fun savePreset(name: String) {
@@ -150,7 +220,7 @@ class BusinessControlCenterViewModel @Inject constructor(
     }
 
     fun applyPreset(preset: SavedFilterPreset) {
-        _filterState.value = preset.filterState
+        updateFilter(preset.filterState)
     }
 
     fun deletePreset(presetId: String) {
@@ -160,18 +230,34 @@ class BusinessControlCenterViewModel @Inject constructor(
     }
 
     fun openTransactionDetail(rawType: String, id: String) {
-        viewModelScope.launch {
-            val record = repository.getTransactionDetails(rawType, id)
-            _selectedTransactionDetail.value = record
+        detailJob?.cancel()
+        val request = ++detailRequest
+        _selectedTransactionDetail.value = null
+        _detailLoading.value = true
+        _actionError.value = null
+        detailJob = viewModelScope.launch {
+            try {
+                val row = report.value.transactions.firstOrNull { it.rawType == rawType && it.sourceId == id }
+                val record = repository.getTransactionDetails(rawType.removeSuffix("_REVERSAL"), id)
+                if (request != detailRequest) return@launch
+                _selectedTransactionDetail.value = if (record != null && row != null) record.copy(transaction = row,
+                    auditTrailInfo = listOfNotNull(record.auditTrailInfo, row.notes).joinToString("\n"))
+                    else record ?: row?.let { TransactionDetailRecord(it, auditTrailInfo = it.notes) }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { _actionError.value = error.message ?: "Could not load transaction" }
+            finally { if(request==detailRequest) _detailLoading.value=false }
         }
     }
 
     fun dismissTransactionDetail() {
+        detailRequest++
+        detailJob?.cancel()
+        _detailLoading.value=false
         _selectedTransactionDetail.value = null
     }
 
-    private fun getReportTitle(): String {
-        val cat = _filterState.value.category
+    private fun getReportTitle(filter: ControlCenterFilterState = _filterState.value): String {
+        val cat = filter.category
         val isBn = appLanguage.value == AppLanguage.BANGLA
         return if (cat == ReportCategory.ALL_TRANSACTIONS) {
             if (isBn) "ব্যবসা নিয়ন্ত্রণ কেন্দ্র - সম্পূর্ণ বিবরণী" else "Business Control Center - Master Ledger"
@@ -180,17 +266,42 @@ class BusinessControlCenterViewModel @Inject constructor(
         }
     }
 
-    fun exportAndSharePdf(context: Context) {
+    private fun safeExportRows(snapshot: LedgerReport, includeSensitive: Boolean) : List<UnifiedTransactionItem> {
+        check(snapshot.filter.financialMetric !in setOf(com.pocketdev.advance_erp.domain.model.FinancialMetricFilter.PROFIT, com.pocketdev.advance_erp.domain.model.FinancialMetricFilter.LOSS) || (includeSensitive && SecurityManager.canViewProfit(userRole.value))) { "Authenticate profit access before exporting this filter" }
+        return snapshot.transactions.map { row ->
+        if (row.rawType in setOf("STOCK_MOVEMENT", "STOCK_TRANSFER") && !(includeSensitive && SecurityManager.canViewCost(userRole.value))) row.copy(amountMinor = 0, profitMinor = null, cogsMinor = 0, secondaryAmountMinor = null,
+            particulars = row.particulars + " [cost hidden]") else row.copy(profitMinor = null, cogsMinor = 0)
+        }
+    }
+    fun shareReminder(context: Context, includeSensitive: Boolean = false) {
+        val snapshot = runCatching { readyReport(includeSensitive) }.getOrElse { _actionError.value=it.message; return }
+        val statement = snapshot.statement ?: return
+        val language = appLanguage.value
+        val amount = com.pocketdev.advance_erp.core.util.Formatters.formatMoney(statement.closingBalanceMinor, CurrencyCode.BDT, language)
+        val text = if (language == AppLanguage.BANGLA) "${statement.partyName}, নির্বাচিত সময়ের হিসাব অনুযায়ী ব্যালেন্স: $amount। বিস্তারিত স্টেটমেন্ট মিলিয়ে দেখার অনুরোধ রইল।"
+            else "${statement.partyName}, the balance for the selected statement period is $amount. Please review the attached statement."
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = com.pocketdev.advance_erp.core.util.LedgerStatementExporter.pdf(context, snapshot, businessProfile.value, language == AppLanguage.BANGLA)
+                launch(Dispatchers.Main) { com.pocketdev.advance_erp.core.util.StatementShareHelper.shareToWhatsApp(context, file, text, statement.phone) }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { launch(Dispatchers.Main) { Toast.makeText(context, error.message, Toast.LENGTH_LONG).show() } }
+        }
+    }
+
+    fun exportAndSharePdf(context: Context, includeSensitive: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             try {
-                val canView = SecurityManager.canViewProfit(userRole.value)
-                val file = ControlCenterPdfGenerator.generateReportPdf(
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value)
+                val file = if (snapshot.statement != null) com.pocketdev.advance_erp.core.util.LedgerStatementExporter.pdf(context, snapshot, businessProfile.value, appLanguage.value == AppLanguage.BANGLA)
+                else ControlCenterPdfGenerator.generateReportPdf(
                     context = context,
-                    title = getReportTitle(),
-                    filterState = _filterState.value,
-                    summary = summaryDashboard.value,
-                    transactions = transactions.value,
+                    title = getReportTitle(snapshot.filter),
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
                     businessProfile = businessProfile.value,
                     canViewProfit = canView,
                     isBangla = appLanguage.value == AppLanguage.BANGLA
@@ -208,21 +319,23 @@ class BusinessControlCenterViewModel @Inject constructor(
         }
     }
 
-    fun exportAndShareExcel(context: Context) {
+    fun exportAndShareExcel(context: Context, includeSensitive: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             try {
-                val canView = SecurityManager.canViewProfit(userRole.value)
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value)
                 val file = ControlCenterExcelGenerator.exportToXlsx(
                     context = context,
-                    reportTitle = getReportTitle(),
-                    filterState = _filterState.value,
-                    summary = summaryDashboard.value,
-                    transactions = transactions.value,
-                    customers = customers.value,
-                    suppliers = suppliers.value,
+                    reportTitle = getReportTitle(snapshot.filter),
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
+                    customers = customers.value.filter { snapshot.statement == null || (snapshot.statement.partyType == "CUSTOMER" && it.id == snapshot.statement.partyId) },
+                    suppliers = suppliers.value.filter { snapshot.statement == null || (snapshot.statement.partyType == "SUPPLIER" && it.id == snapshot.statement.partyId) },
                     businessProfile = businessProfile.value,
-                    canViewProfit = canView
+                    canViewProfit = canView,
+                    statement = snapshot.statement
                 )
                 launch(Dispatchers.Main) {
                     ControlCenterShareService.shareFile(
@@ -242,14 +355,15 @@ class BusinessControlCenterViewModel @Inject constructor(
         }
     }
 
-    fun exportAndShareCsv(context: Context) {
+    fun exportAndShareCsv(context: Context, includeSensitive: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             try {
+                val snapshot = readyReport(includeSensitive)
                 val file = ControlCenterExcelGenerator.exportToCsv(
                     context = context,
-                    reportTitle = getReportTitle(),
-                    transactions = transactions.value
+                    reportTitle = getReportTitle(snapshot.filter),
+                    transactions = safeExportRows(snapshot, includeSensitive)
                 )
                 launch(Dispatchers.Main) {
                     ControlCenterShareService.shareFile(context, file, "text/csv", "Share CSV Report via")
@@ -264,17 +378,19 @@ class BusinessControlCenterViewModel @Inject constructor(
         }
     }
 
-    fun printReport(context: Context) {
+    fun printReport(context: Context, includeSensitive: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             try {
-                val canView = SecurityManager.canViewProfit(userRole.value)
-                val file = ControlCenterPdfGenerator.generateReportPdf(
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value)
+                val file = if (snapshot.statement != null) com.pocketdev.advance_erp.core.util.LedgerStatementExporter.pdf(context, snapshot, businessProfile.value, appLanguage.value == AppLanguage.BANGLA)
+                else ControlCenterPdfGenerator.generateReportPdf(
                     context = context,
-                    title = getReportTitle(),
-                    filterState = _filterState.value,
-                    summary = summaryDashboard.value,
-                    transactions = transactions.value,
+                    title = getReportTitle(snapshot.filter),
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
                     businessProfile = businessProfile.value,
                     canViewProfit = canView,
                     isBangla = appLanguage.value == AppLanguage.BANGLA
@@ -292,17 +408,19 @@ class BusinessControlCenterViewModel @Inject constructor(
         }
     }
 
-    fun savePdfToStorage(context: Context) {
+    fun savePdfToStorage(context: Context, includeSensitive: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             try {
-                val canView = SecurityManager.canViewProfit(userRole.value)
-                val file = ControlCenterPdfGenerator.generateReportPdf(
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value)
+                val file = if (snapshot.statement != null) com.pocketdev.advance_erp.core.util.LedgerStatementExporter.pdf(context, snapshot, businessProfile.value, appLanguage.value == AppLanguage.BANGLA)
+                else ControlCenterPdfGenerator.generateReportPdf(
                     context = context,
-                    title = getReportTitle(),
-                    filterState = _filterState.value,
-                    summary = summaryDashboard.value,
-                    transactions = transactions.value,
+                    title = getReportTitle(snapshot.filter),
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
                     businessProfile = businessProfile.value,
                     canViewProfit = canView,
                     isBangla = appLanguage.value == AppLanguage.BANGLA
@@ -320,21 +438,23 @@ class BusinessControlCenterViewModel @Inject constructor(
         }
     }
 
-    fun saveExcelToStorage(context: Context) {
+    fun saveExcelToStorage(context: Context, includeSensitive: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             _isExporting.value = true
             try {
-                val canView = SecurityManager.canViewProfit(userRole.value)
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value)
                 val file = ControlCenterExcelGenerator.exportToXlsx(
                     context = context,
-                    reportTitle = getReportTitle(),
-                    filterState = _filterState.value,
-                    summary = summaryDashboard.value,
-                    transactions = transactions.value,
-                    customers = customers.value,
-                    suppliers = suppliers.value,
+                    reportTitle = getReportTitle(snapshot.filter),
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
+                    customers = customers.value.filter { snapshot.statement == null || (snapshot.statement.partyType == "CUSTOMER" && it.id == snapshot.statement.partyId) },
+                    suppliers = suppliers.value.filter { snapshot.statement == null || (snapshot.statement.partyType == "SUPPLIER" && it.id == snapshot.statement.partyId) },
                     businessProfile = businessProfile.value,
-                    canViewProfit = canView
+                    canViewProfit = canView,
+                    statement = snapshot.statement
                 )
                 launch(Dispatchers.Main) {
                     ControlCenterShareService.saveToDownloads(context, file)

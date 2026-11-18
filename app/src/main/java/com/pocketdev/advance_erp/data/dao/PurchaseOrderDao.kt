@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PurchaseOrderDao {
+    @Query("SELECT * FROM purchase_orders WHERE supplierId = :supplierId")
+    suspend fun getLedgerOrdersSync(supplierId: String): List<PurchaseOrder>
+
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrder(order: PurchaseOrder)

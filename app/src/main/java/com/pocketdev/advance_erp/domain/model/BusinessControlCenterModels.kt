@@ -296,7 +296,21 @@ data class UnifiedTransactionItem(
     val lineItemsCount: Int = 0,
     val notes: String? = null,
     val createdBy: String? = null,
-    val createdAt: Long = date
+    val createdAt: Long = date,
+    val accountingPosted: Boolean = true,
+    val effectSign: Int = 1,
+    val sourceId: String = id,
+    val warehouseId: String? = null,
+    val profitMinor: Long? = null,
+    val cogsMinor: Long = 0L,
+    val discountMinor: Long = 0L,
+    val taxMinor: Long = 0L,
+    val dueDate: Long? = null,
+    val originalCurrency: String? = null,
+    val originalAmountMinor: Long? = null,
+    val exchangeRate: String? = null,
+    val ledgerDebitMinor: Long? = null,
+    val ledgerCreditMinor: Long? = null
 )
 
 data class LineItemDetail(
@@ -305,7 +319,9 @@ data class LineItemDetail(
     val variantInfo: String? = null,
     val quantity: Int,
     val unitPriceMinor: Long,
-    val totalAmountMinor: Long
+    val totalAmountMinor: Long,
+    val referenceType: String? = null,
+    val referenceId: String? = null
 )
 
 data class TransactionDetailRecord(
@@ -341,4 +357,20 @@ data class PartyLedgerStatement(
     val totalDebitMinor: Long,
     val totalCreditMinor: Long,
     val closingBalanceMinor: Long
+)
+
+
+data class LedgerParty(val id: String, val name: String, val code: String, val type: String, val phone: String?, val address: String?)
+data class LedgerAgingBucket(val key: String, val amountMinor: Long, val documents: Int)
+data class LedgerReport(
+    val filter: ControlCenterFilterState = ControlCenterFilterState(),
+    val transactions: List<UnifiedTransactionItem> = emptyList(),
+    val summary: BusinessSummaryDashboardData = BusinessSummaryDashboardData(),
+    val statement: PartyLedgerStatement? = null,
+    val aging: List<LedgerAgingBucket> = emptyList(),
+    val unallocatedCreditMinor: Long = 0L,
+    val periodRecordCount: Int = 0,
+    val legacyOpeningMinor: Long = 0L,
+    val isLoading: Boolean = false,
+    val error: String? = null
 )

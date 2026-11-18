@@ -57,6 +57,9 @@ fun RecordSupplierPaymentDialog(
     orders: List<PurchaseOrder>,
     preselectedSupplierId: String? = null,
     preselectedOrderId: String? = null,
+    isSaving: Boolean = false,
+    dismissOnSubmit: Boolean = true,
+    saveError: String? = null,
     onDismiss: () -> Unit,
     onConfirm: (
         supplierId: String,
@@ -82,8 +85,8 @@ fun RecordSupplierPaymentDialog(
     var selectedSupplierId by remember { mutableStateOf(initialSupplierId) }
     var selectedOrderId by remember { mutableStateOf(initialOrder?.id) }
     var amountStr by remember { mutableStateOf(initialAmount) }
-    var selectedCurrency by remember { mutableStateOf(initialOrder?.currency ?: "CNY") }
-    var exchangeRateStr by remember { mutableStateOf(initialOrder?.exchangeRateToBdt ?: "17.00") }
+    var selectedCurrency by remember { mutableStateOf(initialOrder?.currency ?: suppliers.find { it.id==initialSupplierId }?.currency ?: "CNY") }
+    var exchangeRateStr by remember { mutableStateOf(initialOrder?.exchangeRateToBdt ?: if (selectedCurrency == "BDT") "1" else "") }
     var selectedMethod by remember { mutableStateOf(PaymentMethod.BANK_TT) }
     var paymentAccount by remember { mutableStateOf("City Bank Corporate (Import LC)") }
     var referenceNumber by remember { mutableStateOf("") }
@@ -209,7 +212,8 @@ fun RecordSupplierPaymentDialog(
                                 singleLine = true
                             )
                             OutlinedTextField(
-                                value = exchangeRateStr,
+                                value = if (selectedCurrency == "BDT") "1" else exchangeRateStr,
+                                enabled = selectedCurrency != "BDT",
                                 onValueChange = { exchangeRateStr = it },
                                 label = { Text("Rate to BDT") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -259,9 +263,9 @@ fun RecordSupplierPaymentDialog(
                         )
                     }
 
-                    if (errorMessage != null) {
+                    if (errorMessage != null || saveError != null) {
                         item {
-                            Text(errorMessage!!, color = StatusError, style = MaterialTheme.typography.bodySmall)
+                            Text(saveError ?: errorMessage.orEmpty(), color = StatusError, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -275,9 +279,10 @@ fun RecordSupplierPaymentDialog(
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Button(
+                        enabled = !isSaving,
                         onClick = {
                             try {
-                                val rate = BigDecimal(exchangeRateStr.trim())
+                                val rate = if (selectedCurrency == "BDT") BigDecimal.ONE else BigDecimal(exchangeRateStr.trim())
                                 val amtBd = BigDecimal(amountStr.trim())
                                 require(amtBd > BigDecimal.ZERO) { "Amount must be greater than zero" }
                                 require(rate > BigDecimal.ZERO) { "Rate must be positive" }
@@ -295,7 +300,7 @@ fun RecordSupplierPaymentDialog(
                                     referenceNumber.ifBlank { null },
                                     notes.ifBlank { null }
                                 )
-                                onDismiss()
+                                if (dismissOnSubmit) onDismiss()
                             } catch (e: Exception) {
                                 errorMessage = e.message ?: "Invalid payment parameters"
                             }

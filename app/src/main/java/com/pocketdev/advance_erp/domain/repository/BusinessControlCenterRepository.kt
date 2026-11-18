@@ -14,6 +14,7 @@ import com.pocketdev.advance_erp.domain.model.UnifiedTransactionItem
 import kotlinx.coroutines.flow.Flow
 
 interface BusinessControlCenterRepository {
+    fun getLedgerReport(filterState: ControlCenterFilterState): Flow<com.pocketdev.advance_erp.domain.model.LedgerReport>
     fun getTransactions(filterState: ControlCenterFilterState): Flow<List<UnifiedTransactionItem>>
     fun getSummaryDashboard(filterState: ControlCenterFilterState): Flow<BusinessSummaryDashboardData>
     suspend fun getTransactionDetails(rawType: String, id: String): TransactionDetailRecord?

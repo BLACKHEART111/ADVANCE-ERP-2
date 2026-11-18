@@ -592,112 +592,124 @@ class SalesRepositoryImpl @Inject constructor(
     }
 
     override suspend fun recordCustomerPayment(draft: CustomerPaymentDraft): String {
-        val customer = customerDao.getCustomerById(draft.customerId)
-            ?: throw IllegalArgumentException("Customer not found: ${draft.customerId}")
-
-        val paymentId = UUID.randomUUID().toString()
+        require(draft.amountMinor > 0) { "Payment amount must be positive" }
         val paymentNumber = generatePaymentNumber()
-        val allocations = mutableListOf<PaymentAllocation>()
+        return db.withTransaction {
+            val customer = customerDao.getCustomerById(draft.customerId)
+                ?: throw IllegalArgumentException("Customer not found: ${draft.customerId}")
 
-        var totalAllocated = 0L
-
-        if (draft.allocations.isNotEmpty()) {
-            for (allocDraft in draft.allocations) {
-                val inv = salesDao.getInvoiceById(allocDraft.invoiceId) ?: continue
-                val maxAlloc = minOf(allocDraft.amountMinor, inv.dueAmountMinor)
-                if (maxAlloc > 0) {
-                    allocations.add(
-                        PaymentAllocation(
-                            id = UUID.randomUUID().toString(),
-                            paymentId = paymentId,
-                            invoiceId = inv.id,
-                            invoiceNumber = inv.invoiceNumber,
-                            amountMinor = maxAlloc,
-                            allocatedAt = draft.paymentDate
-                        )
-                    )
-                    totalAllocated += maxAlloc
-                    val newPaid = inv.paidAmountMinor + maxAlloc
-                    val newDue = maxOf(0L, inv.totalAmountMinor - newPaid)
-                    val newStatus = if (newDue == 0L) InvoiceStatus.PAID.name else InvoiceStatus.PARTIALLY_PAID.name
-                    salesDao.updateInvoicePaymentStatus(inv.id, newStatus, newPaid, newDue)
-                }
+            val netBefore = salesDao.getInvoicesForCustomerSync(draft.customerId)
+                .filter { it.isPosted && it.status != "CANCELLED" }.sumOf { it.totalAmountMinor } -
+                customerPaymentDao.getPaymentsForCustomerSync(draft.customerId).filter { it.isPosted && !it.isVoided }.sumOf { it.amountMinor } -
+                salesReturnDao.getReturnsForCustomerSync(draft.customerId).filter { it.isPosted && it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }.sumOf { it.totalReturnAmountMinor }
+            val allocationInvoices = draft.allocations.associate { allocation ->
+                allocation.invoiceId to requireNotNull(salesDao.getInvoiceById(allocation.invoiceId)) { "Invoice no longer exists" }
             }
-        } else {
-            // Confirmed Business Rule 4.2: Customer payments must NOT automatically be distributed
-            // across old invoice dues via FIFO. Standalone payments are recorded as customer ledger credits.
-            totalAllocated = 0L
-        }
+            com.pocketdev.advance_erp.core.engine.PaymentAllocationValidation.validate(draft, allocationInvoices)
+            val paymentId = UUID.randomUUID().toString()
+            val allocations = mutableListOf<PaymentAllocation>()
 
-        val unallocatedCredit = maxOf(0L, draft.amountMinor - totalAllocated)
-        val isAdvance = unallocatedCredit > 0 && totalAllocated == 0L
+            var totalAllocated = 0L
 
-        val payment = CustomerPayment(
-            id = paymentId,
-            paymentNumber = paymentNumber,
-            customerId = customer.id,
-            customerName = customer.name,
-            amountMinor = draft.amountMinor,
-            allocatedAmountMinor = totalAllocated,
-            unallocatedCreditMinor = unallocatedCredit,
-            paymentDate = draft.paymentDate,
-            paymentMethod = draft.paymentMethod,
-            accountId = draft.accountId,
-            referenceNote = draft.referenceNote,
-            isAdvance = isAdvance,
-            isPosted = true
-        )
+            if (draft.allocations.isNotEmpty()) {
+                for (allocDraft in draft.allocations) {
+                    val inv = salesDao.getInvoiceById(allocDraft.invoiceId) ?: continue
+                    val maxAlloc = minOf(allocDraft.amountMinor, inv.dueAmountMinor)
+                    if (maxAlloc > 0) {
+                        allocations.add(
+                            PaymentAllocation(
+                                id = UUID.randomUUID().toString(),
+                                paymentId = paymentId,
+                                invoiceId = inv.id,
+                                invoiceNumber = inv.invoiceNumber,
+                                amountMinor = maxAlloc,
+                                allocatedAt = draft.paymentDate
+                            )
+                        )
+                        totalAllocated += maxAlloc
+                        val newPaid = inv.paidAmountMinor + maxAlloc
+                        val newDue = maxOf(0L, inv.totalAmountMinor - newPaid)
+                        val newStatus = if (newDue == 0L) InvoiceStatus.PAID.name else InvoiceStatus.PARTIALLY_PAID.name
+                        salesDao.updateInvoicePaymentStatus(inv.id, newStatus, newPaid, newDue)
+                    }
+                }
+            } else {
+                // Confirmed Business Rule 4.2: Customer payments must NOT automatically be distributed
+                // across old invoice dues via FIFO. Standalone payments are recorded as customer ledger credits.
+                totalAllocated = 0L
+            }
 
-        customerPaymentDao.insertPayment(payment)
-        if (allocations.isNotEmpty()) {
-            customerPaymentDao.insertAllocations(allocations)
-        }
+            val unallocatedCredit = maxOf(0L, draft.amountMinor - totalAllocated)
+            val isAdvance = unallocatedCredit > 0 && totalAllocated == 0L
 
-        // Double-Entry Accounting
-        val journalLines = mutableListOf<JournalLineDraft>()
-        // Debit: Cash/Bank
-        journalLines.add(
-            JournalLineDraft(
-                accountId = draft.accountId,
-                isDebit = true,
+            val payment = CustomerPayment(
+                id = paymentId,
+                paymentNumber = paymentNumber,
+                customerId = customer.id,
+                customerName = customer.name,
                 amountMinor = draft.amountMinor,
-                description = "Customer payment received: Receipt #${paymentNumber}"
+                allocatedAmountMinor = totalAllocated,
+                unallocatedCreditMinor = unallocatedCredit,
+                paymentDate = draft.paymentDate,
+                paymentMethod = draft.paymentMethod,
+                accountId = draft.accountId,
+                referenceNote = draft.referenceNote,
+                isAdvance = isAdvance,
+                isPosted = true
             )
-        )
-        // Credit: Accounts Receivable for allocated portion
-        if (totalAllocated > 0) {
+
+            customerPaymentDao.insertPayment(payment)
+            if (allocations.isNotEmpty()) {
+                customerPaymentDao.insertAllocations(allocations)
+            }
+
+            // Double-Entry Accounting
+            val journalLines = mutableListOf<JournalLineDraft>()
+            // Debit: Cash/Bank
             journalLines.add(
                 JournalLineDraft(
-                    accountId = "coa-1040",
-                    isDebit = false,
-                    amountMinor = totalAllocated,
-                    description = "Payment allocated to invoice(s): Receipt #${paymentNumber}"
+                    accountId = draft.accountId,
+                    isDebit = true,
+                    amountMinor = draft.amountMinor,
+                    description = "Customer payment received: Receipt #${paymentNumber}"
                 )
             )
-        }
-        // Credit: Customer Advance for unallocated portion
-        if (unallocatedCredit > 0) {
-            journalLines.add(
-                JournalLineDraft(
-                    accountId = "coa-2030",
-                    isDebit = false,
-                    amountMinor = unallocatedCredit,
-                    description = "Customer advance deposit: Receipt #${paymentNumber}"
+            // Credit: Accounts Receivable for allocated portion
+            if (totalAllocated > 0) {
+                journalLines.add(
+                    JournalLineDraft(
+                        accountId = "coa-1040",
+                        isDebit = false,
+                        amountMinor = totalAllocated,
+                        description = "Payment allocated to invoice(s): Receipt #${paymentNumber}"
+                    )
                 )
+            }
+            // Credit: Customer Advance for unallocated portion
+            if (unallocatedCredit > 0) {
+                journalLines.add(
+                    JournalLineDraft(
+                        accountId = "coa-2030",
+                        isDebit = false,
+                        amountMinor = unallocatedCredit,
+                        description = "Customer advance deposit: Receipt #${paymentNumber}"
+                    )
+                )
+            }
+
+            accountingRepository.postJournalEntry(
+                entryDate = draft.paymentDate,
+                descEn = "Customer payment of ৳${draft.amountMinor / 100} from ${customer.name}",
+                descBn = "গ্রাহক ${customer.name} এর কাছ থেকে ৳${draft.amountMinor / 100} পেমেন্ট গ্রহণ",
+                referenceType = "CUSTOMER_PAYMENT",
+                referenceId = paymentId,
+                lines = journalLines
             )
+
+            customerDao.updateOutstandingBalance(draft.customerId,
+                com.pocketdev.advance_erp.core.engine.PaymentAllocationValidation.outstandingAfterPayment(customer.outstandingBalanceMinor, netBefore, draft.amountMinor))
+            paymentNumber
         }
-
-        accountingRepository.postJournalEntry(
-            entryDate = draft.paymentDate,
-            descEn = "Customer payment of ৳${draft.amountMinor / 100} from ${customer.name}",
-            descBn = "গ্রাহক ${customer.name} এর কাছ থেকে ৳${draft.amountMinor / 100} পেমেন্ট গ্রহণ",
-            referenceType = "CUSTOMER_PAYMENT",
-            referenceId = paymentId,
-            lines = journalLines
-        )
-
-        recalculateCustomerBalance(draft.customerId)
-        return paymentNumber
     }
 
     override suspend fun previewNextCustomerPaymentNumber(): String {
@@ -1029,7 +1041,7 @@ class SalesRepositoryImpl @Inject constructor(
         }
 
         // 2. Payments (Credit AR / Advance)
-        val allCustomerPayments = customerPaymentDao.getAllPayments().first().filter { it.customerId == customerId }
+        val allCustomerPayments = customerPaymentDao.getPaymentsForCustomerSync(customerId).filter { it.isPosted }
 
         for (pay in allCustomerPayments) {
             ledgerItems.add(
@@ -1062,7 +1074,7 @@ class SalesRepositoryImpl @Inject constructor(
         }
 
         // 3. Returns (Credit AR)
-        val allReturns = salesReturnDao.getAllReturns().first().filter { it.customerId == customerId }
+        val allReturns = salesReturnDao.getReturnsForCustomerSync(customerId).filter { it.isPosted }
 
         // 0. Opening Due / Previous Balance (Confirmed Rule 4.2)
         val activeInvoices = invoices.filter { it.status != InvoiceStatus.CANCELLED.name }
@@ -1070,7 +1082,7 @@ class SalesRepositoryImpl @Inject constructor(
         val netTransactions = activeInvoices.sumOf { it.totalAmountMinor } -
             activePayments.sumOf { it.amountMinor } -
             allReturns.filter { it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }.sumOf { it.totalReturnAmountMinor }
-        val openingBal = (customer?.outstandingBalanceMinor ?: 0L) - netTransactions
+        val openingBal = if ((customer?.outstandingBalanceMinor ?: 0L) == 0L) 0L else (customer?.outstandingBalanceMinor ?: 0L) - netTransactions
         if (openingBal > 0L) {
             val initialDate = (customer?.createdAt ?: System.currentTimeMillis()) - (365L * 24 * 3600 * 1000)
             ledgerItems.add(

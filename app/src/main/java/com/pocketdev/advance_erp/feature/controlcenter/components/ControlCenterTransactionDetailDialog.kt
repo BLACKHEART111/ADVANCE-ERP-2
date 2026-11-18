@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.controlcenter.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +50,7 @@ fun ControlCenterTransactionDetailDialog(
     record: TransactionDetailRecord,
     language: AppLanguage,
     currencyCode: CurrencyCode,
+    onLinkedDocument: ((String, String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val isBn = language == AppLanguage.BANGLA
@@ -247,7 +249,10 @@ fun ControlCenterTransactionDetailDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = 4.dp)
+                                    .clickable(enabled = it.referenceId != null && it.referenceType != null && onLinkedDocument != null) {
+                                        onLinkedDocument?.invoke(it.referenceType!!,it.referenceId!!)
+                                    },
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

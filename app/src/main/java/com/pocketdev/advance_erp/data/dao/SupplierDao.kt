@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SupplierDao {
+    @Query("SELECT * FROM suppliers ORDER BY companyName ASC")
+    fun getLedgerSuppliers(): Flow<List<Supplier>>
+
 
     @Query("SELECT * FROM suppliers WHERE isActive = 1 ORDER BY companyName ASC")
     fun getAllSuppliers(): Flow<List<Supplier>>

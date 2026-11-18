@@ -371,8 +371,7 @@ object ControlCenterPdfGenerator {
         }
 
         // Running Balance
-        val balMinor = item.runningBalanceMinor ?: item.amountMinor
-        val balStr = Formatters.formatMinorUnit(balMinor)
+        val balStr = item.runningBalanceMinor?.let { Formatters.formatMinorUnit(it) } ?: "—"
         paint.color = Color.parseColor("#0F172A")
         val balW = paint.measureText(balStr)
         canvas.drawText(balStr, PAGE_WIDTH - MARGIN - 4f - balW, textY, paint)

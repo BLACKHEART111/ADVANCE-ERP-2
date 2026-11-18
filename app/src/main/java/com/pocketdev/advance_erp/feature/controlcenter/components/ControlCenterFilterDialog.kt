@@ -84,6 +84,7 @@ private val DialogChipSelectedColor = Color(0xFF6D28D9) // Vivid Deep Purple
 @Composable
 fun ControlCenterFilterDialog(
     currentFilter: ControlCenterFilterState,
+    canViewProfit: Boolean = false,
     customers: List<Customer>,
     suppliers: List<Supplier>,
     warehouses: List<Warehouse>,
@@ -372,6 +373,7 @@ fun ControlCenterFilterDialog(
                                 text = { Text("${c.name} (${c.customerCode})") },
                                 onClick = {
                                     selectedCustomerId = c.id
+                                    selectedSupplierId = null
                                     customerDropdownExpanded = false
                                 }
                             )
@@ -420,6 +422,7 @@ fun ControlCenterFilterDialog(
                                 text = { Text("${s.companyName} (${s.supplierCode})") },
                                 onClick = {
                                     selectedSupplierId = s.id
+                                    selectedCustomerId = null
                                     supplierDropdownExpanded = false
                                 }
                             )
@@ -540,7 +543,7 @@ fun ControlCenterFilterDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    FinancialMetricFilter.entries.forEach { option ->
+                    FinancialMetricFilter.entries.filterNot { it in setOf(FinancialMetricFilter.OPENING_BALANCE, FinancialMetricFilter.CLOSING_BALANCE) || (!canViewProfit && it in setOf(FinancialMetricFilter.PROFIT,FinancialMetricFilter.LOSS)) }.forEach { option ->
                         FilterOptionChip(
                             selected = financialMetric == option,
                             label = if (isBn) option.titleBn else option.titleEn,

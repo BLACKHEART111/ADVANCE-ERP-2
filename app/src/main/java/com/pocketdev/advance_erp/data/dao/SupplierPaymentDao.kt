@@ -9,6 +9,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SupplierPaymentDao {
+    @Query("SELECT * FROM supplier_payments WHERE id = :id LIMIT 1")
+    suspend fun getLedgerPaymentById(id: String): SupplierPayment?
+
+    @Query("SELECT * FROM supplier_payments WHERE supplierId = :supplierId")
+    suspend fun getLedgerPaymentsSync(supplierId: String): List<SupplierPayment>
+
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: SupplierPayment)

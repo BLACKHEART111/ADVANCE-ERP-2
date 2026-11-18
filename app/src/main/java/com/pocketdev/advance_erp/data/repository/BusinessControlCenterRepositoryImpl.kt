@@ -1,5 +1,15 @@
 package com.pocketdev.advance_erp.data.repository
 
+import androidx.room.InvalidationTracker
+import androidx.room.withTransaction
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
+import com.pocketdev.advance_erp.core.engine.LedgerReportEngine
+import com.pocketdev.advance_erp.domain.model.LedgerReport
+import com.pocketdev.advance_erp.domain.model.LedgerParty
 import android.content.Context
 import android.content.SharedPreferences
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
@@ -75,9 +85,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
     private val prefs: SharedPreferences = context.getSharedPreferences("control_center_presets", Context.MODE_PRIVATE)
     private val presetsFlow = MutableStateFlow<List<SavedFilterPreset>>(loadPresetsFromPrefs())
 
-    override fun getAllCustomers(): Flow<List<Customer>> = customerDao.getAllCustomers()
+    override fun getAllCustomers(): Flow<List<Customer>> = customerDao.getLedgerCustomers()
 
-    override fun getAllSuppliers(): Flow<List<Supplier>> = supplierDao.getAllSuppliers()
+    override fun getAllSuppliers(): Flow<List<Supplier>> = supplierDao.getLedgerSuppliers()
 
     override fun getAllWarehouses(): Flow<List<Warehouse>> = warehouseDao.getAllWarehouses()
 
@@ -173,14 +183,15 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
         prefs.edit().putString("presets_list", arr.toString()).apply()
     }
 
-    override fun getTransactions(filterState: ControlCenterFilterState): Flow<List<UnifiedTransactionItem>> = flow {
-        val (fromMillis, toMillis) = filterState.dateRangeOption.getBoundsMillis(filterState.customStartDate, filterState.customEndDate)
+    private suspend fun loadLedgerRows(filterState: ControlCenterFilterState): List<UnifiedTransactionItem> {
+        val fromMillis = 0L
+        val toMillis = Long.MAX_VALUE
 
         val suppliers = supplierDao.getAllSuppliersIncludingInactiveSync().associateBy { it.id }
         val allList = mutableListOf<UnifiedTransactionItem>()
 
         // 1. Sales Invoices
-        val invoices = salesDao.getAllInvoicesSync()
+        val invoices = when { filterState.selectedSupplierId != null -> emptyList(); filterState.selectedCustomerId != null -> salesDao.getInvoicesForCustomerSync(filterState.selectedCustomerId); else -> salesDao.getAllInvoicesSync() }
         for (inv in invoices) {
             if (inv.invoiceDate in fromMillis..toMillis) {
                 val isCancelled = inv.status == "CANCELLED"
@@ -214,14 +225,15 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         warehouseName = inv.warehouseName,
                         rawType = "INVOICE",
                         notes = inv.notes,
-                        createdAt = inv.createdAt
+                        createdAt = inv.createdAt, accountingPosted = inv.isPosted, warehouseId = inv.warehouseId,
+                        dueDate = inv.dueDate, cogsMinor = inv.totalCogsMinor, profitMinor = inv.totalAmountMinor - inv.taxMinor - inv.totalCogsMinor, discountMinor = inv.discountMinor, taxMinor = inv.taxMinor
                     )
                 )
             }
         }
 
         // 2. Customer Payments (Receipts)
-        val customerPayments = customerPaymentDao.getAllPaymentsSync()
+        val customerPayments = when { filterState.selectedSupplierId != null -> emptyList(); filterState.selectedCustomerId != null -> customerPaymentDao.getPaymentsForCustomerSync(filterState.selectedCustomerId); else -> customerPaymentDao.getAllPaymentsSync() }
         for (pmt in customerPayments) {
             if (pmt.paymentDate in fromMillis..toMillis) {
                 allList.add(
@@ -240,15 +252,15 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         status = if (pmt.isVoided) "VOIDED" else "POSTED",
                         statusColorHex = if (pmt.isVoided) 0xFFEF4444L else 0xFF10B981L,
                         rawType = "PAYMENT",
-                        notes = pmt.referenceNote,
-                        createdAt = pmt.createdAt
+                        notes = listOfNotNull(pmt.referenceNote, pmt.voidReason).joinToString(" · "),
+                        createdAt = pmt.createdAt, accountingPosted = pmt.isPosted
                     )
                 )
             }
         }
 
         // 3. Sales Returns
-        val salesReturns = salesReturnDao.getAllReturnsSync()
+        val salesReturns = when { filterState.selectedSupplierId != null -> emptyList(); filterState.selectedCustomerId != null -> salesReturnDao.getReturnsForCustomerSync(filterState.selectedCustomerId); else -> salesReturnDao.getAllReturnsSync() }
         for (ret in salesReturns) {
             if (ret.returnDate in fromMillis..toMillis) {
                 allList.add(
@@ -268,14 +280,15 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         statusColorHex = 0xFFDC2626L,
                         rawType = "RETURN",
                         notes = ret.reason,
-                        createdAt = ret.createdAt
+                        createdAt = ret.createdAt, accountingPosted = ret.isPosted, warehouseId = ret.warehouseId,
+                        cogsMinor = ret.totalCogsReversalMinor, profitMinor = -ret.totalReturnAmountMinor + ret.totalCogsReversalMinor
                     )
                 )
             }
         }
 
         // 4. Purchase Orders
-        val purchaseOrders = purchaseOrderDao.getAllOrdersSync()
+        val purchaseOrders = if (filterState.selectedCustomerId != null) emptyList() else filterState.selectedSupplierId?.let { purchaseOrderDao.getLedgerOrdersSync(it) } ?: purchaseOrderDao.getAllOrdersSync()
         for (po in purchaseOrders) {
             if (po.orderDate in fromMillis..toMillis) {
                 val supplierName = suppliers[po.supplierId]?.companyName ?: "Supplier"
@@ -303,14 +316,15 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         statusColorHex = statusColor,
                         rawType = "PURCHASE",
                         notes = po.notes,
-                        createdAt = po.createdAt
+                        createdAt = po.createdAt, accountingPosted = po.status !in setOf("DRAFT", "CANCELLED"),
+                        originalCurrency = po.currency, originalAmountMinor = po.totalAmountMinor, exchangeRate = po.exchangeRateToBdt
                     )
                 )
             }
         }
 
         // 5. Supplier Payments
-        val supplierPayments = supplierPaymentDao.getAllPaymentsSync()
+        val supplierPayments = if (filterState.selectedCustomerId != null) emptyList() else filterState.selectedSupplierId?.let { supplierPaymentDao.getLedgerPaymentsSync(it) } ?: supplierPaymentDao.getAllPaymentsSync()
         for (sp in supplierPayments) {
             if (sp.paymentDate in fromMillis..toMillis) {
                 val supplierName = suppliers[sp.supplierId]?.companyName ?: "Supplier"
@@ -331,14 +345,14 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         statusColorHex = 0xFF0284C7L,
                         rawType = "SUPPLIER_PAYMENT",
                         notes = sp.notes,
-                        createdAt = sp.createdAt
+                        createdAt = sp.createdAt, originalCurrency = sp.currency, originalAmountMinor = sp.amountMinor, exchangeRate = sp.exchangeRateToBdt
                     )
                 )
             }
         }
 
         // 6. Expenses
-        val expenses = expenseDao.getAllExpensesSync()
+        val expenses = if (filterState.selectedCustomerId != null || filterState.selectedSupplierId != null) emptyList() else expenseDao.getAllExpensesSync()
         for (exp in expenses) {
             if (exp.voucherDate in fromMillis..toMillis) {
                 allList.add(
@@ -356,14 +370,14 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         statusColorHex = if (exp.isReversed) 0xFFEF4444L else 0xFFF97316L,
                         rawType = "EXPENSE",
                         notes = exp.notes,
-                        createdAt = exp.createdAt
+                        createdAt = exp.createdAt, accountingPosted = exp.isPosted, warehouseId = exp.warehouseId
                     )
                 )
             }
         }
 
         // 7. Stock Movements
-        val movements = stockMovementDao.getAllMovementsWithDetailsSync()
+        val movements = if (filterState.selectedCustomerId != null || filterState.selectedSupplierId != null) emptyList() else stockMovementDao.getAllMovementsWithDetailsSync()
         for (mv in movements) {
             if (mv.createdAt in fromMillis..toMillis) {
                 val cat = when (mv.movementType) {
@@ -393,14 +407,14 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         rawType = "STOCK_MOVEMENT",
                         notes = mv.notes,
                         createdBy = mv.operatorName,
-                        createdAt = mv.createdAt
+                        createdAt = mv.createdAt, warehouseId = mv.warehouseId
                     )
                 )
             }
         }
 
         // 8. Stock Transfers
-        val transfers = stockTransferDao.getAllTransfersWithDetailsSync()
+        val transfers = if (filterState.selectedCustomerId != null || filterState.selectedSupplierId != null) emptyList() else stockTransferDao.getAllTransfersWithDetailsSync()
         for (trf in transfers) {
             if (trf.transferDate in fromMillis..toMillis) {
                 allList.add(
@@ -419,269 +433,77 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         warehouseName = trf.destinationWarehouseName,
                         rawType = "STOCK_TRANSFER",
                         notes = trf.notes,
-                        createdAt = trf.createdAt
+                        createdAt = trf.createdAt, warehouseId = trf.destinationWarehouseId
                     )
                 )
             }
         }
 
-        // Apply Filters
-        var filtered = allList.filter { item ->
-            // Category Filter
-            val matchCategory = when (filterState.category) {
-                ReportCategory.ALL_TRANSACTIONS -> true
-                ReportCategory.SALES -> item.category == ReportCategory.SALES
-                ReportCategory.PURCHASE -> item.category == ReportCategory.PURCHASE
-                ReportCategory.IMPORT -> item.category == ReportCategory.IMPORT
-                ReportCategory.CUSTOMER_LEDGER -> item.rawType in listOf("INVOICE", "PAYMENT", "RETURN")
-                ReportCategory.SUPPLIER_LEDGER -> item.rawType in listOf("PURCHASE", "SUPPLIER_PAYMENT")
-                ReportCategory.PAYMENT -> item.category == ReportCategory.PAYMENT || item.rawType in listOf("SUPPLIER_PAYMENT", "EXPENSE")
-                ReportCategory.RECEIPT -> item.category == ReportCategory.RECEIPT || item.rawType == "PAYMENT"
-                ReportCategory.INCOME -> item.isInflow
-                ReportCategory.EXPENSE -> item.category == ReportCategory.EXPENSE || item.rawType == "EXPENSE"
-                ReportCategory.INVENTORY -> item.category in listOf(ReportCategory.INVENTORY, ReportCategory.STOCK_ADJUSTMENT, ReportCategory.STOCK_TRANSFER)
-                ReportCategory.DELIVERY -> item.category == ReportCategory.DELIVERY || item.status in listOf("DELIVERED", "PARTIALLY_DELIVERED", "SALE_DISPATCH")
-                ReportCategory.SALES_RETURN -> item.category == ReportCategory.SALES_RETURN || item.rawType == "RETURN"
-                ReportCategory.PURCHASE_RETURN -> item.category == ReportCategory.PURCHASE_RETURN
-                ReportCategory.STOCK_TRANSFER -> item.category == ReportCategory.STOCK_TRANSFER || item.rawType == "STOCK_TRANSFER"
-                ReportCategory.STOCK_ADJUSTMENT -> item.category == ReportCategory.STOCK_ADJUSTMENT
-            }
-            if (!matchCategory) return@filter false
-
-            // Customer Filter
-            if (filterState.selectedCustomerId != null) {
-                if (item.primaryEntityId != filterState.selectedCustomerId) return@filter false
-            }
-
-            // Supplier Filter
-            if (filterState.selectedSupplierId != null) {
-                if (item.primaryEntityId != filterState.selectedSupplierId) return@filter false
-            }
-
-            // Warehouse Filter
-            if (filterState.selectedWarehouseId != null) {
-                val whName = warehouseDao.getWarehouseById(filterState.selectedWarehouseId)?.name
-                if (whName != null && item.warehouseName != null && !item.warehouseName.contains(whName, ignoreCase = true)) {
-                    return@filter false
-                }
-            }
-
-            // Payment Status Filter
-            val matchPayment = when (filterState.paymentStatus) {
-                PaymentStatusFilter.ALL -> true
-                PaymentStatusFilter.PAID -> item.status.equals("PAID", ignoreCase = true) || item.paymentMethod.equals("PAID", ignoreCase = true)
-                PaymentStatusFilter.UNPAID -> item.status.equals("DRAFT", ignoreCase = true) || item.paymentMethod.equals("UNPAID", ignoreCase = true)
-                PaymentStatusFilter.PARTIAL_PAID -> item.status.contains("PARTIAL", ignoreCase = true) || item.paymentMethod.equals("PARTIAL", ignoreCase = true)
-                PaymentStatusFilter.OVERDUE -> item.status.contains("OVERDUE", ignoreCase = true)
-                PaymentStatusFilter.ADVANCE -> item.particulars.contains("ADVANCE", ignoreCase = true)
-                PaymentStatusFilter.CASH -> item.paymentMethod?.contains("CASH", ignoreCase = true) == true
-                PaymentStatusFilter.BANK -> item.paymentMethod?.contains("BANK", ignoreCase = true) == true
-                PaymentStatusFilter.MOBILE_BANKING -> item.paymentMethod?.contains("BKASH", ignoreCase = true) == true || item.paymentMethod?.contains("NAGAD", ignoreCase = true) == true
-                PaymentStatusFilter.LC -> item.paymentMethod?.contains("LC", ignoreCase = true) == true || item.paymentMethod?.contains("LETTER_OF_CREDIT", ignoreCase = true) == true
-                PaymentStatusFilter.TT -> item.paymentMethod?.contains("TT", ignoreCase = true) == true || item.paymentMethod?.contains("TELEGRAPHIC", ignoreCase = true) == true
-            }
-            if (!matchPayment) return@filter false
-
-            // Delivery & Return Filter
-            val matchDeliveryReturn = when (filterState.deliveryReturn) {
-                DeliveryReturnFilter.ALL -> true
-                DeliveryReturnFilter.PENDING -> item.status.contains("PENDING", ignoreCase = true)
-                DeliveryReturnFilter.PROCESSING -> item.status.contains("PROCESSING", ignoreCase = true)
-                DeliveryReturnFilter.DISPATCHED -> item.status.contains("DISPATCH", ignoreCase = true)
-                DeliveryReturnFilter.DELIVERED -> item.status.contains("DELIVERED", ignoreCase = true)
-                DeliveryReturnFilter.PARTIAL_DELIVERED -> item.status.contains("PARTIAL", ignoreCase = true) && item.category == ReportCategory.DELIVERY
-                DeliveryReturnFilter.CANCELLED -> item.status.contains("CANCEL", ignoreCase = true)
-                DeliveryReturnFilter.ALL_RETURNS -> item.category in listOf(ReportCategory.SALES_RETURN, ReportCategory.PURCHASE_RETURN)
-                DeliveryReturnFilter.APPROVED_RETURN -> item.category == ReportCategory.SALES_RETURN && !item.status.contains("REJECT", ignoreCase = true)
-                DeliveryReturnFilter.PENDING_RETURN -> item.status.contains("PENDING", ignoreCase = true) && item.category == ReportCategory.SALES_RETURN
-                DeliveryReturnFilter.REJECTED_RETURN -> item.status.contains("REJECT", ignoreCase = true)
-                DeliveryReturnFilter.DAMAGED_PRODUCT -> item.particulars.contains("DAMAGE", ignoreCase = true) || item.status.contains("DAMAGE", ignoreCase = true)
-                DeliveryReturnFilter.GOOD_CONDITION -> !item.particulars.contains("DAMAGE", ignoreCase = true)
-            }
-            if (!matchDeliveryReturn) return@filter false
-
-            // Financial Metric Filter
-            val matchFinancial = when (filterState.financialMetric) {
-                FinancialMetricFilter.ALL -> true
-                FinancialMetricFilter.INCOME -> item.isInflow
-                FinancialMetricFilter.EXPENSE -> !item.isInflow && item.category == ReportCategory.EXPENSE
-                FinancialMetricFilter.PROFIT -> item.category == ReportCategory.SALES
-                FinancialMetricFilter.LOSS -> item.category == ReportCategory.EXPENSE || item.category == ReportCategory.SALES_RETURN
-                FinancialMetricFilter.CUSTOMER_DUE -> item.secondaryAmountMinor != null && item.secondaryAmountMinor > 0 && item.rawType == "INVOICE"
-                FinancialMetricFilter.SUPPLIER_DUE -> item.secondaryAmountMinor != null && item.secondaryAmountMinor > 0 && item.rawType == "PURCHASE"
-                FinancialMetricFilter.OPENING_BALANCE -> true
-                FinancialMetricFilter.CLOSING_BALANCE -> true
-                FinancialMetricFilter.DISCOUNT -> item.particulars.contains("DISCOUNT", ignoreCase = true)
-                FinancialMetricFilter.TAX -> item.particulars.contains("TAX", ignoreCase = true) || item.particulars.contains("VAT", ignoreCase = true)
-                FinancialMetricFilter.REFUND -> item.category == ReportCategory.SALES_RETURN
-            }
-            if (!matchFinancial) return@filter false
-
-            // Amount Range Filter
-            val matchAmount = when (filterState.amountFilter) {
-                AmountRangeFilter.ALL -> true
-                AmountRangeFilter.RANGE_0_1K -> item.amountMinor in 0L..100000L
-                AmountRangeFilter.RANGE_1K_10K -> item.amountMinor in 100001L..1000000L
-                AmountRangeFilter.RANGE_10K_50K -> item.amountMinor in 1000001L..5000000L
-                AmountRangeFilter.ABOVE_50K -> item.amountMinor > 5000000L
-                AmountRangeFilter.CUSTOM -> {
-                    val min = filterState.customMinAmountMinor ?: 0L
-                    val max = filterState.customMaxAmountMinor ?: Long.MAX_VALUE
-                    item.amountMinor in min..max
-                }
-            }
-            if (!matchAmount) return@filter false
-
-            // Search Query Filter
-            if (filterState.searchQuery.isNotBlank()) {
-                val q = filterState.searchQuery.trim().lowercase()
-                val matchSearch = item.referenceNumber.lowercase().contains(q) ||
-                        item.primaryEntityName.lowercase().contains(q) ||
-                        item.particulars.lowercase().contains(q) ||
-                        (item.warehouseName?.lowercase()?.contains(q) == true) ||
-                        (item.notes?.lowercase()?.contains(q) == true)
-                if (!matchSearch) return@filter false
-            }
-
-            true
-        }
-
-        // Sort items
-        filtered = when (filterState.sortBy) {
-            SortOption.NEWEST_FIRST -> filtered.sortedByDescending { it.date }
-            SortOption.OLDEST_FIRST -> filtered.sortedBy { it.date }
-            SortOption.HIGHEST_AMOUNT -> filtered.sortedByDescending { it.amountMinor }
-            SortOption.LOWEST_AMOUNT -> filtered.sortedBy { it.amountMinor }
-            SortOption.NAME_ASC -> filtered.sortedBy { it.primaryEntityName.lowercase() }
-            SortOption.NAME_DESC -> filtered.sortedByDescending { it.primaryEntityName.lowercase() }
-        }
-
-        // Compute running balance if party ledger or single entity is selected
-        if (filterState.category in listOf(ReportCategory.CUSTOMER_LEDGER, ReportCategory.SUPPLIER_LEDGER) ||
-            filterState.selectedCustomerId != null || filterState.selectedSupplierId != null) {
-            var running = 0L
-            // Calculate opening balance before fromMillis
-            if (filterState.selectedCustomerId != null) {
-                val pastInvoices = invoices.filter { it.customerId == filterState.selectedCustomerId && it.invoiceDate < fromMillis && it.status != "CANCELLED" }
-                val pastPayments = customerPayments.filter { it.customerId == filterState.selectedCustomerId && it.paymentDate < fromMillis && !it.isVoided }
-                val pastReturns = salesReturns.filter { it.customerId == filterState.selectedCustomerId && it.returnDate < fromMillis }
-                running = pastInvoices.sumOf { it.totalAmountMinor } - pastPayments.sumOf { it.amountMinor } - pastReturns.sumOf { it.totalReturnAmountMinor }
-            } else if (filterState.selectedSupplierId != null) {
-                val pastPos = purchaseOrders.filter { it.supplierId == filterState.selectedSupplierId && it.orderDate < fromMillis && it.status != "CANCELLED" }
-                val pastPmts = supplierPayments.filter { it.supplierId == filterState.selectedSupplierId && it.paymentDate < fromMillis }
-                running = pastPos.sumOf { it.totalBdtAmountMinor } - pastPmts.sumOf { it.bdtAmountMinor }
-            }
-
-            val withRunning = mutableListOf<UnifiedTransactionItem>()
-            // Sort chronologically to compute running balances correctly
-            val chronological = filtered.sortedBy { it.date }
-            val mapRunning = mutableMapOf<String, Long>()
-            for (it in chronological) {
-                if (filterState.category == ReportCategory.SUPPLIER_LEDGER || filterState.selectedSupplierId != null) {
-                    // Supplier: PO increases payable (+), Payment decreases payable (-)
-                    if (it.rawType == "PURCHASE") running += it.amountMinor
-                    else if (it.rawType == "SUPPLIER_PAYMENT") running -= it.amountMinor
-                } else {
-                    // Customer: Invoice increases receivable (+), Payment decreases receivable (-), Return decreases (-)
-                    if (it.rawType == "INVOICE") running += it.amountMinor
-                    else if (it.rawType == "PAYMENT") running -= it.amountMinor
-                    else if (it.rawType == "RETURN") running -= it.amountMinor
-                }
-                mapRunning[it.id] = running
-            }
-
-            // Restore desired sort order with calculated running balances
-            filtered = filtered.map { item ->
-                item.copy(runningBalanceMinor = mapRunning[item.id])
+        val originals = allList.associateBy { it.rawType to it.id }
+        for (invoice in invoices.filter { it.isPosted && it.status == "CANCELLED" }) {
+            originals["INVOICE" to invoice.id]?.let { row ->
+                allList.add(row.copy(id = "${row.id}-cancel", sourceId = row.id, rawType = "INVOICE_REVERSAL",
+                    date = invoice.cancelledAt ?: invoice.updatedAt, createdAt = invoice.cancelledAt ?: invoice.updatedAt,
+                    effectSign = -1, status = "REVERSED", particulars = "Invoice cancellation / বাতিল", notes = invoice.cancellationReason))
             }
         }
+        for (payment in customerPayments.filter { it.isPosted && it.isVoided }) {
+            originals["PAYMENT" to payment.id]?.let { row ->
+                val date = payment.voidedAt ?: (payment.paymentDate + 1)
+                allList.add(row.copy(id = "${row.id}-void", sourceId = row.id, rawType = "PAYMENT_REVERSAL",
+                    date = date, createdAt = date, effectSign = -1, status = "REVERSED", particulars = "Payment reversal / রিভার্সাল", notes = payment.voidReason))
+            }
+        }
+        for (expense in expenses.filter { it.isPosted && it.isReversed }) {
+            val date = expense.reversalJournalEntryId?.let { database.accountingDao().getJournalEntryById(it)?.entryDate }
+            originals["EXPENSE" to expense.id]?.let { row ->
+                if (date != null) allList.add(row.copy(id = "${row.id}-reverse", sourceId = row.id, rawType = "EXPENSE_REVERSAL",
+                    date = date, createdAt = date, effectSign = -1, status = "REVERSED", particulars = "Expense reversal / ব্যয় রিভার্সাল"))
+                else { val index = allList.indexOf(row); allList[index] = row.copy(accountingPosted = false) }
+            }
+        }
+        // Preserve imported/legacy opening balances without writing or inventing new transactions.
+        val customerNet = allList.filter { LedgerReportEngine.isCustomer(it) }.groupBy { it.primaryEntityId }
+            .mapValues { (_, rows) -> rows.sumOf { LedgerReportEngine.delta(it) } }
+        val supplierNet = allList.filter { LedgerReportEngine.isSupplier(it) }.groupBy { it.primaryEntityId }
+            .mapValues { (_, rows) -> rows.sumOf { LedgerReportEngine.delta(it) } }
+        if (filterState.selectedSupplierId == null) {
+            val customers = filterState.selectedCustomerId?.let { listOfNotNull(customerDao.getCustomerById(it)) } ?: customerDao.getLedgerCustomersSync()
+            customers.forEach { customer ->
+                val residual = LedgerReportEngine.openingAdjustment(customer.outstandingBalanceMinor, customerNet[customer.id] ?: 0)
+                if (residual != 0L) allList.add(UnifiedTransactionItem("opening-${customer.id}", "OPENING", 0,
+                    ReportCategory.CUSTOMER_LEDGER, customer.name, customer.id, "Opening / legacy balance (পূর্বের ব্যালেন্স)",
+                    kotlin.math.abs(residual), isInflow = residual > 0, status = "OPENING", rawType = "OPENING_CUSTOMER", effectSign = if (residual > 0) 1 else -1))
+            }
+        }
+        if (filterState.selectedCustomerId == null) suppliers.values.filter { filterState.selectedSupplierId == null || it.id == filterState.selectedSupplierId }.forEach { supplier ->
+            val residual = LedgerReportEngine.openingAdjustment(supplier.outstandingPayableMinor, supplierNet[supplier.id] ?: 0)
+            if (residual != 0L) allList.add(UnifiedTransactionItem("opening-${supplier.id}", "OPENING", 0,
+                ReportCategory.SUPPLIER_LEDGER, supplier.companyName, supplier.id, "Opening / legacy balance (পূর্বের ব্যালেন্স)",
+                kotlin.math.abs(residual), isInflow = residual > 0, status = "OPENING", rawType = "OPENING_SUPPLIER", effectSign = if (residual > 0) 1 else -1))
+        }
+        return allList
+    }
 
-        emit(filtered)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun getLedgerReport(filterState: ControlCenterFilterState): Flow<LedgerReport> = callbackFlow {
+        val observer = object : InvalidationTracker.Observer("sales_invoices", "customer_payments", "sales_returns", "purchase_orders", "supplier_payments", "expense_vouchers", "stock_movements", "stock_transfers", "customers", "suppliers", "warehouses", "payment_allocations", "journal_entries") {
+            override fun onInvalidated(tables: Set<String>) { trySend(Unit) }
+        }
+        database.invalidationTracker.addObserver(observer)
+        trySend(Unit)
+        awaitClose { database.invalidationTracker.removeObserver(observer) }
+    }.conflate().map {
+        database.withTransaction {
+            val rows = loadLedgerRows(filterState)
+            val party = filterState.selectedCustomerId?.let { customerDao.getCustomerById(it)?.let { p -> LedgerParty(p.id, p.name, p.customerCode, "CUSTOMER", p.phone, p.address) } }
+                ?: filterState.selectedSupplierId?.let { supplierDao.getSupplierById(it)?.let { p -> LedgerParty(p.id, p.companyName, p.supplierCode, "SUPPLIER", p.phone, p.address) } }
+            LedgerReportEngine.build(rows, filterState, party)
+        }
     }.flowOn(Dispatchers.IO)
 
-    override fun getSummaryDashboard(filterState: ControlCenterFilterState): Flow<BusinessSummaryDashboardData> = flow {
-        val (fromMillis, toMillis) = filterState.dateRangeOption.getBoundsMillis(filterState.customStartDate, filterState.customEndDate)
-
-        val invoices = salesDao.getAllInvoicesSync()
-        val customerPayments = customerPaymentDao.getAllPaymentsSync()
-        val salesReturns = salesReturnDao.getAllReturnsSync()
-        val purchaseOrders = purchaseOrderDao.getAllOrdersSync()
-        val supplierPayments = supplierPaymentDao.getAllPaymentsSync()
-        val expenses = expenseDao.getAllExpensesSync()
-
-        // 1. Total Sales
-        val rangeInvoices = invoices.filter { it.invoiceDate in fromMillis..toMillis && it.status != "CANCELLED" }
-        val totalSales = rangeInvoices.sumOf { it.totalAmountMinor }
-        val totalCogs = rangeInvoices.sumOf { it.totalCogsMinor }
-        val totalDiscounts = rangeInvoices.sumOf { it.discountMinor }
-
-        // 2. Total Purchase
-        val rangePurchases = purchaseOrders.filter { it.orderDate in fromMillis..toMillis && it.status != "CANCELLED" }
-        val totalPurchases = rangePurchases.sumOf { it.totalBdtAmountMinor }
-
-        // 3. Total Received (Collections)
-        val rangePayments = customerPayments.filter { it.paymentDate in fromMillis..toMillis && !it.isVoided }
-        val totalReceived = rangePayments.sumOf { it.amountMinor }
-
-        // 4. Total Paid (Supplier remittances)
-        val rangeSupplierPmts = supplierPayments.filter { it.paymentDate in fromMillis..toMillis }
-        val totalPaid = rangeSupplierPmts.sumOf { it.bdtAmountMinor }
-
-        // 5. Total Expenses
-        val rangeExpenses = expenses.filter { it.voucherDate in fromMillis..toMillis && !it.isReversed }
-        val totalExpenses = rangeExpenses.sumOf { it.bdtAmountMinor }
-
-        // 6. Sales Returns
-        val rangeReturns = salesReturns.filter { it.returnDate in fromMillis..toMillis }
-        val totalSalesReturns = rangeReturns.sumOf { it.totalReturnAmountMinor }
-
-        // 7. Purchase Returns (Damage/Shortage write-offs)
-        val totalPurchaseReturns = 0L
-
-        // 8. Total Deliveries
-        val totalDeliveries = rangeInvoices.count { it.status in listOf("DELIVERED", "PARTIALLY_DELIVERED") }
-
-        // 9. Total Outstanding Receivable (Customer Due)
-        val totalReceivable = rangeInvoices.sumOf { it.dueAmountMinor }
-
-        // 10. Total Outstanding Payable (Supplier Due)
-        val totalPayable = rangePurchases.sumOf { (it.totalBdtAmountMinor - it.paidBdtAmountMinor).coerceAtLeast(0L) }
-
-        // 11. Gross Profit = Net Sales Revenue - COGS
-        // Net Sales = Total Sales - Sales Returns - Discounts
-        val netSales = (totalSales - totalSalesReturns - totalDiscounts).coerceAtLeast(0L)
-        val grossProfit = netSales - totalCogs
-
-        // 12. Net Profit = Gross Profit - Operating Expenses
-        val netProfit = grossProfit - totalExpenses
-
-        // Opening & Closing Balance for the business Cash/Bank
-        val pastReceipts = customerPayments.filter { it.paymentDate < fromMillis && !it.isVoided }.sumOf { it.amountMinor }
-        val pastPayments = supplierPayments.filter { it.paymentDate < fromMillis }.sumOf { it.bdtAmountMinor } +
-                expenses.filter { it.voucherDate < fromMillis && !it.isReversed }.sumOf { it.bdtAmountMinor }
-        val openingBal = pastReceipts - pastPayments
-        val closingBal = openingBal + totalReceived - (totalPaid + totalExpenses)
-
-        emit(
-            BusinessSummaryDashboardData(
-                totalSalesMinor = totalSales,
-                totalPurchaseMinor = totalPurchases,
-                totalReceivedMinor = totalReceived,
-                totalPaidMinor = totalPaid,
-                totalExpensesMinor = totalExpenses,
-                totalSalesReturnMinor = totalSalesReturns,
-                totalPurchaseReturnMinor = totalPurchaseReturns,
-                totalDeliveryCount = totalDeliveries,
-                totalOutstandingReceivableMinor = totalReceivable,
-                totalOutstandingPayableMinor = totalPayable,
-                grossProfitMinor = grossProfit,
-                netProfitMinor = netProfit,
-                totalTransactionsCount = rangeInvoices.size + rangePayments.size + rangeReturns.size + rangePurchases.size + rangeSupplierPmts.size + rangeExpenses.size,
-                openingBalanceMinor = openingBal,
-                closingBalanceMinor = closingBal
-            )
-        )
-    }.flowOn(Dispatchers.IO)
+    override fun getTransactions(filterState: ControlCenterFilterState): Flow<List<UnifiedTransactionItem>> = getLedgerReport(filterState).map { it.transactions }
+    override fun getSummaryDashboard(filterState: ControlCenterFilterState): Flow<BusinessSummaryDashboardData> = getLedgerReport(filterState).map { it.summary }
 
     override suspend fun getTransactionDetails(rawType: String, id: String): TransactionDetailRecord? {
         return when (rawType) {
@@ -773,6 +595,7 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                 val allocations = customerPaymentDao.getAllocationsForPayment(id)
                 val lineItems = allocations.map {
                     LineItemDetail(
+                        referenceType = "INVOICE", referenceId = it.invoiceId,
                         productName = "Allocation for Invoice ${it.invoiceNumber}",
                         sku = it.invoiceId.take(8),
                         quantity = 1,
@@ -803,8 +626,20 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                     paidMinor = pmt.amountMinor - pmt.unallocatedCreditMinor,
                     dueMinor = pmt.unallocatedCreditMinor,
                     referenceDocument = pmt.paymentNumber,
-                    auditTrailInfo = "Payment recorded: ${java.util.Date(pmt.createdAt)}. Void status: ${pmt.isVoided}."
+                    auditTrailInfo = "Payment recorded: ${java.util.Date(pmt.createdAt)}. Allocated: ${java.math.BigDecimal.valueOf(pmt.allocatedAmountMinor,2)} BDT; unallocated: ${java.math.BigDecimal.valueOf(pmt.unallocatedCreditMinor,2)} BDT. Void: ${pmt.isVoided}; date: ${pmt.voidedAt?.let { java.util.Date(it) }}; reason: ${pmt.voidReason.orEmpty()}; by: ${pmt.voidedBy.orEmpty()}."
                 )
+            }
+            "SUPPLIER_PAYMENT" -> {
+                val payment = supplierPaymentDao.getLedgerPaymentById(id) ?: return null
+                val supplier = supplierDao.getSupplierById(payment.supplierId)
+                val order = payment.purchaseOrderId?.let { purchaseOrderDao.getOrderById(it) }
+                val row = loadLedgerRows(ControlCenterFilterState(selectedSupplierId = payment.supplierId)).first { it.rawType == "SUPPLIER_PAYMENT" && it.id == id }
+                TransactionDetailRecord(row,
+                    items = if (order == null) emptyList() else listOf(LineItemDetail("PO ${order.poNumber}", order.poNumber, quantity=1,
+                        unitPriceMinor=payment.bdtAmountMinor,totalAmountMinor=payment.bdtAmountMinor,referenceType="PURCHASE",referenceId=order.id)),
+                    paidMinor=payment.bdtAmountMinor,contactPhone=supplier?.phone, contactAddress=supplier?.address,
+                    referenceDocument=payment.referenceNumber,
+                    auditTrailInfo="${java.util.Date(payment.createdAt)} • ${payment.currency} ${java.math.BigDecimal.valueOf(payment.amountMinor,2)} @ ${payment.exchangeRateToBdt} • ${payment.paymentAccount} • ${payment.notes.orEmpty()}")
             }
             "RETURN" -> {
                 val ret = salesReturnDao.getReturnById(id) ?: return null
@@ -870,205 +705,11 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getCustomerLedgerStatement(
-        customerId: String,
-        fromDate: Long,
-        toDate: Long
-    ): PartyLedgerStatement? {
-        val customer = customerDao.getCustomerById(customerId) ?: return null
-        val invoices = salesDao.getInvoicesForCustomerSync(customerId).filter { it.status != "CANCELLED" }
-        val payments = customerPaymentDao.getPaymentsForCustomerSync(customerId).filter { !it.isVoided }
-        val returns = salesReturnDao.getReturnsForCustomerSync(customerId)
+    override suspend fun getCustomerLedgerStatement(customerId: String, fromDate: Long, toDate: Long): PartyLedgerStatement? =
+        getLedgerReport(ControlCenterFilterState(dateRangeOption = com.pocketdev.advance_erp.domain.model.DateRangeOption.CUSTOM,
+            customStartDate = fromDate, customEndDate = toDate, category = ReportCategory.CUSTOMER_LEDGER, selectedCustomerId = customerId)).first().statement
 
-        // Opening Balance as of fromDate
-        val pastInvoices = invoices.filter { it.invoiceDate < fromDate }.sumOf { it.totalAmountMinor }
-        val pastPayments = payments.filter { it.paymentDate < fromDate }.sumOf { it.amountMinor }
-        val pastReturns = returns.filter { it.returnDate < fromDate }.sumOf { it.totalReturnAmountMinor }
-        val openingBalance = pastInvoices - (pastPayments + pastReturns)
-
-        // Transactions in date range
-        val periodTx = mutableListOf<UnifiedTransactionItem>()
-
-        for (inv in invoices.filter { it.invoiceDate in fromDate..toDate }) {
-            periodTx.add(
-                UnifiedTransactionItem(
-                    id = inv.id,
-                    referenceNumber = inv.invoiceNumber,
-                    date = inv.invoiceDate,
-                    category = ReportCategory.SALES,
-                    primaryEntityName = customer.name,
-                    primaryEntityId = customer.id,
-                    particulars = "Invoice #${inv.invoiceNumber} (${inv.status})",
-                    amountMinor = inv.totalAmountMinor,
-                    secondaryAmountMinor = inv.dueAmountMinor,
-                    isInflow = true, // Debit to customer ledger (receivable increases)
-                    status = inv.status,
-                    warehouseName = inv.warehouseName,
-                    rawType = "INVOICE"
-                )
-            )
-        }
-
-        for (pmt in payments.filter { it.paymentDate in fromDate..toDate }) {
-            periodTx.add(
-                UnifiedTransactionItem(
-                    id = pmt.id,
-                    referenceNumber = pmt.paymentNumber,
-                    date = pmt.paymentDate,
-                    category = ReportCategory.RECEIPT,
-                    primaryEntityName = customer.name,
-                    primaryEntityId = customer.id,
-                    particulars = pmt.referenceNote ?: "Payment Received (${pmt.paymentMethod})",
-                    amountMinor = pmt.amountMinor,
-                    isInflow = false, // Credit to customer ledger (receivable decreases)
-                    paymentMethod = pmt.paymentMethod,
-                    status = "POSTED",
-                    rawType = "PAYMENT"
-                )
-            )
-        }
-
-        for (ret in returns.filter { it.returnDate in fromDate..toDate }) {
-            periodTx.add(
-                UnifiedTransactionItem(
-                    id = ret.id,
-                    referenceNumber = ret.returnNumber,
-                    date = ret.returnDate,
-                    category = ReportCategory.SALES_RETURN,
-                    primaryEntityName = customer.name,
-                    primaryEntityId = customer.id,
-                    particulars = ret.reason ?: "Return against #${ret.invoiceNumber}",
-                    amountMinor = ret.totalReturnAmountMinor,
-                    isInflow = false, // Credit to customer ledger (receivable decreases)
-                    paymentMethod = ret.refundOption,
-                    status = "RETURNED",
-                    rawType = "RETURN"
-                )
-            )
-        }
-
-        // Sort chronologically and calculate running balance
-        val chronological = periodTx.sortedBy { it.date }
-        var running = openingBalance
-        val calculated = mutableListOf<UnifiedTransactionItem>()
-        var totalDebit = 0L
-        var totalCredit = 0L
-
-        for (tx in chronological) {
-            if (tx.isInflow) {
-                // Inflow/Debit (Invoice)
-                running += tx.amountMinor
-                totalDebit += tx.amountMinor
-            } else {
-                // Outflow/Credit (Payment or Return)
-                running -= tx.amountMinor
-                totalCredit += tx.amountMinor
-            }
-            calculated.add(tx.copy(runningBalanceMinor = running))
-        }
-
-        return PartyLedgerStatement(
-            partyId = customer.id,
-            partyName = customer.name,
-            partyCode = customer.customerCode,
-            partyType = "CUSTOMER",
-            phone = customer.phone,
-            address = customer.address,
-            openingBalanceMinor = openingBalance,
-            transactions = calculated.reversed(), // default newest first for display
-            totalDebitMinor = totalDebit,
-            totalCreditMinor = totalCredit,
-            closingBalanceMinor = running
-        )
-    }
-
-    override suspend fun getSupplierLedgerStatement(
-        supplierId: String,
-        fromDate: Long,
-        toDate: Long
-    ): PartyLedgerStatement? {
-        val supplier = supplierDao.getSupplierById(supplierId) ?: return null
-        val allPos = purchaseOrderDao.getAllOrdersSync().filter { it.supplierId == supplierId && it.status != "CANCELLED" }
-        val allPmts = supplierPaymentDao.getAllPaymentsSync().filter { it.supplierId == supplierId }
-
-        // Opening Balance as of fromDate
-        val pastPos = allPos.filter { it.orderDate < fromDate }.sumOf { it.totalBdtAmountMinor }
-        val pastPmts = allPmts.filter { it.paymentDate < fromDate }.sumOf { it.bdtAmountMinor }
-        val openingBalance = pastPos - pastPmts // Net payable to supplier
-
-        val periodTx = mutableListOf<UnifiedTransactionItem>()
-
-        for (po in allPos.filter { it.orderDate in fromDate..toDate }) {
-            periodTx.add(
-                UnifiedTransactionItem(
-                    id = po.id,
-                    referenceNumber = po.poNumber,
-                    date = po.orderDate,
-                    category = if (po.currency != "BDT") ReportCategory.IMPORT else ReportCategory.PURCHASE,
-                    primaryEntityName = supplier.companyName,
-                    primaryEntityId = supplier.id,
-                    particulars = "PO #${po.poNumber} [${po.currency}] - Status: ${po.status}",
-                    amountMinor = po.totalBdtAmountMinor,
-                    secondaryAmountMinor = po.totalBdtAmountMinor - po.paidBdtAmountMinor,
-                    isInflow = true, // Payable increases (Credit in accounting terms)
-                    paymentMethod = po.currency,
-                    status = po.status,
-                    rawType = "PURCHASE"
-                )
-            )
-        }
-
-        for (sp in allPmts.filter { it.paymentDate in fromDate..toDate }) {
-            periodTx.add(
-                UnifiedTransactionItem(
-                    id = sp.id,
-                    referenceNumber = sp.paymentNumber,
-                    date = sp.paymentDate,
-                    category = ReportCategory.PAYMENT,
-                    primaryEntityName = supplier.companyName,
-                    primaryEntityId = supplier.id,
-                    particulars = "Supplier Remittance (${sp.paymentMethod})",
-                    amountMinor = sp.bdtAmountMinor,
-                    secondaryAmountMinor = sp.amountMinor,
-                    isInflow = false, // Payable decreases (Debit in accounting terms)
-                    paymentMethod = sp.paymentMethod,
-                    status = "PAID",
-                    rawType = "SUPPLIER_PAYMENT"
-                )
-            )
-        }
-
-        val chronological = periodTx.sortedBy { it.date }
-        var running = openingBalance
-        val calculated = mutableListOf<UnifiedTransactionItem>()
-        var totalDebit = 0L // Payments made
-        var totalCredit = 0L // POs billed
-
-        for (tx in chronological) {
-            if (tx.isInflow) {
-                // PO increases payable
-                running += tx.amountMinor
-                totalCredit += tx.amountMinor
-            } else {
-                // Payment decreases payable
-                running -= tx.amountMinor
-                totalDebit += tx.amountMinor
-            }
-            calculated.add(tx.copy(runningBalanceMinor = running))
-        }
-
-        return PartyLedgerStatement(
-            partyId = supplier.id,
-            partyName = supplier.companyName,
-            partyCode = supplier.supplierCode,
-            partyType = "SUPPLIER",
-            phone = supplier.phone,
-            address = supplier.address,
-            openingBalanceMinor = openingBalance,
-            transactions = calculated.reversed(),
-            totalDebitMinor = totalDebit,
-            totalCreditMinor = totalCredit,
-            closingBalanceMinor = running
-        )
-    }
+    override suspend fun getSupplierLedgerStatement(supplierId: String, fromDate: Long, toDate: Long): PartyLedgerStatement? =
+        getLedgerReport(ControlCenterFilterState(dateRangeOption = com.pocketdev.advance_erp.domain.model.DateRangeOption.CUSTOM,
+            customStartDate = fromDate, customEndDate = toDate, category = ReportCategory.SUPPLIER_LEDGER, selectedSupplierId = supplierId)).first().statement
 }

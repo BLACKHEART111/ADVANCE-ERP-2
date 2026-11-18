@@ -1,5 +1,14 @@
 package com.pocketdev.advance_erp.feature.controlcenter
 
+import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerPanel
+import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerRow
+import com.pocketdev.advance_erp.feature.sales.RecordCustomerPaymentDialog
+import com.pocketdev.advance_erp.feature.imports.RecordSupplierPaymentDialog
+import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
+import com.pocketdev.advance_erp.core.model.CurrencyCode
+import com.pocketdev.advance_erp.domain.model.FinancialMetricFilter
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -77,7 +86,6 @@ import com.pocketdev.advance_erp.core.designsystem.ERPEmptyState
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.model.AppLanguage
-import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.security.SecurityManager
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.domain.model.ControlCenterFilterState
@@ -102,32 +110,43 @@ fun BusinessControlCenterScreen(
 ) {
     val context = LocalContext.current
     val filterState by viewModel.filterState.collectAsState()
-    val transactions by viewModel.transactions.collectAsState()
-    val summary by viewModel.summaryDashboard.collectAsState()
+    val actionError by viewModel.actionError.collectAsState()
+    val detailLoading by viewModel.detailLoading.collectAsState()
+    val report by viewModel.report.collectAsState()
+    val ready = !report.isLoading && report.error == null && report.filter == filterState
+    val transactions = if (ready) report.transactions else emptyList()
+    val summary = report.summary
+    val paymentInvoices by viewModel.paymentInvoices.collectAsState()
+    val paymentOrders by viewModel.paymentOrders.collectAsState()
+    val paymentSaving by viewModel.paymentSaving.collectAsState()
+    val paymentError by viewModel.paymentError.collectAsState()
+    var showPayment by rememberSaveable { mutableStateOf(false) }
+    var visibleCount by remember(filterState) { mutableStateOf(100) }
+    val ledgerMode = filterState.category in setOf(ReportCategory.CUSTOMER_LEDGER, ReportCategory.SUPPLIER_LEDGER)
     val customers by viewModel.customers.collectAsState()
     val suppliers by viewModel.suppliers.collectAsState()
     val warehouses by viewModel.warehouses.collectAsState()
     val savedPresets by viewModel.savedPresets.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
     val language by viewModel.appLanguage.collectAsState()
-    val currencyCode by viewModel.currencyCode.collectAsState()
+    val currencyCode = CurrencyCode.BDT
     val selectedDetail by viewModel.selectedTransactionDetail.collectAsState()
     val isExporting by viewModel.isExporting.collectAsState()
 
     val isBn = language == AppLanguage.BANGLA
-    val canViewProfit = SecurityManager.canViewProfit(userRole)
+    val profitVisibility = rememberBiometricCostVisibility("ledger-profit", SecurityManager.canViewProfit(userRole), isBn)
+    val canViewProfit = SecurityManager.canViewProfit(userRole) && profitVisibility.isVisible
+    val stockVisibility = rememberBiometricCostVisibility("ledger-stock", SecurityManager.canViewCost(userRole), isBn)
+    val exportVisibility = rememberBiometricCostVisibility("ledger-export", SecurityManager.canViewCost(userRole), isBn)
+    val profitFilterLocked = filterState.financialMetric in setOf(FinancialMetricFilter.PROFIT, FinancialMetricFilter.LOSS) && !canViewProfit
 
     var showFilterDialog by remember { mutableStateOf(false) }
     var showCustomDateRangeDialog by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
     var showPresetsMenu by remember { mutableStateOf(false) }
 
-    // Init category if passed
-    remember(initialCategory) {
-        if (initialCategory != null && filterState.category != initialCategory) {
-            viewModel.selectCategory(initialCategory)
-        }
-        true
+    LaunchedEffect(initialCategory) {
+        if (initialCategory != null) viewModel.selectCategory(initialCategory)
     }
 
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.US) }
@@ -305,7 +324,8 @@ fun BusinessControlCenterScreen(
 
                         // Export & Share Button (Compact & Sturdy)
                         Button(
-                            onClick = { showExportSheet = true },
+                            onClick = { if (ready) showExportSheet = true },
+                            enabled = ready && !isExporting && !profitFilterLocked,
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                             modifier = Modifier.height(32.dp),
@@ -542,14 +562,38 @@ fun BusinessControlCenterScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 1. Business Summary Dashboard Cards (Collapsible / Expandable)
-            item {
-                ControlCenterSummaryCards(
-                    summary = summary,
-                    canViewProfit = canViewProfit,
-                    language = language,
-                    currencyCode = currencyCode,
-                    onCategoryClick = { viewModel.selectCategory(it) }
-                )
+            if (ledgerMode) item {
+                PartyLedgerPanel(report, filterState, customers, suppliers, language, ready && !profitFilterLocked,
+                    onParty = viewModel::selectParty,
+                    onPayment = { viewModel.clearPaymentError(); showPayment = true },
+                    onShare = { viewModel.shareReminder(context, profitVisibility.isVisible) })
+            }
+            if (!ledgerMode && ready && !profitFilterLocked) {
+                item {
+                    ControlCenterSummaryCards(
+                        summary = summary,
+                        canViewProfit = canViewProfit,
+                        language = language,
+                        currencyCode = currencyCode,
+                        onCategoryClick = { viewModel.selectCategory(it) }
+                    )
+                }
+            }
+            if (SecurityManager.canViewProfit(userRole)) item {
+                androidx.compose.material3.TextButton(onClick = profitVisibility.toggle) {
+                    Text(if (isBn) { if(canViewProfit) "লাভের তথ্য লুকান" else "লাভ দেখতে fingerprint যাচাই" } else if(canViewProfit) "Hide profit" else "Verify biometric to view profit")
+                }
+            }
+            if (!ready) item {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    if (report.error != null) {
+                        Text(report.error ?: "Ledger error", color = MaterialTheme.colorScheme.error)
+                        androidx.compose.material3.TextButton(onClick=viewModel::retry) { Text(if(isBn) "আবার চেষ্টা" else "Retry") }
+                    } else { CircularProgressIndicator(); Text(if(isBn) "হিসাব লোড হচ্ছে…" else "Loading ledger…") }
+                }
+            }
+            if (profitFilterLocked) item {
+                Text(if(isBn) "এই filter-এর ফল দেখতে লাভের biometric যাচাই করুন।" else "Authenticate profit access to view this filter.")
             }
 
             // 2. Compact Search & Filter Bar
@@ -582,7 +626,26 @@ fun BusinessControlCenterScreen(
                             .height(46.dp)
                     )
 
-                    // Filter Dialog Trigger Button with Active Count Badge
+                    if (showPayment && report.statement != null) {
+        val statement = report.statement!!
+        if (statement.partyType == "CUSTOMER") RecordCustomerPaymentDialog(
+            customers=customers.filter { it.id==statement.partyId },
+            invoices=paymentInvoices.filter { it.customerId==statement.partyId && it.isPosted && it.status!="CANCELLED" },
+            preselectedCustomerId=statement.partyId, isBangla=isBn, isSaving=paymentSaving, saveError=paymentError,
+            onDismiss={if(!viewModel.paymentSaving.value) showPayment=false},
+            onSubmit={draft -> viewModel.collectPayment(draft){showPayment=false}}
+        ) else RecordSupplierPaymentDialog(
+            suppliers=suppliers.filter { it.id==statement.partyId },
+            orders=paymentOrders.filter { it.supplierId==statement.partyId && it.status !in setOf("DRAFT","CANCELLED") },
+            preselectedSupplierId=statement.partyId, dismissOnSubmit=false, isSaving=paymentSaving, saveError=paymentError,
+            onDismiss={if(!viewModel.paymentSaving.value) showPayment=false},
+            onConfirm={supplierId,orderId,amount,currency,rate,method,account,reference,notes ->
+                viewModel.paySupplier(supplierId,orderId,amount,currency,rate,method,account,reference,notes){showPayment=false}
+            }
+        )
+    }
+
+    // Filter Dialog Trigger Button with Active Count Badge
                     BadgedBox(
                         badge = {
                             if (filterState.activeFilterCount > 0) {
@@ -635,14 +698,18 @@ fun BusinessControlCenterScreen(
                 }
             }
 
+            if(detailLoading) item { androidx.compose.material3.LinearProgressIndicator(modifier=Modifier.fillMaxWidth()) }
+            actionError?.let { message -> item {
+                Text(message,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                androidx.compose.material3.TextButton(onClick=viewModel::dismissActionError) { Text(if(isBn) "বন্ধ করুন" else "Dismiss") }
+            } }
             // 3. Transactions Count & Active Filter Indicator
-            item {
-                Row(
+            if (!profitFilterLocked) item {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 2.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = if (isBn) "লেনদেন তালিকা (${transactions.size} টি রেকর্ড)" else "Ledger Entries (${transactions.size} Records)",
@@ -651,9 +718,9 @@ fun BusinessControlCenterScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    val totalAmt = transactions.sumOf { it.amountMinor }
+                    val totalAmt = if (stockVisibility.isVisible) transactions.sumOf { it.amountMinor } else transactions.filterNot { it.rawType in setOf("STOCK_MOVEMENT", "STOCK_TRANSFER") }.sumOf { it.amountMinor }
                     Text(
-                        text = "${if (isBn) "মোট: " else "Sum: "} ${Formatters.formatMoney(totalAmt, currencyCode, language)}",
+                        text = "${if (isBn) "নির্বাচিত লেনদেনের অঙ্ক: " else "Selected amounts: "} ${Formatters.formatMoney(totalAmt, currencyCode, language)}",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
                         fontWeight = FontWeight.Bold,
                         color = PrimaryPurple
@@ -662,7 +729,7 @@ fun BusinessControlCenterScreen(
             }
 
             // 4. Empty State
-            if (transactions.isEmpty()) {
+            if (ready && !profitFilterLocked && transactions.isEmpty()) {
                 item {
                     ERPEmptyState(
                         icon = Icons.Default.FilterList,
@@ -673,14 +740,23 @@ fun BusinessControlCenterScreen(
                 }
             } else {
                 // 5. Transaction Cards (Compact & Readable)
-                items(transactions, key = { it.id }) { item ->
-                    UnifiedTransactionCard(
-                        item = item,
-                        language = language,
-                        currencyCode = currencyCode,
-                        dateFormat = dateFormat,
-                        onClick = { viewModel.openTransactionDetail(item.rawType, item.id) }
-                    )
+                if (!profitFilterLocked) items(transactions.take(visibleCount), key = { it.rawType + ":" + it.id }) { item ->
+                    if (report.statement != null) PartyLedgerRow(item, language) {
+                        viewModel.openTransactionDetail(item.rawType, item.sourceId)
+                    } else if (item.rawType in setOf("STOCK_MOVEMENT", "STOCK_TRANSFER") && !stockVisibility.isVisible) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(item.referenceNumber, fontWeight=FontWeight.SemiBold)
+                            androidx.compose.material3.TextButton(onClick=stockVisibility.toggle, enabled=SecurityManager.canViewCost(userRole)) {
+                                Text(if(isBn) "খরচ দেখতে fingerprint যাচাই" else "Verify biometric to view cost")
+                            }
+                        }
+                    } else UnifiedTransactionCard(item, language, currencyCode, dateFormat,
+                        onClick = { viewModel.openTransactionDetail(item.rawType, item.sourceId) })
+                }
+                if (!profitFilterLocked && transactions.size > visibleCount) item {
+                    androidx.compose.material3.OutlinedButton(onClick={visibleCount+=100},modifier=Modifier.fillMaxWidth()) {
+                        Text(if(isBn) "আরও দেখুন ($visibleCount/${transactions.size})" else "Load more ($visibleCount/${transactions.size})")
+                    }
                 }
             }
         }
@@ -690,6 +766,7 @@ fun BusinessControlCenterScreen(
     if (showFilterDialog) {
         ControlCenterFilterDialog(
             currentFilter = filterState,
+            canViewProfit = canViewProfit,
             customers = customers,
             suppliers = suppliers,
             warehouses = warehouses,
@@ -720,6 +797,7 @@ fun BusinessControlCenterScreen(
             record = detail,
             language = language,
             currencyCode = currencyCode,
+            onLinkedDocument = { type, id -> viewModel.openTransactionDetail(type,id) },
             onDismiss = { viewModel.dismissTransactionDetail() }
         )
     }
@@ -748,6 +826,12 @@ fun BusinessControlCenterScreen(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
+                if (SecurityManager.canViewCost(userRole)) {
+                    androidx.compose.material3.TextButton(onClick=exportVisibility.toggle) {
+                        Text(if(isBn) { if(exportVisibility.isVisible) "Cost/profit export বন্ধ করুন" else "Cost/profit সহ export: fingerprint যাচাই" }
+                            else if(exportVisibility.isVisible) "Exclude cost/profit" else "Authenticate to include cost/profit")
+                    }
+                }
                 // 1. Share PDF
                 ExportActionItem(
                     title = if (isBn) "পিডিএফ রিপোর্ট শেয়ার করুন (PDF Report)" else "Share PDF Document",
@@ -756,7 +840,7 @@ fun BusinessControlCenterScreen(
                     iconColor = Color(0xFFDC2626),
                     onClick = {
                         showExportSheet = false
-                        viewModel.exportAndSharePdf(context)
+                        viewModel.exportAndSharePdf(context, exportVisibility.isVisible)
                     }
                 )
 
@@ -768,7 +852,7 @@ fun BusinessControlCenterScreen(
                     iconColor = Color(0xFF16A34A),
                     onClick = {
                         showExportSheet = false
-                        viewModel.exportAndShareExcel(context)
+                        viewModel.exportAndShareExcel(context, exportVisibility.isVisible)
                     }
                 )
 
@@ -780,7 +864,7 @@ fun BusinessControlCenterScreen(
                     iconColor = Color(0xFF0284C7),
                     onClick = {
                         showExportSheet = false
-                        viewModel.exportAndShareCsv(context)
+                        viewModel.exportAndShareCsv(context, exportVisibility.isVisible)
                     }
                 )
 
@@ -792,7 +876,7 @@ fun BusinessControlCenterScreen(
                     iconColor = Color(0xFF7C3AED),
                     onClick = {
                         showExportSheet = false
-                        viewModel.printReport(context)
+                        viewModel.printReport(context, exportVisibility.isVisible)
                     }
                 )
 
@@ -804,8 +888,8 @@ fun BusinessControlCenterScreen(
                     iconColor = Color(0xFFD97706),
                     onClick = {
                         showExportSheet = false
-                        viewModel.savePdfToStorage(context)
-                        viewModel.saveExcelToStorage(context)
+                        viewModel.savePdfToStorage(context, exportVisibility.isVisible)
+                        viewModel.saveExcelToStorage(context, exportVisibility.isVisible)
                     }
                 )
 
@@ -914,43 +998,24 @@ private fun UnifiedTransactionCard(
 
             Spacer(modifier = Modifier.height(5.dp))
 
-            // Bottom Financial Line
-            Row(
+            Text(
+                text = listOfNotNull(item.paymentMethod,item.warehouseName).joinToString(" • "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            val sign = if (item.effectSign < 0) "↶ " else if (item.isInflow) "+" else "−"
+            Text(
+                text = "$sign${Formatters.formatMoney(item.amountMinor, currencyCode, language)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Payment Method & Warehouse
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    item.paymentMethod?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (item.warehouseName != null) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "• ${item.warehouseName}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Amount
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val sign = if (item.isInflow) "+" else "-"
-                    val color = if (item.isInflow) Color(0xFF16A34A) else Color(0xFFDC2626)
-                    Text(
-                        text = "$sign${Formatters.formatMoney(item.amountMinor, currencyCode, language)}",
-                        style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = color
-                    )
-                }
-            }
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                maxLines = 1, softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                color = if (item.isInflow) Color(0xFF16A34A) else Color(0xFFDC2626)
+            )
         }
     }
 }

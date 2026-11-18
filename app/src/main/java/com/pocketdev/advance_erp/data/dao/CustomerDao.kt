@@ -10,6 +10,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CustomerDao {
+    @Query("SELECT * FROM customers ORDER BY name ASC")
+    fun getLedgerCustomers(): Flow<List<Customer>>
+    @Query("SELECT * FROM customers ORDER BY name ASC")
+    suspend fun getLedgerCustomersSync(): List<Customer>
+
 
     @Query("SELECT * FROM customers WHERE isActive = 1 ORDER BY name ASC")
     fun getAllCustomers(): Flow<List<Customer>>

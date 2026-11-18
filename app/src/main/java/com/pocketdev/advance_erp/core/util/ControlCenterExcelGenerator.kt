@@ -40,7 +40,8 @@ object ControlCenterExcelGenerator {
         customers: List<Customer>,
         suppliers: List<Supplier>,
         businessProfile: BusinessProfile?,
-        canViewProfit: Boolean
+        canViewProfit: Boolean,
+        statement: com.pocketdev.advance_erp.domain.model.PartyLedgerStatement? = null
     ): File {
         val sanitizedTitle = reportTitle.lowercase().replace("[^a-z0-9]".toRegex(), "_").take(30)
         val file = File(getExcelDir(context), "${sanitizedTitle}_${System.currentTimeMillis()}.xlsx")
@@ -49,7 +50,7 @@ object ControlCenterExcelGenerator {
 
         val (fromMillis, toMillis) = filterState.dateRangeOption.getBoundsMillis(filterState.customStartDate, filterState.customEndDate)
         val periodStr = if (filterState.dateRangeOption.name == "ALL_TIME" || fromMillis == 0L) {
-            "All Time (Inception to Present)"
+            "All Recorded Dates"
         } else {
             "${dateOnlyFormat.format(Date(fromMillis))} to ${dateOnlyFormat.format(Date(kotlin.math.min(toMillis, System.currentTimeMillis())))}"
         }
@@ -60,7 +61,7 @@ object ControlCenterExcelGenerator {
         // 3. Customers
         // 4. Suppliers
 
-        val sheet1Xml = buildSummarySheetXml(businessProfile, reportTitle, periodStr, summary, canViewProfit, dateFormat)
+        val sheet1Xml = buildSummarySheetXml(businessProfile, reportTitle, periodStr, summary, canViewProfit, dateFormat, statement)
         val sheet2Xml = buildTransactionsSheetXml(transactions, dateFormat)
         val sheet3Xml = buildCustomersSheetXml(customers, transactions)
         val sheet4Xml = buildSuppliersSheetXml(suppliers, transactions)
@@ -157,7 +158,8 @@ object ControlCenterExcelGenerator {
         periodStr: String,
         summary: BusinessSummaryDashboardData,
         canViewProfit: Boolean,
-        dateFormat: SimpleDateFormat
+        dateFormat: SimpleDateFormat,
+        statement: com.pocketdev.advance_erp.domain.model.PartyLedgerStatement? = null
     ): String {
         val sb = StringBuilder()
         sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -178,18 +180,28 @@ object ControlCenterExcelGenerator {
             val s = if (isBold) " s=\"1\"" else ""
             sb.append("    <row r=\"$row\">")
             sb.append("<c r=\"A$row\" t=\"inlineStr\"$s><is><t>${escapeXml(c1)}</t></is></c>")
-            sb.append("<c r=\"B$row\" t=\"n\"$s><v>${amountMinor / 100.0}</v></c>")
+            sb.append("<c r=\"B$row\" t=\"n\"$s><v>${java.math.BigDecimal.valueOf(amountMinor,2).toPlainString()}</v></c>")
             sb.append("</row>\n")
             row++
         }
 
         addRow("ADVANCE ERP BUSINESS CONTROL CENTER", "EXECUTIVE SUMMARY", isBold = true)
         addRow("Company Name", businessProfile?.companyName ?: "ADVANCE ERP ENTERPRISE")
-        addRow("Address", businessProfile?.address ?: "Dhaka, Bangladesh")
-        addRow("Contact", businessProfile?.phone ?: "+880 1700-000000")
+        addRow("Address", businessProfile?.address ?: "")
+        addRow("Contact", businessProfile?.phone ?: "")
         addRow("Report Title", reportTitle)
         addRow("Selected Period", periodStr)
         addRow("Generated On", dateFormat.format(Date()))
+        statement?.let { party ->
+            addRow("Statement Party", party.partyName + " / " + party.partyCode)
+            addRow("Party Type", party.partyType)
+            addNumRow("Period Opening BDT", party.openingBalanceMinor)
+            addNumRow("Period Debit BDT", party.totalDebitMinor)
+            addNumRow("Period Credit BDT", party.totalCreditMinor)
+            addNumRow("Period Closing BDT", party.closingBalanceMinor)
+            addRow("Balance Scope", "Full date period; transaction sheet follows display filters. Negative balance means advance/credit.")
+        }
+
         addRow("", "")
 
         addRow("FINANCIAL & OPERATIONAL SUMMARY", "AMOUNT (BDT)", isBold = true)
@@ -238,14 +250,17 @@ object ControlCenterExcelGenerator {
       <c r="I1" t="inlineStr" s="1"><is><t>Inflow / Debit (BDT)</t></is></c>
       <c r="J1" t="inlineStr" s="1"><is><t>Outflow / Credit (BDT)</t></is></c>
       <c r="K1" t="inlineStr" s="1"><is><t>Running Balance (BDT)</t></is></c>
+      <c r="L1" t="inlineStr" s="1"><is><t>Original Currency</t></is></c>
+      <c r="M1" t="inlineStr" s="1"><is><t>Original Amount</t></is></c>
+      <c r="N1" t="inlineStr" s="1"><is><t>Exchange Rate to BDT</t></is></c>
     </row>
 """)
         var r = 2
         for (item in transactions) {
             val dateStr = dateFormat.format(Date(item.date))
-            val debitVal = if (item.isInflow) item.amountMinor / 100.0 else 0.0
-            val creditVal = if (!item.isInflow) item.amountMinor / 100.0 else 0.0
-            val balVal = (item.runningBalanceMinor ?: item.amountMinor) / 100.0
+            val debitVal = LedgerStatementExporter.money(item.ledgerDebitMinor ?: if (item.accountingPosted && item.isInflow) item.amountMinor * item.effectSign else 0)
+            val creditVal = LedgerStatementExporter.money(item.ledgerCreditMinor ?: if (item.accountingPosted && !item.isInflow) item.amountMinor * item.effectSign else 0)
+            val balVal = item.runningBalanceMinor?.let { LedgerStatementExporter.money(it) }
 
             sb.append("    <row r=\"$r\">")
             sb.append("<c r=\"A$r\" t=\"inlineStr\"><is><t>${escapeXml(dateStr)}</t></is></c>")
@@ -258,7 +273,10 @@ object ControlCenterExcelGenerator {
             sb.append("<c r=\"H$r\" t=\"inlineStr\"><is><t>${escapeXml(item.warehouseName ?: "-")}</t></is></c>")
             sb.append("<c r=\"I$r\" t=\"n\"><v>$debitVal</v></c>")
             sb.append("<c r=\"J$r\" t=\"n\"><v>$creditVal</v></c>")
-            sb.append("<c r=\"K$r\" t=\"n\"><v>$balVal</v></c>")
+            if (balVal == null) sb.append("<c r=\"K$r\"/>") else sb.append("<c r=\"K$r\" t=\"n\"><v>$balVal</v></c>")
+            sb.append("<c r=\"L$r\" t=\"inlineStr\"><is><t>${escapeXml(item.originalCurrency.orEmpty())}</t></is></c>")
+            item.originalAmountMinor?.let { sb.append("<c r=\"M$r\" t=\"n\"><v>${LedgerStatementExporter.money(it)}</v></c>") }
+            sb.append("<c r=\"N$r\" t=\"inlineStr\"><is><t>${escapeXml(item.exchangeRate.orEmpty())}</t></is></c>")
             sb.append("</row>\n")
             r++
         }
@@ -288,9 +306,9 @@ object ControlCenterExcelGenerator {
 """)
         var r = 2
         for (c in customers) {
-            val billed = transactions.filter { it.primaryEntityId == c.id && it.rawType == "INVOICE" }.sumOf { it.amountMinor } / 100.0
-            val collected = transactions.filter { it.primaryEntityId == c.id && it.rawType == "PAYMENT" }.sumOf { it.amountMinor } / 100.0
-            val balance = c.outstandingBalanceMinor / 100.0
+            val billed = LedgerStatementExporter.money(transactions.filter { it.primaryEntityId == c.id && it.rawType.removeSuffix("_REVERSAL") == "INVOICE" && it.accountingPosted }.sumOf { it.amountMinor * it.effectSign })
+            val collected = LedgerStatementExporter.money(transactions.filter { it.primaryEntityId == c.id && it.rawType.removeSuffix("_REVERSAL") == "PAYMENT" && it.accountingPosted }.sumOf { it.amountMinor * it.effectSign })
+            val balance = LedgerStatementExporter.money(c.outstandingBalanceMinor)
 
             sb.append("    <row r=\"$r\">")
             sb.append("<c r=\"A$r\" t=\"inlineStr\"><is><t>${escapeXml(c.customerCode)}</t></is></c>")
@@ -329,9 +347,9 @@ object ControlCenterExcelGenerator {
 """)
         var r = 2
         for (s in suppliers) {
-            val ordered = transactions.filter { it.primaryEntityId == s.id && it.rawType == "PURCHASE" }.sumOf { it.amountMinor } / 100.0
-            val paid = transactions.filter { it.primaryEntityId == s.id && it.rawType == "SUPPLIER_PAYMENT" }.sumOf { it.amountMinor } / 100.0
-            val payable = s.outstandingPayableMinor / 100.0
+            val ordered = LedgerStatementExporter.money(transactions.filter { it.primaryEntityId == s.id && it.rawType.removeSuffix("_REVERSAL") == "PURCHASE" && it.accountingPosted }.sumOf { it.amountMinor * it.effectSign })
+            val paid = LedgerStatementExporter.money(transactions.filter { it.primaryEntityId == s.id && it.rawType.removeSuffix("_REVERSAL") == "SUPPLIER_PAYMENT" && it.accountingPosted }.sumOf { it.amountMinor * it.effectSign })
+            val payable = LedgerStatementExporter.money(s.outstandingPayableMinor)
 
             sb.append("    <row r=\"$r\">")
             sb.append("<c r=\"A$r\" t=\"inlineStr\"><is><t>${escapeXml(s.supplierCode)}</t></is></c>")
@@ -359,14 +377,15 @@ object ControlCenterExcelGenerator {
         val file = File(getExcelDir(context), "${sanitizedTitle}_${System.currentTimeMillis()}.csv")
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
-        FileWriter(file).use { writer ->
-            writer.append("Date,Reference ID,Category,Party / Entity,Particulars,Method,Status,Warehouse,Debit BDT,Credit BDT,Running Balance BDT\n")
-            for (t in transactions) {
-                val d = dateFormat.format(Date(t.date))
-                val debit = if (t.isInflow) t.amountMinor / 100.0 else 0.0
-                val credit = if (!t.isInflow) t.amountMinor / 100.0 else 0.0
-                val bal = (t.runningBalanceMinor ?: t.amountMinor) / 100.0
-                writer.append("\"$d\",\"${t.referenceNumber}\",\"${t.category.titleEn}\",\"${t.primaryEntityName.replace("\"", "\"\"")}\",\"${t.particulars.replace("\"", "\"\"")}\",\"${t.paymentMethod ?: ""}\",\"${t.status}\",\"${t.warehouseName ?: ""}\",$debit,$credit,$bal\n")
+        file.outputStream().bufferedWriter(Charsets.UTF_8).use { writer ->
+            writer.write("\uFEFFDate,Reference ID,Category,Party,Particulars,Method,Status,Warehouse,Debit BDT,Credit BDT,Running Balance BDT,Original Currency,Original Amount,Exchange Rate\n")
+            for (row in transactions) {
+                val strings = listOf(dateFormat.format(Date(row.date)),row.referenceNumber,row.category.titleEn,row.primaryEntityName,row.particulars,row.paymentMethod.orEmpty(),row.status,row.warehouseName.orEmpty())
+                val debit = row.ledgerDebitMinor ?: if(row.accountingPosted && row.isInflow) row.amountMinor*row.effectSign else 0
+                val credit = row.ledgerCreditMinor ?: if(row.accountingPosted && !row.isInflow) row.amountMinor*row.effectSign else 0
+                writer.write(strings.joinToString(",") { LedgerStatementExporter.csvCell(it) }+","+LedgerStatementExporter.money(debit)+","+LedgerStatementExporter.money(credit)+","+
+                    (row.runningBalanceMinor?.let { LedgerStatementExporter.money(it) } ?: "")+","+LedgerStatementExporter.csvCell(row.originalCurrency.orEmpty())+","+
+                    (row.originalAmountMinor?.let { LedgerStatementExporter.money(it) } ?: "")+","+LedgerStatementExporter.csvCell(row.exchangeRate.orEmpty())+"\n")
             }
         }
         return file
