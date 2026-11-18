@@ -87,6 +87,7 @@ import com.pocketdev.advance_erp.core.designsystem.rememberImageModel
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
+import com.pocketdev.advance_erp.core.util.resolveVariantPhotoUris
 import com.pocketdev.advance_erp.core.util.QrCodeGenerator
 import com.pocketdev.advance_erp.data.dao.ProductWithDetails
 import com.pocketdev.advance_erp.data.entity.ProductImage
@@ -110,20 +111,21 @@ fun ProductDetailDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var sliderInitialIndex by remember { mutableStateOf<Int?>(null) }
+    var sliderInitialIndex by remember(product.id) { mutableStateOf<Int?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     // Map of variantId to their primary image
-    val variantImagesMap = remember { mutableStateMapOf<String, String>() }
+    val variantImagesMap = remember(product.id) { mutableStateMapOf<String, String>() }
 
     // Selected hero image uri (defaults to primary product photo or first photo)
     val defaultPrimaryUri = productImages.firstOrNull { it.isPrimary }?.imageUri
         ?: productImages.firstOrNull()?.imageUri
         ?: product.primaryImageUri
-    var selectedHeroUri by remember(defaultPrimaryUri) { mutableStateOf(defaultPrimaryUri) }
+    var selectedHeroUri by remember(product.id, defaultPrimaryUri) { mutableStateOf(defaultPrimaryUri) }
 
     // Load variant images on launch
-    LaunchedEffect(variants) {
+    LaunchedEffect(product.id, variants) {
+        variantImagesMap.clear()
         if (onLoadVariantImages != null) {
             variants.forEach { v ->
                 val vImages = onLoadVariantImages(v.id)
@@ -174,9 +176,10 @@ fun ProductDetailDialog(
         }
     }
 
-    val variantSlides = remember(variants, variantImagesMap, variantStockMap, selectedHeroUri) {
-        variants.map { v ->
-            val vImageUri = variantImagesMap[v.id] ?: selectedHeroUri
+    // Read snapshot entries during composition: async photo loads must refresh the fullscreen slides too.
+    val variantPhotoUris = resolveVariantPhotoUris(variants, variantImagesMap)
+    val variantSlides = variants.map { v ->
+            val vImageUri = variantPhotoUris[v.id]
             val vStock = variantStockMap[v.id] ?: 0
             val effectiveCost = if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
             val effectivePrice = if (v.variantPriceMinor > 0L) v.variantPriceMinor else product.sellingPriceMinor
@@ -203,7 +206,6 @@ fun ProductDetailDialog(
                 unit = product.unit
             )
         }
-    }
 
     val allSlides = remember(baseSlides, variantSlides) {
         baseSlides + variantSlides
@@ -441,7 +443,7 @@ fun ProductDetailDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         itemsIndexed(variants, key = { _, v -> v.id }) { index, v ->
-                            val vImageUri = variantImagesMap[v.id] ?: selectedHeroUri
+                            val vImageUri = variantPhotoUris[v.id]
                             val vStock = variantStockMap[v.id] ?: 0
                             val effectivePrice = if (v.variantPriceMinor > 0L) v.variantPriceMinor else product.sellingPriceMinor
                             val isPreselected = v.id == preSelectedVariantId
@@ -783,7 +785,7 @@ fun ProductDetailDialog(
                 } else {
                     variants.forEachIndexed { vIndex, v ->
                         val isPreselected = v.id == preSelectedVariantId
-                        val vImageUri = variantImagesMap[v.id] ?: selectedHeroUri
+                        val vImageUri = variantPhotoUris[v.id]
                         val slideIndex = baseSlides.size + vIndex
 
                         Box(
@@ -804,7 +806,7 @@ fun ProductDetailDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Variant Thumbnail (or product primary photo fallback)
+                                // Variant photo (own or another size of the same color).
                                 Box(
                                     modifier = Modifier
                                         .size(48.dp)

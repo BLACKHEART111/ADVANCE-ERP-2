@@ -1,0 +1,79 @@
+
+com.pocketdev.advance_erp.ImportPersistenceRegressionTest:.............
+com.pocketdev.advance_erp.PurchaseOrderVisualTest:
+Error in englishMixedCartonFlow(com.pocketdev.advance_erp.PurchaseOrderVisualTest):
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.englishMixedCartonFlow(PurchaseOrderVisualTest.kt:26)
+.
+Error in localPurchaseDoesNotApplyInternationalFreight(com.pocketdev.advance_erp.PurchaseOrderVisualTest):
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.localPurchaseDoesNotApplyInternationalFreight(PurchaseOrderVisualTest.kt:28)
+
+Error in banglaLargeFontFlow(com.pocketdev.advance_erp.PurchaseOrderVisualTest):
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.banglaLargeFontFlow(PurchaseOrderVisualTest.kt:27)
+
+Error in banglaMixedCartonFlow(com.pocketdev.advance_erp.PurchaseOrderVisualTest):
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.banglaMixedCartonFlow(PurchaseOrderVisualTest.kt:25)
+
+
+Time: 7.69
+There were 4 failures:
+1) englishMixedCartonFlow(com.pocketdev.advance_erp.PurchaseOrderVisualTest)
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.englishMixedCartonFlow(PurchaseOrderVisualTest.kt:26)
+2) localPurchaseDoesNotApplyInternationalFreight(com.pocketdev.advance_erp.PurchaseOrderVisualTest)
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.localPurchaseDoesNotApplyInternationalFreight(PurchaseOrderVisualTest.kt:28)
+3) banglaLargeFontFlow(com.pocketdev.advance_erp.PurchaseOrderVisualTest)
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.banglaLargeFontFlow(PurchaseOrderVisualTest.kt:27)
+4) banglaMixedCartonFlow(com.pocketdev.advance_erp.PurchaseOrderVisualTest)
+java.lang.AssertionError: Screenshot must contain rendered UI, not a blank inactive window
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$capture(PurchaseOrderVisualTest.kt:74)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify(PurchaseOrderVisualTest.kt:80)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.verify$default(PurchaseOrderVisualTest.kt:30)
+	at com.pocketdev.advance_erp.PurchaseOrderVisualTest.banglaMixedCartonFlow(PurchaseOrderVisualTest.kt:25)
+
+FAILURES!!!
+Tests run: 18,  Failures: 4
+
+

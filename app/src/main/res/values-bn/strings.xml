@@ -171,7 +171,7 @@
     <string name="status_received">গৃহীত হয়েছে</string>
     <string name="status_draft">খসড়া</string>
     <string name="future_module_badge">ফেজ ০২ সক্রিয়</string>
-    <string name="import_feature_notice">ফেজ ০২ চীন আমদানি ইঞ্জিন সক্রিয়: ডাটাবেজ পারসিসট্যান্স, ল্যান্ডেড কস্ট বণ্টন, ওয়্যারহাউস রিসিভিং এবং স্টক লেয়ার্স চালু রয়েছে।</string>
+    <string name="import_feature_notice">ক্রয়াদেশ তৈরি করে প্যাকিং, শিপিং খরচ ও গুদামে পণ্য গ্রহণের কাজ সম্পন্ন করুন।</string>
 
     <!-- Phase 02 Actions & Strings -->
     <string name="action_create_po">নতুন ক্রয়াদেশ (PO)</string>

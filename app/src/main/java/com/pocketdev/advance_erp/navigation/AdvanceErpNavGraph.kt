@@ -89,7 +89,7 @@ fun AdvanceErpNavGraph(
         }
 
         composable(Destinations.SHIPMENTS) {
-            ImportManagementScreen(initialTab = ImportModuleTab.PURCHASE_ORDERS)
+            ImportManagementScreen(initialTab = ImportModuleTab.SHIPMENTS)
         }
 
         composable(Destinations.CUSTOMERS) {

@@ -1,0 +1,49 @@
+{
+  "timestamp": "2026-11-18T15:31:38.778157+06:00",
+  "baseCommit": "c4f8485b05616d0ccd121806e5b49df3917413c3",
+  "files": {
+    "app/build.gradle.kts": "59d0fa1f04228faeba1ae72ae85833b2528f54857e47caeafc9b2b347831b443",
+    "app/src/androidTest/java/com/pocketdev/advance_erp/ImportPersistenceRegressionTest.kt": "03326a7f2b1002994dbdb6f0724559480a31bf2fdf80c010c365894f749833ff",
+    "app/src/androidTest/java/com/pocketdev/advance_erp/PurchaseOrderVisualTest.kt": "03c26ff88550135c43d2b6ad38cd2543fa04aab5f69a9f06f250e53554f8de82",
+    "app/src/main/java/com/pocketdev/advance_erp/core/designsystem/ERPActionButton.kt": "73b22317e744d95ff00b24db43647c539920ce8988188d4168386bf70ac68046",
+    "app/src/main/java/com/pocketdev/advance_erp/core/designsystem/Type.kt": "5bc3dfb21eb0c3df9b604a791c828d20d034ee5ea5a978ea193a572122b2d354",
+    "app/src/main/java/com/pocketdev/advance_erp/core/engine/CartonWeightAllocationEngine.kt": "9daa56380b3103522305380772a02cb9d5594484c1fb6540299a1ccc4d62e239",
+    "app/src/main/java/com/pocketdev/advance_erp/core/engine/LandedCostAllocationEngine.kt": "36bbf43f3f6470ba05ac48a6d134175854f718dbfe2f1e3772fc6585e78f8ad5",
+    "app/src/main/java/com/pocketdev/advance_erp/core/engine/LandingCostEngine.kt": "41fd1983327526eb1720652f5f3ceaf1d46e364d3647db6ea70c5d57e464a978",
+    "app/src/main/java/com/pocketdev/advance_erp/core/util/ImportExcelGenerator.kt": "c90f988f3f1cfe55286988556546d69c6f33fa054955a32271c7fe6ca98587aa",
+    "app/src/main/java/com/pocketdev/advance_erp/core/util/ImportPdfGenerator.kt": "aa06f7a2f23ce3aa49b0e75eeabcd0cdebbb9ee03fa9a2942d7bb4cef80071a2",
+    "app/src/main/java/com/pocketdev/advance_erp/core/util/PoNotesMetadataParser.kt": "b690e5de0d78a9f3708aa745730e4a1afcc145598681da6ed82e3f8ecfcfac85",
+    "app/src/main/java/com/pocketdev/advance_erp/data/dao/ImportShipmentDao.kt": "d6e9c2e1eeb0882778dc4c58f40a19ca6b14ef2537159c214ec9cf6f3eb260f5",
+    "app/src/main/java/com/pocketdev/advance_erp/data/dao/PurchaseOrderDao.kt": "506255ce25f4b0c6c6000e63fe5dd4e93a9fc43312d54d49977a1ffd757e05a9",
+    "app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt": "45605dec7e241170fcd5bfbab5c068c415ba17edcfd0adb7e8bc814a5b870526",
+    "app/src/main/java/com/pocketdev/advance_erp/domain/repository/ImportRepository.kt": "651659f17711740d9900705853a875257ba310c8991eaed2c311a4ea60413f9f",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddAdditionalCostDialog.kt": "24c5341449961ff51be586196104dd030974e53791ed23638752993a64c5a8f9",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddCartonDialog.kt": "820484654e83d58eab0352f1cc43acc3cfb0620b5bdbce3d93563479f8300df6",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddCostItemDialog.kt": "1046f7b4ce7fe2e78f4c98849e13aab779b4fc5744931af0c521a6eeb72a97d3",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt": "4e36193f15e06f4fa6cb65032a44e297e0161d53d9afbdbc54335bfe1256742f",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt": "8bb8f1349d0da458e66fa54ebcfff79a1b4c0ca2dff835e2ffb70aba8a03e716",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt": "48919607f8aa80ee929d30152327ba0ab43511f22dc1bc10a5e14ac9d8fe5a0c",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportViewModel.kt": "eaee6f09fc3984be3783bb9f3ec7b4085b5eae33a9d5d8cfe91ee9e73e23596e",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/PackingVariantSelector.kt": "af7066b2e7a8c012b43cb6d0046b71336ca4170a14adfa2194529acf44ec11ef",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoShareDialog.kt": "5fc58604e36f9cad295f52e83ca61a5e22309d69cdf8a7322c5cd7fe6d30048f",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/PurchaseCompletionDialog.kt": "455ef71ba19888abbbad7a4f4271fd9f8efa03a0c23243d3ff916851479c7b56",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/PurchaseOrderDetailDialog.kt": "b8b89478418cdcc1a6fa24b925249f7edf14da0339d8998622c55e78dbc2c504",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/RecordSupplierPaymentDialog.kt": "5eb369902b2b6ae89acaeb939576ed2f067c9c2a789817496e5c626e577cfdf3",
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/WarehouseReceivingDialog.kt": "ed95c41b56830fba9716d3cd673cc5aac134c1cc1ea2f4b6e6cc10b80fd7101e",
+    "app/src/main/java/com/pocketdev/advance_erp/navigation/AdvanceErpNavGraph.kt": "a9fe8512988aa151cc9dcddd695da0e4113409c8f4e4f8bfe97379713d57c091",
+    "app/src/main/res/values-bn/strings.xml": "685eb42db45447db006e147955c739277758bc424b94d273d80cd67bd361a71e",
+    "app/src/main/res/values/strings.xml": "fcbed2513a0f92ef03078bee275c58c19a06b6c07f945f6ec664ddaf38eb8337",
+    "app/src/test/java/com/pocketdev/advance_erp/ImportAuditRegressionTest.kt": "f4158a36dba1b72258a283b3713347b0f420a8a4e8b9aad18c40618cd11f1ef7",
+    "app/src/test/java/com/pocketdev/advance_erp/SupplierPoExportTest.kt": "04a9d7feb49bd42f7005b0fe5b945e241a151e655ca5ee30ebaa1b3a12a27d86"
+  },
+  "unchangedPreexistingExportFiles": {
+    "app/src/main/java/com/pocketdev/advance_erp/core/util/ImportExcelGenerator.kt": true,
+    "app/src/main/java/com/pocketdev/advance_erp/core/util/ImportPdfGenerator.kt": true,
+    "app/src/main/java/com/pocketdev/advance_erp/core/util/PoNotesMetadataParser.kt": true,
+    "app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoShareDialog.kt": true
+  },
+  "artifacts": {
+    "ADVANCE-ERP-import-ui-debug.apk": "7b30c74acd07146af6e1a37ade0bc45cff8d347932573dfc5fef33050d0b966f",
+    "ADVANCE-ERP-import-ui-tests.apk": "1ebdb8ddd7b84eb79cd184fecc2a6cf6d6e3328926b97e9e0f0308cfc2a5ba4c"
+  }
+}

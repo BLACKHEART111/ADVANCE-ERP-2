@@ -568,6 +568,16 @@ object LandingCostEngine {
                 "Duplicate expense allocation detected for expenseId: ${expense.expenseId} (${expense.expenseName})"
             }
             if (expense.category == CostCategory.PRODUCT_PURCHASE) continue
+            // Older PO forms mirror configuration into a cost row. Count the generated row once.
+            if (expense.category == CostCategory.INTERNATIONAL_FREIGHT &&
+                expense.expenseName.startsWith("Category Per-KG International Freight") &&
+                categoryFreightResults.isNotEmpty()) continue
+            if (expense.category == CostCategory.CHINA_DOMESTIC_TRANSPORT &&
+                expense.expenseName.startsWith("China Local Delivery") &&
+                supplierChinaDeliveries.any { delivery ->
+                    delivery.deliveryChargeForeignMinor > 0 &&
+                        (expense.supplierId == null || delivery.supplierId == expense.supplierId)
+                }) continue
 
             val targetProducts = if (expense.supplierId != null) {
                 products.filter { it.supplierId == expense.supplierId }.ifEmpty { products }

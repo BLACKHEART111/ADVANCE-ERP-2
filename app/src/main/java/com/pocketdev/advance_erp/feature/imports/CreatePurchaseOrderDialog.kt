@@ -12,6 +12,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
+import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -90,6 +96,7 @@ import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
+import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
 import com.pocketdev.advance_erp.feature.product.AddProductDialog
 import com.pocketdev.advance_erp.feature.product.GalleryItemDraft
 import com.pocketdev.advance_erp.feature.product.NewVariantDraft
@@ -99,12 +106,12 @@ import java.math.RoundingMode
 private class ItemDraftState(
     productId: String = "",
     variantId: String? = null,
-    quantityStr: String = "100",
-    unitPriceStr: String = "45.00",
-    cartonQuantityStr: String = "5",
-    pcsPerCartonStr: String = "20",
-    grossWeightKgStr: String = "35.0",
-    netWeightKgStr: String = "33.0"
+    quantityStr: String = "",
+    unitPriceStr: String = "",
+    cartonQuantityStr: String = "0",
+    pcsPerCartonStr: String = "",
+    grossWeightKgStr: String = "",
+    netWeightKgStr: String = ""
 ) {
     var productId by mutableStateOf(productId)
     var variantId by mutableStateOf(variantId)
@@ -131,49 +138,27 @@ private class CartonLineState(
 private class CartonBoxState(
     cartonNumber: String = "CTN-01",
     grossWeightKgStr: String = "15.0",
-    initialLines: List<CartonLineState> = emptyList()
+    initialLines: List<CartonLineState> = emptyList(),
+    netWeightKgStr: String = "",
+    val lengthCm: BigDecimal = BigDecimal.ZERO,
+    val widthCm: BigDecimal = BigDecimal.ZERO,
+    val heightCm: BigDecimal = BigDecimal.ZERO,
+    val cbm: BigDecimal = BigDecimal.ZERO
 ) {
     var cartonNumber by mutableStateOf(cartonNumber)
     var grossWeightKgStr by mutableStateOf(grossWeightKgStr)
+    var netWeightKgStr by mutableStateOf(netWeightKgStr)
+    fun netWeightKg(): BigDecimal = netWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal()
+        ?: grossWeightKgStr.toBigDecimal()
     val lines = mutableStateListOf<CartonLineState>().apply {
         addAll(initialLines)
     }
 }
 
-internal data class ParsedPoNotes(
-    val paymentTerm: PaymentTermType,
-    val forwarderAddress: String,
-    val userNotes: String
-)
+internal typealias ParsedPoNotes = com.pocketdev.advance_erp.core.util.ParsedPoNotes
 
-internal fun parsePoNotesMetadata(rawNotes: String?): ParsedPoNotes {
-    val defaultForwarder = "Guangzhou Baiyun Cargo Terminal / Yiwu Port Warehouse, China"
-    if (rawNotes.isNullOrBlank()) {
-        return ParsedPoNotes(PaymentTermType.THIRTY_SEVENTY, defaultForwarder, "")
-    }
-    val termsRegex = Regex("""\[Terms:\s*([^\]]+)]""")
-    val termsText = termsRegex.find(rawNotes)?.groupValues?.getOrNull(1)?.trim() ?: ""
-    val resolvedTerm = PaymentTermType.entries.firstOrNull {
-        termsText.equals(it.labelEn, ignoreCase = true) || termsText.equals(it.labelBn, ignoreCase = true)
-    } ?: when {
-        termsText.contains("100% Advance", ignoreCase = true) || rawNotes.contains("100% Advance", ignoreCase = true) -> PaymentTermType.HUNDRED_PERCENT_ADVANCE
-        termsText.contains("50%", ignoreCase = true) || rawNotes.contains("50% Advance", ignoreCase = true) -> PaymentTermType.FIFTY_FIFTY
-        termsText.contains("Custom", ignoreCase = true) || rawNotes.contains("Custom Partial", ignoreCase = true) -> PaymentTermType.CUSTOM_PARTIAL
-        termsText.contains("Full Due", ignoreCase = true) || rawNotes.contains("Full Due", ignoreCase = true) -> PaymentTermType.FULL_DUE
-        else -> PaymentTermType.THIRTY_SEVENTY
-    }
-    val forwarderRegex = Regex("""\[Forwarder:\s*([^\]]+)]""")
-    val resolvedForwarder = forwarderRegex.find(rawNotes)?.groupValues?.getOrNull(1)?.trim()
-        ?.ifBlank { defaultForwarder } ?: defaultForwarder
-    val cleanUserNotes = rawNotes
-        .replace(termsRegex, "")
-        .replace(forwarderRegex, "")
-        .split("•")
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .joinToString(" • ")
-    return ParsedPoNotes(resolvedTerm, resolvedForwarder, cleanUserNotes)
-}
+internal fun parsePoNotesMetadata(rawNotes: String?): ParsedPoNotes =
+    PoNotesMetadataParser.parse(rawNotes)
 
 @Composable
 fun CreatePurchaseOrderDialog(
@@ -183,6 +168,10 @@ fun CreatePurchaseOrderDialog(
     categories: List<ProductCategory> = emptyList(),
     isBangla: Boolean = false,
     onDismiss: () -> Unit,
+    isSaving: Boolean = false,
+    saveError: String? = null,
+    metadataOnly: Boolean = false,
+    onUpdateMetadata: ((notes: String?, attachments: String?) -> Unit)? = null,
     onAddNewSupplier: ((companyName: String, contactPerson: String, phone: String, address: String, country: String, currency: String, onCreated: (Supplier) -> Unit) -> Unit)? = null,
     onCreateFullProduct: ((
         nameEn: String, nameBn: String, baseSku: String, barcode: String?, categoryId: String, unit: String,
@@ -201,6 +190,7 @@ fun CreatePurchaseOrderDialog(
     initialEditingItems: List<PurchaseOrderItem> = emptyList(),
     initialEditingCartons: List<ShipmentCarton> = emptyList(),
     initialEditingCosts: List<ImportCostItem> = emptyList(),
+    initialEditingFreightRates: Map<String, Long> = emptyMap(),
     onUpdatePo: ((
         orderId: String,
         supplierId: String,
@@ -226,9 +216,14 @@ fun CreatePurchaseOrderDialog(
         cartons: List<PoMixedCartonDraft>,
         chinaDeliveryChargeMinor: Long,
         categoryFreightRatesBdtMinor: Map<String, Long>,
+        handlingCostMinor: Long,
+        sampleCostMinor: Long,
         attachments: String?
     ) -> Unit
 ) {
+    var currentStep by rememberSaveable(editingOrder?.id, metadataOnly) { mutableStateOf(if (metadataOnly) 3 else 0) }
+    val bodyScroll = rememberLazyListState()
+    LaunchedEffect(currentStep) { bodyScroll.scrollToItem(0) }
     val isEditing = editingOrder != null
     val parsedNotes = remember(editingOrder?.id, editingOrder?.notes) {
         parsePoNotesMetadata(editingOrder?.notes)
@@ -331,10 +326,17 @@ fun CreatePurchaseOrderDialog(
     fun List<ShipmentCarton>.toCartonBoxStates(): List<CartonBoxState> =
         groupBy { it.cartonNumber }.map { (cNum, cLines) ->
             val firstCtn = cLines.firstOrNull()
-            val gwStr = firstCtn?.cartonGrossWeightKg?.ifBlank { firstCtn.grossWeightKg } ?: "15.0"
+            val gwStr = firstCtn?.cartonGrossWeightKg?.toBigDecimalOrNull()
+                ?.takeIf { it > BigDecimal.ZERO }?.toPlainString()
+                ?: cLines.fold(BigDecimal.ZERO) { sum, line -> sum + (line.grossWeightKg.toBigDecimalOrNull() ?: BigDecimal.ZERO) }.toPlainString()
             CartonBoxState(
                 cartonNumber = cNum,
                 grossWeightKgStr = gwStr,
+                netWeightKgStr = cLines.fold(BigDecimal.ZERO) { sum, line -> sum + BigDecimal(line.netWeightKg.ifBlank { "0" }) }.toPlainString(),
+                lengthCm = firstCtn?.lengthCm?.toBigDecimalOrNull() ?: BigDecimal.ZERO,
+                widthCm = firstCtn?.widthCm?.toBigDecimalOrNull() ?: BigDecimal.ZERO,
+                heightCm = firstCtn?.heightCm?.toBigDecimalOrNull() ?: BigDecimal.ZERO,
+                cbm = firstCtn?.cbm?.toBigDecimalOrNull() ?: BigDecimal.ZERO,
                 initialLines = cLines.map { line ->
                     CartonLineState(
                         productId = line.productId,
@@ -356,12 +358,12 @@ fun CreatePurchaseOrderDialog(
                     ItemDraftState(
                         productId = firstProdId,
                         variantId = firstVarId,
-                        quantityStr = "100",
-                        unitPriceStr = "45.00",
-                        cartonQuantityStr = "5",
-                        pcsPerCartonStr = "20",
-                        grossWeightKgStr = "35.0",
-                        netWeightKgStr = "33.0"
+                        quantityStr = "",
+                        unitPriceStr = "",
+                        cartonQuantityStr = "0",
+                        pcsPerCartonStr = "",
+                        grossWeightKgStr = "",
+                        netWeightKgStr = ""
                     )
                 )
             }
@@ -394,10 +396,19 @@ fun CreatePurchaseOrderDialog(
 
     // Category Per-KG Freight Rate (BDT/KG) state map: categoryId -> rateStr (in BDT major units, e.g. "120")
     val categoryRateStrings = remember { mutableStateMapOf<String, String>() }
-    LaunchedEffect(categories) {
+    val hydratedFreightCategories = remember { mutableStateListOf<String>() }
+    LaunchedEffect(initialEditingFreightRates) {
+        initialEditingFreightRates.forEach { (id, rate) ->
+            if (id !in hydratedFreightCategories) {
+                categoryRateStrings[id] = BigDecimal(rate).movePointLeft(2).toPlainString()
+                hydratedFreightCategories.add(id)
+            }
+        }
+    }
+    LaunchedEffect(categories, initialEditingFreightRates) {
         categories.forEach { cat ->
             if (!categoryRateStrings.containsKey(cat.id)) {
-                val defaultMajor = BigDecimal(cat.defaultFreightRatePerKgBdtMinor)
+                val defaultMajor = BigDecimal(initialEditingFreightRates[cat.id] ?: cat.defaultFreightRatePerKgBdtMinor)
                     .divide(BigDecimal("100"), 2, RoundingMode.HALF_UP)
                     .stripTrailingZeros()
                     .toPlainString()
@@ -415,8 +426,20 @@ fun CreatePurchaseOrderDialog(
         return if (parts.isNotEmpty()) "${parts.joinToString(" / ")} (${v.sku})" else v.sku
     }
 
+    fun serializedNotes(): String {
+        val terms = "[Terms: ${selectedPaymentTerm.labelEn}]"
+        val forwarder = forwarderAddressStr.trim().takeIf { it.isNotEmpty() }?.let { "[Forwarder: $it]" }
+        return listOfNotNull(terms, forwarder, notes.trim().takeIf { it.isNotEmpty() }).joinToString(" • ")
+    }
+
     fun submitPo(targetStatus: PurchaseOrderStatus) {
         try {
+            if (metadataOnly) {
+                requireNotNull(onUpdateMetadata) { "Metadata save is not available" }(
+                    serializedNotes(), PoAttachmentStorage.serializeAttachments(attachmentsList))
+                errorMessage = null
+                return
+            }
             require(selectedSupplierId.isNotBlank()) {
                 if (isBangla) "দয়া করে একজন সরবরাহকারী নির্বাচন করুন।" else "Please select a supplier."
             }
@@ -429,57 +452,32 @@ fun CreatePurchaseOrderDialog(
             }
 
             // Calculate per-item weight, pcs quantity & carton share from cartonBoxes if cartonBoxes are used
+            val lineNetWeightFromCartons = mutableMapOf<Pair<String, String?>, BigDecimal>()
             val lineWeightFromCartons = mutableMapOf<Pair<String, String?>, BigDecimal>()
             val lineCartonCountFromCartons = mutableMapOf<Pair<String, String?>, Int>()
             val lineQuantityFromCartons = mutableMapOf<Pair<String, String?>, Int>()
 
             if (cartonBoxes.isNotEmpty()) {
+                require(cartonBoxes.map { it.cartonNumber.trim() }.distinct().size == cartonBoxes.size) {
+                    if (isBangla) "প্রতিটি কার্টনের নম্বর আলাদা দিন।" else "Each carton needs a unique number."
+                }
                 cartonBoxes.forEach { box ->
-                    val boxGw = box.grossWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
-                    val manualLines = box.lines.filter {
-                        (it.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO
-                    }
-                    val totalManualWeight = manualLines.fold(BigDecimal.ZERO) { acc, line ->
-                        acc.add(line.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
-                    }
-                    val remainingWeight = (boxGw - totalManualWeight).coerceAtLeast(BigDecimal.ZERO)
-                    val nonManualLines = box.lines.filter {
-                        (it.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) <= BigDecimal.ZERO
-                    }
-                    val totalNonManualPcs = nonManualLines.sumOf { it.quantityStr.trim().toIntOrNull() ?: 0 }
-
-                    box.lines.forEach { line ->
-                        val lQty = line.quantityStr.trim().toIntOrNull() ?: 0
-                        if (lQty > 0 && line.productId.isNotBlank()) {
-                            val manualWt = line.manualWeightKgStr.trim().toBigDecimalOrNull()
-                            val shareGw = if (manualWt != null && manualWt > BigDecimal.ZERO) {
-                                manualWt
-                            } else if (totalNonManualPcs > 0 && remainingWeight > BigDecimal.ZERO) {
-                                remainingWeight.multiply(BigDecimal(lQty))
-                                    .divide(BigDecimal(totalNonManualPcs), 3, RoundingMode.HALF_UP)
-                            } else {
-                                BigDecimal.ZERO
+                    val allocated = CartonWeightAllocationEngine.allocateWeights(
+                        box.grossWeightKgStr.toBigDecimal(), box.netWeightKg(),
+                        box.lines.map { line ->
+                            require(itemsList.any { it.productId == line.productId && it.variantId == line.variantId }) {
+                                if (isBangla) "প্যাকিংয়ের প্রতিটি ভ্যারিয়েন্ট আগে পণ্যের তালিকায় যোগ করুন।" else "Add each packed variant to Order Items first."
                             }
-                            val key = line.productId to line.variantId
-                            lineWeightFromCartons[key] = (lineWeightFromCartons[key] ?: BigDecimal.ZERO).add(shareGw)
-                            lineCartonCountFromCartons[key] = (lineCartonCountFromCartons[key] ?: 0) + 1
-                            lineQuantityFromCartons[key] = (lineQuantityFromCartons[key] ?: 0) + lQty
-
-                            // Auto-add to itemsList if not already present
-                            if (itemsList.none { it.productId == line.productId && it.variantId == line.variantId }) {
-                                val v = variants.find { it.id == line.variantId }
-                                val p = products.find { it.id == line.productId }
-                                val costMinor = v?.variantCostMinor?.takeIf { it > 0 } ?: p?.purchasePriceMinor ?: 0L
-                                itemsList.add(
-                                    ItemDraftState(
-                                        productId = line.productId,
-                                        variantId = line.variantId,
-                                        quantityStr = lQty.toString(),
-                                        unitPriceStr = if (costMinor > 0) "%.2f".format(costMinor / 100.0) else "45.00"
-                                    )
-                                )
-                            }
+                            MixedCartonLineInput(line.productId, line.variantId, quantity = line.quantityStr.toInt(),
+                                manualGrossWeightKg = line.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal())
                         }
+                    )
+                    allocated.forEach { line ->
+                        val key = line.productId to line.variantId
+                        lineWeightFromCartons[key] = (lineWeightFromCartons[key] ?: BigDecimal.ZERO) + line.allocatedGrossWeightKg
+                        lineNetWeightFromCartons[key] = (lineNetWeightFromCartons[key] ?: BigDecimal.ZERO) + line.allocatedNetWeightKg
+                        lineCartonCountFromCartons[key] = (lineCartonCountFromCartons[key] ?: 0) + 1
+                        lineQuantityFromCartons[key] = (lineQuantityFromCartons[key] ?: 0) + line.quantity
                     }
                 }
             }
@@ -490,7 +488,10 @@ fun CreatePurchaseOrderDialog(
                 }
                 val key = state.productId to state.variantId
                 val cartonPackedQty = lineQuantityFromCartons[key]
-                val qty = if (cartonPackedQty != null && cartonPackedQty > 0) cartonPackedQty else (state.quantityStr.trim().toIntOrNull() ?: 0)
+                val qty = state.quantityStr.trim().toIntOrNull() ?: 0
+                require((cartonPackedQty ?: 0) <= qty) {
+                    if (isBangla) "আইটেম #${idx + 1}: প্যাক করা সংখ্যা অর্ডারের পরিমাণ ছাড়িয়েছে।" else "Item #${idx + 1}: Packed quantity exceeds ordered quantity."
+                }
                 require(qty > 0) {
                     if (isBangla) "আইটেম #${idx + 1}: পরিমাণ ১ বা তার বেশি হতে হবে।" else "Item #${idx + 1}: Quantity must be at least 1."
                 }
@@ -502,7 +503,10 @@ fun CreatePurchaseOrderDialog(
                 val ctnQty = lineCartonCountFromCartons[key] ?: (state.cartonQuantityStr.trim().toIntOrNull() ?: 0)
                 val pcsPerCtn = state.pcsPerCartonStr.trim().toIntOrNull() ?: (if (ctnQty > 0) qty / ctnQty else qty)
                 val grossKg = lineWeightFromCartons[key] ?: (state.grossWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
-                val netKg = state.netWeightKgStr.trim().toBigDecimalOrNull() ?: grossKg
+                val netKg = if (cartonBoxes.isNotEmpty()) lineNetWeightFromCartons[key] ?: BigDecimal.ZERO else state.netWeightKgStr.trim().toBigDecimalOrNull() ?: grossKg
+                require(grossKg >= BigDecimal.ZERO && netKg >= BigDecimal.ZERO && netKg <= grossKg) {
+                    if (isBangla) "নেট ওজন গ্রস ওজনের বেশি হতে পারে না।" else "Net weight cannot exceed gross weight."
+                }
 
                 PurchaseOrderItemDraft(
                     productId = state.productId,
@@ -529,7 +533,8 @@ fun CreatePurchaseOrderDialog(
                                 productId = l.productId,
                                 variantId = l.variantId,
                                 productName = listOfNotNull(prod?.nameEn, v?.color, v?.size).joinToString(" - "),
-                                quantity = q
+                                quantity = q,
+                                manualGrossWeightKg = l.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal()
                             )
                         } else null
                     }
@@ -537,31 +542,33 @@ fun CreatePurchaseOrderDialog(
                         PoMixedCartonDraft(
                             cartonNumber = box.cartonNumber.trim().ifBlank { "CTN-%02d".format(idx + 1) },
                             grossWeightKg = gw,
-                            netWeightKg = gw,
+                            netWeightKg = box.netWeightKg(),
+                            lengthCm = box.lengthCm, widthCm = box.widthCm, heightCm = box.heightCm,
+                            cbm = box.cbm,
                             lines = validLines
                         )
                     } else null
                 }
             } else {
-                // Auto-create carton drafts from item rows so Import Shipment always receives the cartons & weights
-                drafts.mapIndexedNotNull { idx, d ->
-                    if (d.grossWeightKg > BigDecimal.ZERO || d.cartonQuantity > 0) {
-                        val prod = products.find { it.id == d.productId }
-                        val v = variants.find { it.id == d.variantId }
-                        PoMixedCartonDraft(
-                            cartonNumber = "CTN-%02d".format(idx + 1),
-                            grossWeightKg = d.grossWeightKg,
-                            netWeightKg = d.netWeightKg,
-                            lines = listOf(
-                                MixedCartonLineDraft(
-                                    productId = d.productId,
-                                    variantId = d.variantId,
-                                    productName = listOfNotNull(prod?.nameEn, v?.color, v?.size).joinToString(" - "),
-                                    quantity = d.quantity
-                                )
+                var cartonIndex = 0
+                drafts.flatMap { d ->
+                    val count = d.cartonQuantity
+                    require(count >= 0 && count <= d.quantity) { "Carton count must be between zero and item quantity" }
+                    if (count == 0) emptyList() else {
+                        require(d.grossWeightKg > BigDecimal.ZERO) { "Enter gross weight for packed items" }
+                        val gross = d.grossWeightKg.setScale(3, RoundingMode.UNNECESSARY).unscaledValue().longValueExact()
+                        val net = d.netWeightKg.setScale(3, RoundingMode.UNNECESSARY).unscaledValue().longValueExact()
+                        List(count) { index ->
+                            val quantity = d.quantity / count + if (index < d.quantity % count) 1 else 0
+                            val gw = BigDecimal.valueOf(gross / count + if (index < gross % count) 1 else 0, 3)
+                            val nw = BigDecimal.valueOf(net / count + if (index < net % count) 1 else 0, 3)
+                            PoMixedCartonDraft(
+                                cartonNumber = String.format(java.util.Locale.ROOT, "CTN-%02d", ++cartonIndex),
+                                grossWeightKg = gw, netWeightKg = nw,
+                                lines = listOf(MixedCartonLineDraft(d.productId, d.variantId, quantity = quantity))
                             )
-                        )
-                    } else null
+                        }
+                    }
                 }
             }
 
@@ -570,7 +577,7 @@ fun CreatePurchaseOrderDialog(
 
             val catRatesMinorMap = mutableMapOf<String, Long>()
             categoryRateStrings.forEach { (catId, rateStr) ->
-                val rBd = rateStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                val rBd = if (isLocalPurchase) BigDecimal.ZERO else rateStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
                 if (rBd >= BigDecimal.ZERO) {
                     catRatesMinorMap[catId] = rBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
                 }
@@ -582,10 +589,7 @@ fun CreatePurchaseOrderDialog(
             val sampleBd = sampleCostStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
             val sampleMinor = sampleBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact().coerceAtLeast(0L)
 
-            val termsNote = "[Terms: ${selectedPaymentTerm.labelEn}]"
-            val forwarderNote = if (forwarderAddressStr.isNotBlank()) "[Forwarder: ${forwarderAddressStr.trim()}]" else ""
-            val noteParts = listOfNotNull(termsNote, forwarderNote.ifBlank { null }, notes.trim().ifBlank { null })
-            val combinedNotes = noteParts.joinToString(" • ")
+            val combinedNotes = serializedNotes()
 
             val serializedAttachments = PoAttachmentStorage.serializeAttachments(attachmentsList)
             if (isEditing && onUpdatePo != null && editingOrder != null) {
@@ -615,17 +619,19 @@ fun CreatePurchaseOrderDialog(
                     finalCartonDrafts,
                     chinaDeliveryMinor,
                     catRatesMinorMap,
+                    handlingMinor,
+                    sampleMinor,
                     serializedAttachments
                 )
             }
-            onDismiss()
+            errorMessage = null
         } catch (e: Exception) {
             errorMessage = e.message ?: if (isBangla) "তথ্য যাচাই ব্যর্থ হয়েছে" else "Validation failed"
         }
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
@@ -639,7 +645,8 @@ fun CreatePurchaseOrderDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp)
+                    .imePadding()
+                    .padding(16.dp)
             ) {
                 // Header Bar
                 Row(
@@ -650,35 +657,25 @@ fun CreatePurchaseOrderDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (isEditing) {
-                                if (isBangla) "পারচেজ অর্ডার এডিট (${editingOrder?.poNumber})" else "Edit Purchase Order (${editingOrder?.poNumber})"
-                            } else {
-                                if (isLocalPurchase) {
-                                    if (isBangla) "নতুন স্থানীয় পারচেজ অর্ডার (বাংলাদেশ)" else "New Local Purchase Order (Bangladesh)"
-                                } else {
-                                    if (isBangla) "নতুন আমদানি ক্রয়াদেশ (চীন) ও প্যাকিং" else "New Import Purchase Order (China)"
-                                }
-                            },
+                                if (isBangla) "ক্রয়াদেশ সম্পাদনা" else "Edit purchase order"
+                            } else if (isBangla) "নতুন ক্রয়াদেশ" else "New purchase order",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = DeepNavy
                         )
                         Text(
-                            text = if (isLocalPurchase) {
-                                if (isBangla) "লোকাল সরবরাহকারী • ভ্যারিয়েন্ট • পরিবহন ও আনলোডিং • গুদামে সরাসরি স্টক ইন" else "Local Supplier • Variants • Transport & Handling • Direct Warehouse Stock In"
-                            } else {
-                                if (isBangla) "সরবরাহকারী • ভ্যারিয়েন্ট • মিক্সড কার্টন • চীন ডেলিভারি ও ওজনভিত্তিক ফ্রেইট অটো-সিঙ্ক" else "Supplier • Variants • Mixed Cartons • Auto-Syncs to Import Shipment"
-                            },
+                            text = editingOrder?.poNumber ?: if (isBangla) "তথ্য → পণ্য → প্যাকিং → পর্যালোচনা" else "Details → Items → Packing → Review",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
                     }
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = onDismiss, enabled = !isSaving) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
                 // Purchase Type Toggle (International Import vs Local Purchase)
-                Row(
+                if (currentStep == 0) Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
@@ -693,6 +690,7 @@ fun CreatePurchaseOrderDialog(
                         ),
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = 48.dp)
                             .clickable {
                                 isLocalPurchase = false
                                 if (selectedCurrency == "BDT") {
@@ -700,14 +698,14 @@ fun CreatePurchaseOrderDialog(
                                     exchangeRateStr = "17.00"
                                 }
                             }
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 4.dp)
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "🇨🇳 " + (if (isBangla) "আন্তর্জাতিক আমদানি (চীন)" else "International Import (China)"),
+                                text = if (isBangla) "আমদানি" else "Import",
                                 fontWeight = if (!isLocalPurchase) FontWeight.Bold else FontWeight.Normal,
                                 color = if (!isLocalPurchase) PrimaryPurple else TextSecondary,
                                 style = MaterialTheme.typography.bodyMedium
@@ -724,19 +722,20 @@ fun CreatePurchaseOrderDialog(
                         ),
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = 48.dp)
                             .clickable {
                                 isLocalPurchase = true
                                 selectedCurrency = "BDT"
                                 exchangeRateStr = "1.00"
                             }
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 4.dp)
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "🇧🇩 " + (if (isBangla) "স্থানীয় ক্রয় (বাংলাদেশ)" else "Local Purchase (Bangladesh)"),
+                                text = if (isBangla) "স্থানীয়" else "Local",
                                 fontWeight = if (isLocalPurchase) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isLocalPurchase) SecondaryTeal else TextSecondary,
                                 style = MaterialTheme.typography.bodyMedium
@@ -747,14 +746,32 @@ fun CreatePurchaseOrderDialog(
 
                 HorizontalDivider(color = ERPDivider, modifier = Modifier.padding(vertical = 10.dp))
 
+                if (!metadataOnly) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val labels = if (isBangla) listOf("তথ্য", "পণ্য", "প্যাকিং", "হিসাব") else listOf("Details", "Items", "Packing", "Review")
+                    labels.forEachIndexed { index, label ->
+                        TextButton(
+                            onClick = { currentStep = index }, enabled = !isSaving,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            contentPadding = PaddingValues(horizontal = 2.dp),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = if (currentStep == index) PrimaryPurple else TextSecondary,
+                                containerColor = if (currentStep == index) PrimaryPurple.copy(alpha = 0.08f) else Color.Transparent
+                            ), shape = RoundedCornerShape(10.dp)
+                        ) { Text("${index + 1}. $label", style = MaterialTheme.typography.labelLarge) }
+                    }
+                }
+
                 // Scrollable Body
                 LazyColumn(
+                    state = bodyScroll,
+                    contentPadding = PaddingValues(bottom = 16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     // ==========================================
+                    if (currentStep == 0) {
                     // 1. Supplier Selection + Inline New Supplier
                     // ==========================================
                     item {
@@ -765,7 +782,7 @@ fun CreatePurchaseOrderDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (isBangla) "১. সরবরাহকারী নির্বাচন বা তৈরি (Supplier):" else "1. Select or Create Supplier:",
+                                    text = if (isBangla) "সরবরাহকারী" else "Supplier",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = DeepNavy
@@ -780,7 +797,7 @@ fun CreatePurchaseOrderDialog(
                                         Icon(Icons.Default.Add, contentDescription = "New Supplier", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = if (isBangla) "+ নতুন সরবরাহকারী" else "+ New Supplier",
+                                            text = if (isBangla) "নতুন" else "New",
                                             color = SecondaryTeal,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp
@@ -895,7 +912,7 @@ fun CreatePurchaseOrderDialog(
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = SecondaryTeal,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                modifier = Modifier.heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 12.dp)
                                             )
                                         }
                                     }
@@ -930,7 +947,7 @@ fun CreatePurchaseOrderDialog(
                         } else {
                             Column {
                                 Text(
-                                    text = if (isBangla) "২. মুদ্রা, বিনিময় হার ও চীন লোকাল ডেলিভারি চার্জ:" else "2. Currency, Exchange Rate & China Local Delivery:",
+                                    text = if (isBangla) "মুদ্রা ও বিনিময় হার" else "Currency & exchange rate",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = DeepNavy
@@ -992,9 +1009,9 @@ fun CreatePurchaseOrderDialog(
                                     label = {
                                         Text(
                                             if (isBangla)
-                                                "চীন লোকাল ডেলিভারি চার্জ ($selectedCurrency) — অটো শিপমেন্টে যুক্ত হবে"
+                                                "চীন লোকাল ডেলিভারি ($selectedCurrency)"
                                             else
-                                                "China Local Delivery Charge ($selectedCurrency) — Auto-syncs to Shipment"
+                                                "China delivery ($selectedCurrency)"
                                         )
                                     },
                                     supportingText = {
@@ -1016,6 +1033,8 @@ fun CreatePurchaseOrderDialog(
                     }
 
                     // ==========================================
+                    }
+                    if (currentStep == 1) {
                     // 3. Order Items + Product Variant Selection
                     // ==========================================
                     item {
@@ -1029,7 +1048,7 @@ fun CreatePurchaseOrderDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (isBangla) "৩. পণ্য, ভ্যারিয়েন্ট ও দর (Products & Variants):" else "3. Products, Variants & Prices:",
+                                    text = if (isBangla) "পণ্য ও ভ্যারিয়েন্ট" else "Order items",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = DeepNavy,
@@ -1061,7 +1080,7 @@ fun CreatePurchaseOrderDialog(
                                         Icon(Icons.Default.Add, contentDescription = "New Product", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = if (isBangla) "+ নতুন পণ্য" else "+ New Product",
+                                            text = if (isBangla) "নতুন পণ্য" else "New product",
                                             color = SecondaryTeal,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp,
@@ -1224,7 +1243,7 @@ fun CreatePurchaseOrderDialog(
                                                         itemState.unitPriceStr = (prod.purchasePriceMinor / 100.0).toString()
                                                     }
                                                 }
-                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                .heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 12.dp)
                                         ) {
                                             Text(
                                                 text = if (isBangla && prod.nameBn.isNotBlank()) prod.nameBn else prod.nameEn,
@@ -1239,13 +1258,12 @@ fun CreatePurchaseOrderDialog(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 // Variant Selector Chips + Add Variant / Add All Variants
-                                Row(
+                                Column(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
-                                        text = if (isBangla) "ভ্যারিয়েন্ট নির্বাচন করুন (${productVariants.size}):" else "Select Variant (${productVariants.size}):",
+                                        text = if (isBangla) "ভ্যারিয়েন্ট (${productVariants.size})" else "Variant (${productVariants.size})",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
                                         color = DeepNavy
@@ -1272,16 +1290,16 @@ fun CreatePurchaseOrderDialog(
                                                                         variantId = pv.id,
                                                                         quantityStr = itemState.quantityStr,
                                                                         unitPriceStr = if (pv.variantCostMinor > 0) (pv.variantCostMinor / 100.0).toString() else itemState.unitPriceStr,
-                                                                        cartonQuantityStr = "1",
-                                                                        pcsPerCartonStr = itemState.quantityStr,
-                                                                        grossWeightKgStr = "10.0",
-                                                                        netWeightKgStr = "9.5"
+                                                                        cartonQuantityStr = "0",
+                                                                        pcsPerCartonStr = "",
+                                                                        grossWeightKgStr = "",
+                                                                        netWeightKgStr = ""
                                                                     )
                                                                 )
                                                             }
                                                         }
                                                     }
-                                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    .heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 12.dp)
                                             )
                                         }
                                         if (onAddNewVariant != null && itemState.productId.isNotBlank()) {
@@ -1301,7 +1319,7 @@ fun CreatePurchaseOrderDialog(
                                                         newVarSku = ""
                                                         newVarCostStr = itemState.unitPriceStr
                                                     }
-                                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    .heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 12.dp)
                                             )
                                         }
                                     }
@@ -1325,10 +1343,10 @@ fun CreatePurchaseOrderDialog(
                                                     shape = RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable { itemState.variantId = null }
-                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                .heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 12.dp)
                                         ) {
                                             Text(
-                                                text = if (isBangla) "বেস পণ্য (ভ্যারিয়েন্ট ছাড়া)" else "Base Product",
+                                                text = if (isBangla) "বেস পণ্য" else "Base product",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 fontWeight = if (isBaseSel) FontWeight.Bold else FontWeight.Normal,
                                                 color = if (isBaseSel) SecondaryTeal else TextSecondary
@@ -1352,7 +1370,7 @@ fun CreatePurchaseOrderDialog(
                                                         itemState.unitPriceStr = (pv.variantCostMinor / 100.0).toString()
                                                     }
                                                 }
-                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                .heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 12.dp)
                                         ) {
                                             Text(
                                                 text = variantLabel(pv),
@@ -1411,6 +1429,8 @@ fun CreatePurchaseOrderDialog(
                     }
 
                     // ==========================================
+                    }
+                    if (currentStep == 2) {
                     // 4. Carton-by-Carton Packaging (Mixed Variants Supported)
                     // ==========================================
                     item {
@@ -1583,6 +1603,9 @@ fun CreatePurchaseOrderDialog(
                                                                         CartonBoxState(
                                                                             cartonNumber = nextNum,
                                                                             grossWeightKgStr = box.grossWeightKgStr,
+                                                                            netWeightKgStr = box.netWeightKgStr,
+                                                                            lengthCm = box.lengthCm, widthCm = box.widthCm, heightCm = box.heightCm,
+                                                                            cbm = box.cbm,
                                                                             initialLines = box.lines.map { l ->
                                                                                 CartonLineState(
                                                                                     productId = l.productId,
@@ -1594,7 +1617,7 @@ fun CreatePurchaseOrderDialog(
                                                                         )
                                                                     )
                                                                 },
-                                                                modifier = Modifier.size(26.dp)
+                                                                modifier = Modifier.size(48.dp)
                                                             ) {
                                                                 Icon(
                                                                     imageVector = Icons.Default.ContentCopy,
@@ -1605,7 +1628,7 @@ fun CreatePurchaseOrderDialog(
                                                             }
                                                             IconButton(
                                                                 onClick = { cartonBoxes.removeAt(cIdx) },
-                                                                modifier = Modifier.size(26.dp)
+                                                                modifier = Modifier.size(48.dp)
                                                             ) {
                                                                 Icon(Icons.Default.Delete, contentDescription = "Remove Carton", tint = StatusError, modifier = Modifier.size(17.dp))
                                                             }
@@ -1614,22 +1637,30 @@ fun CreatePurchaseOrderDialog(
 
                                                     Spacer(modifier = Modifier.height(6.dp))
 
+                                                    OutlinedTextField(
+                                                        value = box.cartonNumber, onValueChange = { box.cartonNumber = it },
+                                                        label = { Text(if (isBangla) "কার্টন নম্বর" else "Carton no.") },
+                                                        modifier = Modifier.fillMaxWidth(), singleLine = true
+                                                    )
+                                                    Spacer(Modifier.height(8.dp))
                                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                         OutlinedTextField(
-                                                            value = box.cartonNumber,
-                                                            onValueChange = { box.cartonNumber = it },
-                                                            label = { Text(if (isBangla) "কার্টন নম্বর" else "Carton No") },
-                                                            modifier = Modifier.weight(1f),
-                                                            singleLine = true
+                                                            value = box.grossWeightKgStr, onValueChange = { box.grossWeightKgStr = it },
+                                                            label = { Text(if (isBangla) "গ্রস ওজন (KG)" else "Gross (kg)") },
+                                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                            modifier = Modifier.weight(1f), singleLine = true
                                                         )
                                                         OutlinedTextField(
-                                                            value = box.grossWeightKgStr,
-                                                            onValueChange = { box.grossWeightKgStr = it },
-                                                            label = { Text(if (isBangla) "কার্টনের মোট ওজন (KG)" else "Carton Gross Wt (KG)") },
+                                                            value = box.netWeightKgStr, onValueChange = { box.netWeightKgStr = it },
+                                                            label = { Text(if (isBangla) "নেট ওজন (KG)" else "Net (kg)") },
+                                                            placeholder = { Text(box.grossWeightKgStr) },
                                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                                            modifier = Modifier.weight(1f),
-                                                            singleLine = true
+                                                            modifier = Modifier.weight(1f), singleLine = true
                                                         )
+                                                    }
+                                                    if (box.cbm.signum() > 0) {
+                                                        Text(if (box.lengthCm.signum() > 0) "${box.lengthCm} × ${box.widthCm} × ${box.heightCm} cm · ${box.cbm} m³" else "${box.cbm} m³",
+                                                            style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                                                     }
 
                                                     Spacer(modifier = Modifier.height(8.dp))
@@ -1641,18 +1672,15 @@ fun CreatePurchaseOrderDialog(
                                                     )
                                                     Spacer(modifier = Modifier.height(4.dp))
 
-                                                    val manualLines = box.lines.filter {
-                                                        (it.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO
+                                                    val allocationPreview = runCatching {
+                                                        CartonWeightAllocationEngine.allocateWeights(boxGw, box.netWeightKg(), lines = box.lines.map { line ->
+                                                            MixedCartonLineInput(line.productId, line.variantId, quantity = line.quantityStr.toInt(),
+                                                                manualGrossWeightKg = line.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal())
+                                                        })
                                                     }
-                                                    val totalManualWeight = manualLines.fold(BigDecimal.ZERO) { acc, line ->
-                                                        acc.add(line.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                                                    val totalManualWeight = box.lines.fold(BigDecimal.ZERO) { sum, line ->
+                                                        sum + (line.manualWeightKgStr.toBigDecimalOrNull() ?: BigDecimal.ZERO)
                                                     }
-                                                    val remainingWeight = (boxGw - totalManualWeight).coerceAtLeast(BigDecimal.ZERO)
-                                                    val nonManualLines = box.lines.filter {
-                                                        (it.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) <= BigDecimal.ZERO
-                                                    }
-                                                    val totalNonManualPcs = nonManualLines.sumOf { it.quantityStr.trim().toIntOrNull() ?: 0 }
-
                                                     if (totalManualWeight > boxGw && boxGw > BigDecimal.ZERO) {
                                                         Text(
                                                             text = if (isBangla) "⚠️ সতর্কতা: ম্যানুয়াল মোট ওজন (${totalManualWeight} KG) কার্টনের মোট ওজনের (${boxGw} KG) চেয়ে বেশি!"
@@ -1667,13 +1695,7 @@ fun CreatePurchaseOrderDialog(
                                                     box.lines.forEachIndexed { lIdx, lineState ->
                                                         val lineQty = lineState.quantityStr.trim().toIntOrNull() ?: 0
                                                         val manualWt = lineState.manualWeightKgStr.trim().toBigDecimalOrNull()
-                                                        val allocatedKg = if (manualWt != null && manualWt > BigDecimal.ZERO) {
-                                                            manualWt.setScale(2, RoundingMode.HALF_UP)
-                                                        } else if (totalNonManualPcs > 0 && lineQty > 0 && remainingWeight > BigDecimal.ZERO) {
-                                                            remainingWeight.multiply(BigDecimal(lineQty)).divide(BigDecimal(totalNonManualPcs), 2, RoundingMode.HALF_UP)
-                                                        } else {
-                                                            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-                                                        }
+                                                        val allocatedKg = allocationPreview.getOrNull()?.getOrNull(lIdx)?.allocatedGrossWeightKg ?: BigDecimal.ZERO
                                                         val perPcKg = if (lineQty > 0) allocatedKg.divide(BigDecimal(lineQty), 3, RoundingMode.HALF_UP) else BigDecimal.ZERO
 
                                                         Column(
@@ -1852,26 +1874,26 @@ fun CreatePurchaseOrderDialog(
                     }
 
                     // ==========================================
+                    }
+                    if (currentStep == 3) {
                     // 5. Base Summary: Total Weight, Category Per-KG Rate & Total Freight Calculation
                     // ==========================================
-                    item {
+                    if (!metadataOnly) item {
                         // Compute category weights & totals live
                         val categoryWeightMap = mutableMapOf<String, BigDecimal>()
                         if (cartonBoxes.isNotEmpty()) {
                             cartonBoxes.forEach { box ->
-                                val boxGw = box.grossWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                val totalBoxPcs = box.lines.sumOf { it.quantityStr.trim().toIntOrNull() ?: 0 }
-                                if (totalBoxPcs > 0 && boxGw > BigDecimal.ZERO) {
-                                    box.lines.forEach { line ->
-                                        val lQty = line.quantityStr.trim().toIntOrNull() ?: 0
-                                        if (lQty > 0 && line.productId.isNotBlank()) {
-                                            val prod = products.find { it.id == line.productId }
-                                            val catId = prod?.categoryId ?: "uncategorized"
-                                            val shareGw = boxGw.multiply(BigDecimal(lQty))
-                                                .divide(BigDecimal(totalBoxPcs), 3, RoundingMode.HALF_UP)
-                                            categoryWeightMap[catId] = (categoryWeightMap[catId] ?: BigDecimal.ZERO).add(shareGw)
+                                val shares = runCatching {
+                                    CartonWeightAllocationEngine.allocateWeights(
+                                        box.grossWeightKgStr.toBigDecimal(), lines = box.lines.map { line ->
+                                            MixedCartonLineInput(line.productId, line.variantId, quantity = line.quantityStr.toInt(),
+                                                manualGrossWeightKg = line.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal())
                                         }
-                                    }
+                                    )
+                                }.getOrDefault(emptyList())
+                                shares.forEach { line ->
+                                    val catId = products.find { it.id == line.productId }?.categoryId ?: "uncategorized"
+                                    categoryWeightMap[catId] = (categoryWeightMap[catId] ?: BigDecimal.ZERO) + line.allocatedGrossWeightKg
                                 }
                             }
                         } else {
@@ -2121,6 +2143,11 @@ fun CreatePurchaseOrderDialog(
                         }
                     }
 
+                    if (metadataOnly) item {
+                        Text(if (isBangla) "অর্থসংক্রান্ত তথ্য লক আছে। নোট, ঠিকানা ও সংযুক্তি সম্পাদনা করতে পারবেন।"
+                            else "Financial details are locked. You can update notes, delivery address and attachments.",
+                            style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    }
                     // 6. Delivery Address & Attachments
                     if (!isLocalPurchase) {
                         item {
@@ -2165,7 +2192,7 @@ fun CreatePurchaseOrderDialog(
                     }
 
                     // 8. Payment Terms & Schedule Calculation
-                    item {
+                    if (!metadataOnly) item {
                         Column {
                             Text(
                                 text = if (isBangla) "পেমেন্ট শর্ত ও সময়সূচি (Payment Terms):" else "Payment Terms & Schedule:",
@@ -2186,7 +2213,7 @@ fun CreatePurchaseOrderDialog(
                                             .clip(RoundedCornerShape(8.dp))
                                             .background(if (isSel) PrimaryPurple else Color(0xFFF1F5F9))
                                             .clickable { selectedPaymentTerm = term }
-                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                            .heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 12.dp)
                                     ) {
                                         Text(
                                             text = if (isBangla) term.labelBn else term.labelEn,
@@ -2250,89 +2277,37 @@ fun CreatePurchaseOrderDialog(
                         }
                     }
 
-                    // Error Message Banner
-                    if (errorMessage != null) {
-                        item {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Info, contentDescription = null, tint = StatusError)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = errorMessage!!,
-                                        color = StatusError,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
 
                 HorizontalDivider(color = ERPDivider, modifier = Modifier.padding(vertical = 10.dp))
 
-                // Bottom Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = if (isBangla) "বাতিল" else "Cancel",
-                            color = TextSecondary,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Save Draft Button
-                        OutlinedButton(
-                            onClick = { submitPo(PurchaseOrderStatus.DRAFT) },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryPurple),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isBangla) "ড্রাফট রাখুন" else "Save Draft",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
-                            )
+                (errorMessage ?: saveError)?.let { message ->
+                    Text(message, color = StatusError, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (currentStep > 0 && !metadataOnly) OutlinedButton(
+                        onClick = { currentStep-- }, enabled = !isSaving,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) { Text(if (isBangla) "পেছনে" else "Back") }
+                    if (currentStep < 3) {
+                        Button(onClick = { currentStep++ }, enabled = !isSaving,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                            Text(if (isBangla) "পরবর্তী" else "Continue")
                         }
-
-                        // Confirm PO Button
-                        Button(
-                            onClick = { submitPo(PurchaseOrderStatus.CONFIRMED) },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isEditing) {
-                                    if (isBangla) "PO আপডেট করুন" else "Update PO"
-                                } else {
-                                    if (isBangla) "PO নিশ্চিত করুন" else "Confirm PO"
-                                },
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            )
+                    } else {
+                        if (!metadataOnly && (editingOrder == null || editingOrder.status == PurchaseOrderStatus.DRAFT.name)) {
+                            OutlinedButton(onClick = { submitPo(PurchaseOrderStatus.DRAFT) }, enabled = !isSaving,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp), contentPadding = PaddingValues(4.dp)) {
+                                Text(if (isBangla) "ড্রাফট" else "Draft")
+                            }
+                        }
+                        Button(onClick = { submitPo(PurchaseOrderStatus.CONFIRMED) }, enabled = !isSaving,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp), contentPadding = PaddingValues(4.dp)) {
+                            Text(if (isSaving) { if (isBangla) "সংরক্ষণ…" else "Saving…" }
+                                else if (isEditing) { if (isBangla) "আপডেট" else "Update" }
+                                else if (isBangla) "নিশ্চিত করুন" else "Confirm")
                         }
                     }
                 }

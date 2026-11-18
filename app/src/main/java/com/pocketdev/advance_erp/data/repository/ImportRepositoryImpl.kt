@@ -130,6 +130,25 @@ class ImportRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun updatePurchaseOrderMetadata(orderId: String, notes: String?, attachments: String?): Unit = database.withTransaction {
+        val order = purchaseOrderDao.getOrderById(orderId) ?: error("Purchase order not found")
+        require(order.status != PurchaseOrderStatus.CANCELLED.name) { "Cancelled orders cannot be edited" }
+        purchaseOrderDao.updateOrder(order.copy(notes = notes, attachments = attachments?.takeIf { it.isNotBlank() }, updatedAt = System.currentTimeMillis()))
+    }
+
+    override suspend fun savePurchaseOrderDraft(
+        orderId: String?, supplierId: String, currency: String, exchangeRate: BigDecimal,
+        items: List<PurchaseOrderItemDraft>, notes: String?, status: PurchaseOrderStatus,
+        cartons: List<PoMixedCartonDraft>, chinaDeliveryChargeMinor: Long,
+        categoryFreightRatesBdtMinor: Map<String, Long>, handlingCostMinor: Long,
+        sampleCostMinor: Long, attachments: String?
+    ): String = database.withTransaction {
+        val id = orderId ?: createPurchaseOrder(supplierId, currency, exchangeRate, items, notes, status, attachments)
+        updatePurchaseOrder(id, supplierId, currency, exchangeRate, items, notes, status, cartons,
+            chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments).getOrThrow()
+        id
+    }
+
     override suspend fun createPurchaseOrder(
         supplierId: String,
         currency: String,
@@ -143,7 +162,12 @@ class ImportRepositoryImpl @Inject constructor(
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive: $exchangeRate" }
 
         val orderCount = purchaseOrderDao.getOrderCount()
-        val poNumber = "PO-2026-CN-%03d".format(orderCount + 1)
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        var nextNumber = orderCount + 1
+        var poNumber: String
+        do {
+            poNumber = String.format(java.util.Locale.ROOT, "PO-%d-%03d", year, nextNumber++)
+        } while (purchaseOrderDao.getOrderByNumber(poNumber) != null)
         val orderId = "po-${UUID.randomUUID()}"
 
         var totalOriginalMinor = 0L
@@ -153,14 +177,14 @@ class ImportRepositoryImpl @Inject constructor(
             require(draft.quantity > 0) { "Quantity must be greater than 0" }
             require(draft.unitPriceMinor > 0) { "Unit price must be greater than 0" }
 
-            val lineOriginalMinor = draft.quantity.toLong() * draft.unitPriceMinor
+            val lineOriginalMinor = Math.multiplyExact(draft.quantity.toLong(), draft.unitPriceMinor)
             val lineBdtMinor = BigDecimal(lineOriginalMinor)
                 .multiply(exchangeRate)
                 .setScale(0, RoundingMode.HALF_UP)
                 .longValueExact()
 
-            totalOriginalMinor += lineOriginalMinor
-            totalBdtMinor += lineBdtMinor
+            totalOriginalMinor = Math.addExact(totalOriginalMinor, lineOriginalMinor)
+            totalBdtMinor = Math.addExact(totalBdtMinor, lineBdtMinor)
 
             PurchaseOrderItem(
                 id = "poi-${UUID.randomUUID()}",
@@ -273,46 +297,29 @@ class ImportRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun duplicatePurchaseOrder(orderId: String): String {
-        val originalOrder = purchaseOrderDao.getOrderById(orderId)
-            ?: throw IllegalArgumentException("Purchase Order not found: $orderId")
-        val originalItems = purchaseOrderDao.getItemsForOrderSync(orderId)
-
-        val poCount = purchaseOrderDao.getOrderCount()
-        val newPoNumber = "PO-%s-%04d".format(
-            java.text.SimpleDateFormat("yyyyMM", java.util.Locale.US).format(java.util.Date()),
-            poCount + 1
-        )
-        val newOrderId = "po-${UUID.randomUUID()}"
-
-        val newOrder = originalOrder.copy(
-            id = newOrderId,
-            poNumber = newPoNumber,
-            status = PurchaseOrderStatus.DRAFT.name,
-            paidAmountMinor = 0L,
-            paidBdtAmountMinor = 0L,
-            orderDate = System.currentTimeMillis(),
-            notes = "Duplicated from ${originalOrder.poNumber}. ${originalOrder.notes ?: ""}".trim(),
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
-        )
-
-        val newItems = originalItems.map { item ->
-            item.copy(
-                id = "poi-${UUID.randomUUID()}",
-                purchaseOrderId = newOrderId,
-                receivedQuantity = 0
-            )
+    override suspend fun duplicatePurchaseOrder(orderId: String): String = database.withTransaction {
+        val original = purchaseOrderDao.getOrderById(orderId) ?: error("Purchase order not found")
+        val items = purchaseOrderDao.getItemsForOrderSync(orderId).map {
+            PurchaseOrderItemDraft(it.productId, it.variantId, it.quantity, it.unitPriceMinor,
+                it.cartonQuantity, it.pcsPerCarton, BigDecimal(it.grossWeightKg), BigDecimal(it.netWeightKg), BigDecimal(it.cbm))
         }
-
-        database.withTransaction {
-            purchaseOrderDao.insertOrder(newOrder)
-            purchaseOrderDao.insertItems(newItems)
+        val cartons = importShipmentDao.getCartonsForOrderSync(orderId).groupBy { it.cartonNumber }.map { (number, lines) ->
+            val first = lines.first()
+            com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft(number,
+                lines.fold(BigDecimal.ZERO) { sum, line -> sum + BigDecimal(line.grossWeightKg) },
+                lines.fold(BigDecimal.ZERO) { sum, line -> sum + BigDecimal(line.netWeightKg) },
+                BigDecimal(first.lengthCm), BigDecimal(first.widthCm), BigDecimal(first.heightCm),
+                lines.map { MixedCartonLineDraft(it.productId, it.variantId, quantity = it.quantity, manualGrossWeightKg = BigDecimal(it.grossWeightKg)) }, cbm = BigDecimal(first.cbm))
         }
-        return newOrderId
+        val costs = importCostDao.getCostItemsForOrderSync(orderId)
+        savePurchaseOrderDraft(null, original.supplierId, original.currency, BigDecimal(original.exchangeRateToBdt),
+            items, original.notes, PurchaseOrderStatus.DRAFT, cartons,
+            costs.firstOrNull { it.description.startsWith("China Local Delivery") }?.amountMinor ?: 0L,
+            emptyMap(), costs.firstOrNull { it.description.contains("Handling") }?.bdtAmountMinor ?: 0L,
+            costs.firstOrNull { it.description.contains("Sample") }?.bdtAmountMinor ?: 0L, original.attachments)
     }
 
-    override suspend fun cancelPurchaseOrder(orderId: String, reason: String?) {
+    override suspend fun cancelPurchaseOrder(orderId: String, reason: String?): Unit = database.withTransaction {
         val order = purchaseOrderDao.getOrderById(orderId)
             ?: throw IllegalArgumentException("Purchase Order not found: $orderId")
         check(order.status != PurchaseOrderStatus.CANCELLED.name) {
@@ -325,10 +332,13 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         val existingShipments = importShipmentDao.getShipmentsByOrderIdSync(orderId)
-        check(existingShipments.isEmpty()) {
+        check(existingShipments.all { it.shipmentNumber.startsWith("BATCH-") && it.status == ShipmentStatus.DRAFT.name }) {
             "Cannot cancel Purchase Order: linked shipments exist (${existingShipments.size} shipment(s))"
         }
 
+        check(warehouseReceiptDao.getReceiptsByOrderSync(orderId).isEmpty() && !order.isActualCostFinalized) {
+            "Cannot cancel an order with receiving or finalized costs"
+        }
         // Revert supplier outstanding payable if order was confirmed
         if (order.status == PurchaseOrderStatus.CONFIRMED.name) {
             val supplier = supplierDao.getSupplierById(order.supplierId)
@@ -374,7 +384,7 @@ class ImportRepositoryImpl @Inject constructor(
         paymentAccount: String,
         reference: String?,
         notes: String?
-    ): String {
+    ): String = database.withTransaction {
         require(amountMinor > 0) { "Payment amount must be positive" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive" }
 
@@ -382,6 +392,8 @@ class ImportRepositoryImpl @Inject constructor(
         if (orderId != null) {
             targetOrder = purchaseOrderDao.getOrderById(orderId)
                 ?: throw IllegalArgumentException("Purchase Order not found: $orderId")
+            require(targetOrder.supplierId == supplierId && targetOrder.currency == currency) { "Supplier and currency must match the selected PO" }
+            require(targetOrder.status !in listOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) { "Confirm the PO before recording payment" }
             val remainingBalance = targetOrder.totalAmountMinor - targetOrder.paidAmountMinor
             require(amountMinor <= remainingBalance) {
                 "Payment amount ($amountMinor) exceeds remaining PO balance ($remainingBalance)"
@@ -427,7 +439,7 @@ class ImportRepositoryImpl @Inject constructor(
         if (orderId != null && targetOrder != null) {
             val newPaidAmount = targetOrder.paidAmountMinor + amountMinor
             val newPaidBdt = targetOrder.paidBdtAmountMinor + bdtAmountMinor
-            val newStatus = if (newPaidAmount >= targetOrder.totalAmountMinor) {
+            val newStatus = if (targetOrder.status !in listOf(PurchaseOrderStatus.CONFIRMED.name, PurchaseOrderStatus.PARTIALLY_PAID.name, PurchaseOrderStatus.PAID.name)) targetOrder.status else if (newPaidAmount >= targetOrder.totalAmountMinor) {
                 PurchaseOrderStatus.PAID.name
             } else {
                 PurchaseOrderStatus.PARTIALLY_PAID.name
@@ -438,8 +450,7 @@ class ImportRepositoryImpl @Inject constructor(
         // Automatic Double-Entry Accounting:
         // Dr. Accounts Payable (2010)
         // Cr. Bank (1020)
-        try {
-            accountingRepository.postJournalEntry(
+        accountingRepository.postJournalEntry(
                 entryDate = System.currentTimeMillis(),
                 descEn = "Supplier Payment $paymentNumber to ${supplier?.companyName ?: supplierId}",
                 descBn = "সরবরাহকারী পেমেন্ট $paymentNumber (${supplier?.companyName ?: ""})",
@@ -453,18 +464,14 @@ class ImportRepositoryImpl @Inject constructor(
                         description = "Debit Accounts Payable for remittance $paymentNumber"
                     ),
                     JournalLineDraft(
-                        accountId = "coa-1020", // City Bank Corporate
+                        accountId = if (method == PaymentMethod.CASH) "coa-1010" else "coa-1020",
                         isDebit = false,
                         amountMinor = bdtAmountMinor,
                         description = "Credit Bank Account for remittance $paymentNumber"
                     )
                 )
             )
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
-        return paymentId
+        paymentId
     }
 
     // ==========================================
@@ -753,11 +760,17 @@ class ImportRepositoryImpl @Inject constructor(
         exchangeRate: BigDecimal,
         method: AllocationMethod,
         paymentAccount: String,
-        docRef: String?
-    ): String {
+        docRef: String?,
+        manualAllocationsBdtMinor: Map<String, Long>
+    ): String = database.withTransaction {
         require(amountMinor > 0) { "Cost amount must be greater than zero" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive" }
 
+        if (method == AllocationMethod.MANUAL) {
+            val expected = BigDecimal(amountMinor).multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP).longValueExact()
+            require(manualAllocationsBdtMinor.isNotEmpty() && manualAllocationsBdtMinor.values.all { it >= 0 } &&
+                manualAllocationsBdtMinor.values.fold(0L, Math::addExact) == expected) { "Manual BDT allocations must equal the expense total" }
+        }
         val costId = "cost-${UUID.randomUUID()}"
         val bdtAmountMinor = BigDecimal(amountMinor)
             .multiply(exchangeRate)
@@ -777,6 +790,7 @@ class ImportRepositoryImpl @Inject constructor(
             paymentAccount = paymentAccount,
             documentReference = docRef,
             allocationMethod = method.name,
+            manualAllocationsJson = LandedCostAllocationEngine.formatManualAllocations(manualAllocationsBdtMinor),
             isPosted = true,
             createdAt = System.currentTimeMillis()
         )
@@ -809,14 +823,14 @@ class ImportRepositoryImpl @Inject constructor(
                 )
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            throw e
         }
 
-        return costId
+        return@withTransaction costId
     }
 
-    override suspend fun deleteCostItem(costItemId: String) {
-        importCostDao.deleteCostItem(costItemId)
+    override suspend fun deleteCostItem(costItemId: String) = database.withTransaction {
+        deletePurchaseCostItem(costItemId)
     }
 
     override suspend fun calculateAndSaveLandedCost(shipmentId: String): List<LandedCostSnapshot> {
@@ -836,7 +850,7 @@ class ImportRepositoryImpl @Inject constructor(
         newAmountMinor: Long,
         exchangeRate: BigDecimal,
         reason: String
-    ): CostAdjustmentResult {
+    ): CostAdjustmentResult = database.withTransaction {
         val shipment = importShipmentDao.getShipmentById(shipmentId)
             ?: throw IllegalArgumentException("Shipment not found: $shipmentId")
 
@@ -944,11 +958,11 @@ class ImportRepositoryImpl @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                throw e
             }
         }
 
-        return CostAdjustmentResult(
+        return@withTransaction CostAdjustmentResult(
             shipmentId = shipmentId,
             previousTotalExpenseBdtMinor = oldTotalExpenseBdt,
             actualTotalExpenseBdtMinor = newTotalExpenseBdt,
@@ -1065,7 +1079,7 @@ class ImportRepositoryImpl @Inject constructor(
         return receiptId
     }
 
-    override suspend fun postWarehouseReceipt(receiptId: String, allowDiscrepancy: Boolean) {
+    override suspend fun postWarehouseReceipt(receiptId: String, allowDiscrepancy: Boolean): Unit = database.withTransaction {
         val receipt = warehouseReceiptDao.getReceiptById(receiptId)
             ?: throw IllegalArgumentException("Warehouse receipt not found: $receiptId")
 
@@ -1362,10 +1376,11 @@ class ImportRepositoryImpl @Inject constructor(
                         lines = lines
                     )
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    throw e
                 }
             }
         }
+        Unit
     }
 
     override fun getAllCostLayers(): Flow<List<InventoryCostLayer>> = inventoryCostLayerDao.getAllCostLayers()
@@ -1388,20 +1403,34 @@ class ImportRepositoryImpl @Inject constructor(
         grossWeightKg: BigDecimal,
         netWeightKg: BigDecimal,
         lines: List<MixedCartonLineDraft>
-    ): List<String> {
+    ): List<String> = database.withTransaction {
         require(lines.isNotEmpty()) { "Mixed carton must have at least one product line" }
         val po = purchaseOrderDao.getOrderById(orderId)
             ?: throw IllegalArgumentException("Purchase order not found: $orderId")
         val batchShipment = importShipmentDao.getBatchShipmentForOrder(orderId)
             ?: throw IllegalStateException("Batch shipment not found for order: $orderId")
 
+        requirePackingEditableOrder(orderId)
+        val currentPacking = importShipmentDao.getCartonsForOrderSync(orderId)
+        require(cartonNumber.isNotBlank() && currentPacking.none { it.cartonNumber == cartonNumber.trim() }) {
+            "Each carton needs a unique non-empty number"
+        }
+        val ordered = purchaseOrderDao.getItemsForOrderSync(orderId).associateBy { it.productId to it.variantId }
+        val existingQty = currentPacking.groupBy { it.productId to it.variantId }.mapValues { (_, rows) -> rows.sumOf { it.quantity.toLong() } }
+        lines.groupBy { it.productId to it.variantId }.forEach { (key, rows) ->
+            val item = requireNotNull(ordered[key]) { "Packed variant is not in the purchase order" }
+            require((existingQty[key] ?: 0L) + rows.sumOf { it.quantity.toLong() } <= item.quantity.toLong()) {
+                "Packed quantity exceeds the ordered quantity"
+            }
+        }
         // Run allocation engine
         val lineInputs = lines.map {
             MixedCartonLineInput(
                 productId = it.productId,
                 variantId = it.variantId,
                 productName = it.productName,
-                quantity = it.quantity
+                quantity = it.quantity,
+                manualGrossWeightKg = it.manualGrossWeightKg
             )
         }
         val allocated = CartonWeightAllocationEngine.allocateWeights(
@@ -1410,7 +1439,12 @@ class ImportRepositoryImpl @Inject constructor(
             lines = lineInputs
         )
 
-        val cbm = CbmCalculator.calculateCbm(lengthCm, widthCm, heightCm, 1)
+        val dimensions = listOf(lengthCm, widthCm, heightCm)
+        require(dimensions.all { it.signum() == 0 } || dimensions.all { it > BigDecimal.ZERO }) {
+            "Enter all three carton dimensions or leave all blank"
+        }
+        val cbm = if (dimensions.all { it.signum() == 0 }) BigDecimal.ZERO
+            else CbmCalculator.calculateCbm(lengthCm, widthCm, heightCm, 1)
         val totalQty = lines.sumOf { it.quantity }
 
         val insertedIds = mutableListOf<String>()
@@ -1422,7 +1456,7 @@ class ImportRepositoryImpl @Inject constructor(
             val cartonEntity = ShipmentCarton(
                 id = cartonId,
                 shipmentId = batchShipment.id,
-                cartonNumber = cartonNumber,
+                cartonNumber = cartonNumber.trim(),
                 productId = alloc.productId,
                 variantId = alloc.variantId,
                 quantity = alloc.quantity,
@@ -1473,7 +1507,7 @@ class ImportRepositoryImpl @Inject constructor(
         )
         syncShipmentCategoryFreightRates(batchShipment.id)
 
-        return insertedIds
+        insertedIds
     }
 
     override fun getCartonsForOrder(orderId: String): Flow<List<ShipmentCarton>> =
@@ -1493,7 +1527,8 @@ class ImportRepositoryImpl @Inject constructor(
         isEstimated: Boolean,
         paymentAccount: String,
         docRef: String?,
-        notes: String?
+        notes: String?,
+        manualAllocationsBdtMinor: Map<String, Long>
     ): String {
         val po = purchaseOrderDao.getOrderById(orderId)
             ?: throw IllegalArgumentException("Purchase order not found: $orderId")
@@ -1505,6 +1540,11 @@ class ImportRepositoryImpl @Inject constructor(
             .setScale(0, RoundingMode.HALF_UP)
             .longValueExact()
 
+        if (method == AllocationMethod.MANUAL) {
+            val expected = BigDecimal(amountMinor).multiply(exchangeRate).setScale(0, RoundingMode.HALF_UP).longValueExact()
+            require(manualAllocationsBdtMinor.isNotEmpty() && manualAllocationsBdtMinor.values.all { it >= 0 } &&
+                manualAllocationsBdtMinor.values.fold(0L, Math::addExact) == expected) { "Manual BDT allocations must equal the expense total" }
+        }
         val costId = "cost-${UUID.randomUUID()}"
         val costItem = ImportCostItem(
             id = costId,
@@ -1520,6 +1560,7 @@ class ImportRepositoryImpl @Inject constructor(
             paymentAccount = paymentAccount,
             documentReference = docRef,
             allocationMethod = method.name,
+            manualAllocationsJson = LandedCostAllocationEngine.formatManualAllocations(manualAllocationsBdtMinor),
             isPosted = false,
             isEstimated = isEstimated,
             isPaid = false,
@@ -1601,7 +1642,11 @@ class ImportRepositoryImpl @Inject constructor(
             } catch (_: Exception) {
                 AllocationMethod.PURCHASE_VALUE
             }
-            val results = LandedCostAllocationEngine.allocate(costItem.bdtAmountMinor, allocationInputs, method)
+            val manual = LandedCostAllocationEngine.parseManualAllocations(costItem.manualAllocationsJson)
+            val inputs = if (method == AllocationMethod.MANUAL) allocationInputs.map {
+                it.copy(manualAmountBdtMinor = manual[it.id] ?: 0L)
+            } else allocationInputs
+            val results = LandedCostAllocationEngine.allocate(costItem.bdtAmountMinor, inputs, method)
 
             results.forEach { res ->
                 val parts = res.itemId.split(":")
@@ -1892,6 +1937,15 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         database.withTransaction {
+            check(warehouseReceiptDao.getReceiptById(receiptId)?.status != ReceiptStatus.POSTED.name) { "Receipt is already posted" }
+            val currentItems = purchaseOrderDao.getItemsForOrderSync(orderId)
+            items.groupBy { it.productId to it.variantId }.forEach { (key, lines) ->
+                val ordered = currentItems.firstOrNull { it.productId == key.first && it.variantId == key.second }
+                    ?: error("Received variant is not in the PO")
+                require(lines.sumOf { it.receivedQuantity } <= ordered.quantity - ordered.receivedQuantity) {
+                    "Received quantity exceeds the remaining PO quantity"
+                }
+            }
             var totalGoodValueBdt = 0L
             var totalDamageValueBdt = 0L
             var totalMissingValueBdt = 0L
@@ -1922,7 +1976,7 @@ class ImportRepositoryImpl @Inject constructor(
                     ?: (unitPurchaseCostBdt + unitAllocatedCostBdt)
                 val effectiveAllocatedPerUnit = (finalUnitCost - unitPurchaseCostBdt).coerceAtLeast(unitAllocatedCostBdt)
 
-                val goodQuantity = (item.receivedQuantity - item.damagedQuantity - item.missingQuantity).coerceAtLeast(0)
+                val goodQuantity = (item.receivedQuantity - item.damagedQuantity).coerceAtLeast(0)
 
                 var balanceAfterReceipt = (if (item.variantId != null) {
                     stockBalanceDao.getVariantBalance(receipt.warehouseId, item.productId, item.variantId)
@@ -2323,9 +2377,9 @@ class ImportRepositoryImpl @Inject constructor(
         val totalReceived = poItems.sumOf { it.receivedQuantity }
         val remaining = (totalOrdered - totalReceived).coerceAtLeast(0)
 
-        val receipts = warehouseReceiptDao.getReceiptsByOrderSync(orderId)
+        val receipts = warehouseReceiptDao.getReceiptsByOrderSync(orderId).filter { it.status == ReceiptStatus.POSTED.name }
         val allReceiptItems = receipts.flatMap { warehouseReceiptDao.getItemsForReceiptSync(it.id) }
-        val goodQty = allReceiptItems.sumOf { (it.receivedQuantity - it.damagedQuantity - it.missingQuantity).coerceAtLeast(0) }
+        val goodQty = allReceiptItems.sumOf { (it.receivedQuantity - it.damagedQuantity).coerceAtLeast(0) }
         val damagedQty = allReceiptItems.sumOf { it.damagedQuantity }
         val missingQty = allReceiptItems.sumOf { it.missingQuantity }
 
@@ -2368,15 +2422,68 @@ class ImportRepositoryImpl @Inject constructor(
     override fun getShortageRecordsForOrder(orderId: String): Flow<List<ShortageRecord>> =
         minimalImportDao.getShortageRecordsForOrder(orderId)
 
-    override suspend fun deleteCarton(cartonId: String) {
+    private fun cartonCbm(carton: PoMixedCartonDraft): BigDecimal {
+        val dimensions = listOf(carton.lengthCm, carton.widthCm, carton.heightCm)
+        require(dimensions.all { it.signum() == 0 } || dimensions.all { it > BigDecimal.ZERO }) {
+            "Enter all three carton dimensions or leave all blank"
+        }
+        require(carton.cbm >= BigDecimal.ZERO) { "CBM cannot be negative" }
+        return if (dimensions.all { it.signum() == 0 }) carton.cbm
+            else CbmCalculator.calculateCbm(carton.lengthCm, carton.widthCm, carton.heightCm, 1)
+    }
+
+    private suspend fun requirePackingEditableOrder(orderId: String): PurchaseOrder {
+        val po = purchaseOrderDao.getOrderById(orderId) ?: error("Purchase order not found")
+        require(!po.isActualCostFinalized && po.status !in listOf(PurchaseOrderStatus.CANCELLED.name, PurchaseOrderStatus.COMPLETED.name)) {
+            "Packing is locked for finalized, completed or cancelled orders"
+        }
+        require(warehouseReceiptDao.getReceiptsByOrderSync(orderId).isEmpty()) { "Packing is locked after receiving starts" }
+        return po
+    }
+
+    private suspend fun requireEditableOrder(orderId: String): PurchaseOrder {
+        val po = purchaseOrderDao.getOrderById(orderId) ?: error("Purchase order not found")
+        require(!po.isActualCostFinalized && po.status !in listOf(PurchaseOrderStatus.CANCELLED.name, PurchaseOrderStatus.COMPLETED.name)) {
+            "Finalized, completed or cancelled orders cannot be changed"
+        }
+        require(po.paidAmountMinor == 0L && warehouseReceiptDao.getReceiptsByOrderSync(orderId).isEmpty()) {
+            "Financial changes are locked after payment or receiving"
+        }
+        return po
+    }
+
+    private suspend fun refreshOrderPacking(orderId: String) {
+        val cartons = importShipmentDao.getCartonsForOrderSync(orderId)
+        val count = cartons.map { it.cartonNumber }.distinct().size
+        val gross = cartons.fold(BigDecimal.ZERO) { sum, line -> sum + BigDecimal(line.grossWeightKg) }.toPlainString()
+        val net = cartons.fold(BigDecimal.ZERO) { sum, line -> sum + BigDecimal(line.netWeightKg) }.toPlainString()
+        val cbm = cartons.distinctBy { it.cartonNumber }.fold(BigDecimal.ZERO) { sum, line -> sum + BigDecimal(line.cbm) }.toPlainString()
+        purchaseOrderDao.updatePackingSummary(orderId, gross, net, cbm, count)
+        importShipmentDao.getBatchShipmentForOrder(orderId)?.let {
+            importShipmentDao.updateShipment(it.copy(totalCartons = count, totalQuantity = cartons.sumOf { line -> line.quantity },
+                totalGrossWeightKg = gross, totalNetWeightKg = net, totalCbm = cbm))
+            syncShipmentCategoryFreightRates(it.id)
+        }
+    }
+
+    override suspend fun deleteCarton(cartonId: String) = database.withTransaction {
+        val carton = importShipmentDao.getCartonById(cartonId) ?: return@withTransaction
+        carton.purchaseOrderId?.let { requirePackingEditableOrder(it) }
         importShipmentDao.deleteCartonById(cartonId)
+        carton.purchaseOrderId?.let { refreshOrderPacking(it) }
+        Unit
     }
 
-    override suspend fun deleteCartonByNumber(orderId: String, cartonNumber: String) {
+    override suspend fun deleteCartonByNumber(orderId: String, cartonNumber: String) = database.withTransaction {
+        requirePackingEditableOrder(orderId)
         importShipmentDao.deleteCartonByNumber(orderId, cartonNumber)
+        refreshOrderPacking(orderId)
     }
 
-    override suspend fun deletePurchaseCostItem(costItemId: String) {
+    override suspend fun deletePurchaseCostItem(costItemId: String) = database.withTransaction {
+        val cost = importCostDao.getCostItemById(costItemId) ?: return@withTransaction
+        cost.purchaseOrderId?.let { requirePackingEditableOrder(it) }
+        require(!cost.isCapitalized && !cost.isPosted) { "Posted or capitalized costs require a reversal or cost adjustment" }
         importCostDao.deleteCostItem(costItemId)
     }
 
@@ -2394,13 +2501,30 @@ class ImportRepositoryImpl @Inject constructor(
         handlingCostMinor: Long,
         sampleCostMinor: Long,
         attachments: String?
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> = runCatching { database.withTransaction {
         require(items.isNotEmpty()) { "Purchase order must contain at least 1 item" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive: $exchangeRate" }
 
         val existingOrder = purchaseOrderDao.getOrderById(orderId)
             ?: throw IllegalArgumentException("Purchase order not found: $orderId")
 
+        require(!existingOrder.isActualCostFinalized && existingOrder.status != PurchaseOrderStatus.CANCELLED.name) {
+            "Finalized or cancelled orders cannot be edited"
+        }
+        requireEditableOrder(orderId)
+        val existingItems = purchaseOrderDao.getItemsForOrderSync(orderId)
+        require(existingItems.all { it.receivedQuantity == 0 } && existingOrder.paidAmountMinor == 0L) {
+            "Orders with receipts or payments cannot be financially edited"
+        }
+        require(items.map { it.productId to it.variantId }.distinct().size == items.size) { "Duplicate product variants are not allowed" }
+        require(cartons.map { it.cartonNumber.trim() }.distinct().size == cartons.size && cartons.all { it.cartonNumber.isNotBlank() }) {
+            "Each carton needs a unique non-empty number"
+        }
+        val quantities = items.associate { (it.productId to it.variantId) to it.quantity.toLong() }
+        cartons.flatMap { it.lines }.groupBy { it.productId to it.variantId }.forEach { (key, rows) ->
+            val ordered = requireNotNull(quantities[key]) { "Packed variant is not in the purchase order" }
+            require(rows.sumOf { it.quantity.toLong() } <= ordered) { "Packed quantity exceeds the ordered quantity" }
+        }
         var totalOriginalMinor = 0L
         var totalBdtMinor = 0L
 
@@ -2408,17 +2532,17 @@ class ImportRepositoryImpl @Inject constructor(
             require(draft.quantity > 0) { "Quantity must be greater than 0" }
             require(draft.unitPriceMinor > 0) { "Unit price must be greater than 0" }
 
-            val lineOriginalMinor = draft.quantity.toLong() * draft.unitPriceMinor
+            val lineOriginalMinor = Math.multiplyExact(draft.quantity.toLong(), draft.unitPriceMinor)
             val lineBdtMinor = BigDecimal(lineOriginalMinor)
                 .multiply(exchangeRate)
                 .setScale(0, RoundingMode.HALF_UP)
                 .longValueExact()
 
-            totalOriginalMinor += lineOriginalMinor
-            totalBdtMinor += lineBdtMinor
+            totalOriginalMinor = Math.addExact(totalOriginalMinor, lineOriginalMinor)
+            totalBdtMinor = Math.addExact(totalBdtMinor, lineBdtMinor)
 
             PurchaseOrderItem(
-                id = "poi-${UUID.randomUUID()}",
+                id = existingItems.firstOrNull { it.productId == draft.productId && it.variantId == draft.variantId }?.id ?: "poi-${UUID.randomUUID()}",
                 purchaseOrderId = orderId,
                 productId = draft.productId,
                 variantId = draft.variantId,
@@ -2452,9 +2576,7 @@ class ImportRepositoryImpl @Inject constructor(
         }
         val totalCbmSum = if (cartons.isNotEmpty()) {
             cartons.fold(BigDecimal.ZERO) { acc, it ->
-                val cbm = if (it.lengthCm > BigDecimal.ZERO && it.widthCm > BigDecimal.ZERO && it.heightCm > BigDecimal.ZERO) {
-                    CbmCalculator.calculateCbm(it.lengthCm, it.widthCm, it.heightCm, 1)
-                } else BigDecimal.ZERO
+                val cbm = cartonCbm(it)
                 acc.add(cbm)
             }
         } else {
@@ -2463,7 +2585,7 @@ class ImportRepositoryImpl @Inject constructor(
 
         val updatedOrder = existingOrder.copy(
             supplierId = supplierId,
-            status = status.name,
+            status = if (existingOrder.status == PurchaseOrderStatus.DRAFT.name) status.name else existingOrder.status,
             currency = currency,
             exchangeRateToBdt = exchangeRate.toPlainString(),
             totalAmountMinor = totalOriginalMinor,
@@ -2477,6 +2599,20 @@ class ImportRepositoryImpl @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
 
+        val oldLiability = if (existingOrder.status == PurchaseOrderStatus.DRAFT.name) 0L else existingOrder.totalBdtAmountMinor
+        val newLiability = if (updatedOrder.status == PurchaseOrderStatus.DRAFT.name) 0L else totalBdtMinor
+        if (supplierId == existingOrder.supplierId) {
+            supplierDao.getSupplierById(supplierId)?.let {
+                supplierDao.updateOutstandingPayable(supplierId, Math.addExact(it.outstandingPayableMinor, newLiability - oldLiability))
+            }
+        } else {
+            supplierDao.getSupplierById(existingOrder.supplierId)?.let {
+                supplierDao.updateOutstandingPayable(it.id, (it.outstandingPayableMinor - oldLiability).coerceAtLeast(0L))
+            }
+            supplierDao.getSupplierById(supplierId)?.let {
+                supplierDao.updateOutstandingPayable(it.id, Math.addExact(it.outstandingPayableMinor, newLiability))
+            }
+        }
         // Replace order items
         purchaseOrderDao.saveOrderWithItems(updatedOrder, poItems)
 
@@ -2497,9 +2633,9 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         // Sync cartons if provided
-        if (cartons.isNotEmpty()) {
+        run {
             importShipmentDao.deleteCartonsForOrder(orderId)
-            val shipmentId = batchShipment?.id ?: "shp-${UUID.randomUUID()}"
+            val shipmentId = requireNotNull(batchShipment) { "Linked shipment not found" }.id
             cartons.forEach { ctn ->
                 if (ctn.lines.isNotEmpty()) {
                     val lineInputs = ctn.lines.map {
@@ -2507,7 +2643,8 @@ class ImportRepositoryImpl @Inject constructor(
                             productId = it.productId,
                             variantId = it.variantId,
                             productName = it.productName,
-                            quantity = it.quantity
+                            quantity = it.quantity,
+                            manualGrossWeightKg = it.manualGrossWeightKg
                         )
                     }
                     val allocated = CartonWeightAllocationEngine.allocateWeights(
@@ -2515,9 +2652,7 @@ class ImportRepositoryImpl @Inject constructor(
                         cartonNetWeightKg = ctn.netWeightKg,
                         lines = lineInputs
                     )
-                    val cbm = if (ctn.lengthCm > BigDecimal.ZERO && ctn.widthCm > BigDecimal.ZERO && ctn.heightCm > BigDecimal.ZERO) {
-                        CbmCalculator.calculateCbm(ctn.lengthCm, ctn.widthCm, ctn.heightCm, 1)
-                    } else BigDecimal.ZERO
+                    val cbm = cartonCbm(ctn)
 
                     val totalQty = ctn.lines.sumOf { it.quantity }
                     allocated.forEach { alloc ->
@@ -2552,8 +2687,19 @@ class ImportRepositoryImpl @Inject constructor(
             }
         }
 
+        if (batchShipment != null) syncShipmentCategoryFreightRates(batchShipment.id)
+
         // Sync editable PO cost items (China Local Delivery, Handling, Sample) without duplicating
         if (batchShipment != null) {
+            saveShipmentSupplierAndChinaDelivery(
+                com.pocketdev.advance_erp.domain.repository.ShipmentSupplierDraft(
+                    id = "ss-${batchShipment.id}-$supplierId", shipmentId = batchShipment.id,
+                    supplierId = supplierId, purchaseOrderId = orderId, currency = currency,
+                    exchangeRateToBdt = exchangeRate, chinaDeliveryChargeMinor = chinaDeliveryChargeMinor,
+                    chinaDeliveryCurrency = currency, chinaDeliveryExchangeRateToBdt = exchangeRate,
+                    chinaDeliveryAllocationMethod = AllocationMethod.QUANTITY
+                )
+            )
             val existingCosts = importCostDao.getCostItemsForOrderSync(orderId)
 
             suspend fun upsertPoCost(
@@ -2562,20 +2708,22 @@ class ImportRepositoryImpl @Inject constructor(
                 defaultDesc: String,
                 amountMinor: Long
             ) {
+                val costCurrency = if (category == CostCategory.CHINA_DOMESTIC_TRANSPORT) currency else "BDT"
+                val costRate = if (costCurrency == "BDT") BigDecimal.ONE else exchangeRate
                 val existing = existingCosts.firstOrNull {
                     it.costCategory == category.name && it.description.contains(descMatch, ignoreCase = true)
                 }
                 if (amountMinor > 0L) {
                     val bdtMinor = BigDecimal(amountMinor)
-                        .multiply(exchangeRate)
+                        .multiply(costRate)
                         .setScale(0, RoundingMode.HALF_UP)
                         .longValueExact()
                     if (existing != null) {
                         importCostDao.updateCostItem(
                             existing.copy(
                                 amountMinor = amountMinor,
-                                currency = currency,
-                                exchangeRateToBdt = exchangeRate.toPlainString(),
+                                currency = costCurrency,
+                                exchangeRateToBdt = costRate.toPlainString(),
                                 bdtAmountMinor = bdtMinor
                             )
                         )
@@ -2585,8 +2733,8 @@ class ImportRepositoryImpl @Inject constructor(
                             category = category,
                             description = defaultDesc,
                             amountMinor = amountMinor,
-                            currency = currency,
-                            exchangeRate = exchangeRate,
+                            currency = costCurrency,
+                            exchangeRate = costRate,
                             method = AllocationMethod.QUANTITY,
                             isEstimated = false
                         )
@@ -2624,13 +2772,19 @@ class ImportRepositoryImpl @Inject constructor(
             if (categoryFreightRatesBdtMinor.isNotEmpty()) {
                 for ((catId, rateMinor) in categoryFreightRatesBdtMinor) {
                     if (rateMinor >= 0L) {
-                        updateCategoryDefaultFreightRate(catId, rateMinor)
                         overrideShipmentCategoryFreightRate(batchShipment.id, catId, rateMinor)
                     }
                 }
             }
         }
-    }
+        if (batchShipment != null) {
+            val oldMirror = importCostDao.getCostItemsForOrderSync(orderId).filter {
+                it.description.startsWith("Category Per-KG International Freight") && !it.isCapitalized
+            }
+            oldMirror.forEach { importCostDao.deleteCostItem(it.id) }
+        }
+        Unit
+    } }
 
     override suspend fun updatePurchaseOrderPacking(
         orderId: String,
@@ -2655,9 +2809,11 @@ class ImportRepositoryImpl @Inject constructor(
         unitPriceMinor: Long,
         cartonQuantity: Int,
         grossWeightKg: String
-    ) {
-        val item = purchaseOrderDao.getItemById(itemId) ?: return
-        val po = purchaseOrderDao.getOrderById(item.purchaseOrderId) ?: return
+    ): Unit = database.withTransaction {
+        val item = purchaseOrderDao.getItemById(itemId) ?: return@withTransaction
+        val po = purchaseOrderDao.getOrderById(item.purchaseOrderId) ?: return@withTransaction
+        requireEditableOrder(po.id)
+        require(quantity > 0 && unitPriceMinor > 0 && cartonQuantity >= 0 && BigDecimal(grossWeightKg) >= BigDecimal.ZERO) { "Invalid item quantity, price or packing" }
         val rateBd = BigDecimal(po.exchangeRateToBdt.ifBlank { "17.00" })
         val totalAmountMinor = quantity.toLong() * unitPriceMinor
         val totalBdtAmountMinor = BigDecimal(totalAmountMinor)
@@ -2681,6 +2837,9 @@ class ImportRepositoryImpl @Inject constructor(
         val newCartons = allItems.sumOf { it.cartonQuantity }
         val newGross = allItems.fold(BigDecimal.ZERO) { acc, itm -> acc.add(BigDecimal(itm.grossWeightKg.ifBlank { "0" })) }.toPlainString()
 
+        if (po.status != PurchaseOrderStatus.DRAFT.name) supplierDao.getSupplierById(po.supplierId)?.let {
+            supplierDao.updateOutstandingPayable(it.id, it.outstandingPayableMinor + newTotalBdtMinor - po.totalBdtAmountMinor)
+        }
         purchaseOrderDao.updateOrder(
             po.copy(
                 totalAmountMinor = newTotalMinor,
@@ -2692,9 +2851,12 @@ class ImportRepositoryImpl @Inject constructor(
         )
     }
 
-    override suspend fun deletePurchaseOrderItem(itemId: String) {
-        val item = purchaseOrderDao.getItemById(itemId) ?: return
-        val po = purchaseOrderDao.getOrderById(item.purchaseOrderId) ?: return
+    override suspend fun deletePurchaseOrderItem(itemId: String): Unit = database.withTransaction {
+        val item = purchaseOrderDao.getItemById(itemId) ?: return@withTransaction
+        val po = purchaseOrderDao.getOrderById(item.purchaseOrderId) ?: return@withTransaction
+        requireEditableOrder(po.id)
+        require(purchaseOrderDao.getItemsForOrderSync(po.id).size > 1) { "A PO needs at least one item" }
+        require(importShipmentDao.getCartonsForOrderSync(po.id).none { it.productId == item.productId && it.variantId == item.variantId }) { "Remove this item from packing first" }
         purchaseOrderDao.deleteItemById(itemId)
 
         val allItems = purchaseOrderDao.getItemsForOrderSync(po.id)
@@ -2703,6 +2865,9 @@ class ImportRepositoryImpl @Inject constructor(
         val newCartons = allItems.sumOf { it.cartonQuantity }
         val newGross = allItems.fold(BigDecimal.ZERO) { acc, itm -> acc.add(BigDecimal(itm.grossWeightKg.ifBlank { "0" })) }.toPlainString()
 
+        if (po.status != PurchaseOrderStatus.DRAFT.name) supplierDao.getSupplierById(po.supplierId)?.let {
+            supplierDao.updateOutstandingPayable(it.id, it.outstandingPayableMinor + newTotalBdtMinor - po.totalBdtAmountMinor)
+        }
         purchaseOrderDao.updateOrder(
             po.copy(
                 totalAmountMinor = newTotalMinor,
@@ -2941,7 +3106,7 @@ class ImportRepositoryImpl @Inject constructor(
         notes: String?,
         attachmentPath: String?,
         costDate: Long
-    ): String {
+    ): String = database.withTransaction {
         require(amountMinor > 0L) { "Expense amount must be greater than zero" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive" }
 
@@ -3027,10 +3192,10 @@ class ImportRepositoryImpl @Inject constructor(
                 )
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            throw e
         }
 
-        return costId
+        return@withTransaction costId
     }
 
     private suspend fun buildShipmentLandingCostEngineInputs(
@@ -3372,7 +3537,7 @@ class ImportRepositoryImpl @Inject constructor(
         operatorRole: String,
         operatorName: String,
         reason: String
-    ): LandingCostEngine.PostFinalizeAdjustmentResult {
+    ): LandingCostEngine.PostFinalizeAdjustmentResult = database.withTransaction {
         checkFinalizePermission(operatorRole)
 
         val shipment = importShipmentDao.getShipmentById(shipmentId)
@@ -3557,7 +3722,7 @@ class ImportRepositoryImpl @Inject constructor(
                         lines = journalLines
                     )
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    throw e
                 }
             }
 
@@ -3637,7 +3802,7 @@ class ImportRepositoryImpl @Inject constructor(
             )
         }
 
-        return adjResult
+        return@withTransaction adjResult
     }
 
     override fun getCostAdjustmentsForShipment(shipmentId: String): Flow<List<InventoryCostAdjustment>> =
@@ -3657,7 +3822,7 @@ class ImportRepositoryImpl @Inject constructor(
         paymentAccountId: String,
         voucherDate: Long,
         notes: String?
-    ): String {
+    ): String = database.withTransaction {
         require(amountMinor > 0L) { "Warehouse rent amount must be greater than zero" }
         require(rentMonth.isNotBlank()) { "Rent month (e.g. 2026-11) is required" }
 
@@ -3694,7 +3859,7 @@ class ImportRepositoryImpl @Inject constructor(
                 )
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            throw e
         }
 
         val voucher = ExpenseVoucher(
@@ -3720,7 +3885,7 @@ class ImportRepositoryImpl @Inject constructor(
             rentMonth = rentMonth
         )
         database.expenseDao().insertExpense(voucher)
-        return voucherId
+        return@withTransaction voucherId
     }
 
     // =========================================================================
@@ -3734,7 +3899,7 @@ class ImportRepositoryImpl @Inject constructor(
         paymentAccountId: String,
         voucherDate: Long,
         notes: String?
-    ): String {
+    ): String = database.withTransaction {
         require(amountMinor > 0L) { "Customer delivery expense must be greater than zero" }
         require(salesInvoiceId.isNotBlank()) { "Sales Invoice reference is required for Customer Delivery Expense" }
 
@@ -3772,7 +3937,7 @@ class ImportRepositoryImpl @Inject constructor(
                 )
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            throw e
         }
 
         val voucher = ExpenseVoucher(
@@ -3798,6 +3963,6 @@ class ImportRepositoryImpl @Inject constructor(
             deliveryChallanNumber = deliveryChallanNumber
         )
         database.expenseDao().insertExpense(voucher)
-        return voucherId
+        return@withTransaction voucherId
     }
 }

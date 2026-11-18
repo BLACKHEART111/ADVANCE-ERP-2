@@ -90,20 +90,25 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 class CartonDraftState(
-    var cartonNumber: String,
-    var productId: String,
-    var quantityStr: String = "50",
-    var lengthStr: String = "50",
-    var widthStr: String = "40",
-    var heightStr: String = "30",
-    var grossWeightStr: String = "15.0"
-)
+    cartonNumber: String, productId: String, quantityStr: String = "", lengthStr: String = "",
+    widthStr: String = "", heightStr: String = "", grossWeightStr: String = "", variantId: String? = null
+) {
+    var cartonNumber by mutableStateOf(cartonNumber)
+    var productId by mutableStateOf(productId)
+    var variantId by mutableStateOf(variantId)
+    var quantityStr by mutableStateOf(quantityStr)
+    var lengthStr by mutableStateOf(lengthStr)
+    var widthStr by mutableStateOf(widthStr)
+    var heightStr by mutableStateOf(heightStr)
+    var grossWeightStr by mutableStateOf(grossWeightStr)
+}
 
 @Composable
 fun CreateShipmentDialog(
     suppliers: List<Supplier>,
     orders: List<PurchaseOrder>,
     products: List<Product>,
+    variants: List<com.pocketdev.advance_erp.data.entity.ProductVariant> = emptyList(),
     preselectedSupplierId: String? = null,
     preselectedOrderId: String? = null,
     isBangla: Boolean = false,
@@ -190,8 +195,9 @@ fun CreateShipmentDialog(
                 if (firstAvailable != null && cartonList.isNotEmpty()) {
                     val currentCtn = cartonList[0]
                     // If current carton product doesn't belong to this PO, switch it
-                    if (remItems.none { it.poItem.productId == currentCtn.productId }) {
+                    if (remItems.none { it.poItem.productId == currentCtn.productId && it.poItem.variantId == currentCtn.variantId }) {
                         currentCtn.productId = firstAvailable.poItem.productId
+                        currentCtn.variantId = firstAvailable.poItem.variantId
                         currentCtn.quantityStr = if (firstAvailable.remainingQty > 0) {
                             minOf(firstAvailable.remainingQty, 50).toString()
                         } else "1"
@@ -718,6 +724,7 @@ fun CreateShipmentDialog(
                                         CartonDraftState(
                                             cartonNumber = "CTN-%02d/%02d".format(nextNum, maxOf(nextNum, 10)),
                                             productId = defaultProdId,
+                                            variantId = poRemainingItems.firstOrNull { it.poItem.productId == defaultProdId && it.remainingQty > 0 }?.poItem?.variantId,
                                             quantityStr = "50",
                                             lengthStr = "50",
                                             widthStr = "40",
@@ -759,9 +766,9 @@ fun CreateShipmentDialog(
                         var showProductMenu by remember { mutableStateOf(false) }
 
                         // Check remaining validation for this product
-                        val matchingPoItem = poRemainingItems.find { it.poItem.productId == carton.productId }
+                        val matchingPoItem = poRemainingItems.find { it.poItem.productId == carton.productId && it.poItem.variantId == carton.variantId }
                         val totalEnteredForThisProduct = cartonList
-                            .filter { it.productId == carton.productId }
+                            .filter { it.productId == carton.productId && it.variantId == carton.variantId }
                             .sumOf { it.quantityStr.trim().toIntOrNull() ?: 0 }
 
                         val isOverShipped = matchingPoItem != null && totalEnteredForThisProduct > matchingPoItem.remainingQty
@@ -824,7 +831,7 @@ fun CreateShipmentDialog(
                                 Box {
                                     val currentProd = products.find { it.id == carton.productId }
                                         ?: poRemainingItems.find { it.poItem.productId == carton.productId }?.product
-                                    val prodLabel = currentProd?.nameEn
+                                    val prodLabel = currentProd?.nameEn?.let { name -> name + (variants.find { it.id == carton.variantId }?.let { " / ${it.sku}" } ?: "") }
                                         ?: (if (carton.productId.isNotEmpty()) carton.productId else "Select Product")
 
                                     Row(
@@ -861,7 +868,7 @@ fun CreateShipmentDialog(
                                         if (poRemainingItems.isNotEmpty()) {
                                             // Show products from selected PO with remaining quantities
                                             poRemainingItems.forEach { rem ->
-                                                val pName = rem.product?.nameEn ?: rem.poItem.productId
+                                                val pName = (rem.product?.nameEn ?: rem.poItem.productId) + (variants.find { it.id == rem.poItem.variantId }?.let { " / ${it.sku}" } ?: "")
                                                 DropdownMenuItem(
                                                     text = {
                                                         Row(
@@ -879,6 +886,7 @@ fun CreateShipmentDialog(
                                                     },
                                                     onClick = {
                                                         carton.productId = rem.poItem.productId
+                                                        carton.variantId = rem.poItem.variantId
                                                         showProductMenu = false
                                                     }
                                                 )
@@ -890,6 +898,7 @@ fun CreateShipmentDialog(
                                                     text = { Text(prod.nameEn, fontWeight = FontWeight.SemiBold) },
                                                     onClick = {
                                                         carton.productId = prod.id
+                                                        carton.variantId = null
                                                         showProductMenu = false
                                                     }
                                                 )
@@ -900,6 +909,9 @@ fun CreateShipmentDialog(
 
                                 Spacer(modifier = Modifier.height(6.dp))
 
+                                if (selectedOrderId == null) {
+                                    PackingVariantSelector(carton.productId, carton.variantId, variants, isBangla) { carton.variantId = it }
+                                }
                                 // Quantity & Weight
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedTextField(
@@ -1085,6 +1097,7 @@ fun CreateShipmentDialog(
                                         ShipmentCartonDraft(
                                             cartonNumber = c.cartonNumber,
                                             productId = c.productId,
+                                            variantId = c.variantId,
                                             quantity = qty,
                                             lengthCm = l,
                                             widthCm = w,
@@ -1101,10 +1114,10 @@ fun CreateShipmentDialog(
 
                             // 3. Multi-shipment remaining PO quantity validation
                             if (selectedOrderId != null && poRemainingItems.isNotEmpty()) {
-                                val groupedByProduct = drafts.groupBy { it.productId }
+                                val groupedByProduct = drafts.groupBy { it.productId to it.variantId }
                                 for ((prodId, prodDrafts) in groupedByProduct) {
                                     val totalDraftQty = prodDrafts.sumOf { it.quantity }
-                                    val poRem = poRemainingItems.find { it.poItem.productId == prodId }
+                                    val poRem = poRemainingItems.find { it.poItem.productId == prodId.first && it.poItem.variantId == prodId.second }
                                     if (poRem != null && totalDraftQty > poRem.remainingQty) {
                                         val pName = poRem.product?.nameEn ?: prodId
                                         errorMessage = if (isBangla) {

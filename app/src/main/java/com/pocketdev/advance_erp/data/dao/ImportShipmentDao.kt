@@ -48,6 +48,9 @@ interface ImportShipmentDao {
     @Query("DELETE FROM shipment_cartons WHERE shipmentId = :shipmentId")
     suspend fun deleteCartonsForShipment(shipmentId: String)
 
+    @Query("SELECT * FROM shipment_cartons WHERE id = :cartonId")
+    suspend fun getCartonById(cartonId: String): ShipmentCarton?
+
     @Query("DELETE FROM shipment_cartons WHERE id = :cartonId")
     suspend fun deleteCartonById(cartonId: String)
 
@@ -69,7 +72,7 @@ interface ImportShipmentDao {
     @Query("SELECT * FROM shipment_cartons WHERE purchaseOrderId = :orderId ORDER BY cartonNumber ASC")
     suspend fun getCartonsForOrderSync(orderId: String): List<ShipmentCarton>
 
-    @Query("SELECT * FROM import_shipments WHERE purchaseOrderId = :orderId LIMIT 1")
+    @Query("SELECT * FROM import_shipments WHERE purchaseOrderId = :orderId ORDER BY CASE WHEN shipmentNumber LIKE 'BATCH-%' THEN 0 ELSE 1 END, createdAt ASC LIMIT 1")
     suspend fun getBatchShipmentForOrder(orderId: String): ImportShipment?
 
     @Query("SELECT COUNT(*) FROM import_shipments")

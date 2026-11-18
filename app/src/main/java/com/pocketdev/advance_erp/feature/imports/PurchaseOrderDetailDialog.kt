@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -226,7 +228,7 @@ fun PurchaseOrderDetailDialog(
 
     val canCancel = order.status != PurchaseOrderStatus.CANCELLED.name &&
             payments.isEmpty() &&
-            shipments.isEmpty() &&
+            shipments.all { it.shipmentNumber.startsWith("BATCH-") && it.status == "DRAFT" } &&
             receipts.isEmpty()
 
     val isCostFinalized = order.isActualCostFinalized || order.status == PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name
@@ -308,6 +310,20 @@ fun PurchaseOrderDetailDialog(
                     // 1. Completion Banner (if completed)
                     if (completionRecord != null || order.status == PurchaseOrderStatus.COMPLETED.name) {
                         item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (onSelectShipment != null && shipments.isNotEmpty()) {
+                                OutlinedButton(onClick = { onSelectShipment(shipments.first()) }, modifier = Modifier.weight(1f)) {
+                                    Text(if (isBangla) "শিপমেন্ট খুলুন" else "Open shipment")
+                                }
+                            }
+                            if (order.status !in listOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
+                                OutlinedButton(onClick = { onCreateShipment(order) }, modifier = Modifier.weight(1f)) {
+                                    Text(if (isBangla) "নতুন শিপমেন্ট" else "New shipment")
+                                }
+                            }
+                        }
+                    }
+                    item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
@@ -1434,15 +1450,15 @@ fun PurchaseOrderDetailDialog(
 
                         // Row 2: Secondary Utility Buttons
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Button(
                                 onClick = { onSharePdf(order) },
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .defaultMinSize(minHeight = 44.dp),
+                                    .widthIn(min = 104.dp)
+                                    .defaultMinSize(minHeight = 48.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
@@ -1465,8 +1481,8 @@ fun PurchaseOrderDetailDialog(
                                         onDismiss()
                                     },
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = 44.dp),
+                                        .widthIn(min = 104.dp)
+                                        .defaultMinSize(minHeight = 48.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryPurple),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
@@ -1489,8 +1505,8 @@ fun PurchaseOrderDetailDialog(
                                         onDismiss()
                                     },
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = 44.dp),
+                                        .widthIn(min = 104.dp)
+                                        .defaultMinSize(minHeight = 48.dp),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1509,8 +1525,8 @@ fun PurchaseOrderDetailDialog(
                                 OutlinedButton(
                                     onClick = { showCancelConfirmDialog = true },
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = 44.dp),
+                                        .widthIn(min = 104.dp)
+                                        .defaultMinSize(minHeight = 48.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusError),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
@@ -1530,8 +1546,8 @@ fun PurchaseOrderDetailDialog(
                                 Button(
                                     onClick = onDismiss,
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = 44.dp),
+                                        .widthIn(min = 104.dp)
+                                        .defaultMinSize(minHeight = 48.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
@@ -1549,8 +1565,8 @@ fun PurchaseOrderDetailDialog(
                                 OutlinedButton(
                                     onClick = onDismiss,
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = 44.dp),
+                                        .widthIn(min = 104.dp)
+                                        .defaultMinSize(minHeight = 48.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {

@@ -194,6 +194,7 @@ fun VariantPhotoSliderDialog(
             ) {
                 HorizontalPager(
                     state = pagerState,
+                    key = { page -> slides[page].id },
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     val slide = slides[page]

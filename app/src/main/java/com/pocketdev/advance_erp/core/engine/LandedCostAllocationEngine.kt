@@ -192,7 +192,8 @@ object LandedCostAllocationEngine {
         spec.split(";", ",").forEach { entry ->
             val trimmed = entry.trim()
             if (trimmed.contains(":")) {
-                val parts = trimmed.split(":", limit = 2)
+                val separator = trimmed.lastIndexOf(':')
+                val parts = listOf(trimmed.substring(0, separator), trimmed.substring(separator + 1))
                 val key = parts[0].trim().removeSurrounding("\"")
                 val value = parts[1].trim().removeSurrounding("\"").toLongOrNull()
                 if (key.isNotEmpty() && value != null) {

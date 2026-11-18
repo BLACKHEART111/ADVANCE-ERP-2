@@ -60,6 +60,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +101,7 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceipt
 enum class ImportModuleTab(val titleEn: String, val titleBn: String, val icon: ImageVector) {
     OVERVIEW("Overview", "সারসংক্ষেপ", Icons.Default.Dashboard),
     PURCHASE_ORDERS("Purchase Orders", "ক্রয়াদেশ (PO)", Icons.Default.ShoppingCart),
+    SHIPMENTS("Shipments", "চালানসমূহ", Icons.Default.LocalShipping),
     COST_LAYERS("Inventory Cost Layers", "কস্ট লেয়ার্স", Icons.Default.Layers)
 }
 
@@ -109,6 +111,7 @@ fun ImportManagementScreen(
     viewModel: ImportViewModel = hiltViewModel(),
     initialTab: ImportModuleTab = ImportModuleTab.OVERVIEW
 ) {
+    var shipmentQuery by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
@@ -281,8 +284,9 @@ fun ImportManagementScreen(
                 // TAB 0: OVERVIEW DASHBOARD
                 // ==========================================
                 if (selectedTab == ImportModuleTab.OVERVIEW) {
-                    val totalPoValueBdt = uiState.purchaseOrders.sumOf { it.totalBdtAmountMinor }
-                    val totalPaidBdt = uiState.purchaseOrders.sumOf { it.paidBdtAmountMinor }
+                    val activeOrders = uiState.purchaseOrders.filter { it.status !in listOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name) }
+                    val totalPoValueBdt = activeOrders.sumOf { it.totalBdtAmountMinor }
+                    val totalPaidBdt = activeOrders.sumOf { it.paidBdtAmountMinor }
                     val totalOutstandingBdt = (totalPoValueBdt - totalPaidBdt).coerceAtLeast(0L)
                     val activeShipmentsCount = uiState.shipments.count { it.status == "IN_TRANSIT" || it.status == "CUSTOMS" }
                     val totalCbmSum = uiState.shipments.fold(java.math.BigDecimal.ZERO) { acc, s -> acc.add(java.math.BigDecimal(s.totalCbm)) }
@@ -644,6 +648,50 @@ fun ImportManagementScreen(
                     }
                 }
 
+                if (selectedTab == ImportModuleTab.SHIPMENTS) {
+                    item {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(if (isBangla) "চালানসমূহ" else "Shipments", style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Button(onClick = {
+                                preselectedOrderIdForShipment = null
+                                preselectedSupplierIdForShipment = null
+                                showCreateShipmentDialog = true
+                            }) { Text(if (isBangla) "নতুন চালান" else "New shipment") }
+                        }
+                    }
+                    item {
+                        OutlinedTextField(value = shipmentQuery, onValueChange = { shipmentQuery = it },
+                            label = { Text(if (isBangla) "চালান, ট্র্যাকিং বা সরবরাহকারী খুঁজুন" else "Search shipment, tracking or supplier") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    }
+                    val query = shipmentQuery.trim()
+                    val matches = uiState.shipments.filter { shipment ->
+                        query.isBlank() || shipment.shipmentNumber.contains(query, true) ||
+                            shipment.trackingReference.orEmpty().contains(query, true) ||
+                            uiState.suppliers.find { it.id == shipment.supplierId }?.companyName.orEmpty().contains(query, true)
+                    }
+                    if (matches.isEmpty()) item {
+                        ERPCard {
+                            Text(if (query.isNotBlank()) {
+                                if (isBangla) "এই অনুসন্ধানে কোনো চালান পাওয়া যায়নি।" else "No shipments match your search."
+                            } else if (isBangla) "কোনো চালান নেই। ক্রয়াদেশ থেকে বা নতুন চালান বাটনে শুরু করুন।"
+                                else "No shipments yet. Start from a purchase order or create a new shipment.",
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    items(matches, key = { it.id }) { shipment ->
+                        LiveShipmentCard(shipment, uiState.selectedShipmentId == shipment.id,
+                            onSelect = {
+                                viewModel.selectPurchaseOrder(null)
+                                viewModel.selectShipment(shipment.id)
+                                showShipmentWorkspaceDialog = true
+                            }, onSharePdf = { viewModel.sharePackingListPdf(context, shipment) }, isBangla = isBangla)
+                    }
+                }
+
                 // ==========================================
                 // TAB 2: INVENTORY COST LAYERS
                 // ==========================================
@@ -740,6 +788,8 @@ fun ImportManagementScreen(
             categories = uiState.categories,
             isBangla = isBangla,
             onDismiss = { showCreatePoDialog = false },
+            isSaving = uiState.isSavingPurchaseOrder,
+            saveError = uiState.purchaseOrderSaveError,
             onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
             onCreateFullProduct = viewModel::createFullProductFromPurchase,
             onGenerateSku = viewModel::generateBaseSku,
@@ -749,7 +799,7 @@ fun ImportManagementScreen(
             onValidateBarcode = viewModel::isBarcodeAvailable,
             onAddNewVariant = viewModel::addNewVariantFromPurchase,
             onAddNewCategory = viewModel::addNewCategory,
-            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, attachments ->
+            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments ->
                 viewModel.createPurchaseOrder(
                     supplierId = supId,
                     currency = cur,
@@ -760,6 +810,9 @@ fun ImportManagementScreen(
                     cartons = cartons,
                     chinaDeliveryChargeMinor = chinaDeliveryMinor,
                     categoryFreightRatesBdtMinor = catRatesMinor,
+                    handlingCostMinor = handlingMinor,
+                    sampleCostMinor = sampleMinor,
+                    onSaved = { showCreatePoDialog = false },
                     attachments = attachments
                 )
             }
@@ -775,6 +828,8 @@ fun ImportManagementScreen(
         val liveEditCosts by viewModel.getCostItemsForOrder(currentEditingPo.id)
             .collectAsState(initial = editingPoCostsSnapshot)
 
+        val editFreightRates by remember(currentEditingPo.id) { viewModel.getFreightRatesForOrder(currentEditingPo.id) }
+            .collectAsState(initial = emptyList())
         val resolvedEditItems = liveEditItems.ifEmpty { editingPoItemsSnapshot }
         val resolvedEditCartons = liveEditCartons.ifEmpty { editingPoCartonsSnapshot }
         val resolvedEditCosts = liveEditCosts.ifEmpty { editingPoCostsSnapshot }
@@ -786,9 +841,18 @@ fun ImportManagementScreen(
             categories = uiState.categories,
             isBangla = isBangla,
             editingOrder = currentEditingPo,
+            metadataOnly = currentEditingPo.isActualCostFinalized || currentEditingPo.paidAmountMinor > 0 ||
+                currentEditingPo.status == PurchaseOrderStatus.COMPLETED.name || resolvedEditItems.any { it.receivedQuantity > 0 } ||
+                uiState.selectedPoReceipts.any { it.purchaseOrderId == currentEditingPo.id },
+            onUpdateMetadata = { notes, attachments ->
+                viewModel.updatePurchaseOrderMetadata(currentEditingPo.id, notes, attachments, onSaved = { editingPo = null })
+            },
+            isSaving = uiState.isSavingPurchaseOrder,
+            saveError = uiState.purchaseOrderSaveError,
             initialEditingItems = resolvedEditItems,
             initialEditingCartons = resolvedEditCartons,
             initialEditingCosts = resolvedEditCosts,
+            initialEditingFreightRates = editFreightRates.associate { it.categoryId to it.appliedRatePerKgBdtMinor },
             onDismiss = {
                 editingPo = null
                 editingPoItemsSnapshot = emptyList()
@@ -818,14 +882,11 @@ fun ImportManagementScreen(
                     categoryFreightRatesBdtMinor = catRatesMinor,
                     handlingCostMinor = handlingMinor,
                     sampleCostMinor = sampleMinor,
+                    onSaved = { editingPo = null },
                     attachments = attachments
                 )
-                editingPo = null
-                editingPoItemsSnapshot = emptyList()
-                editingPoCartonsSnapshot = emptyList()
-                editingPoCostsSnapshot = emptyList()
             },
-            onSavePo = { _, _, _, _, _, _, _, _, _, _ -> }
+            onSavePo = { _, _, _, _, _, _, _, _, _, _, _, _ -> }
         )
     }
 
@@ -847,6 +908,7 @@ fun ImportManagementScreen(
             suppliers = uiState.suppliers,
             orders = uiState.purchaseOrders,
             products = uiState.products,
+            variants = uiState.productVariants,
             preselectedSupplierId = preselectedSupplierIdForShipment,
             preselectedOrderId = preselectedOrderIdForShipment,
             isBangla = isBangla,
@@ -865,7 +927,10 @@ fun ImportManagementScreen(
                     notes = notes,
                     onSuccess = { shipmentId, shipmentNumber ->
                         onSuccess(shipmentId, shipmentNumber)
-                        selectedTab = ImportModuleTab.PURCHASE_ORDERS
+                        viewModel.selectPurchaseOrder(null)
+                        viewModel.selectShipment(shipmentId)
+                        shipmentQuery = ""
+                        selectedTab = ImportModuleTab.SHIPMENTS
                     },
                     onError = { err ->
                         onError(err)
@@ -882,6 +947,7 @@ fun ImportManagementScreen(
             shipment = activeShipment,
             orderId = activeOrderId,
             products = uiState.products,
+            variants = uiState.productVariants,
             language = uiState.language,
             onDismiss = { showAddCartonDialog = false },
             onConfirm = { carton ->
@@ -909,9 +975,16 @@ fun ImportManagementScreen(
             shipmentId = activeShipmentId,
             orderId = activeOrderId,
             totalGrossWeightKg = grossWeight,
+            allocationTargets = if (activeOrderId != null) uiState.selectedPoItems.associate { item ->
+                (if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId) to
+                    (uiState.products.find { it.id == item.productId }?.nameEn.orEmpty() + " " + uiState.productVariants.find { it.id == item.variantId }?.sku.orEmpty())
+            } else uiState.selectedShipmentCartons.associate { item ->
+                (if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId) to
+                    (uiState.products.find { it.id == item.productId }?.nameEn.orEmpty() + " " + uiState.productVariants.find { it.id == item.variantId }?.sku.orEmpty())
+            },
             isBangla = isBangla,
             onDismiss = { showAddCostDialog = false },
-            onConfirm = { cat, desc, amt, cur, rate, meth, acc, ref, isEst, notes ->
+            onConfirm = { cat, desc, amt, cur, rate, meth, acc, ref, isEst, notes, manual ->
                 if (activeOrderId != null) {
                     viewModel.addPurchaseCostItem(
                         orderId = activeOrderId,
@@ -924,10 +997,11 @@ fun ImportManagementScreen(
                         isEstimated = isEst,
                         paymentAccount = acc,
                         docRef = ref,
-                        notes = notes
+                        notes = notes,
+                        manualAllocationsBdtMinor = manual
                     )
                 } else if (activeShipmentId != null) {
-                    viewModel.addCostItem(activeShipmentId, cat, desc, amt, cur, rate, meth, acc, ref)
+                    viewModel.addCostItem(activeShipmentId, cat, desc, amt, cur, rate, meth, acc, ref, manual)
                 }
             }
         )
@@ -1031,7 +1105,7 @@ fun ImportManagementScreen(
         val totalReceived = uiState.selectedPoItems.sumOf { it.receivedQuantity }
         val dmgQty = uiState.selectedPoDamageRecords.sumOf { it.damagedQuantity }
         val misQty = uiState.selectedPoShortageRecords.sumOf { it.missingQuantity }
-        val goodQty = (totalReceived - dmgQty - misQty).coerceAtLeast(0)
+        val goodQty = (totalReceived - dmgQty).coerceAtLeast(0)
         val remainingDue = (po.totalAmountMinor - po.paidAmountMinor).coerceAtLeast(0L)
 
         PurchaseCompletionDialog(
@@ -1111,7 +1185,7 @@ fun ImportManagementScreen(
             onSelectShipment = { shp ->
                 viewModel.selectPurchaseOrder(null)
                 viewModel.selectShipment(shp.id)
-                selectedTab = ImportModuleTab.PURCHASE_ORDERS
+                showShipmentWorkspaceDialog = true
             },
             onDeleteCarton = viewModel::deleteCarton,
             onDeleteCostItem = { costId -> viewModel.deleteCostItem(selectedPo.id, costId) },
@@ -1124,16 +1198,24 @@ fun ImportManagementScreen(
     val currentPoToShare = poToShare
     if (currentPoToShare != null) {
         val shareItems by viewModel.getItemsForOrder(currentPoToShare.id).collectAsState(initial = emptyList())
+        val shareCartons by viewModel.getCartonsForOrder(currentPoToShare.id).collectAsState(initial = emptyList())
+        val resolvedShareItems = shareItems.ifEmpty {
+            if (uiState.selectedPo?.id == currentPoToShare.id) uiState.selectedPoItems else emptyList()
+        }
+        val resolvedShareCartons = shareCartons.ifEmpty {
+            if (uiState.selectedPo?.id == currentPoToShare.id) uiState.selectedPoCartons else emptyList()
+        }
         val supplier = uiState.suppliers.find { it.id == currentPoToShare.supplierId }
         PoShareDialog(
             order = currentPoToShare,
-            items = shareItems.ifEmpty {
-                if (uiState.selectedPo?.id == currentPoToShare.id) uiState.selectedPoItems else emptyList()
-            },
+            items = resolvedShareItems,
             productsMap = uiState.products.associateBy { it.id },
             supplier = supplier,
             businessProfile = uiState.businessProfile,
             isBangla = isBangla,
+            variantsMap = uiState.productVariants.associateBy { it.id },
+            cartons = resolvedShareCartons,
+            onResolveItemImages = viewModel::resolveShareImagesForItems,
             onDismiss = { poToShare = null }
         )
     }
@@ -1312,67 +1394,35 @@ private fun LiveShipmentCard(
     shipment: ImportShipment,
     isSelected: Boolean,
     onSelect: () -> Unit,
-    onSharePdf: () -> Unit = {}
+    onSharePdf: () -> Unit = {},
+    isBangla: Boolean = false
 ) {
-    ERPCard(
-        contentPadding = 14.dp,
-        modifier = Modifier.clickable(onClick = onSelect),
-        backgroundColor = if (isSelected) Color(0xFFF0FDF4) else Color.White
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(shipment.shipmentNumber, fontWeight = FontWeight.Bold, color = DeepNavy, style = MaterialTheme.typography.titleMedium)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        IconButton(onClick = onSharePdf, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Share, contentDescription = "Share Packing List", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
-                        }
+    val status = com.pocketdev.advance_erp.data.entity.ShipmentStatus.entries.find { it.name == shipment.status }
+    ERPCard(contentPadding = 14.dp, modifier = Modifier.clickable(onClick = onSelect),
+        backgroundColor = if (isSelected) SecondaryTeal.copy(alpha = 0.06f) else Color.White) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(shipment.shipmentNumber, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(status?.let { if (isBangla) it.labelBn else it.labelEn } ?: shipment.status,
+                        style = MaterialTheme.typography.bodySmall, color = SecondaryTeal)
+                }
+                IconButton(onClick = onSharePdf, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.Share, contentDescription = if (isBangla) "প্যাকিং লিস্ট শেয়ার" else "Share packing list", tint = PrimaryPurple)
+                }
+            }
+            Text("${shipment.origin} → ${shipment.destination}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    (if (isBangla) "কার্টন" else "Cartons") to shipment.totalCartons.toString(),
+                    (if (isBangla) "আয়তন" else "Volume") to "${shipment.totalCbm} m³",
+                    (if (isBangla) "ওজন" else "Weight") to "${shipment.totalGrossWeightKg} kg"
+                ).forEach { (label, value) ->
+                    Column(Modifier.weight(1f)) {
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        Text(value, style = MaterialTheme.typography.bodyMedium)
                     }
-                    Text(shipment.shippingLine ?: shipment.shippingMethod, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                 }
-                val statusColor = when (shipment.status) {
-                    "COMPLETED", "RECEIVED" -> StatusSuccess
-                    "IN_TRANSIT" -> PrimaryPurple
-                    "CUSTOMS" -> StatusWarning
-                    else -> SecondaryTeal
-                }
-                Box(
-                    modifier = Modifier
-                        .background(statusColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(shipment.status, color = statusColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(shipment.origin.substringBefore("("), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                Icon(Icons.Default.LocalShipping, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
-                Text(shipment.destination.substringBefore("("), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Divider(color = ERPDivider)
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("${shipment.totalCartons} Cartons", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                Text("${shipment.totalCbm} m³", style = MaterialTheme.typography.labelSmall, color = SecondaryTeal, fontWeight = FontWeight.Bold)
-                Text("${shipment.totalGrossWeightKg} kg", style = MaterialTheme.typography.labelSmall, color = TextMuted)
             }
         }
     }

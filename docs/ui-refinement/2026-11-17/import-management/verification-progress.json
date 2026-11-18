@@ -1,0 +1,21 @@
+{
+  "unitTests": 297,
+  "unitSuites": 59,
+  "unitFailures": 0,
+  "unitErrors": 0,
+  "unitSkipped": 0,
+  "build": "assembleDebug, testDebugUnitTest, assembleDebugAndroidTest passed",
+  "deviceDatabaseTests": 13,
+  "deviceDatabaseFailures": 0,
+  "metadataEditBehavior": "passed on device",
+  "correctedEnglishMixedCartonFlow": "passed on device, including screenshot nonblank guard and save values",
+  "visualSuite": "Three remaining locale/font flows need re-run with corrected capture; captured English images remain on disconnected device and were not inspected locally",
+  "preparedAndroidTests": 18,
+  "originalDatabaseComparison": "Earlier row comparison unchanged; original database was not used by regression tests",
+  "finalApkInstalled": true,
+  "remainingCompatibilityIssue": "Existing bundled native-library 16 KB alignment warning",
+  "artifacts": {
+    "ADVANCE-ERP-import-ui-debug.apk": "7b30c74acd07146af6e1a37ade0bc45cff8d347932573dfc5fef33050d0b966f",
+    "ADVANCE-ERP-import-ui-tests.apk": "1ebdb8ddd7b84eb79cd184fecc2a6cf6d6e3328926b97e9e0f0308cfc2a5ba4c"
+  }
+}

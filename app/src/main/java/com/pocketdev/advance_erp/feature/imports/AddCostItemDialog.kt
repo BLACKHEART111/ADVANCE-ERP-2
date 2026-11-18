@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,6 +69,7 @@ fun AddCostItemDialog(
     totalGrossWeightKg: BigDecimal = BigDecimal("350.0"),
     isBangla: Boolean = false,
     onDismiss: () -> Unit,
+    allocationTargets: Map<String, String> = emptyMap(),
     onConfirm: (
         category: CostCategory,
         description: String,
@@ -78,18 +80,20 @@ fun AddCostItemDialog(
         paymentAccount: String,
         docRef: String?,
         isEstimated: Boolean,
-        notes: String?
+        notes: String?,
+        manualAllocationsBdtMinor: Map<String, Long>
     ) -> Unit
 ) {
+    val manualAmounts = remember { mutableStateMapOf<String, String>() }
     var isEstimated by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf(CostCategory.INTERNATIONAL_FREIGHT) }
     var description by remember { mutableStateOf("International Freight & Air/Sea Consignment") }
-    var amountStr by remember { mutableStateOf("42000.00") }
+    var amountStr by remember { mutableStateOf("") }
     var selectedCurrency by remember { mutableStateOf("BDT") }
     var exchangeRateStr by remember { mutableStateOf("1.00") }
     var selectedMethod by remember { mutableStateOf(selectedCategory.defaultAllocationMethod) }
     var paymentAccount by remember { mutableStateOf("City Bank Corporate (Import LC)") }
-    var docRef by remember { mutableStateOf("BILL-INV-2026-01") }
+    var docRef by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var shippingRatePerKgStr by remember { mutableStateOf("120") }
     var showShippingCalculator by remember { mutableStateOf(true) }
@@ -314,7 +318,7 @@ fun AddCostItemDialog(
                                             value = shippingRatePerKgStr,
                                             onValueChange = {
                                                 shippingRatePerKgStr = it
-                                                val rate = BigDecimal(it.trim().ifEmpty { "0" })
+                                                val rate = it.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
                                                 val total = totalGrossWeightKg.multiply(rate)
                                                 amountStr = total.setScale(2, RoundingMode.HALF_UP).toPlainString()
                                             },
@@ -379,6 +383,20 @@ fun AddCostItemDialog(
                         }
                     }
 
+                    if (selectedMethod == AllocationMethod.MANUAL) {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(if (isBangla) "প্রতি পণ্যে বরাদ্দ (BDT)" else "Allocation per item (BDT)", style = MaterialTheme.typography.titleSmall)
+                                allocationTargets.forEach { (key, label) ->
+                                    OutlinedTextField(value = manualAmounts[key].orEmpty(),
+                                        onValueChange = { manualAmounts[key] = it },
+                                        label = { Text(label) }, suffix = { Text("BDT") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        singleLine = true, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
+                    }
                     // Amount & Currency
                     item {
                         Card(
@@ -462,6 +480,11 @@ fun AddCostItemDialog(
                                     val fx = BigDecimal(exchangeRateStr.trim().ifEmpty { "1.00" })
                                     val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
 
+                                    val manual = if (selectedMethod == AllocationMethod.MANUAL) allocationTargets.keys.associateWith { key ->
+                                        (manualAmounts[key].orEmpty().ifBlank { "0" }).toBigDecimal().movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                    } else emptyMap()
+                                    require(manual.values.all { it >= 0 }) { "Allocations cannot be negative" }
+                                    require(selectedMethod != AllocationMethod.MANUAL || (manual.isNotEmpty() && manual.values.sum() == amtBd.multiply(fx).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact())) { "Manual BDT allocations must equal expense total" }
                                     onConfirm(
                                         selectedCategory,
                                         description.trim().ifEmpty { selectedCategory.titleEn },
@@ -472,7 +495,8 @@ fun AddCostItemDialog(
                                         paymentAccount,
                                         docRef.trim().ifEmpty { null },
                                         isEstimated,
-                                        notes.trim().ifEmpty { null }
+                                        notes.trim().ifEmpty { null },
+                                        manual
                                     )
                                     onDismiss()
                                 } catch (e: Exception) {

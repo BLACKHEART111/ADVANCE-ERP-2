@@ -171,7 +171,7 @@
     <string name="status_received">Received</string>
     <string name="status_draft">Draft</string>
     <string name="future_module_badge">Phase 02 Live</string>
-    <string name="import_feature_notice">Phase 02 China Import Engine active: Room persistence, Landed Cost allocation, Warehouse Receiving and Stock Layers live.</string>
+    <string name="import_feature_notice">Manage purchase orders, packing, shipping costs and warehouse receiving from one place.</string>
 
     <!-- Phase 02 Actions & Strings -->
     <string name="action_create_po">New Purchase Order</string>

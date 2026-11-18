@@ -1,0 +1,44 @@
+{
+  "apk": "app/build/outputs/apk/debug/app-debug.apk",
+  "libraries": [
+    {
+      "library": "lib/arm64-v8a/libbarhopper_v3.so",
+      "loadAlignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "elf16Kb": true,
+      "relro16Kb": true,
+      "zip16Kb": true,
+      "zipDataOffset": 75022336,
+      "ok": true
+    },
+    {
+      "library": "lib/arm64-v8a/libimage_processing_util_jni.so",
+      "loadAlignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "elf16Kb": true,
+      "relro16Kb": true,
+      "zip16Kb": true,
+      "zipDataOffset": 36470784,
+      "ok": true
+    },
+    {
+      "library": "lib/arm64-v8a/libsurface_util_jni.so",
+      "loadAlignments": [
+        16384,
+        16384
+      ],
+      "elf16Kb": true,
+      "relro16Kb": true,
+      "zip16Kb": true,
+      "zipDataOffset": 36503552,
+      "ok": true
+    }
+  ],
+  "ok": true
+}

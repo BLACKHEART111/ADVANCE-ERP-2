@@ -72,7 +72,7 @@ interface PurchaseOrderDao {
 
     @Transaction
     suspend fun saveOrderWithItems(order: PurchaseOrder, items: List<PurchaseOrderItem>) {
-        insertOrder(order)
+        if (getOrderById(order.id) == null) insertOrder(order) else updateOrder(order)
         deleteItemsForOrder(order.id)
         insertItems(items)
     }

@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -104,6 +105,8 @@ data class ImportUiState(
     val businessProfile: BusinessProfile? = null,
     val language: AppLanguage = AppLanguage.BANGLA,
     val isLoading: Boolean = false,
+    val isSavingPurchaseOrder: Boolean = false,
+    val purchaseOrderSaveError: String? = null,
     val userMessage: String? = null
 )
 
@@ -221,8 +224,15 @@ class ImportViewModel @Inject constructor(
         loadShipmentDetails(shipmentId)
     }
 
+    private var shipmentDetailsJob: kotlinx.coroutines.Job? = null
+    private var observedShipmentId: String? = null
+    private var poDetailsJob: kotlinx.coroutines.Job? = null
+
     private fun loadShipmentDetails(shipmentId: String) {
-        viewModelScope.launch {
+        if (observedShipmentId == shipmentId && shipmentDetailsJob?.isActive == true) return
+        observedShipmentId = shipmentId
+        shipmentDetailsJob?.cancel()
+        shipmentDetailsJob = viewModelScope.launch {
             launch {
                 importRepository.getCartonsForShipment(shipmentId).collect { cartons ->
                     _uiState.update { it.copy(selectedShipmentCartons = cartons) }
@@ -283,11 +293,43 @@ class ImportViewModel @Inject constructor(
         return importRepository.getCartonsForOrder(orderId)
     }
 
+    suspend fun resolveShareImagesForItems(items: List<PurchaseOrderItem>): Map<String, String> {
+        if (items.isEmpty()) return emptyMap()
+        val variantCache = mutableMapOf<String, String?>()
+        val productCache = mutableMapOf<String, String?>()
+        val result = mutableMapOf<String, String>()
+        for (item in items) {
+            val varUri = item.variantId?.let { vid ->
+                variantCache.getOrPut(vid) {
+                    productRepository.getImagesForVariantSync(vid)
+                        .firstOrNull { imageStorage.doesImageExist(it.imageUri) }
+                        ?.imageUri
+                }
+            }
+            val resolvedUri = varUri ?: productCache.getOrPut(item.productId) {
+                productRepository.getImagesForProductSync(item.productId)
+                    .firstOrNull { imageStorage.doesImageExist(it.imageUri) }
+                    ?.imageUri
+            }
+            if (!resolvedUri.isNullOrBlank()) {
+                result[item.id] = resolvedUri
+            }
+        }
+        return result
+    }
+
+    fun getFreightRatesForOrder(orderId: String) = kotlinx.coroutines.flow.flow {
+        val batch = importRepository.getShipmentsForOrderSync(orderId).firstOrNull { it.shipmentNumber.startsWith("BATCH-") }
+        if (batch != null) emitAll(importRepository.getFreightRatesForShipment(batch.id))
+        else emit(emptyList())
+    }
+
     fun getCostItemsForOrder(orderId: String): kotlinx.coroutines.flow.Flow<List<ImportCostItem>> {
         return importRepository.getCostItemsForOrder(orderId)
     }
 
     fun selectPurchaseOrder(order: PurchaseOrder?) {
+        poDetailsJob?.cancel()
         if (order == null) {
             _uiState.update {
                 it.copy(
@@ -308,7 +350,7 @@ class ImportViewModel @Inject constructor(
         }
 
         _uiState.update { it.copy(selectedPo = order) }
-        viewModelScope.launch {
+        poDetailsJob = viewModelScope.launch {
             launch {
                 importRepository.getPurchaseOrderByIdFlow(order.id).collect { updatedPo ->
                     if (updatedPo != null) {
@@ -329,6 +371,10 @@ class ImportViewModel @Inject constructor(
             launch {
                 importRepository.getShipmentsForOrder(order.id).collect { shipments ->
                     _uiState.update { it.copy(selectedPoShipments = shipments) }
+                    val batch = shipments.firstOrNull { it.shipmentNumber.startsWith("BATCH-") }
+                    if (batch != null && _uiState.value.selectedPo?.id == order.id && _uiState.value.selectedShipmentId != batch.id) {
+                        selectShipment(batch.id)
+                    }
                 }
             }
             launch {
@@ -379,105 +425,30 @@ class ImportViewModel @Inject constructor(
         cartons: List<PoMixedCartonDraft> = emptyList(),
         chinaDeliveryChargeMinor: Long = 0L,
         categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap(),
-        attachments: String? = null
+        attachments: String? = null,
+        handlingCostMinor: Long = 0L,
+        sampleCostMinor: Long = 0L,
+        onSaved: () -> Unit = {}
     ) {
+        if (_uiState.value.isSavingPurchaseOrder) return
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true) }
-                val orderId = importRepository.createPurchaseOrder(
-                    supplierId = supplierId,
-                    currency = currency,
-                    exchangeRate = exchangeRate,
-                    items = items,
-                    notes = notes,
-                    status = status,
-                    attachments = attachments
+                _uiState.update { it.copy(isLoading = true, isSavingPurchaseOrder = true, purchaseOrderSaveError = null) }
+                val orderId = importRepository.savePurchaseOrderDraft(
+                    null, supplierId, currency, exchangeRate, items, notes, status, cartons,
+                    chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments
                 )
-
-                // 1. Auto-save cartons (including mixed-variant cartons) into the PO and its linked Import Shipment
-                for (ctn in cartons) {
-                    if (ctn.lines.isNotEmpty() && ctn.grossWeightKg >= BigDecimal.ZERO) {
-                        importRepository.addMixedCarton(
-                            orderId = orderId,
-                            cartonNumber = ctn.cartonNumber,
-                            lengthCm = ctn.lengthCm,
-                            widthCm = ctn.widthCm,
-                            heightCm = ctn.heightCm,
-                            grossWeightKg = ctn.grossWeightKg,
-                            netWeightKg = ctn.netWeightKg,
-                            lines = ctn.lines
-                        )
-                    }
-                }
-
-                // 2. Auto-sync China Local Delivery & Category Per-KG Freight Rates to the linked Import Shipment
-                val batchShipment = importRepository.getShipmentsForOrderSync(orderId).firstOrNull()
-                if (chinaDeliveryChargeMinor > 0L) {
-                    if (batchShipment != null) {
-                        importRepository.saveShipmentSupplierAndChinaDelivery(
-                            ShipmentSupplierDraft(
-                                id = "ss-${batchShipment.id}-$supplierId",
-                                shipmentId = batchShipment.id,
-                                supplierId = supplierId,
-                                purchaseOrderId = orderId,
-                                currency = currency,
-                                exchangeRateToBdt = exchangeRate,
-                                chinaDeliveryChargeMinor = chinaDeliveryChargeMinor,
-                                chinaDeliveryCurrency = currency,
-                                chinaDeliveryExchangeRateToBdt = exchangeRate,
-                                chinaDeliveryAllocationMethod = AllocationMethod.QUANTITY
-                            )
-                        )
-                    }
-                    importRepository.addPurchaseCostItem(
-                        orderId = orderId,
-                        category = CostCategory.CHINA_DOMESTIC_TRANSPORT,
-                        description = "China Local Delivery (চীন লোকাল ডেলিভারি)",
-                        amountMinor = chinaDeliveryChargeMinor,
-                        currency = currency,
-                        exchangeRate = exchangeRate,
-                        method = AllocationMethod.QUANTITY,
-                        isEstimated = false
-                    )
-                }
-
-                if (categoryFreightRatesBdtMinor.isNotEmpty()) {
-                    var totalCategoryFreightBdtMinor = 0L
-                    for ((catId, rateMinor) in categoryFreightRatesBdtMinor) {
-                        if (rateMinor >= 0L) {
-                            importRepository.updateCategoryDefaultFreightRate(catId, rateMinor)
-                            if (batchShipment != null) {
-                                val updatedRate = importRepository.overrideShipmentCategoryFreightRate(batchShipment.id, catId, rateMinor)
-                                totalCategoryFreightBdtMinor += updatedRate.totalCategoryFreightBdtMinor
-                            }
-                        }
-                    }
-                    if (totalCategoryFreightBdtMinor > 0L) {
-                        importRepository.addPurchaseCostItem(
-                            orderId = orderId,
-                            category = CostCategory.INTERNATIONAL_FREIGHT,
-                            description = "Category Per-KG International Freight (ক্যাটাগরি কেজি প্রতি ফ্রেইট)",
-                            amountMinor = totalCategoryFreightBdtMinor,
-                            currency = "BDT",
-                            exchangeRate = BigDecimal.ONE,
-                            method = AllocationMethod.GROSS_WEIGHT,
-                            isEstimated = false
-                        )
-                    }
-                }
-
-                if (batchShipment != null) {
-                    selectShipment(batchShipment.id)
-                }
+                importRepository.getShipmentsForOrderSync(orderId).firstOrNull()?.let { selectShipment(it.id) }
+                onSaved()
 
                 val msg = if (status == PurchaseOrderStatus.DRAFT) {
                     "Purchase Order saved as Draft & synced to Import Shipment!"
                 } else {
                     "Purchase Order confirmed & automatically synced to Import Shipment!"
                 }
-                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, userMessage = msg) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, purchaseOrderSaveError = e.message, userMessage = "Error: ${e.message}") }
             }
         }
     }
@@ -495,11 +466,13 @@ class ImportViewModel @Inject constructor(
         categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap(),
         handlingCostMinor: Long = 0L,
         sampleCostMinor: Long = 0L,
-        attachments: String? = null
+        attachments: String? = null,
+        onSaved: () -> Unit = {}
     ) {
+        if (_uiState.value.isSavingPurchaseOrder) return
         viewModelScope.launch {
             try {
-                _uiState.update { it.copy(isLoading = true) }
+                _uiState.update { it.copy(isLoading = true, isSavingPurchaseOrder = true, purchaseOrderSaveError = null) }
                 importRepository.updatePurchaseOrder(
                     orderId = orderId,
                     supplierId = supplierId,
@@ -521,9 +494,26 @@ class ImportViewModel @Inject constructor(
                     _uiState.update { it.copy(selectedPo = updatedPo) }
                 }
 
-                _uiState.update { it.copy(isLoading = false, userMessage = "Purchase order updated successfully!") }
+                onSaved()
+                _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, userMessage = "Purchase order updated successfully!") }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, userMessage = "Error updating PO: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, purchaseOrderSaveError = e.message, userMessage = "Error updating PO: ${e.message}") }
+            }
+        }
+    }
+
+    fun updatePurchaseOrderMetadata(orderId: String, notes: String?, attachments: String?, onSaved: () -> Unit = {}) {
+        if (_uiState.value.isSavingPurchaseOrder) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSavingPurchaseOrder = true, purchaseOrderSaveError = null) }
+            try {
+                importRepository.updatePurchaseOrderMetadata(orderId, notes, attachments)
+                val updated = importRepository.getPurchaseOrderById(orderId)
+                _uiState.update { it.copy(selectedPo = if (it.selectedPo?.id == orderId) updated else it.selectedPo,
+                    isSavingPurchaseOrder = false, userMessage = "Purchase order details updated") }
+                onSaved()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSavingPurchaseOrder = false, purchaseOrderSaveError = e.message) }
             }
         }
     }
@@ -697,13 +687,14 @@ class ImportViewModel @Inject constructor(
         exchangeRate: BigDecimal,
         method: AllocationMethod,
         paymentAccount: String,
-        docRef: String?
+        docRef: String?,
+        manualAllocationsBdtMinor: Map<String, Long> = emptyMap()
     ) {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
                 importRepository.addCostItem(
-                    shipmentId, category, description, amountMinor, currency, exchangeRate, method, paymentAccount, docRef
+                    shipmentId, category, description, amountMinor, currency, exchangeRate, method, paymentAccount, docRef, manualAllocationsBdtMinor
                 )
                 _uiState.update { it.copy(isLoading = false, userMessage = "Expense recorded and capitalized to in-transit inventory!") }
             } catch (e: Exception) {
@@ -1176,7 +1167,8 @@ class ImportViewModel @Inject constructor(
         isEstimated: Boolean = false,
         paymentAccount: String = "City Bank Corporate (Import LC)",
         docRef: String? = null,
-        notes: String? = null
+        notes: String? = null,
+        manualAllocationsBdtMinor: Map<String, Long> = emptyMap()
     ) {
         viewModelScope.launch {
             try {
@@ -1192,7 +1184,8 @@ class ImportViewModel @Inject constructor(
                     isEstimated = isEstimated,
                     paymentAccount = paymentAccount,
                     docRef = docRef,
-                    notes = notes
+                    notes = notes,
+                    manualAllocationsBdtMinor = manualAllocationsBdtMinor
                 )
                 val typeStr = if (isEstimated) "Estimated" else "Actual"
                 _uiState.update { it.copy(isLoading = false, userMessage = "$typeStr expense added successfully!") }

@@ -1,5 +1,9 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -97,6 +101,9 @@ fun AddAdditionalCostDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 620.dp)
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
                     .background(ERPBackground)
                     .padding(20.dp)
             ) {

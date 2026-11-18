@@ -69,8 +69,10 @@ import com.pocketdev.advance_erp.core.util.PoAttachmentKind
 import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.Product
+import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
+import com.pocketdev.advance_erp.data.entity.ShipmentCarton
 import com.pocketdev.advance_erp.data.entity.Supplier
 import java.io.File
 
@@ -122,6 +124,9 @@ fun PoShareDialog(
     supplier: Supplier?,
     businessProfile: BusinessProfile?,
     isBangla: Boolean = false,
+    variantsMap: Map<String, ProductVariant> = emptyMap(),
+    cartons: List<ShipmentCarton> = emptyList(),
+    onResolveItemImages: suspend (List<PurchaseOrderItem>) -> Map<String, String> = { emptyMap() },
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -392,8 +397,17 @@ fun PoShareDialog(
                                 try {
                                     val pdfFile = withContext(Dispatchers.IO) {
                                         if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+                                            val itemImagePaths = onResolveItemImages(items)
                                             ImportPdfGenerator.generateSupplierCommercialOrderPdf(
-                                                context, order, items, productsMap, supplier, businessProfile
+                                                context = context,
+                                                order = order,
+                                                items = items,
+                                                productsMap = productsMap,
+                                                supplier = supplier,
+                                                businessProfile = businessProfile,
+                                                variantsMap = variantsMap,
+                                                itemImagePaths = itemImagePaths,
+                                                cartons = cartons
                                             )
                                         } else {
                                             ImportPdfGenerator.generateCompanyInternalOrderPdf(
@@ -442,8 +456,17 @@ fun PoShareDialog(
                                 try {
                                     val xlsxFile = withContext(Dispatchers.IO) {
                                         if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+                                            val itemImagePaths = onResolveItemImages(items)
                                             ImportExcelGenerator.generateSupplierOrderExcel(
-                                                context, order, items, productsMap, supplier, businessProfile
+                                                context = context,
+                                                order = order,
+                                                items = items,
+                                                productsMap = productsMap,
+                                                supplier = supplier,
+                                                businessProfile = businessProfile,
+                                                variantsMap = variantsMap,
+                                                itemImagePaths = itemImagePaths,
+                                                cartons = cartons
                                             )
                                         } else {
                                             ImportExcelGenerator.generateCompanyInternalOrderExcel(

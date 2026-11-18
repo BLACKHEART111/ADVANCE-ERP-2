@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,7 +49,7 @@ fun ERPActionButton(
         ERPButtonVariant.PRIMARY -> {
             Button(
                 onClick = onClick,
-                modifier = modifier.height(48.dp),
+                modifier = modifier.heightIn(min = 48.dp),
                 enabled = enabled && !isLoading,
                 shape = shape,
                 colors = ButtonDefaults.buttonColors(
@@ -58,13 +60,13 @@ fun ERPActionButton(
                 ),
                 contentPadding = contentPadding
             ) {
-                ButtonInnerContent(text, icon, isLoading, Color.White)
+                ButtonInnerContent(text, icon, isLoading, LocalContentColor.current)
             }
         }
         ERPButtonVariant.SECONDARY -> {
             Button(
                 onClick = onClick,
-                modifier = modifier.height(48.dp),
+                modifier = modifier.heightIn(min = 48.dp),
                 enabled = enabled && !isLoading,
                 shape = shape,
                 colors = ButtonDefaults.buttonColors(
@@ -75,13 +77,13 @@ fun ERPActionButton(
                 ),
                 contentPadding = contentPadding
             ) {
-                ButtonInnerContent(text, icon, isLoading, Color.White)
+                ButtonInnerContent(text, icon, isLoading, LocalContentColor.current)
             }
         }
         ERPButtonVariant.OUTLINED -> {
             OutlinedButton(
                 onClick = onClick,
-                modifier = modifier.height(48.dp),
+                modifier = modifier.heightIn(min = 48.dp),
                 enabled = enabled && !isLoading,
                 shape = shape,
                 border = BorderStroke(1.5.dp, if (enabled) PrimaryPurple else ERPDivider),
@@ -91,13 +93,13 @@ fun ERPActionButton(
                 ),
                 contentPadding = contentPadding
             ) {
-                ButtonInnerContent(text, icon, isLoading, PrimaryPurple)
+                ButtonInnerContent(text, icon, isLoading, LocalContentColor.current)
             }
         }
         ERPButtonVariant.GHOST -> {
             Button(
                 onClick = onClick,
-                modifier = modifier.height(48.dp),
+                modifier = modifier.heightIn(min = 48.dp),
                 enabled = enabled && !isLoading,
                 shape = shape,
                 colors = ButtonDefaults.buttonColors(
@@ -142,8 +144,8 @@ private fun ButtonInnerContent(
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = tint,
-            maxLines = 1,
-            softWrap = false
+            maxLines = 2,
+            softWrap = true
         )
     }
 }

@@ -742,6 +742,9 @@ private fun ReceivingLineInputs(
             modifier = Modifier.weight(1f),
             singleLine = true
         )
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(
             value = line.missingQtyStr,
             onValueChange = { newVal ->

@@ -1,0 +1,1 @@
+61edb1b6ece35eeabca046e6337cbdabd8541c65bfd199d321f13fe9892173ea  /data/user/0/com.termux/files/home/ADVANCE-ERP-builds/16kb-compatible-20261118/ADVANCE-ERP-16kb-debug.apk

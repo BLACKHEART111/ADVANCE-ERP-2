@@ -77,17 +77,17 @@ fun RecordSupplierPaymentDialog(
         val major = remaining / 100
         val minor = remaining % 100
         String.format(java.util.Locale.US, "%d.%02d", major, minor)
-    } else "15000.00"
+    } else ""
 
     var selectedSupplierId by remember { mutableStateOf(initialSupplierId) }
-    var selectedOrderId by remember { mutableStateOf(preselectedOrderId ?: orders.firstOrNull()?.id) }
+    var selectedOrderId by remember { mutableStateOf(initialOrder?.id) }
     var amountStr by remember { mutableStateOf(initialAmount) }
     var selectedCurrency by remember { mutableStateOf(initialOrder?.currency ?: "CNY") }
     var exchangeRateStr by remember { mutableStateOf(initialOrder?.exchangeRateToBdt ?: "17.00") }
     var selectedMethod by remember { mutableStateOf(PaymentMethod.BANK_TT) }
     var paymentAccount by remember { mutableStateOf("City Bank Corporate (Import LC)") }
-    var referenceNumber by remember { mutableStateOf("SWIFT-TT-882910") }
-    var notes by remember { mutableStateOf(if (initialOrder != null) "Payment for ${initialOrder.poNumber}" else "Factory Advance TT Payment") }
+    var referenceNumber by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf(if (initialOrder != null) "Payment for ${initialOrder.poNumber}" else "") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Dialog(
@@ -144,7 +144,13 @@ fun RecordSupplierPaymentDialog(
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
-                                    .clickable { selectedSupplierId = sup.id }
+                                    .clickable {
+                                        selectedSupplierId = sup.id
+                                        selectedOrderId = null
+                                        selectedCurrency = sup.currency
+                                        exchangeRateStr = if (sup.currency == "BDT") "1" else ""
+                                        amountStr = ""
+                                    }
                                     .padding(8.dp)
                                 ) {
                                     Text(sup.companyName, style = MaterialTheme.typography.bodyMedium, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
@@ -168,7 +174,7 @@ fun RecordSupplierPaymentDialog(
                                 Text("General Supplier Advance (No specific PO)", style = MaterialTheme.typography.bodySmall)
                             }
 
-                            orders.filter { it.supplierId == selectedSupplierId }.forEach { po ->
+                            orders.filter { it.supplierId == selectedSupplierId && it.status !in listOf("DRAFT", "CANCELLED") && it.totalAmountMinor > it.paidAmountMinor }.forEach { po ->
                                 val isPoSel = selectedOrderId == po.id
                                 Row(
                                     modifier = Modifier
@@ -179,6 +185,7 @@ fun RecordSupplierPaymentDialog(
                                             selectedOrderId = po.id
                                             selectedCurrency = po.currency
                                             exchangeRateStr = po.exchangeRateToBdt
+                                            amountStr = BigDecimal(po.totalAmountMinor - po.paidAmountMinor).movePointLeft(2).toPlainString()
                                         }
                                         .padding(8.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween

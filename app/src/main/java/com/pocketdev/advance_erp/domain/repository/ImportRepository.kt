@@ -63,7 +63,8 @@ data class MixedCartonLineDraft(
     val productId: String,
     val variantId: String? = null,
     val productName: String = "",
-    val quantity: Int
+    val quantity: Int,
+    val manualGrossWeightKg: BigDecimal? = null
 )
 
 data class ShipmentCartonDraft(
@@ -90,7 +91,8 @@ data class PoMixedCartonDraft(
     val lengthCm: BigDecimal = BigDecimal.ZERO,
     val widthCm: BigDecimal = BigDecimal.ZERO,
     val heightCm: BigDecimal = BigDecimal.ZERO,
-    val lines: List<MixedCartonLineDraft>
+    val lines: List<MixedCartonLineDraft>,
+    val cbm: BigDecimal = BigDecimal.ZERO
 )
 
 data class ReceiptItemDraft(
@@ -128,6 +130,16 @@ data class CostAdjustmentResult(
 )
 
 interface ImportRepository {
+    suspend fun updatePurchaseOrderMetadata(orderId: String, notes: String?, attachments: String?)
+
+    suspend fun savePurchaseOrderDraft(
+        orderId: String?, supplierId: String, currency: String, exchangeRate: BigDecimal,
+        items: List<PurchaseOrderItemDraft>, notes: String?, status: PurchaseOrderStatus,
+        cartons: List<PoMixedCartonDraft>, chinaDeliveryChargeMinor: Long,
+        categoryFreightRatesBdtMinor: Map<String, Long>, handlingCostMinor: Long,
+        sampleCostMinor: Long, attachments: String?
+    ): String
+
 
     // Purchase Orders
     fun getAllPurchaseOrders(): Flow<List<PurchaseOrder>>
@@ -197,7 +209,8 @@ interface ImportRepository {
         exchangeRate: BigDecimal,
         method: AllocationMethod,
         paymentAccount: String,
-        docRef: String?
+        docRef: String?,
+        manualAllocationsBdtMinor: Map<String, Long> = emptyMap()
     ): String
     suspend fun deleteCostItem(costItemId: String)
     suspend fun calculateAndSaveLandedCost(shipmentId: String): List<LandedCostSnapshot>
@@ -276,7 +289,8 @@ interface ImportRepository {
         isEstimated: Boolean = false,
         paymentAccount: String = "City Bank Corporate (Import LC)",
         docRef: String? = null,
-        notes: String? = null
+        notes: String? = null,
+        manualAllocationsBdtMinor: Map<String, Long> = emptyMap()
     ): String
 
     fun getCostItemsForOrder(orderId: String): Flow<List<ImportCostItem>>

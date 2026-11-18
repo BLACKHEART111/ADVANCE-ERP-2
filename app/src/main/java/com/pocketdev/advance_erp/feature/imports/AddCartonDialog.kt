@@ -75,16 +75,18 @@ import com.pocketdev.advance_erp.domain.repository.ShipmentCartonDraft
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-private data class MixedLineDraftState(
-    var productId: String,
-    var quantityStr: String = "20"
-)
+private class MixedLineDraftState(productId: String, quantityStr: String = "20") {
+    var productId by mutableStateOf(productId)
+    var variantId by mutableStateOf<String?>(null)
+    var quantityStr by mutableStateOf(quantityStr)
+}
 
 @Composable
 fun AddCartonDialog(
     shipment: ImportShipment? = null,
     orderId: String? = null,
     products: List<Product>,
+    variants: List<com.pocketdev.advance_erp.data.entity.ProductVariant> = emptyList(),
     language: AppLanguage = AppLanguage.BANGLA,
     onDismiss: () -> Unit,
     onConfirm: (carton: ShipmentCartonDraft) -> Unit,
@@ -95,6 +97,7 @@ fun AddCartonDialog(
 
     var cartonNumber by remember { mutableStateOf("CTN-%03d".format((shipment?.totalCartons ?: 0) + 1)) }
     var singleProductId by remember { mutableStateOf(products.firstOrNull()?.id ?: "") }
+    var singleVariantId by remember { mutableStateOf<String?>(null) }
     var singleQuantityStr by remember { mutableStateOf("50") }
 
     var lengthStr by remember { mutableStateOf("50") }
@@ -131,10 +134,10 @@ fun AddCartonDialog(
     val productsMap = remember(products) { products.associateBy { it.id } }
 
     val totalMixedQty = mixedLines.sumOf { it.quantityStr.trim().toIntOrNull() ?: 0 }
-    val grossWeightBd = BigDecimal(grossWeightStr.ifBlank { "0" })
-    val netWeightBd = BigDecimal(netWeightStr.ifBlank { "0" })
+    val grossWeightBd = grossWeightStr.toBigDecimalOrNull() ?: BigDecimal.ZERO
+    val netWeightBd = netWeightStr.toBigDecimalOrNull() ?: BigDecimal.ZERO
 
-    val allocatedPreview = remember(mixedLines.map { it.productId to it.quantityStr }, grossWeightStr, netWeightStr) {
+    val allocatedPreview = remember(mixedLines.map { Triple(it.productId, it.variantId, it.quantityStr) }, grossWeightStr, netWeightStr) {
         try {
             if (totalMixedQty > 0 && grossWeightBd > BigDecimal.ZERO) {
                 val inputs = mixedLines.map {
@@ -142,6 +145,7 @@ fun AddCartonDialog(
                     val name = if (isBangla && !p?.nameBn.isNullOrBlank()) p?.nameBn!! else p?.nameEn ?: it.productId
                     MixedCartonLineInput(
                         productId = it.productId,
+                        variantId = it.variantId,
                         productName = name,
                         quantity = it.quantityStr.trim().toIntOrNull() ?: 0
                     )
@@ -368,7 +372,7 @@ fun AddCartonDialog(
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(if (isSelected) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF8F9FA))
                                                 .border(1.dp, if (isSelected) PrimaryPurple else Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
-                                                .clickable { singleProductId = prod.id }
+                                                .clickable { singleProductId = prod.id; singleVariantId = null }
                                                 .padding(10.dp)
                                         ) {
                                             Text(
@@ -380,6 +384,7 @@ fun AddCartonDialog(
                                         }
                                     }
 
+                                    PackingVariantSelector(singleProductId, singleVariantId, variants, isBangla) { singleVariantId = it }
                                     OutlinedTextField(
                                         value = singleQuantityStr,
                                         onValueChange = { singleQuantityStr = it },
@@ -455,7 +460,7 @@ fun AddCartonDialog(
                                                     .padding(vertical = 2.dp)
                                                     .clip(RoundedCornerShape(6.dp))
                                                     .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
-                                                    .clickable { line.productId = p.id }
+                                                    .clickable { line.productId = p.id; line.variantId = null }
                                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                                             ) {
                                                 Text(
@@ -468,6 +473,7 @@ fun AddCartonDialog(
                                         }
                                     }
 
+                                    PackingVariantSelector(line.productId, line.variantId, variants, isBangla) { line.variantId = it }
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -541,7 +547,7 @@ fun AddCartonDialog(
                                             ShipmentCartonDraft(
                                                 cartonNumber = cartonNumber,
                                                 productId = singleProductId,
-                                                variantId = null,
+                                                variantId = singleVariantId,
                                                 quantity = qty,
                                                 lengthCm = l,
                                                 widthCm = w,
@@ -558,7 +564,7 @@ fun AddCartonDialog(
                                             val p = productsMap[it.productId]
                                             MixedCartonLineDraft(
                                                 productId = it.productId,
-                                                variantId = null,
+                                                variantId = it.variantId,
                                                 productName = p?.nameEn ?: it.productId,
                                                 quantity = q
                                             )
@@ -571,7 +577,7 @@ fun AddCartonDialog(
                                                 ShipmentCartonDraft(
                                                     cartonNumber = cartonNumber,
                                                     productId = lineDrafts.first().productId,
-                                                    variantId = null,
+                                                    variantId = lineDrafts.first().variantId,
                                                     quantity = lineDrafts.sumOf { it.quantity },
                                                     lengthCm = l,
                                                     widthCm = w,

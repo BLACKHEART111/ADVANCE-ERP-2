@@ -5,3 +5,7 @@ local.properties
 .idea/
 .DS_Store
 attachments/
+
+# Python verification tool cache
+__pycache__/
+*.py[cod]
