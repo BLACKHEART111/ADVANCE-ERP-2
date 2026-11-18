@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.product
 
+import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
@@ -918,7 +919,8 @@ fun ProductDetailDialog(
                                 Column(
                                     horizontalAlignment = Alignment.End
                                 ) {
-                                    var variantCostVisible by remember(product.id, v.id, canViewCost) { mutableStateOf(false) }
+                                    val variantCostVisibility = rememberBiometricCostVisibility(listOf(product.id, v.id), canViewCost, language == AppLanguage.BANGLA)
+                                    val variantCostVisible = variantCostVisibility.isVisible
                                     val effectiveCost = latestLandedCostMinor(costLayers, product.id, v.id)
                                         ?: if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
                                     if (canViewCost) Row(verticalAlignment = Alignment.CenterVertically) {
@@ -929,7 +931,7 @@ fun ProductDetailDialog(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        IconButton(onClick = { variantCostVisible = !variantCostVisible }, modifier = Modifier.size(48.dp)) {
+                                        IconButton(onClick = variantCostVisibility.toggle, modifier = Modifier.size(48.dp)) {
                                             Icon(if (variantCostVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                                 contentDescription = if (language == AppLanguage.BANGLA) {
                                                     if (variantCostVisible) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
@@ -1085,7 +1087,8 @@ private fun DetailCard(
     revealable: Boolean = false,
     isBangla: Boolean = false
 ) {
-    var revealed by remember(value) { mutableStateOf(false) }
+    val costVisibility = rememberBiometricCostVisibility(value, revealable, isBangla)
+    val revealed = costVisibility.isVisible
     Column(
         modifier = modifier
             .background(color.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
@@ -1093,7 +1096,7 @@ private fun DetailCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = title, style = MaterialTheme.typography.labelSmall, color = TextSecondary, modifier = Modifier.weight(1f))
-            if (revealable) IconButton(onClick = { revealed = !revealed }, modifier = Modifier.size(48.dp)) {
+            if (revealable) IconButton(onClick = costVisibility.toggle, modifier = Modifier.size(48.dp)) {
                 Icon(if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                     contentDescription = if (isBangla) {
                         if (revealed) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"

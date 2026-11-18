@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.product
 
+import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -118,7 +119,8 @@ fun VariantPhotoSliderDialog(
     }
 
     val currentSlide = slides.getOrNull(pagerState.currentPage) ?: slides[0]
-    var costVisible by remember(currentSlide.id, canViewCost) { mutableStateOf(false) }
+    val costVisibility = rememberBiometricCostVisibility(currentSlide.id, canViewCost, language == AppLanguage.BANGLA)
+    val costVisible = costVisibility.isVisible
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -409,7 +411,7 @@ fun VariantPhotoSliderDialog(
                                         modifier = Modifier.weight(1f),
                                         textAlign = TextAlign.End
                                     )
-                                    IconButton(onClick = { costVisible = !costVisible }, modifier = Modifier.size(48.dp)) {
+                                    IconButton(onClick = costVisibility.toggle, modifier = Modifier.size(48.dp)) {
                                         Icon(if (costVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                             contentDescription = if (language == AppLanguage.BANGLA) {
                                                 if (costVisible) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"

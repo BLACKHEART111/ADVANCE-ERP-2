@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import com.pocketdev.advance_erp.core.security.BiometricCostGuard
+import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.animation.AnimatedVisibility
@@ -590,33 +592,51 @@ fun InventoryScreen(
                 }
 
                 InventoryTab.VALUATION -> {
-                    InventoryValuationView(
-                        breakdown = state.valuationBreakdown,
-                        language = state.language,
-                        currency = state.currency,
-                        onExportPdf = { viewModel.exportValuationPdf(context) }
-                    )
+                    BiometricCostGuard(
+                        scopeKey = "inventory-VALUATION:${state.selectedWarehouseId}",
+                        allowed = state.canViewCost,
+                        isBangla = state.language == AppLanguage.BANGLA
+                    ) {
+                        InventoryValuationView(
+                            breakdown = state.valuationBreakdown,
+                            language = state.language,
+                            currency = state.currency,
+                            onExportPdf = { viewModel.exportValuationPdf(context) }
+                        )
+                    }
                 }
 
                 InventoryTab.RECONCILIATION -> {
-                    InventoryReconciliationView(
-                        reconciliation = state.latestReconciliation,
-                        items = state.reconciliationItems,
-                        isReconciling = state.isReconciling,
-                        language = state.language,
-                        currency = state.currency,
-                        onRunReconciliation = { viewModel.runReconciliationAudit() },
-                        onExportPdf = { viewModel.exportReconciliationPdf(context) }
-                    )
+                    BiometricCostGuard(
+                        scopeKey = "inventory-RECONCILIATION:${state.selectedWarehouseId}",
+                        allowed = state.canViewCost,
+                        isBangla = state.language == AppLanguage.BANGLA
+                    ) {
+                        InventoryReconciliationView(
+                            reconciliation = state.latestReconciliation,
+                            items = state.reconciliationItems,
+                            isReconciling = state.isReconciling,
+                            language = state.language,
+                            currency = state.currency,
+                            onRunReconciliation = { viewModel.runReconciliationAudit() },
+                            onExportPdf = { viewModel.exportReconciliationPdf(context) }
+                        )
+                    }
                 }
 
                 InventoryTab.COGS_TRACE -> {
-                    CogsTraceabilityView(
-                        consumptions = state.fifoConsumptions,
-                        totalCogsMinor = state.totalCogsMinor,
-                        language = state.language,
-                        currency = state.currency
-                    )
+                    BiometricCostGuard(
+                        scopeKey = "inventory-COGS_TRACE:${state.selectedWarehouseId}",
+                        allowed = state.canViewCost,
+                        isBangla = state.language == AppLanguage.BANGLA
+                    ) {
+                        CogsTraceabilityView(
+                            consumptions = state.fifoConsumptions,
+                            totalCogsMinor = state.totalCogsMinor,
+                            language = state.language,
+                            currency = state.currency
+                        )
+                    }
                 }
 
                 InventoryTab.TRANSFERS -> {
@@ -875,6 +895,7 @@ fun InventoryScreen(
         ProductCostHistoryDialog(
             summary = state.selectedProductCostSummary,
             layers = state.selectedProductCostLayers,
+            canViewCost = state.canViewCost,
             adjustments = state.selectedProductCostAdjustments,
             language = state.language,
             currency = state.currency,
@@ -889,6 +910,7 @@ fun InventoryScreen(
     if (state.showCostAdjustmentDialog && state.selectedLayerForAdjustment != null) {
         CostAdjustmentInputDialog(
             layer = state.selectedLayerForAdjustment!!,
+            canViewCost = state.canViewCost,
             language = state.language,
             currency = state.currency,
             onConfirm = { costLayerId, newUnitCostMinor, reason ->
@@ -1087,7 +1109,8 @@ private fun CompactStockProductCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var costVisible by remember(item.productId, canViewCost) { mutableStateOf(false) }
+    val costVisibility = rememberBiometricCostVisibility(listOf(item.productId, item.minCostMinor, item.maxCostMinor), canViewCost, language == AppLanguage.BANGLA)
+    val costVisible = costVisibility.isVisible
     val stockColor = when {
         item.totalQuantity == 0 -> StatusError
         item.isLowStock -> Color(0xFFF59E0B) // Amber
@@ -1276,7 +1299,7 @@ private fun CompactStockProductCard(
                         color = DeepNavy,
                         modifier = Modifier.weight(1f).padding(start = 8.dp)
                     )
-                    IconButton(onClick = { costVisible = !costVisible }, modifier = Modifier.size(48.dp)) {
+                    IconButton(onClick = costVisibility.toggle, modifier = Modifier.size(48.dp)) {
                         Icon(if (costVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = if (language == AppLanguage.BANGLA) {
                                 if (costVisible) "ল্যান্ডেড খরচ লুকান" else "ল্যান্ডেড খরচ দেখুন"

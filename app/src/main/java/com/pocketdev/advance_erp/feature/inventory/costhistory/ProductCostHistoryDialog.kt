@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.inventory.costhistory
 
+import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
+import com.pocketdev.advance_erp.core.security.LockedCostPanel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -78,10 +80,19 @@ fun ProductCostHistoryDialog(
     adjustments: List<InventoryCostAdjustmentWithDetails> = emptyList(),
     language: AppLanguage,
     currency: CurrencyCode,
+    canViewCost: Boolean = true,
     onAdjustLayer: ((layer: InventoryCostLayer) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") } // "ALL", "ACTIVE", "DEPLETED", "ADJUSTMENTS"
+    val visibility = rememberBiometricCostVisibility(summary?.productId ?: layers.firstOrNull()?.productId ?: "cost-history", canViewCost, language == AppLanguage.BANGLA)
+    if (!visibility.isVisible) {
+        Dialog(onDismissRequest = onDismiss) {
+            LockedCostPanel(canViewCost, language == AppLanguage.BANGLA, visibility.toggle, onDismiss)
+        }
+        return
+    }
+
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -457,6 +468,7 @@ fun CostAdjustmentInputDialog(
     layer: InventoryCostLayer,
     language: AppLanguage,
     currency: CurrencyCode,
+    canViewCost: Boolean = true,
     onConfirm: (costLayerId: String, newUnitCostMinor: Long, reason: String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -470,6 +482,14 @@ fun CostAdjustmentInputDialog(
     val soldQty = (layer.initialQuantity - layer.remainingQuantity).coerceAtLeast(0)
     val invImpact = variance * remainingQty
     val cogsImpact = variance * soldQty
+
+    val visibility = rememberBiometricCostVisibility(layer.id, canViewCost, language == AppLanguage.BANGLA)
+    if (!visibility.isVisible) {
+        Dialog(onDismissRequest = onDismiss) {
+            LockedCostPanel(canViewCost, language == AppLanguage.BANGLA, visibility.toggle, onDismiss)
+        }
+        return
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
