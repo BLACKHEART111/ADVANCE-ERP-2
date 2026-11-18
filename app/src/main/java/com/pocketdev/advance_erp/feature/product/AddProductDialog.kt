@@ -1196,24 +1196,15 @@ fun AddProductDialog(
                                                 }
                                             }
                                         }
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = "Color: ${v.color.ifBlank { "-" }} • Size: ${v.size.ifBlank { "-" }}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = TextSecondary
-                                            )
-                                            val costFmt = Formatters.formatMoney(v.costMinor, CurrencyCode.BDT, language)
-                                            val priceFmt = Formatters.formatMoney(v.priceMinor, CurrencyCode.BDT, language)
-                                            Text(
-                                                text = if (language == AppLanguage.BANGLA) "ক্রয়: $costFmt • বিক্রয়: $priceFmt" else "Cost: $costFmt • Sell: $priceFmt",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = PrimaryPurple
-                                            )
-                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = if (language == AppLanguage.BANGLA)
+                                                "রং: ${v.color.ifBlank { "-" }} • সাইজ: ${v.size.ifBlank { "-" }}"
+                                            else "Color: ${v.color.ifBlank { "-" }} • Size: ${v.size.ifBlank { "-" }}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
                                     }
 
                                     // Action buttons: Edit details & Delete
@@ -1221,7 +1212,7 @@ fun AddProductDialog(
                                         onClick = {
                                             editingVariantIdx = if (editingVariantIdx == idx) null else idx
                                         },
-                                        modifier = Modifier.size(32.dp)
+                                        modifier = Modifier.size(48.dp)
                                     ) {
                                         Icon(
                                             imageVector = if (editingVariantIdx == idx) Icons.Default.Check else Icons.Default.Edit,
@@ -1234,12 +1225,25 @@ fun AddProductDialog(
                                     if (!v.isExistingVariant) {
                                         IconButton(
                                             onClick = { variants.removeAt(idx) },
-                                            modifier = Modifier.size(32.dp)
+                                            modifier = Modifier.size(48.dp)
                                         ) {
                                             Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = StatusError, modifier = Modifier.size(18.dp))
                                         }
                                     }
                                 }
+
+                                // Keep prices on their own full-width line. Sharing the metadata row
+                                // can leave only a glyph's width on compact screens or with large fonts.
+                                Spacer(modifier = Modifier.height(8.dp))
+                                val costFmt = Formatters.formatMoney(v.costMinor, CurrencyCode.BDT, language)
+                                val priceFmt = Formatters.formatMoney(v.priceMinor, CurrencyCode.BDT, language)
+                                Text(
+                                    text = if (language == AppLanguage.BANGLA) "ক্রয়: $costFmt • বিক্রয়: $priceFmt" else "Cost: $costFmt • Sell: $priceFmt",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = PrimaryPurple,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
 
                                 // Stock Overview Badges (handles the exact scenario: e.g. 50 pcs previous + 100 pcs new = 150 pcs total)
                                 if (v.isExistingVariant) {
