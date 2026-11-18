@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.util.CartonMeasurement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -140,11 +141,40 @@ private class CartonBoxState(
     grossWeightKgStr: String = "15.0",
     initialLines: List<CartonLineState> = emptyList(),
     netWeightKgStr: String = "",
-    val lengthCm: BigDecimal = BigDecimal.ZERO,
-    val widthCm: BigDecimal = BigDecimal.ZERO,
-    val heightCm: BigDecimal = BigDecimal.ZERO,
-    val cbm: BigDecimal = BigDecimal.ZERO
+    lengthCm: BigDecimal = BigDecimal.ZERO,
+    widthCm: BigDecimal = BigDecimal.ZERO,
+    heightCm: BigDecimal = BigDecimal.ZERO,
+    cbm: BigDecimal = BigDecimal.ZERO
 ) {
+    var lengthCm by mutableStateOf(lengthCm)
+        private set
+    var widthCm by mutableStateOf(widthCm)
+        private set
+    var heightCm by mutableStateOf(heightCm)
+        private set
+    var cbm by mutableStateOf(
+        if (lengthCm.signum() > 0 && widthCm.signum() > 0 && heightCm.signum() > 0)
+            CartonMeasurement(lengthCm, widthCm, heightCm).cbm else cbm
+    )
+        private set
+    var measurementStr by mutableStateOf(
+        if (lengthCm.signum() > 0 && widthCm.signum() > 0 && heightCm.signum() > 0)
+            listOf(lengthCm, widthCm, heightCm).joinToString(" × ") { it.stripTrailingZeros().toPlainString() }
+        else ""
+    )
+        private set
+    val measurementInvalid: Boolean
+        get() = measurementStr.isNotBlank() && CartonMeasurement.parseOrNull(measurementStr) == null
+
+    fun updateMeasurement(value: String) {
+        measurementStr = value
+        val measurement = CartonMeasurement.parseOrNull(value)
+        lengthCm = measurement?.lengthCm ?: BigDecimal.ZERO
+        widthCm = measurement?.widthCm ?: BigDecimal.ZERO
+        heightCm = measurement?.heightCm ?: BigDecimal.ZERO
+        cbm = measurement?.cbm ?: BigDecimal.ZERO
+    }
+
     var cartonNumber by mutableStateOf(cartonNumber)
     var grossWeightKgStr by mutableStateOf(grossWeightKgStr)
     var netWeightKgStr by mutableStateOf(netWeightKgStr)
@@ -462,6 +492,10 @@ fun CreatePurchaseOrderDialog(
                     if (isBangla) "প্রতিটি কার্টনের নম্বর আলাদা দিন।" else "Each carton needs a unique number."
                 }
                 cartonBoxes.forEach { box ->
+                    require(!box.measurementInvalid) {
+                        if (isBangla) "${box.cartonNumber}: মাপ 40*50*40 আকারে দিন অথবা খালি রাখুন।"
+                        else "${box.cartonNumber}: enter dimensions as 40*50*40 or leave blank."
+                    }
                     val allocated = CartonWeightAllocationEngine.allocateWeights(
                         box.grossWeightKgStr.toBigDecimal(), box.netWeightKg(),
                         box.lines.map { line ->
@@ -1658,10 +1692,26 @@ fun CreatePurchaseOrderDialog(
                                                             modifier = Modifier.weight(1f), singleLine = true
                                                         )
                                                     }
-                                                    if (box.cbm.signum() > 0) {
-                                                        Text(if (box.lengthCm.signum() > 0) "${box.lengthCm} × ${box.widthCm} × ${box.heightCm} cm · ${box.cbm} m³" else "${box.cbm} m³",
-                                                            style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                                    }
+                                                    Spacer(Modifier.height(8.dp))
+                                                    OutlinedTextField(
+                                                        value = box.measurementStr,
+                                                        onValueChange = box::updateMeasurement,
+                                                        label = { Text(if (isBangla) "CTN মাপ (cm, ঐচ্ছিক)" else "CTN dimensions (cm, optional)") },
+                                                        placeholder = { Text("40*50*40") },
+                                                        supportingText = {
+                                                            Text(
+                                                                when {
+                                                                    box.measurementInvalid -> if (isBangla) "দৈর্ঘ্য*প্রস্থ*উচ্চতা দিন, যেমন 40*50*40; অথবা খালি রাখুন।" else "Enter length*width*height, e.g. 40*50*40, or leave blank."
+                                                                    box.cbm.signum() > 0 -> "CBM: ${box.cbm.stripTrailingZeros().let { it.setScale(maxOf(3, it.scale())) }.toPlainString()} m³ / CTN"
+                                                                    else -> if (isBangla) "দৈর্ঘ্য × প্রস্থ × উচ্চতা (সেমি) দিলে CBM নিজে হিসাব হবে।" else "Length × width × height in cm calculates CBM automatically."
+                                                                }
+                                                            )
+                                                        },
+                                                        isError = box.measurementInvalid,
+                                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        singleLine = true
+                                                    )
 
                                                     Spacer(modifier = Modifier.height(8.dp))
                                                     Text(
