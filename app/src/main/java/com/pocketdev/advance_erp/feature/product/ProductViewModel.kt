@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.product
 
+import com.pocketdev.advance_erp.domain.repository.CostHistoryRepository
+import com.pocketdev.advance_erp.core.security.SecurityManager
+import kotlinx.coroutines.flow.map
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -75,8 +78,14 @@ class ProductViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val inventoryRepository: InventoryRepository,
     private val preferencesRepository: UserPreferencesRepository,
+    private val costHistoryRepository: CostHistoryRepository,
     private val imageStorage: ProductImageStorage
 ) : ViewModel() {
+
+    fun observeProductCostLayers(productId: String) = costHistoryRepository.getCostLayersForProduct(productId)
+
+    val canViewCost = preferencesRepository.selectedUserRole.map { SecurityManager.canViewCost(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _searchQuery = MutableStateFlow("")
     private val _selectedCategoryId = MutableStateFlow<String?>(null)

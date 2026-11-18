@@ -136,6 +136,8 @@ class InventoryViewModel @Inject constructor(
     private val salesDao: SalesDao
 ) : ViewModel() {
 
+    fun observeProductCostLayers(productId: String) = costHistoryRepository.getCostLayersForProduct(productId)
+
     init {
         loadStockForecast()
     }

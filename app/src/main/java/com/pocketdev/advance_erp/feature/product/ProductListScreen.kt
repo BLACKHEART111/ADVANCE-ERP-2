@@ -94,6 +94,7 @@ fun ProductListScreen(
 ) {
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
+    val canViewCost by viewModel.canViewCost.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showManageCategoriesDialog by remember { mutableStateOf(false) }
@@ -399,6 +400,8 @@ fun ProductListScreen(
             language = state.language,
             currency = state.currency,
             preSelectedVariantId = state.preSelectedVariantId,
+            canViewCost = canViewCost,
+            onObserveCostLayers = viewModel::observeProductCostLayers,
             onLoadVariantImages = { variantId -> viewModel.loadVariantImages(variantId) },
             onEditProduct = { viewModel.setEditDialogVisible(true) },
             onDeleteProduct = { prodId -> viewModel.deleteProduct(prodId) },

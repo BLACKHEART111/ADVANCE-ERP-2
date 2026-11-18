@@ -1,5 +1,11 @@
 package com.pocketdev.advance_erp.feature.product
 
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -92,6 +98,7 @@ fun VariantPhotoSliderDialog(
     initialIndex: Int = 0,
     currency: CurrencyCode,
     language: AppLanguage,
+    canViewCost: Boolean = true,
     onDismiss: () -> Unit
 ) {
     if (slides.isEmpty()) {
@@ -111,6 +118,7 @@ fun VariantPhotoSliderDialog(
     }
 
     val currentSlide = slides.getOrNull(pagerState.currentPage) ?: slides[0]
+    var costVisible by remember(currentSlide.id, canViewCost) { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -376,7 +384,7 @@ fun VariantPhotoSliderDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Selling Price
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = if (language == AppLanguage.BANGLA) "বিক্রয় মূল্য" else "Selling Price",
                                     style = MaterialTheme.typography.labelSmall,
@@ -384,6 +392,7 @@ fun VariantPhotoSliderDialog(
                                 )
                                 Text(
                                     text = Formatters.formatMoney(currentSlide.priceMinor, currency, language),
+                                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF38BDF8) // Bright Cyan
@@ -391,19 +400,32 @@ fun VariantPhotoSliderDialog(
                             }
 
                             // Cost / Purchase Price
-                            Column(horizontalAlignment = Alignment.End) {
+                            if (canViewCost) Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = if (language == AppLanguage.BANGLA) "ক্রয় / ল্যান্ডেড" else "Buy / Landed",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        modifier = Modifier.weight(1f),
+                                        textAlign = TextAlign.End
+                                    )
+                                    IconButton(onClick = { costVisible = !costVisible }, modifier = Modifier.size(48.dp)) {
+                                        Icon(if (costVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = if (language == AppLanguage.BANGLA) {
+                                                if (costVisible) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
+                                            } else if (costVisible) "Hide buy cost" else "Show buy cost",
+                                            tint = Color(0xFFA7F3D0))
+                                    }
+                                }
                                 Text(
-                                    text = if (language == AppLanguage.BANGLA) "ক্রয় মূল্য" else "Purchase / Cost",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.6f)
-                                )
-                                Text(
-                                    text = Formatters.formatMoney(currentSlide.costMinor, currency, language),
+                                    text = if (costVisible) Formatters.formatMoney(currentSlide.costMinor, CurrencyCode.BDT, language) else "••••",
+                                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFA7F3D0) // Soft Mint
+                                    color = Color(0xFFA7F3D0)
                                 )
                             }
+
                         }
                     }
                 }

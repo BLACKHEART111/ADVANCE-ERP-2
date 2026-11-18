@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -429,6 +431,7 @@ fun InventoryScreen(
                                 CompactStockProductCard(
                                     item = item,
                                     language = state.language,
+                                    canViewCost = state.canViewCost,
                                     onClick = { viewModel.openProductDetail(item.productId) }
                                 )
                             }
@@ -458,6 +461,7 @@ fun InventoryScreen(
                                 CompactStockProductCard(
                                     item = item,
                                     language = state.language,
+                                    canViewCost = state.canViewCost,
                                     onClick = { viewModel.openProductDetail(item.productId) }
                                 )
                             }
@@ -826,6 +830,8 @@ fun InventoryScreen(
             language = state.language,
             currency = state.currency,
             preSelectedVariantId = state.preSelectedVariantId,
+            canViewCost = state.canViewCost,
+            onObserveCostLayers = viewModel::observeProductCostLayers,
             onLoadVariantImages = { variantId ->
                 viewModel.loadVariantImages(variantId)
             },
@@ -1077,9 +1083,11 @@ private fun CompactInventorySummary(
 private fun CompactStockProductCard(
     item: StockItemOverview,
     language: AppLanguage,
+    canViewCost: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var costVisible by remember(item.productId, canViewCost) { mutableStateOf(false) }
     val stockColor = when {
         item.totalQuantity == 0 -> StatusError
         item.isLowStock -> Color(0xFFF59E0B) // Amber
@@ -1241,7 +1249,7 @@ private fun CompactStockProductCard(
                 )
             }
 
-            if (item.minCostMinor > 0L || item.maxCostMinor > 0L) {
+            if (canViewCost) {
                 Spacer(modifier = Modifier.height(4.dp))
                 val costText = if (item.minCostMinor == item.maxCostMinor || item.minCostMinor == 0L) {
                     val cost = if (item.maxCostMinor > 0L) item.maxCostMinor else item.minCostMinor
@@ -1262,11 +1270,19 @@ private fun CompactStockProductCard(
                         color = TextSecondary
                     )
                     Text(
-                        text = costText,
+                        text = if (costVisible) costText else "••••",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = DeepNavy
+                        color = DeepNavy,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp)
                     )
+                    IconButton(onClick = { costVisible = !costVisible }, modifier = Modifier.size(48.dp)) {
+                        Icon(if (costVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (language == AppLanguage.BANGLA) {
+                                if (costVisible) "ল্যান্ডেড খরচ লুকান" else "ল্যান্ডেড খরচ দেখুন"
+                            } else if (costVisible) "Hide landed cost" else "Show landed cost",
+                            tint = SecondaryTeal)
+                    }
                 }
             }
         }

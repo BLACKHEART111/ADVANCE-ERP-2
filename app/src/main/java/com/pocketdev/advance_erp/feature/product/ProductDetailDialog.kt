@@ -1,5 +1,12 @@
 package com.pocketdev.advance_erp.feature.product
 
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
+import com.pocketdev.advance_erp.core.util.latestLandedCostMinor
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import androidx.compose.runtime.collectAsState
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -103,6 +110,8 @@ fun ProductDetailDialog(
     language: AppLanguage,
     currency: CurrencyCode,
     preSelectedVariantId: String? = null,
+    canViewCost: Boolean = true,
+    onObserveCostLayers: ((String) -> Flow<List<InventoryCostLayer>>)? = null,
     onLoadVariantImages: (suspend (variantId: String) -> List<ProductImage>)? = null,
     onEditProduct: (() -> Unit)? = null,
     onDeleteProduct: ((productId: String) -> Unit)? = null,
@@ -111,6 +120,12 @@ fun ProductDetailDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val costFlow = remember(product.id, canViewCost) {
+        if (canViewCost) onObserveCostLayers?.invoke(product.id) ?: flowOf(emptyList()) else flowOf(emptyList())
+    }
+    val costLayers by costFlow.collectAsState(initial = emptyList())
+    val baseCost = latestLandedCostMinor(costLayers, product.id) ?: product.purchasePriceMinor
+
     var sliderInitialIndex by remember(product.id) { mutableStateOf<Int?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
@@ -138,7 +153,7 @@ fun ProductDetailDialog(
     }
 
     // Build unified slide items for interactive fullscreen slider
-    val baseSlides = remember(product, productImages, language) {
+    val baseSlides = remember(product, productImages, language, baseCost) {
         if (productImages.isNotEmpty()) {
             productImages.mapIndexed { idx, img ->
                 VariantSlideItem(
@@ -151,7 +166,7 @@ fun ProductDetailDialog(
                     sku = product.baseSku,
                     barcode = product.barcode,
                     priceMinor = product.sellingPriceMinor,
-                    costMinor = product.purchasePriceMinor,
+                    costMinor = baseCost,
                     stockQuantity = product.totalStock,
                     unit = product.unit
                 )
@@ -168,7 +183,7 @@ fun ProductDetailDialog(
                     sku = product.baseSku,
                     barcode = product.barcode,
                     priceMinor = product.sellingPriceMinor,
-                    costMinor = product.purchasePriceMinor,
+                    costMinor = baseCost,
                     stockQuantity = product.totalStock,
                     unit = product.unit
                 )
@@ -181,7 +196,8 @@ fun ProductDetailDialog(
     val variantSlides = variants.map { v ->
             val vImageUri = variantPhotoUris[v.id]
             val vStock = variantStockMap[v.id] ?: 0
-            val effectiveCost = if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
+            val effectiveCost = latestLandedCostMinor(costLayers, product.id, v.id)
+                ?: if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
             val effectivePrice = if (v.variantPriceMinor > 0L) v.variantPriceMinor else product.sellingPriceMinor
             val variantTitle = buildString {
                 if (!v.color.isNullOrBlank()) append(v.color)
@@ -601,13 +617,14 @@ fun ProductDetailDialog(
 
                 // Financial Overview: Purchase Price & Selling Price
                 val effectivePurchaseDisplay = if (variants.isNotEmpty()) {
-                    val costs = variants.map { if (it.variantCostMinor > 0L) it.variantCostMinor else product.purchasePriceMinor }
+                    val costs = variants.map { latestLandedCostMinor(costLayers, product.id, it.id)
+                        ?: if (it.variantCostMinor > 0L) it.variantCostMinor else product.purchasePriceMinor }
                     val minC = costs.minOrNull() ?: product.purchasePriceMinor
                     val maxC = costs.maxOrNull() ?: product.purchasePriceMinor
-                    if (minC == maxC) Formatters.formatMoney(minC, currency, language)
-                    else "${Formatters.formatMoney(minC, currency, language)} – ${Formatters.formatMoney(maxC, currency, language)}"
+                    if (minC == maxC) Formatters.formatMoney(minC, CurrencyCode.BDT, language)
+                    else "${Formatters.formatMoney(minC, CurrencyCode.BDT, language)} – ${Formatters.formatMoney(maxC, CurrencyCode.BDT, language)}"
                 } else {
-                    Formatters.formatMoney(product.purchasePriceMinor, currency, language)
+                    Formatters.formatMoney(baseCost, CurrencyCode.BDT, language)
                 }
 
                 val effectiveSellingDisplay = if (variants.isNotEmpty()) {
@@ -624,10 +641,12 @@ fun ProductDetailDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    DetailCard(
-                        title = stringResource(R.string.purchase_price),
+                    if (canViewCost) DetailCard(
+                        title = if (language == AppLanguage.BANGLA) "ক্রয় / ল্যান্ডেড খরচ" else "Buy / Landed cost",
                         value = effectivePurchaseDisplay,
                         color = SecondaryTeal,
+                        revealable = true,
+                        isBangla = language == AppLanguage.BANGLA,
                         modifier = Modifier.weight(1f)
                     )
                     DetailCard(
@@ -899,13 +918,24 @@ fun ProductDetailDialog(
                                 Column(
                                     horizontalAlignment = Alignment.End
                                 ) {
-                                    val effectiveCost = if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
-                                    Text(
-                                        text = if (language == AppLanguage.BANGLA) "ক্রয়: ${Formatters.formatMoney(effectiveCost, currency, language)}" else "Buy: ${Formatters.formatMoney(effectiveCost, currency, language)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = SecondaryTeal,
-                                        fontWeight = FontWeight.Medium
-                                    )
+                                    var variantCostVisible by remember(product.id, v.id, canViewCost) { mutableStateOf(false) }
+                                    val effectiveCost = latestLandedCostMinor(costLayers, product.id, v.id)
+                                        ?: if (v.variantCostMinor > 0L) v.variantCostMinor else product.purchasePriceMinor
+                                    if (canViewCost) Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = if (variantCostVisible) Formatters.formatMoney(effectiveCost, CurrencyCode.BDT, language) else "••••",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = SecondaryTeal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        IconButton(onClick = { variantCostVisible = !variantCostVisible }, modifier = Modifier.size(48.dp)) {
+                                            Icon(if (variantCostVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = if (language == AppLanguage.BANGLA) {
+                                                    if (variantCostVisible) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
+                                                } else if (variantCostVisible) "Hide buy cost" else "Show buy cost", tint = SecondaryTeal)
+                                        }
+                                    }
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1038,6 +1068,7 @@ fun ProductDetailDialog(
         VariantPhotoSliderDialog(
             slides = allSlides,
             initialIndex = sliderInitialIndex!!,
+            canViewCost = canViewCost,
             currency = currency,
             language = language,
             onDismiss = { sliderInitialIndex = null }
@@ -1050,15 +1081,26 @@ private fun DetailCard(
     title: String,
     value: String,
     color: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    revealable: Boolean = false,
+    isBangla: Boolean = false
 ) {
+    var revealed by remember(value) { mutableStateOf(false) }
     Column(
         modifier = modifier
             .background(color.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
             .padding(12.dp)
     ) {
-        Text(text = title, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = title, style = MaterialTheme.typography.labelSmall, color = TextSecondary, modifier = Modifier.weight(1f))
+            if (revealable) IconButton(onClick = { revealed = !revealed }, modifier = Modifier.size(48.dp)) {
+                Icon(if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (isBangla) {
+                        if (revealed) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
+                    } else if (revealed) "Hide buy cost" else "Show buy cost", tint = color)
+            }
+        }
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
+        Text(text = if (!revealable || revealed) value else "••••", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
     }
 }
