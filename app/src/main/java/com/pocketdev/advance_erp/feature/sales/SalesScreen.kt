@@ -1,6 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,7 +36,6 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Replay
@@ -47,7 +47,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -78,17 +77,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pocketdev.advance_erp.core.designsystem.DeepNavy
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPCalendar
 import com.pocketdev.advance_erp.core.designsystem.ERPCard
+import com.pocketdev.advance_erp.core.designsystem.PosTerminalIcon
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
+import com.pocketdev.advance_erp.core.designsystem.PrimaryPurpleDark
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.StatusError
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
@@ -160,30 +163,61 @@ fun SalesScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ExtendedFloatingActionButton(
+                    Surface(
                         onClick = { showPosDialog = true },
-                        containerColor = PrimaryPurple,
-                        contentColor = Color.White,
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Default.PointOfSale,
-                                contentDescription = "POS Mode",
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        },
-                        text = {
-                            Text(
-                                text = if (isBangla) "দ্রুত বিক্রয় (POS)" else "Quick POS",
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                        shape = RoundedCornerShape(28.dp),
+                        shadowElevation = 8.dp,
+                        color = Color.Transparent,
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(PrimaryPurple, PrimaryPurpleDark, DeepNavy)
+                                    )
+                                )
+                                .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(SecondaryTeal.copy(alpha = 0.28f))
+                                    .padding(1.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = PosTerminalIcon,
+                                    contentDescription = "POS Mode",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (isBangla) "দ্রুত বিক্রয়" else "Quick POS",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "POS COUNTER",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp,
+                                    letterSpacing = 0.8.sp,
+                                    color = SecondaryTeal.copy(alpha = 0.95f)
+                                )
+                            }
                         }
-                    )
+                    }
                     FloatingActionButton(
                         onClick = { showCreateInvoiceDialog = true },
                         containerColor = StatusSuccess,
-                        contentColor = Color.White
+                        contentColor = Color.White,
+                        shape = RoundedCornerShape(18.dp)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = if (isBangla) "নতুন চালান তৈরি করুন" else "New Sale")
                     }

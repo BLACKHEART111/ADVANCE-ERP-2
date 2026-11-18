@@ -14,7 +14,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -25,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +33,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.pocketdev.advance_erp.core.designsystem.DeepNavy
+import com.pocketdev.advance_erp.core.designsystem.PosTerminalIcon
+import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
+import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.InvoicePdfGenerator
@@ -173,8 +177,20 @@ fun PosDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.PointOfSale, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(PrimaryPurple, DeepNavy, SecondaryTeal)
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(PosTerminalIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp))
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text("দ্রুত বিক্রয় কাউন্টার (POS)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                             Text("কাউন্টার ক্যাশ সেল ও রসিদ প্রিন্ট", style = MaterialTheme.typography.labelSmall, color = TextMuted)

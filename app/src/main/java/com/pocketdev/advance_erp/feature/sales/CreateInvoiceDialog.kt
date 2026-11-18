@@ -32,7 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -345,7 +345,7 @@ fun CreateInvoiceDialog(
                                 .background(PrimaryPurple.copy(alpha = 0.12f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Storefront, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
