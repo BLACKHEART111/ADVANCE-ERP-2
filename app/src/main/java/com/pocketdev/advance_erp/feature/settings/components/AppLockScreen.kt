@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.settings.components
 
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,8 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -64,7 +66,7 @@ fun AppLockScreen(
     val context = LocalContext.current
     val isBn = language == AppLanguage.BANGLA
 
-    var enteredPin by remember { mutableStateOf("") }
+    var enteredPin by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     fun verifyAndUnlock() {
@@ -124,7 +126,7 @@ fun AppLockScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
+                        imageVector = Icons.Outlined.Lock,
                         contentDescription = null,
                         tint = SecondaryTeal,
                         modifier = Modifier.size(18.dp)
@@ -170,7 +172,7 @@ fun AppLockScreen(
                 AnimatedVisibility(visible = errorMessage != null) {
                     Text(
                         text = errorMessage ?: "",
-                        color = Color(0xFFFF6B6B),
+                        color = StatusError,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
@@ -238,7 +240,7 @@ fun AppLockScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Fingerprint,
+                                imageVector = Icons.Outlined.Fingerprint,
                                 contentDescription = "Biometric",
                                 tint = SecondaryTeal,
                                 modifier = Modifier.size(32.dp)

@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,7 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -76,18 +77,18 @@ fun StockAdjustmentDialog(
     ) -> Unit
 ) {
     var selectedWarehouse by remember { mutableStateOf(warehouses.firstOrNull()) }
-    var warehouseDropdownExpanded by remember { mutableStateOf(false) }
+    var warehouseDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     var selectedProduct by remember { mutableStateOf(products.firstOrNull()) }
-    var productDropdownExpanded by remember { mutableStateOf(false) }
+    var productDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     var availableVariants by remember { mutableStateOf<List<ProductVariant>>(emptyList()) }
     var selectedVariant by remember { mutableStateOf<ProductVariant?>(null) }
-    var variantDropdownExpanded by remember { mutableStateOf(false) }
+    var variantDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
-    var isIncrease by remember { mutableStateOf(true) }
-    var quantityStr by remember { mutableStateOf("") }
-    var reason by remember { mutableStateOf("") }
+    var isIncrease by rememberSaveable { mutableStateOf(true) }
+    var quantityStr by rememberSaveable { mutableStateOf("") }
+    var reason by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Load variants whenever the selected product changes
@@ -131,7 +132,7 @@ fun StockAdjustmentDialog(
                         color = TextPrimary
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
@@ -171,7 +172,7 @@ fun StockAdjustmentDialog(
                             text = stringResource(R.string.adjustment_increase),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (isIncrease) Color.White else TextPrimary
+                            color = if (isIncrease) MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
 
@@ -189,7 +190,7 @@ fun StockAdjustmentDialog(
                             text = stringResource(R.string.adjustment_decrease),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (!isIncrease) Color.White else TextPrimary
+                            color = if (!isIncrease) MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
                 }

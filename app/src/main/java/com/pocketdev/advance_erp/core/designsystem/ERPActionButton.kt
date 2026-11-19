@@ -54,7 +54,7 @@ fun ERPActionButton(
                 shape = shape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = PrimaryPurple,
-                    contentColor = Color.White,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                     disabledContainerColor = PrimaryPurple.copy(alpha = 0.5f),
                     disabledContentColor = Color.White.copy(alpha = 0.7f)
                 ),
@@ -71,7 +71,7 @@ fun ERPActionButton(
                 shape = shape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = SecondaryTeal,
-                    contentColor = Color.White,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                     disabledContainerColor = SecondaryTeal.copy(alpha = 0.5f),
                     disabledContentColor = Color.White.copy(alpha = 0.7f)
                 ),

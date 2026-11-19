@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,17 +26,17 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Storefront
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Error
+import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -149,16 +152,16 @@ fun CreateShipmentDialog(
     }
 
     var poRemainingItems by remember { mutableStateOf<List<PoRemainingItem>>(emptyList()) }
-    var isLoadingPoItems by remember { mutableStateOf(false) }
+    var isLoadingPoItems by rememberSaveable { mutableStateOf(false) }
 
     var selectedMethod by remember { mutableStateOf(ShippingMethod.AIR) }
-    var origin by remember { mutableStateOf("Shenzhen Bao'an Airport (SZX)") }
-    var destination by remember { mutableStateOf("Dhaka Hazrat Shahjalal (DAC)") }
-    var shippingLine by remember { mutableStateOf("China Southern Air Cargo") }
-    var trackingRef by remember { mutableStateOf("AWB-784-99281726") }
-    var notes by remember { mutableStateOf("Fragile electronic consignment") }
+    var origin by rememberSaveable { mutableStateOf("Shenzhen Bao'an Airport (SZX)") }
+    var destination by rememberSaveable { mutableStateOf("Dhaka Hazrat Shahjalal (DAC)") }
+    var shippingLine by rememberSaveable { mutableStateOf("China Southern Air Cargo") }
+    var trackingRef by rememberSaveable { mutableStateOf("AWB-784-99281726") }
+    var notes by rememberSaveable { mutableStateOf("Fragile electronic consignment") }
 
-    var isSubmitting by remember { mutableStateOf(false) }
+    var isSubmitting by rememberSaveable { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val cartonList = remember {
@@ -235,8 +238,8 @@ fun CreateShipmentDialog(
     }
 
     // Dropdown expanded states
-    var showPoMenu by remember { mutableStateOf(false) }
-    var showSupplierMenu by remember { mutableStateOf(false) }
+    var showPoMenu by rememberSaveable { mutableStateOf(false) }
+    var showSupplierMenu by rememberSaveable { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = {
@@ -275,7 +278,7 @@ fun CreateShipmentDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = if (selectedMethod == ShippingMethod.SEA) Icons.Default.LocalShipping else Icons.Default.FlightTakeoff,
+                                imageVector = if (selectedMethod == ShippingMethod.SEA) Icons.Outlined.LocalShipping else Icons.Outlined.FlightTakeoff,
                                 contentDescription = null,
                                 tint = PrimaryPurple,
                                 modifier = Modifier.size(22.dp)
@@ -287,7 +290,7 @@ fun CreateShipmentDialog(
                                 text = if (isBangla) "নতুন আমদানি চালান তৈরি করুন" else "Create Import Shipment",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = DeepNavy
+                                color = TextPrimary
                             )
                             Text(
                                 text = if (isBangla) "চীন ফ্যাক্টরি ট্র্যাকিং ও কার্টন মেজারমেন্ট" else "Factory Consignment Tracking & Carton CBM",
@@ -300,7 +303,7 @@ fun CreateShipmentDialog(
                         onClick = onDismiss,
                         enabled = !isSubmitting
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -321,7 +324,7 @@ fun CreateShipmentDialog(
                     // ------------------------------------------
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -329,7 +332,7 @@ fun CreateShipmentDialog(
                                     text = if (isBangla) "ক্রয়াদেশ সংযোগ (Purchase Order Link)" else "Purchase Order Link",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -346,7 +349,7 @@ fun CreateShipmentDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Column {
                                                 Text(
@@ -398,7 +401,7 @@ fun CreateShipmentDialog(
                                         ) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(
-                                                    imageVector = if (currentPo != null) Icons.Default.ShoppingCart else Icons.Default.LocalShipping,
+                                                    imageVector = if (currentPo != null) Icons.Outlined.ShoppingCart else Icons.Outlined.LocalShipping,
                                                     contentDescription = null,
                                                     tint = if (currentPo != null) PrimaryPurple else TextMuted,
                                                     modifier = Modifier.size(18.dp)
@@ -411,7 +414,7 @@ fun CreateShipmentDialog(
                                                     color = if (currentPo != null) TextPrimary else TextMuted
                                                 )
                                             }
-                                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextMuted)
+                                            Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = TextMuted)
                                         }
 
                                         DropdownMenu(
@@ -479,7 +482,7 @@ fun CreateShipmentDialog(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.Storefront, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
+                                                    Icon(Icons.Outlined.Storefront, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
                                                     Spacer(modifier = Modifier.width(8.dp))
                                                     Text(
                                                         text = currentSup?.companyName ?: (if (isBangla) "সাপ্লায়ার বাছাই করুন" else "Select Supplier"),
@@ -487,7 +490,7 @@ fun CreateShipmentDialog(
                                                         color = TextPrimary
                                                     )
                                                 }
-                                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextMuted)
+                                                Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = TextMuted)
                                             }
 
                                             DropdownMenu(
@@ -541,7 +544,7 @@ fun CreateShipmentDialog(
                                                 text = if (isBangla) "অর্ডারের আইটেম ও অবশিষ্ট প্রেরণযোগ্য হিসাব:" else "PO Line Items & Available to Ship:",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
-                                                color = DeepNavy
+                                                color = TextPrimary
                                             )
                                             poRemainingItems.forEach { rem ->
                                                 val prodName = rem.product?.nameEn ?: rem.poItem.productId
@@ -566,7 +569,7 @@ fun CreateShipmentDialog(
                                                     Box(
                                                         modifier = Modifier
                                                             .background(
-                                                                if (rem.remainingQty > 0) SecondaryTeal.copy(alpha = 0.15f) else Color(0xFFF1F5F9),
+                                                                if (rem.remainingQty > 0) SecondaryTeal.copy(alpha = 0.15f) else ERPSurfaceVariant,
                                                                 RoundedCornerShape(6.dp)
                                                             )
                                                             .padding(horizontal = 8.dp, vertical = 3.dp)
@@ -600,7 +603,7 @@ fun CreateShipmentDialog(
                                 text = if (isBangla) "শিপিং মাধ্যম (Shipping Method)" else "Shipping Method",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = DeepNavy
+                                color = TextPrimary
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -610,7 +613,7 @@ fun CreateShipmentDialog(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (isSel) PrimaryPurple else Color(0xFFF1F5F9))
+                                            .background(if (isSel) PrimaryPurple else ERPSurfaceVariant)
                                             .clickable {
                                                 selectedMethod = sm
                                                 if (sm == ShippingMethod.SEA) {
@@ -630,7 +633,7 @@ fun CreateShipmentDialog(
                                     ) {
                                         Text(
                                             text = if (isBangla) sm.labelBn else sm.labelEn,
-                                            color = if (isSel) Color.White else TextPrimary,
+                                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp
                                         )
@@ -702,7 +705,7 @@ fun CreateShipmentDialog(
                                     text = if (isBangla) "কার্টনের তালিকা ও ডাইমেনশন" else "Cartons & Package Dimensions",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Text(
                                     text = "Total: $totalShipmentQty pcs • $totalShipmentCbm m³ • $totalShipmentGrossWeight kg",
@@ -737,7 +740,7 @@ fun CreateShipmentDialog(
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = if (isBangla) "+ কার্টন" else "+ Add Carton",
@@ -763,7 +766,7 @@ fun CreateShipmentDialog(
                         }
 
                         // Product dropdown state for this carton
-                        var showProductMenu by remember { mutableStateOf(false) }
+                        var showProductMenu by rememberSaveable { mutableStateOf(false) }
 
                         // Check remaining validation for this product
                         val matchingPoItem = poRemainingItems.find { it.poItem.productId == carton.productId && it.poItem.variantId == carton.variantId }
@@ -774,7 +777,7 @@ fun CreateShipmentDialog(
                         val isOverShipped = matchingPoItem != null && totalEnteredForThisProduct > matchingPoItem.remainingQty
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.border(
                                 width = if (isOverShipped) 1.5.dp else 1.dp,
@@ -792,7 +795,7 @@ fun CreateShipmentDialog(
                                         Text(
                                             text = carton.cartonNumber,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy,
+                                            color = TextPrimary,
                                             style = MaterialTheme.typography.bodyMedium
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
@@ -816,7 +819,7 @@ fun CreateShipmentDialog(
                                             modifier = Modifier.size(28.dp)
                                         ) {
                                             Icon(
-                                                Icons.Default.Delete,
+                                                Icons.Outlined.Delete,
                                                 contentDescription = "Delete Carton",
                                                 tint = StatusError,
                                                 modifier = Modifier.size(18.dp)
@@ -857,7 +860,7 @@ fun CreateShipmentDialog(
                                                 color = TextPrimary
                                             )
                                         }
-                                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextMuted)
+                                        Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = TextMuted)
                                     }
 
                                     DropdownMenu(
@@ -1005,7 +1008,7 @@ fun CreateShipmentDialog(
                     if (errorMessage != null) {
                         item {
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                                colors = CardDefaults.cardColors(containerColor = StatusErrorContainer),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.border(1.dp, StatusError.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
                             ) {
@@ -1015,7 +1018,7 @@ fun CreateShipmentDialog(
                                         .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Error, contentDescription = null, tint = StatusError, modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Outlined.Error, contentDescription = null, tint = StatusError, modifier = Modifier.size(20.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = errorMessage!!,

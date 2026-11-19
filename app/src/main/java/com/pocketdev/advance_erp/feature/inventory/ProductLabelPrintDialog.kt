@@ -1,5 +1,9 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
+import com.pocketdev.advance_erp.core.designsystem.TextPrimary
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -9,8 +13,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,8 +48,8 @@ fun ProductLabelPrintDialog(
     val context = LocalContext.current
     var selectedVariant by remember { mutableStateOf<ProductVariant?>(variants.firstOrNull()) }
     var selectedFormat by remember { mutableStateOf(LabelSheetFormat.THERMAL_50X30) }
-    var labelCountText by remember { mutableStateOf("1") }
-    var isGenerating by remember { mutableStateOf(false) }
+    var labelCountText by rememberSaveable { mutableStateOf("1") }
+    var isGenerating by rememberSaveable { mutableStateOf(false) }
 
     val currentSku = selectedVariant?.sku ?: product.baseSku
     val currentBarcode = selectedVariant?.barcode?.takeIf { it.isNotBlank() } ?: product.barcode?.takeIf { it.isNotBlank() } ?: currentSku
@@ -105,7 +109,7 @@ fun ProductLabelPrintDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Outlined.Close, contentDescription = "Close")
                     }
                 }
 
@@ -175,7 +179,7 @@ fun ProductLabelPrintDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(Color.White, RoundedCornerShape(8.dp))
-                            .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
+                            .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
                             .padding(12.dp)
                     ) {
                         Column {
@@ -187,13 +191,13 @@ fun ProductLabelPrintDialog(
                                     companyName,
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF263849)
+                                    color = TextPrimary
                                 )
                                 Text(
                                     "MRP: ৳${Formatters.formatMinorUnit(currentPrice)}",
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF792B87)
+                                    color = PrimaryPurple
                                 )
                             }
                             Text(
@@ -264,7 +268,7 @@ fun ProductLabelPrintDialog(
                         },
                         enabled = !isGenerating
                     ) {
-                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Outlined.Print, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(if (isGenerating) "Generating..." else "Print / Export PDF")
                     }

@@ -60,7 +60,7 @@ fun MainAppScaffold(
     val context = LocalContext.current
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route ?: Destinations.DASHBOARD
+    val currentRoute = navBackStackEntry?.destination?.route?.substringBefore('?') ?: Destinations.DASHBOARD
 
     val currentLanguage by preferencesRepository.selectedLanguage.collectAsState(initial = AppLanguage.BANGLA)
     val currentPhotoUri by preferencesRepository.profilePhotoUri.collectAsState(initial = null)

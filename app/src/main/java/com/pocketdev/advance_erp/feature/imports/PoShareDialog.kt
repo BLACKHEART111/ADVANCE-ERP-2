@@ -1,5 +1,11 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusInfoContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
@@ -21,12 +27,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.TableChart
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -132,7 +138,7 @@ fun PoShareDialog(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var selectedPerspective by remember { mutableStateOf(PoExportPerspective.SUPPLIER_COPY) }
-    var isExporting by remember { mutableStateOf(false) }
+    var isExporting by rememberSaveable { mutableStateOf(false) }
     var exportError by remember { mutableStateOf<String?>(null) }
     val isLocalOrder = order.currency == "BDT"
     val attachmentInfos = remember(order.attachments) {
@@ -140,7 +146,7 @@ fun PoShareDialog(
             .map { PoAttachmentStorage.inspectAttachment(it) }
             .filter { it.localFile != null || it.kind == PoAttachmentKind.LINK }
     }
-    var includeAttachments by remember(order.id) { mutableStateOf(false) }
+    var includeAttachments by rememberSaveable(order.id) { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -166,7 +172,7 @@ fun PoShareDialog(
                             text = if (isBangla) "পারচেজ অর্ডার শেয়ার ও এক্সপোর্ট" else "Share & Export Purchase Order",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = DeepNavy
+                            color = TextPrimary
                         )
                         Text(
                             text = "${order.poNumber} • ${supplier?.companyName ?: "Supplier"}",
@@ -175,7 +181,7 @@ fun PoShareDialog(
                         )
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -190,10 +196,10 @@ fun PoShareDialog(
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
-                            PrimaryPurple.copy(alpha = 0.12f) else Color(0xFFF8FAFC),
+                            PrimaryPurple.copy(alpha = 0.12f) else ERPSurfaceVariant,
                         border = androidx.compose.foundation.BorderStroke(
                             1.5.dp,
-                            if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) PrimaryPurple else Color(0xFFE2E8F0)
+                            if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) PrimaryPurple else ERPDivider
                         ),
                         modifier = Modifier
                             .weight(1f)
@@ -223,10 +229,10 @@ fun PoShareDialog(
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = if (selectedPerspective == PoExportPerspective.COMPANY_INTERNAL_COPY)
-                            SecondaryTeal.copy(alpha = 0.12f) else Color(0xFFF8FAFC),
+                            SecondaryTeal.copy(alpha = 0.12f) else ERPSurfaceVariant,
                         border = androidx.compose.foundation.BorderStroke(
                             1.5.dp,
-                            if (selectedPerspective == PoExportPerspective.COMPANY_INTERNAL_COPY) SecondaryTeal else Color(0xFFE2E8F0)
+                            if (selectedPerspective == PoExportPerspective.COMPANY_INTERNAL_COPY) SecondaryTeal else ERPDivider
                         ),
                         modifier = Modifier
                             .weight(1f)
@@ -255,13 +261,13 @@ fun PoShareDialog(
                 // Detail Description Card based on selected perspective
                 if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                        colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
                         shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusSuccessContainer)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF166534), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Lock, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (isLocalOrder)
@@ -269,7 +275,7 @@ fun PoShareDialog(
                                     else
                                         (if (isBangla) "চীনা কারখানা / বৈদেশিক সরবরাহকারীর জন্য তৈরি" else "Tailored for Overseas Factory / Supplier"),
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF166534),
+                                    color = StatusSuccess,
                                     fontSize = 12.sp
                                 )
                             }
@@ -287,7 +293,7 @@ fun PoShareDialog(
                                         "• Strict Privacy: Absolutely NO BDT amounts, FX rates, or local profit margins.\n• Product specs, variants, carton packing, pieces & currency (${order.currency}).\n• Payment terms & China forwarder warehouse handover instructions."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF15803D),
+                                color = StatusSuccess,
                                 fontSize = 11.sp,
                                 lineHeight = 16.sp
                             )
@@ -295,18 +301,18 @@ fun PoShareDialog(
                     }
                 } else {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+                        colors = CardDefaults.cardColors(containerColor = StatusInfoContainer),
                         shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusInfoContainer)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Visibility, contentDescription = null, tint = Color(0xFF1E40AF), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Visibility, contentDescription = null, tint = StatusInfo, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (isBangla) "কোম্পানি অভ্যন্তরীণ নিরীক্ষা ও হিসাব" else "Company Internal Costing & Audit",
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E40AF),
+                                    color = StatusInfo,
                                     fontSize = 12.sp
                                 )
                             }
@@ -324,7 +330,7 @@ fun PoShareDialog(
                                         "• Complete BDT breakdown with applied foreign exchange rates.\n• Capitalized Landed Cost including freight, handling, and sample costs.\n• Clear note on Warehouse Rent being classified as OPEX from Net Profit."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF1D4ED8),
+                                color = StatusInfo,
                                 fontSize = 11.sp,
                                 lineHeight = 16.sp
                             )
@@ -342,7 +348,7 @@ fun PoShareDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFF8FAFC))
+                            .background(ERPSurfaceVariant)
                             .clickable { includeAttachments = !includeAttachments }
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -358,7 +364,7 @@ fun PoShareDialog(
                             else
                                 "Also share attached files/photos (${attachmentInfos.size})",
                             style = MaterialTheme.typography.bodySmall,
-                            color = DeepNavy,
+                            color = TextPrimary,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -369,7 +375,7 @@ fun PoShareDialog(
                     text = if (isBangla) "এক্সপোর্ট ও শেয়ারের মাধ্যম নির্বাচন করুন:" else "Select Export & Sharing Format:",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
                 if (exportError != null) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -440,7 +446,7 @@ fun PoShareDialog(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.Description, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("PDF " + if (isBangla) "শেয়ার" else "Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
@@ -500,7 +506,7 @@ fun PoShareDialog(
                         border = androidx.compose.foundation.BorderStroke(1.5.dp, SecondaryTeal),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.TableChart, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.TableChart, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Excel " + if (isBangla) "শেয়ার" else "Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }

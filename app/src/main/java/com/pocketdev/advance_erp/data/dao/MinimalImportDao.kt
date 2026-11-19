@@ -69,9 +69,9 @@ interface MinimalImportDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCompletionRecord(record: PurchaseCompletionRecord)
 
-    @Query("SELECT * FROM purchase_completion_records WHERE purchaseOrderId = :orderId")
+    @Query("SELECT * FROM purchase_completion_records WHERE purchaseOrderId = :orderId ORDER BY completedAt DESC, id DESC LIMIT 1")
     suspend fun getCompletionRecordForOrder(orderId: String): PurchaseCompletionRecord?
 
-    @Query("SELECT * FROM purchase_completion_records WHERE purchaseOrderId = :orderId")
+    @Query("SELECT * FROM purchase_completion_records WHERE purchaseOrderId = :orderId ORDER BY completedAt DESC, id DESC LIMIT 1")
     fun getCompletionRecordForOrderFlow(orderId: String): Flow<PurchaseCompletionRecord?>
 }

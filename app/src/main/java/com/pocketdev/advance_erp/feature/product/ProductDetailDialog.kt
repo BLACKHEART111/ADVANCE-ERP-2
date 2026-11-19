@@ -1,8 +1,12 @@
 package com.pocketdev.advance_erp.feature.product
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.core.util.latestLandedCostMinor
 import kotlinx.coroutines.flow.Flow
@@ -34,18 +38,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.QrCode
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
@@ -128,7 +132,7 @@ fun ProductDetailDialog(
     val baseCost = latestLandedCostMinor(costLayers, product.id) ?: product.purchasePriceMinor
 
     var sliderInitialIndex by remember(product.id) { mutableStateOf<Int?>(null) }
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
 
     // Map of variantId to their primary image
     val variantImagesMap = remember(product.id) { mutableStateMapOf<String, String>() }
@@ -272,7 +276,7 @@ fun ProductDetailDialog(
                         if (onEditProduct != null) {
                             IconButton(onClick = onEditProduct) {
                                 Icon(
-                                    imageVector = Icons.Default.Edit,
+                                    imageVector = Icons.Outlined.Edit,
                                     contentDescription = "Edit Product",
                                     tint = PrimaryPurple
                                 )
@@ -281,7 +285,7 @@ fun ProductDetailDialog(
                         if (onDeleteProduct != null) {
                             IconButton(onClick = { showDeleteConfirmation = true }) {
                                 Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
+                                    imageVector = Icons.Outlined.DeleteOutline,
                                     contentDescription = "Delete Product",
                                     tint = StatusError
                                 )
@@ -289,7 +293,7 @@ fun ProductDetailDialog(
                         }
                         IconButton(onClick = onDismiss) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Outlined.Close,
                                 contentDescription = "Close",
                                 tint = TextSecondary
                             )
@@ -315,7 +319,7 @@ fun ProductDetailDialog(
                             .fillMaxWidth()
                             .height(180.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFFF1F5F9))
+                            .background(ERPSurfaceVariant)
                             .clickable { sliderInitialIndex = 0 }
                     ) {
                         AsyncImage(
@@ -341,7 +345,7 @@ fun ProductDetailDialog(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Fullscreen,
+                                    imageVector = Icons.Outlined.Fullscreen,
                                     contentDescription = "Expand Fullscreen",
                                     tint = Color.White,
                                     modifier = Modifier.size(16.dp)
@@ -399,13 +403,13 @@ fun ProductDetailDialog(
                             .fillMaxWidth()
                             .height(110.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFFF8FAFC))
+                            .background(ERPSurfaceVariant)
                             .border(1.dp, ERPDivider, RoundedCornerShape(14.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
-                                imageVector = Icons.Default.Image,
+                                imageVector = Icons.Outlined.Image,
                                 contentDescription = null,
                                 tint = TextMuted,
                                 modifier = Modifier.size(32.dp)
@@ -433,7 +437,7 @@ fun ProductDetailDialog(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Collections,
+                                imageVector = Icons.Outlined.Collections,
                                 contentDescription = null,
                                 tint = PrimaryPurple,
                                 modifier = Modifier.size(18.dp)
@@ -470,7 +474,7 @@ fun ProductDetailDialog(
                                 modifier = Modifier
                                     .width(135.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isPreselected) SecondaryTeal.copy(alpha = 0.08f) else Color(0xFFF8FAFC))
+                                    .background(if (isPreselected) SecondaryTeal.copy(alpha = 0.08f) else ERPSurfaceVariant)
                                     .border(
                                         width = if (isPreselected) 2.dp else 1.dp,
                                         color = if (isPreselected) SecondaryTeal else ERPDivider,
@@ -486,7 +490,7 @@ fun ProductDetailDialog(
                                             .fillMaxWidth()
                                             .height(95.dp)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(Color.White)
+                                            .background(MaterialTheme.colorScheme.surface)
                                     ) {
                                         if (vImageUri != null) {
                                             AsyncImage(
@@ -500,7 +504,7 @@ fun ProductDetailDialog(
                                             )
                                         } else {
                                             Icon(
-                                                imageVector = Icons.Default.Image,
+                                                imageVector = Icons.Outlined.Image,
                                                 contentDescription = null,
                                                 tint = TextMuted,
                                                 modifier = Modifier.align(Alignment.Center).size(24.dp)
@@ -517,7 +521,7 @@ fun ProductDetailDialog(
                                                 .size(20.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Fullscreen,
+                                                imageVector = Icons.Outlined.Fullscreen,
                                                 contentDescription = null,
                                                 tint = Color.White,
                                                 modifier = Modifier.padding(2.dp)
@@ -558,7 +562,7 @@ fun ProductDetailDialog(
                                     // Stock badge
                                     val stockColor = when {
                                         vStock <= 0 -> StatusError
-                                        vStock <= 5 -> Color(0xFFF59E0B)
+                                        vStock <= 5 -> StatusWarning
                                         else -> StatusSuccess
                                     }
                                     Box(
@@ -664,7 +668,7 @@ fun ProductDetailDialog(
                 val isLowStock = product.totalStock <= product.minStockAlert
                 val stockColor = when {
                     product.totalStock == 0 -> StatusError
-                    isLowStock -> Color(0xFFF59E0B)
+                    isLowStock -> StatusWarning
                     else -> StatusSuccess
                 }
 
@@ -678,7 +682,7 @@ fun ProductDetailDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Inventory2,
+                            imageVector = Icons.Outlined.Inventory2,
                             contentDescription = null,
                             tint = stockColor,
                             modifier = Modifier.size(24.dp)
@@ -727,7 +731,7 @@ fun ProductDetailDialog(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.Layers,
+                                    imageVector = Icons.Outlined.Layers,
                                     contentDescription = null,
                                     tint = PrimaryPurple,
                                     modifier = Modifier.size(22.dp)
@@ -748,7 +752,7 @@ fun ProductDetailDialog(
                                 }
                             }
                             Icon(
-                                imageVector = Icons.Default.Tune,
+                                imageVector = Icons.Outlined.Tune,
                                 contentDescription = null,
                                 tint = PrimaryPurple,
                                 modifier = Modifier.size(20.dp)
@@ -813,7 +817,7 @@ fun ProductDetailDialog(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (isPreselected) SecondaryTeal.copy(alpha = 0.08f) else Color(0xFFF8FAFC))
+                                .background(if (isPreselected) SecondaryTeal.copy(alpha = 0.08f) else ERPSurfaceVariant)
                                 .border(
                                     width = if (isPreselected) 2.dp else 1.dp,
                                     color = if (isPreselected) SecondaryTeal else ERPDivider,
@@ -831,7 +835,7 @@ fun ProductDetailDialog(
                                     modifier = Modifier
                                         .size(48.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White)
+                                        .background(MaterialTheme.colorScheme.surface)
                                         .clickable {
                                             sliderInitialIndex = slideIndex
                                         }
@@ -848,7 +852,7 @@ fun ProductDetailDialog(
                                         )
                                     } else {
                                         Icon(
-                                            imageVector = Icons.Default.Image,
+                                            imageVector = Icons.Outlined.Image,
                                             contentDescription = null,
                                             tint = TextMuted,
                                             modifier = Modifier.align(Alignment.Center).size(20.dp)
@@ -880,7 +884,7 @@ fun ProductDetailDialog(
                                                     .clip(RoundedCornerShape(6.dp))
                                                     .background(
                                                         if (stock <= 0) StatusError.copy(alpha = 0.15f)
-                                                        else if (stock <= 5) Color(0xFFF59E0B).copy(alpha = 0.15f)
+                                                        else if (stock <= 5) StatusWarning.copy(alpha = 0.15f)
                                                         else StatusSuccess.copy(alpha = 0.15f)
                                                     )
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -890,7 +894,7 @@ fun ProductDetailDialog(
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.Bold,
                                                     color = if (stock <= 0) StatusError
-                                                    else if (stock <= 5) Color(0xFFF59E0B)
+                                                    else if (stock <= 5) StatusWarning
                                                     else SecondaryTeal,
                                                     maxLines = 1,
                                                     softWrap = false
@@ -932,7 +936,7 @@ fun ProductDetailDialog(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         IconButton(onClick = variantCostVisibility.toggle, modifier = Modifier.size(48.dp)) {
-                                            Icon(if (variantCostVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            Icon(if (variantCostVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                                                 contentDescription = if (language == AppLanguage.BANGLA) {
                                                     if (variantCostVisible) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
                                                 } else if (variantCostVisible) "Hide buy cost" else "Show buy cost", tint = SecondaryTeal)
@@ -951,7 +955,7 @@ fun ProductDetailDialog(
                                             softWrap = false
                                         )
                                         Icon(
-                                            imageVector = Icons.Default.ChevronRight,
+                                            imageVector = Icons.Outlined.ChevronRight,
                                             contentDescription = "Details",
                                             tint = TextMuted,
                                             modifier = Modifier.size(16.dp)
@@ -1015,7 +1019,7 @@ fun ProductDetailDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFFEF2F2))
+                                .background(StatusErrorContainer)
                                 .border(1.dp, StatusError.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                                 .padding(10.dp)
                         ) {
@@ -1097,7 +1101,7 @@ private fun DetailCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = title, style = MaterialTheme.typography.labelSmall, color = TextSecondary, modifier = Modifier.weight(1f))
             if (revealable) IconButton(onClick = costVisibility.toggle, modifier = Modifier.size(48.dp)) {
-                Icon(if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                Icon(if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                     contentDescription = if (isBangla) {
                         if (revealed) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
                     } else if (revealed) "Hide buy cost" else "Show buy cost", tint = color)

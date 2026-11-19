@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.controlcenter.components
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusError
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,9 +19,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -88,7 +91,7 @@ fun ControlCenterTransactionDetailDialog(
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Receipt,
+                                imageVector = Icons.Outlined.Receipt,
                                 contentDescription = null,
                                 tint = Color(tx.statusColorHex.toInt()),
                                 modifier = Modifier
@@ -111,7 +114,7 @@ fun ControlCenterTransactionDetailDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                        Icon(imageVector = Icons.Outlined.Close, contentDescription = "Close")
                     }
                 }
 
@@ -173,7 +176,7 @@ fun ControlCenterTransactionDetailDialog(
                                 text = Formatters.formatMoney(tx.amountMinor, currencyCode, language),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (tx.isInflow) Color(0xFF16A34A) else Color(0xFFDC2626)
+                                color = if (tx.isInflow) StatusSuccess else StatusError
                             )
                         }
 
@@ -187,7 +190,7 @@ fun ControlCenterTransactionDetailDialog(
                                 Text(
                                     text = Formatters.formatMoney(record.discountMinor, currencyCode, language),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFD97706)
+                                    color = StatusWarning
                                 )
                             }
                         }
@@ -203,7 +206,7 @@ fun ControlCenterTransactionDetailDialog(
                                     text = Formatters.formatMoney(record.dueMinor, currencyCode, language),
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFDC2626)
+                                    color = StatusError
                                 )
                             }
                         }
@@ -291,7 +294,7 @@ fun ControlCenterTransactionDetailDialog(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                            Icon(imageVector = Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (isBn) "অডিট ট্রেইল ও সিস্টেম রেফারেন্স" else "Audit Trail & System Integrity",

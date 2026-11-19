@@ -23,11 +23,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -124,7 +124,7 @@ fun PhotoGalleryPicker(
                     }
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AddAPhoto,
+                        imageVector = Icons.Outlined.AddAPhoto,
                         contentDescription = "Add Photos",
                         tint = PrimaryPurple,
                         modifier = Modifier.size(16.dp)
@@ -148,7 +148,7 @@ fun PhotoGalleryPicker(
                     .fillMaxWidth()
                     .height(90.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
+                    .background(MaterialTheme.colorScheme.surface)
                     .border(1.dp, ERPDivider, RoundedCornerShape(12.dp))
                     .clickable {
                         photoPickerLauncher.launch(
@@ -159,7 +159,7 @@ fun PhotoGalleryPicker(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.AddAPhoto,
+                        imageVector = Icons.Outlined.AddAPhoto,
                         contentDescription = null,
                         tint = TextMuted,
                         modifier = Modifier.size(22.dp)
@@ -182,7 +182,7 @@ fun PhotoGalleryPicker(
                         modifier = Modifier
                             .width(110.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White)
+                            .background(MaterialTheme.colorScheme.surface)
                             .border(
                                 width = if (item.isPrimary) 2.dp else 1.dp,
                                 color = if (item.isPrimary) SecondaryTeal else ERPDivider,
@@ -249,7 +249,7 @@ fun PhotoGalleryPicker(
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.ArrowBack,
+                                        imageVector = Icons.Outlined.ArrowBack,
                                         contentDescription = "Move Left",
                                         tint = if (index > 0) TextSecondary else TextMuted.copy(alpha = 0.3f),
                                         modifier = Modifier.size(14.dp)
@@ -267,7 +267,7 @@ fun PhotoGalleryPicker(
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = if (item.isPrimary) Icons.Default.Star else Icons.Outlined.StarBorder,
+                                        imageVector = if (item.isPrimary) Icons.Outlined.Star else Icons.Outlined.StarBorder,
                                         contentDescription = "Set Primary",
                                         tint = if (item.isPrimary) SecondaryTeal else TextMuted,
                                         modifier = Modifier.size(16.dp)
@@ -289,7 +289,7 @@ fun PhotoGalleryPicker(
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.ArrowForward,
+                                        imageVector = Icons.Outlined.ArrowForward,
                                         contentDescription = "Move Right",
                                         tint = if (index < photos.size - 1) TextSecondary else TextMuted.copy(alpha = 0.3f),
                                         modifier = Modifier.size(14.dp)
@@ -302,7 +302,7 @@ fun PhotoGalleryPicker(
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Delete,
+                                        imageVector = Icons.Outlined.Delete,
                                         contentDescription = "Delete Photo",
                                         tint = StatusError,
                                         modifier = Modifier.size(15.dp)

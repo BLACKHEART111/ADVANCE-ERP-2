@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.inventory.valuation
 
+import com.pocketdev.advance_erp.core.designsystem.PrimaryPurpleContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -15,8 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -76,7 +79,7 @@ fun InventoryValuationView(
             ERPActionButton(
                 text = "Export PDF",
                 onClick = onExportPdf,
-                icon = Icons.Default.PictureAsPdf,
+                icon = Icons.Outlined.PictureAsPdf,
                 variant = ERPButtonVariant.OUTLINED
             )
         }
@@ -102,14 +105,14 @@ fun InventoryValuationView(
                 ERPCard(
                     modifier = Modifier.weight(1f),
                     contentPadding = 8.dp,
-                    backgroundColor = Color(0xFFF0FDF4),
+                    backgroundColor = StatusSuccessContainer,
                     border = androidx.compose.foundation.BorderStroke(1.dp, StatusSuccess.copy(alpha = 0.3f))
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = if (language == AppLanguage.BANGLA) "বিক্রয়যোগ্য মজুদ" else "Sellable Stock",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF166534),
+                            color = StatusSuccess,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -123,7 +126,7 @@ fun InventoryValuationView(
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF14532D),
+                            color = StatusSuccess,
                             maxLines = 1
                         )
                         Spacer(modifier = Modifier.height(2.dp))
@@ -131,7 +134,7 @@ fun InventoryValuationView(
                             text = Formatters.formatCurrency(breakdown.sellableValuationMinor, currency, language),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF166534),
+                            color = StatusSuccess,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -142,14 +145,14 @@ fun InventoryValuationView(
                 ERPCard(
                     modifier = Modifier.weight(1f),
                     contentPadding = 8.dp,
-                    backgroundColor = Color(0xFFFEF2F2),
+                    backgroundColor = StatusErrorContainer,
                     border = androidx.compose.foundation.BorderStroke(1.dp, StatusError.copy(alpha = 0.3f))
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = if (language == AppLanguage.BANGLA) "নষ্ট ও অবলোপন" else "Damaged Stock",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF991B1B),
+                            color = StatusError,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -163,7 +166,7 @@ fun InventoryValuationView(
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF7F1D1D),
+                            color = StatusError,
                             maxLines = 1
                         )
                         Spacer(modifier = Modifier.height(2.dp))
@@ -182,7 +185,7 @@ fun InventoryValuationView(
                 ERPCard(
                     modifier = Modifier.weight(1.15f),
                     contentPadding = 8.dp,
-                    backgroundColor = Color(0xFFFAF5FF),
+                    backgroundColor = PrimaryPurpleContainer,
                     border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.3f))
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -203,7 +206,7 @@ fun InventoryValuationView(
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF581C87),
+                            color = PrimaryPurple,
                             maxLines = 1
                         )
                         Spacer(modifier = Modifier.height(2.dp))

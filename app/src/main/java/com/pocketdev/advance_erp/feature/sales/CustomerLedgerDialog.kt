@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusError
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,8 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -29,7 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -150,7 +151,7 @@ fun CustomerLedgerDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -184,7 +185,7 @@ fun CustomerLedgerDialog(
                             )
                             Text(
                                 "৳" + Formatters.formatMinorUnit(customer.outstandingBalanceMinor),
-                                color = if (customer.outstandingBalanceMinor > 0) Color(0xFFFF8A80) else StatusSuccess,
+                                color = if (customer.outstandingBalanceMinor > 0) StatusError else StatusSuccess,
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium
                             )
@@ -234,7 +235,7 @@ fun CustomerLedgerDialog(
                     itemsIndexed(ledger) { _, entry ->
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.surface
                         ) {
                             Row(
                                 modifier = Modifier
@@ -260,7 +261,7 @@ fun CustomerLedgerDialog(
                                 Text(
                                     text = if (entry.debitMinor > 0) "৳" + Formatters.formatMinorUnit(entry.debitMinor) else "-",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = if (entry.debitMinor > 0) Color(0xFFC53030) else TextMuted,
+                                    color = if (entry.debitMinor > 0) StatusError else TextMuted,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -277,7 +278,7 @@ fun CustomerLedgerDialog(
                                     text = "৳" + Formatters.formatMinorUnit(entry.runningBalanceMinor),
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (entry.runningBalanceMinor > 0) Color(0xFFC53030) else PrimaryPurple,
+                                    color = if (entry.runningBalanceMinor > 0) StatusError else PrimaryPurple,
                                     modifier = Modifier.weight(1.1f)
                                 )
                             }
@@ -299,7 +300,7 @@ fun CustomerLedgerDialog(
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     if (isBangla) "ভদ্র তাগাদা (WhatsApp)" else "Due Reminder (WhatsApp)",
@@ -315,7 +316,7 @@ fun CustomerLedgerDialog(
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF128C7E)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (isBangla) "WhatsApp স্টেটমেন্ট" else "WhatsApp Statement", fontSize = 12.sp)
                         }

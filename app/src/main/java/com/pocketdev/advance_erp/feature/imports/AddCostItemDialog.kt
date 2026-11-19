@@ -1,5 +1,10 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,9 +24,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -85,18 +90,18 @@ fun AddCostItemDialog(
     ) -> Unit
 ) {
     val manualAmounts = remember { mutableStateMapOf<String, String>() }
-    var isEstimated by remember { mutableStateOf(false) }
+    var isEstimated by rememberSaveable { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf(CostCategory.INTERNATIONAL_FREIGHT) }
-    var description by remember { mutableStateOf("International Freight & Air/Sea Consignment") }
-    var amountStr by remember { mutableStateOf("") }
-    var selectedCurrency by remember { mutableStateOf("BDT") }
-    var exchangeRateStr by remember { mutableStateOf("1.00") }
+    var description by rememberSaveable { mutableStateOf("International Freight & Air/Sea Consignment") }
+    var amountStr by rememberSaveable { mutableStateOf("") }
+    var selectedCurrency by rememberSaveable { mutableStateOf("BDT") }
+    var exchangeRateStr by rememberSaveable { mutableStateOf("1.00") }
     var selectedMethod by remember { mutableStateOf(selectedCategory.defaultAllocationMethod) }
-    var paymentAccount by remember { mutableStateOf("City Bank Corporate (Import LC)") }
-    var docRef by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var shippingRatePerKgStr by remember { mutableStateOf("120") }
-    var showShippingCalculator by remember { mutableStateOf(true) }
+    var paymentAccount by rememberSaveable { mutableStateOf("City Bank Corporate (Import LC)") }
+    var docRef by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var shippingRatePerKgStr by rememberSaveable { mutableStateOf("120") }
+    var showShippingCalculator by rememberSaveable { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val categories = listOf(
@@ -147,7 +152,7 @@ fun AddCostItemDialog(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Calculate, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Outlined.Calculate, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (isBangla) "আমদানি খরচ যুক্ত করুন" else "Add Import Expense",
@@ -163,7 +168,7 @@ fun AddCostItemDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
                     }
                 }
 
@@ -178,7 +183,7 @@ fun AddCostItemDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (!isEstimated) PrimaryPurple else Color.White)
+                            .background(if (!isEstimated) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (!isEstimated) PrimaryPurple else Color.LightGray, RoundedCornerShape(10.dp))
                             .clickable { isEstimated = false }
                             .padding(vertical = 10.dp),
@@ -188,7 +193,7 @@ fun AddCostItemDialog(
                             text = if (isBangla) "প্রকৃত খরচ (Actual Bill)" else "Actual Bill / Expense",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (!isEstimated) Color.White else TextPrimary
+                            color = if (!isEstimated) MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
 
@@ -196,7 +201,7 @@ fun AddCostItemDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (isEstimated) PrimaryPurple else Color.White)
+                            .background(if (isEstimated) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (isEstimated) PrimaryPurple else Color.LightGray, RoundedCornerShape(10.dp))
                             .clickable { isEstimated = true }
                             .padding(vertical = 10.dp),
@@ -206,7 +211,7 @@ fun AddCostItemDialog(
                             text = if (isBangla) "প্রাক্কলিত খরচ (Estimated)" else "Estimated Expense",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (isEstimated) Color.White else TextPrimary
+                            color = if (isEstimated) MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
                 }
@@ -229,7 +234,7 @@ fun AddCostItemDialog(
                     // Category Selector
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -237,7 +242,7 @@ fun AddCostItemDialog(
                                     text = if (isBangla) "খরচের ক্যাটাগরি নির্বাচন করুন:" else "Cost Category:",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 categories.forEach { cat ->
                                     val isSel = cat == selectedCategory
@@ -246,8 +251,8 @@ fun AddCostItemDialog(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF8F9FA))
-                                            .border(1.dp, if (isSel) PrimaryPurple else Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                            .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
+                                            .border(1.dp, if (isSel) PrimaryPurple else ERPDivider, RoundedCornerShape(8.dp))
                                             .clickable {
                                                 selectedCategory = cat
                                                 selectedMethod = cat.defaultAllocationMethod
@@ -286,19 +291,19 @@ fun AddCostItemDialog(
                     if (showShippingCalculator) {
                         item {
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                                colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
                                 shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC))
+                                border = androidx.compose.foundation.BorderStroke(1.dp, StatusSuccessContainer)
                             ) {
                                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.LocalShipping, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Outlined.LocalShipping, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = if (isBangla) "গ্রস ওয়েট শিপিং ক্যালকুলেটর (Gross Weight × Rate)" else "Gross Weight Shipping Calculator",
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF166534)
+                                            color = StatusSuccess
                                         )
                                     }
 
@@ -336,7 +341,7 @@ fun AddCostItemDialog(
                                                 selectedMethod = AllocationMethod.GROSS_WEIGHT
                                             },
                                             modifier = Modifier.weight(1f),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                                            colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess)
                                         ) {
                                             Text("Calculate Total", fontSize = 12.sp)
                                         }
@@ -349,7 +354,7 @@ fun AddCostItemDialog(
                     // Allocation Method Selector (Configurable per category)
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -357,7 +362,7 @@ fun AddCostItemDialog(
                                     text = if (isBangla) "বণ্টন পদ্ধতি (Allocation Method):" else "Allocation Method:",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 methods.forEach { m ->
                                     val isSel = m == selectedMethod
@@ -366,8 +371,8 @@ fun AddCostItemDialog(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSel) SecondaryTeal.copy(alpha = 0.15f) else Color(0xFFF8F9FA))
-                                            .border(1.dp, if (isSel) SecondaryTeal else Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                            .background(if (isSel) SecondaryTeal.copy(alpha = 0.15f) else ERPSurfaceVariant)
+                                            .border(1.dp, if (isSel) SecondaryTeal else ERPDivider, RoundedCornerShape(8.dp))
                                             .clickable { selectedMethod = m }
                                             .padding(horizontal = 10.dp, vertical = 8.dp)
                                     ) {
@@ -400,7 +405,7 @@ fun AddCostItemDialog(
                     // Amount & Currency
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -455,7 +460,7 @@ fun AddCostItemDialog(
 
                 // Bottom Action Bar
                 Surface(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 8.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {

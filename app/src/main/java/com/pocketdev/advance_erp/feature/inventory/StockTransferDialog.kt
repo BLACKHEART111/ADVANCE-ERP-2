@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -65,22 +66,22 @@ fun StockTransferDialog(
     onConfirm: (StockTransferDraft) -> Unit
 ) {
     var sourceWarehouse by remember { mutableStateOf(warehouses.firstOrNull()) }
-    var sourceDropdownExpanded by remember { mutableStateOf(false) }
+    var sourceDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     var destWarehouse by remember {
         mutableStateOf(warehouses.getOrNull(1) ?: warehouses.firstOrNull())
     }
-    var destDropdownExpanded by remember { mutableStateOf(false) }
+    var destDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     var selectedProduct by remember { mutableStateOf(products.firstOrNull()) }
-    var productDropdownExpanded by remember { mutableStateOf(false) }
+    var productDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     var availableVariants by remember { mutableStateOf<List<ProductVariant>>(emptyList()) }
     var selectedVariant by remember { mutableStateOf<ProductVariant?>(null) }
-    var variantDropdownExpanded by remember { mutableStateOf(false) }
+    var variantDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
-    var quantityStr by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var quantityStr by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val isBangla = language == AppLanguage.BANGLA
@@ -125,7 +126,7 @@ fun StockTransferDialog(
                         color = TextPrimary
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 

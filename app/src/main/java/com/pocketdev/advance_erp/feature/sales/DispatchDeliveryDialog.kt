@@ -1,13 +1,14 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,9 +30,9 @@ fun DispatchDeliveryDialog(
     onDismiss: () -> Unit,
     onDispatch: (DeliveryDispatchDraft) -> Unit
 ) {
-    var deliveryPerson by remember { mutableStateOf("") }
-    var transportInfo by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var deliveryPerson by rememberSaveable { mutableStateOf("") }
+    var transportInfo by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
 
     // Map itemId to dispatch quantity string
     val dispatchQtyMap = remember(remainingItems) {
@@ -61,7 +62,7 @@ fun DispatchDeliveryDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.LocalShipping, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Outlined.LocalShipping, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
@@ -77,7 +78,7 @@ fun DispatchDeliveryDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Outlined.Close, contentDescription = "Close")
                     }
                 }
 

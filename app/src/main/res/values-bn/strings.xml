@@ -293,4 +293,8 @@
     <string name="action_barcode_scanner">বারকোড / কিউআর স্ক্যানার</string>
     <string name="action_reconciliation">ইনভেন্টরি অডিট পুনর্মিলন</string>
     <string name="action_export_ledger">মুভমেন্ট লেজার PDF</string>
+    <string name="nav_home">হোম</string>
+    <string name="nav_purchase_short">ক্রয়</string>
+    <string name="nav_stock">স্টক</string>
+    <string name="more_accounts_subtitle">নগদ, ব্যাংক, ব্যয় ও আর্থিক বিবরণী</string>
 </resources>

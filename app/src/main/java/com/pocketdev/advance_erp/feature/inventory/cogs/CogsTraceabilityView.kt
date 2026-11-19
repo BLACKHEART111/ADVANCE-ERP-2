@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.inventory.cogs
 
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,7 +52,7 @@ fun CogsTraceabilityView(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         // Summary Header Card
-        ERPCard(contentPadding = 12.dp, backgroundColor = Color(0xFFF8FAFC)) {
+        ERPCard(contentPadding = 12.dp, backgroundColor = ERPSurfaceVariant) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -91,7 +92,7 @@ fun CogsTraceabilityView(
 
         if (consumptions.isEmpty()) {
             ERPEmptyState(
-                icon = Icons.Default.ReceiptLong,
+                icon = Icons.Outlined.ReceiptLong,
                 title = "No COGS Depletions Recorded",
                 message = "Sales dispatches will automatically record detailed FIFO layer consumptions here."
             )

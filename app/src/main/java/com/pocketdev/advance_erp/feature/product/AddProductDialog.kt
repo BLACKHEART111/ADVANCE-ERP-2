@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.product
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,15 +27,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Inventory
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -144,26 +146,26 @@ fun AddProductDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var nameEn by remember { mutableStateOf("") }
-    var nameBn by remember { mutableStateOf("") }
-    var baseSku by remember { mutableStateOf("") }
-    var barcode by remember { mutableStateOf("") }
-    var unit by remember { mutableStateOf("PCS") }
-    var purchasePriceStr by remember { mutableStateOf("") }
-    var sellingPriceStr by remember { mutableStateOf("") }
-    var minStockAlertStr by remember { mutableStateOf("10") }
-    var initialStockStr by remember { mutableStateOf("0") }
+    var nameEn by rememberSaveable { mutableStateOf("") }
+    var nameBn by rememberSaveable { mutableStateOf("") }
+    var baseSku by rememberSaveable { mutableStateOf("") }
+    var barcode by rememberSaveable { mutableStateOf("") }
+    var unit by rememberSaveable { mutableStateOf("PCS") }
+    var purchasePriceStr by rememberSaveable { mutableStateOf("") }
+    var sellingPriceStr by rememberSaveable { mutableStateOf("") }
+    var minStockAlertStr by rememberSaveable { mutableStateOf("10") }
+    var initialStockStr by rememberSaveable { mutableStateOf("0") }
 
     var selectedCategory by remember { mutableStateOf(categories.firstOrNull()) }
-    var categoryDropdownExpanded by remember { mutableStateOf(false) }
+    var categoryDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     var selectedWarehouse by remember { mutableStateOf(warehouses.firstOrNull()) }
-    var warehouseDropdownExpanded by remember { mutableStateOf(false) }
+    var warehouseDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     // Existing products in selected category
     var existingCategoryProducts by remember { mutableStateOf<List<ProductWithDetails>>(emptyList()) }
     var selectedExistingProduct by remember { mutableStateOf<ProductWithDetails?>(null) }
-    var productDropdownExpanded by remember { mutableStateOf(false) }
+    var productDropdownExpanded by rememberSaveable { mutableStateOf(false) }
     var existingBaseStock by remember { mutableStateOf(0) }
     val deletedImageIds = remember { mutableStateListOf<String>() }
 
@@ -172,21 +174,21 @@ fun AddProductDialog(
 
     // Variants
     val variants = remember { mutableStateListOf<NewVariantDraft>() }
-    var showVariantInputs by remember { mutableStateOf(false) }
-    var variantColor by remember { mutableStateOf("") }
-    var variantSize by remember { mutableStateOf("") }
-    var variantSku by remember { mutableStateOf("") }
-    var variantBarcode by remember { mutableStateOf("") }
-    var variantQtyStr by remember { mutableStateOf("") }
-    var variantCostStr by remember { mutableStateOf("") }
-    var variantPriceStr by remember { mutableStateOf("") }
+    var showVariantInputs by rememberSaveable { mutableStateOf(false) }
+    var variantColor by rememberSaveable { mutableStateOf("") }
+    var variantSize by rememberSaveable { mutableStateOf("") }
+    var variantSku by rememberSaveable { mutableStateOf("") }
+    var variantBarcode by rememberSaveable { mutableStateOf("") }
+    var variantQtyStr by rememberSaveable { mutableStateOf("") }
+    var variantCostStr by rememberSaveable { mutableStateOf("") }
+    var variantPriceStr by rememberSaveable { mutableStateOf("") }
     val variantPhotos = remember { mutableStateListOf<GalleryItemDraft>() }
 
     // Variant inline editing index
     var editingVariantIdx by remember { mutableStateOf<Int?>(null) }
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var showAddCategoryDialog by rememberSaveable { mutableStateOf(false) }
 
     // Load products of selected category
     LaunchedEffect(selectedCategory?.id) {
@@ -302,7 +304,7 @@ fun AddProductDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(imageVector = Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
@@ -456,7 +458,7 @@ fun AddProductDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF8FAFC))
+                            .background(ERPSurfaceVariant)
                             .border(1.dp, ERPDivider, RoundedCornerShape(12.dp))
                             .padding(12.dp)
                     ) {
@@ -499,7 +501,7 @@ fun AddProductDialog(
                                         .fillMaxWidth()
                                         .height(46.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White)
+                                        .background(MaterialTheme.colorScheme.surface)
                                         .border(
                                             1.dp,
                                             if (selectedExistingProduct != null) PrimaryPurple else ERPDivider,
@@ -531,7 +533,7 @@ fun AddProductDialog(
                                             modifier = Modifier.weight(1f)
                                         )
                                         Icon(
-                                            imageVector = Icons.Default.ArrowDropDown,
+                                            imageVector = Icons.Outlined.ArrowDropDown,
                                             contentDescription = null,
                                             tint = if (selectedExistingProduct != null) PrimaryPurple else TextSecondary
                                         )
@@ -690,7 +692,7 @@ fun AddProductDialog(
                                 .size(48.dp)
                                 .background(SecondaryTeal.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                         ) {
-                            Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = "Auto SKU", tint = SecondaryTeal)
+                            Icon(imageVector = Icons.Outlined.AutoFixHigh, contentDescription = "Auto SKU", tint = SecondaryTeal)
                         }
                     }
                 }
@@ -723,7 +725,7 @@ fun AddProductDialog(
                                 .size(48.dp)
                                 .background(PrimaryPurple.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                         ) {
-                            Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = "Auto Barcode", tint = PrimaryPurple)
+                            Icon(imageVector = Icons.Outlined.AutoFixHigh, contentDescription = "Auto Barcode", tint = PrimaryPurple)
                         }
                     }
                 }
@@ -891,7 +893,7 @@ fun AddProductDialog(
                         },
                         onClick = { showVariantInputs = !showVariantInputs },
                         variant = if (showVariantInputs) ERPButtonVariant.GHOST else ERPButtonVariant.OUTLINED,
-                        icon = if (showVariantInputs) Icons.Default.Close else Icons.Default.Add,
+                        icon = if (showVariantInputs) Icons.Outlined.Close else Icons.Outlined.Add,
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     )
                 }
@@ -901,7 +903,7 @@ fun AddProductDialog(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+                            .background(ERPSurfaceVariant, RoundedCornerShape(12.dp))
                             .border(1.dp, ERPDivider, RoundedCornerShape(12.dp))
                             .padding(12.dp)
                     ) {
@@ -966,7 +968,7 @@ fun AddProductDialog(
                                         .size(48.dp)
                                         .background(SecondaryTeal.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                                 ) {
-                                    Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = "Auto Variant SKU", tint = SecondaryTeal)
+                                    Icon(imageVector = Icons.Outlined.AutoFixHigh, contentDescription = "Auto Variant SKU", tint = SecondaryTeal)
                                 }
                             }
                         }
@@ -999,7 +1001,7 @@ fun AddProductDialog(
                                         .size(48.dp)
                                         .background(PrimaryPurple.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                                 ) {
-                                    Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = "Auto Variant Barcode", tint = PrimaryPurple)
+                                    Icon(imageVector = Icons.Outlined.AutoFixHigh, contentDescription = "Auto Variant Barcode", tint = PrimaryPurple)
                                 }
                             }
                         }
@@ -1120,7 +1122,7 @@ fun AddProductDialog(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFF8FAFC))
+                                .background(ERPSurfaceVariant)
                                 .border(
                                     1.dp,
                                     if (v.isExistingVariant) SecondaryTeal.copy(alpha = 0.4f) else ERPDivider,
@@ -1139,7 +1141,7 @@ fun AddProductDialog(
                                         modifier = Modifier
                                             .size(40.dp)
                                             .clip(RoundedCornerShape(6.dp))
-                                            .background(Color.White)
+                                            .background(MaterialTheme.colorScheme.surface)
                                     ) {
                                         if (firstPhoto != null) {
                                             AsyncImage(
@@ -1153,7 +1155,7 @@ fun AddProductDialog(
                                             )
                                         } else {
                                             Icon(
-                                                imageVector = Icons.Default.Image,
+                                                imageVector = Icons.Outlined.Image,
                                                 contentDescription = null,
                                                 tint = TextMuted,
                                                 modifier = Modifier.align(Alignment.Center).size(20.dp)
@@ -1215,7 +1217,7 @@ fun AddProductDialog(
                                         modifier = Modifier.size(48.dp)
                                     ) {
                                         Icon(
-                                            imageVector = if (editingVariantIdx == idx) Icons.Default.Check else Icons.Default.Edit,
+                                            imageVector = if (editingVariantIdx == idx) Icons.Outlined.Check else Icons.Outlined.Edit,
                                             contentDescription = "Edit Details",
                                             tint = PrimaryPurple,
                                             modifier = Modifier.size(18.dp)
@@ -1227,7 +1229,7 @@ fun AddProductDialog(
                                             onClick = { variants.removeAt(idx) },
                                             modifier = Modifier.size(48.dp)
                                         ) {
-                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = StatusError, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete", tint = StatusError, modifier = Modifier.size(18.dp))
                                         }
                                     }
                                 }
@@ -1259,7 +1261,7 @@ fun AddProductDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(6.dp))
-                                                .background(Color(0xFFE2E8F0))
+                                                .background(ERPDivider)
                                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                                         ) {
                                             Text(
@@ -1274,7 +1276,7 @@ fun AddProductDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(6.dp))
-                                                .background(if (v.initialStock > 0) SecondaryTeal.copy(alpha = 0.18f) else Color(0xFFE2E8F0).copy(alpha = 0.6f))
+                                                .background(if (v.initialStock > 0) SecondaryTeal.copy(alpha = 0.18f) else ERPDivider.copy(alpha = 0.6f))
                                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                                         ) {
                                             Text(
@@ -1553,8 +1555,8 @@ fun AddProductDialog(
 
     // Add Category Dialog
     if (showAddCategoryDialog) {
-        var catEn by remember { mutableStateOf("") }
-        var catBn by remember { mutableStateOf("") }
+        var catEn by rememberSaveable { mutableStateOf("") }
+        var catBn by rememberSaveable { mutableStateOf("") }
         var catErr by remember { mutableStateOf<String?>(null) }
 
         AlertDialog(
@@ -1563,7 +1565,7 @@ fun AddProductDialog(
                 Text(
                     text = if (language == AppLanguage.BANGLA) "নতুন ক্যাটাগরি যোগ করুন" else "Add New Category",
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
             },
             text = {

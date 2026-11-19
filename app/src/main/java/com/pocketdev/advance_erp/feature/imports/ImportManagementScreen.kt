@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,25 +22,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.FactCheck
-import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material.icons.filled.Warehouse
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.FactCheck
+import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.outlined.Warehouse
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -99,10 +100,10 @@ import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.WarehouseReceipt
 
 enum class ImportModuleTab(val titleEn: String, val titleBn: String, val icon: ImageVector) {
-    OVERVIEW("Overview", "সারসংক্ষেপ", Icons.Default.Dashboard),
-    PURCHASE_ORDERS("Purchase Orders", "ক্রয়াদেশ (PO)", Icons.Default.ShoppingCart),
-    SHIPMENTS("Shipments", "চালানসমূহ", Icons.Default.LocalShipping),
-    COST_LAYERS("Inventory Cost Layers", "কস্ট লেয়ার্স", Icons.Default.Layers)
+    OVERVIEW("Overview", "সারসংক্ষেপ", Icons.Outlined.Dashboard),
+    PURCHASE_ORDERS("Purchase Orders", "ক্রয়াদেশ (PO)", Icons.Outlined.ShoppingCart),
+    SHIPMENTS("Shipments", "চালানসমূহ", Icons.Outlined.LocalShipping),
+    COST_LAYERS("Inventory Cost Layers", "কস্ট লেয়ার্স", Icons.Outlined.Layers)
 }
 
 @Composable
@@ -114,20 +115,25 @@ fun ImportManagementScreen(
     var shipmentQuery by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
+    var selectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
     val isBangla = uiState.language == AppLanguage.BANGLA
 
     // Dialog state controllers
-    var showCreatePoDialog by remember { mutableStateOf(false) }
-    var showRecordPaymentDialog by remember { mutableStateOf(false) }
-    var showCreateShipmentDialog by remember { mutableStateOf(false) }
-    var showAddCostDialog by remember { mutableStateOf(false) }
-    var showReceivingDialog by remember { mutableStateOf(false) }
-    var showAddCartonDialog by remember { mutableStateOf(false) }
-    var showAddAdditionalCostDialog by remember { mutableStateOf(false) }
-    var showCompletionDialog by remember { mutableStateOf(false) }
-    var showShipmentWorkspaceDialog by remember { mutableStateOf(false) }
+    var showCreatePoDialog by rememberSaveable { mutableStateOf(false) }
+    var showRecordPaymentDialog by rememberSaveable { mutableStateOf(false) }
+    var showCreateShipmentDialog by rememberSaveable { mutableStateOf(false) }
+    var showAddCostDialog by rememberSaveable { mutableStateOf(false) }
+    var showReceivingDialog by rememberSaveable { mutableStateOf(false) }
+    var showAddCartonDialog by rememberSaveable { mutableStateOf(false) }
+    var showAddAdditionalCostDialog by rememberSaveable { mutableStateOf(false) }
+    var showCompletionDialog by rememberSaveable { mutableStateOf(false) }
+    var showShipmentWorkspaceDialog by rememberSaveable { mutableStateOf(false) }
+    var editingPoId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingPo by remember { mutableStateOf<PurchaseOrder?>(null) }
+    LaunchedEffect(editingPoId, uiState.purchaseOrders) {
+        if (editingPo == null && editingPoId != null) editingPo = uiState.purchaseOrders.find { it.id == editingPoId }
+    }
+    LaunchedEffect(editingPo) { editingPoId = editingPo?.id }
     var editingPoItemsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.PurchaseOrderItem>>(emptyList()) }
     var editingPoCartonsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.ShipmentCarton>>(emptyList()) }
     var editingPoCostsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.ImportCostItem>>(emptyList()) }
@@ -179,7 +185,7 @@ fun ImportManagementScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Public,
+                            imageVector = Icons.Outlined.Public,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(24.dp)
@@ -229,7 +235,7 @@ fun ImportManagementScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) PrimaryPurple else Color.White)
+                            .background(if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .clickable { selectedTab = tab }
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -246,7 +252,7 @@ fun ImportManagementScreen(
                                 text = if (isBangla) tab.titleBn else tab.titleEn,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color.White else TextPrimary
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary
                             )
                         }
                     }
@@ -300,7 +306,7 @@ fun ImportManagementScreen(
                                     text = if (isBangla) "দ্রুত কার্যক্রম (Quick Actions)" else "Quick Actions",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(
@@ -360,7 +366,7 @@ fun ImportManagementScreen(
                             ) {
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = if (isBangla) "মোট ক্রয়াদেশ" else "Total POs",
@@ -373,7 +379,7 @@ fun ImportManagementScreen(
                                         text = "${uiState.purchaseOrders.size}",
                                         style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Black,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
                                     Text(
                                         text = Formatters.formatMoney(totalPoValueBdt, CurrencyCode.BDT, uiState.language),
@@ -393,7 +399,7 @@ fun ImportManagementScreen(
                             ) {
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Payments, contentDescription = null, tint = StatusError, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Outlined.Payments, contentDescription = null, tint = StatusError, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = if (isBangla) "বকেয়া দেনা" else "Outstanding",
@@ -437,13 +443,13 @@ fun ImportManagementScreen(
                             ) {
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Layers, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
+                                        Icon(Icons.Outlined.Layers, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = if (isBangla) "ইনভেন্টরি কস্ট লেয়ার্স ও মজুদ মূল্যায়ন" else "Inventory Cost Layers & Valuation",
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
@@ -492,7 +498,7 @@ fun ImportManagementScreen(
                                     text = if (isBangla) "ক্রয়াদেশ (চীন)" else "Purchase Orders",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Text(
                                     text = "China Factory Orders",
@@ -511,7 +517,7 @@ fun ImportManagementScreen(
                                     shape = RoundedCornerShape(10.dp),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (isBangla) "+ নতুন PO" else "+ New PO",
@@ -528,7 +534,7 @@ fun ImportManagementScreen(
                                     shape = RoundedCornerShape(10.dp),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
                                 ) {
-                                    Icon(Icons.Default.Payments, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Payments, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = if (isBangla) "পরিশোধ" else "Pay",
@@ -547,11 +553,11 @@ fun ImportManagementScreen(
                             value = uiState.searchQuery,
                             onValueChange = { viewModel.setSearchQuery(it) },
                             placeholder = { Text(if (isBangla) "PO নম্বর বা সাপ্লায়ার খুঁজুন..." else "Search by PO # or Supplier...") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) },
+                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = TextMuted) },
                             trailingIcon = {
                                 if (uiState.searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = TextMuted)
+                                        Icon(Icons.Outlined.Clear, contentDescription = "Clear", tint = TextMuted)
                                     }
                                 }
                             },
@@ -608,14 +614,14 @@ fun ImportManagementScreen(
                                             .background(PrimaryPurple.copy(alpha = 0.1f), CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(28.dp))
+                                        Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(28.dp))
                                     }
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Text(
                                         text = if (isBangla) "কোনো ক্রয়াদেশ পাওয়া যায়নি" else "No Purchase Orders Found",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
@@ -664,7 +670,7 @@ fun ImportManagementScreen(
                     item {
                         OutlinedTextField(value = shipmentQuery, onValueChange = { shipmentQuery = it },
                             label = { Text(if (isBangla) "চালান, ট্র্যাকিং বা সরবরাহকারী খুঁজুন" else "Search shipment, tracking or supplier") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(), singleLine = true)
                     }
                     val query = shipmentQuery.trim()
@@ -719,7 +725,7 @@ fun ImportManagementScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Column {
-                                            Text(product?.nameEn ?: layer.productId, fontWeight = FontWeight.Bold, color = DeepNavy)
+                                            Text(product?.nameEn ?: layer.productId, fontWeight = FontWeight.Bold, color = TextPrimary)
                                             Text("Batch: ${layer.receiptNumber} • ${layer.shipmentNumber}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                                         }
                                         Column(horizontalAlignment = Alignment.End) {
@@ -750,10 +756,10 @@ fun ImportManagementScreen(
 
                 // Notice Banner
                 item {
-                    ERPCard(backgroundColor = Color(0xFFF8FAFC)) {
+                    ERPCard(backgroundColor = ERPSurfaceVariant) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.CheckCircle,
+                                imageVector = Icons.Outlined.CheckCircle,
                                 contentDescription = null,
                                 tint = SecondaryTeal,
                                 modifier = Modifier.size(20.dp)
@@ -812,7 +818,7 @@ fun ImportManagementScreen(
                     categoryFreightRatesBdtMinor = catRatesMinor,
                     handlingCostMinor = handlingMinor,
                     sampleCostMinor = sampleMinor,
-                    onSaved = { showCreatePoDialog = false },
+                    onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("purchase:new"); showCreatePoDialog = false },
                     attachments = attachments
                 )
             }
@@ -845,7 +851,7 @@ fun ImportManagementScreen(
                 currentEditingPo.status == PurchaseOrderStatus.COMPLETED.name || resolvedEditItems.any { it.receivedQuantity > 0 } ||
                 uiState.selectedPoReceipts.any { it.purchaseOrderId == currentEditingPo.id },
             onUpdateMetadata = { notes, attachments ->
-                viewModel.updatePurchaseOrderMetadata(currentEditingPo.id, notes, attachments, onSaved = { editingPo = null })
+                viewModel.updatePurchaseOrderMetadata(currentEditingPo.id, notes, attachments, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).apply { remove("purchase:${currentEditingPo.id}"); remove("purchase:${currentEditingPo.id}:metadata") }; editingPo = null })
             },
             isSaving = uiState.isSavingPurchaseOrder,
             saveError = uiState.purchaseOrderSaveError,
@@ -882,7 +888,7 @@ fun ImportManagementScreen(
                     categoryFreightRatesBdtMinor = catRatesMinor,
                     handlingCostMinor = handlingMinor,
                     sampleCostMinor = sampleMinor,
-                    onSaved = { editingPo = null },
+                    onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).apply { remove("purchase:${currentEditingPo.id}"); remove("purchase:${currentEditingPo.id}:metadata") }; editingPo = null },
                     attachments = attachments
                 )
             },
@@ -943,23 +949,29 @@ fun ImportManagementScreen(
     if (showAddCartonDialog) {
         val activeOrderId = uiState.selectedPo?.id
         val activeShipment = selectedShipment
+        val cartonSaved: () -> Unit = {
+            com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("packing:${activeOrderId ?: activeShipment?.id}")
+            showAddCartonDialog = false
+        }
         AddCartonDialog(
             shipment = activeShipment,
             orderId = activeOrderId,
             products = uiState.products,
             variants = uiState.productVariants,
             language = uiState.language,
+            isSaving = uiState.isSavingCarton,
+            saveError = uiState.cartonSaveError,
             onDismiss = { showAddCartonDialog = false },
             onConfirm = { carton ->
                 if (activeOrderId != null) {
-                    viewModel.addCartonToPurchase(activeOrderId, carton)
+                    viewModel.addCartonToPurchase(activeOrderId, carton, onSaved = cartonSaved)
                 } else if (activeShipment != null) {
-                    viewModel.addCartonToShipment(activeShipment.id, carton)
+                    viewModel.addCartonToShipment(activeShipment.id, carton, onSaved = cartonSaved)
                 }
             },
             onConfirmMixed = { cartonNumber, l, w, h, gw, nw, lines ->
                 if (activeOrderId != null) {
-                    viewModel.addMixedCarton(activeOrderId, cartonNumber, l, w, h, gw, nw, lines)
+                    viewModel.addMixedCarton(activeOrderId, cartonNumber, l, w, h, gw, nw, lines, onSaved = cartonSaved)
                 }
             }
         )
@@ -1018,17 +1030,19 @@ fun ImportManagementScreen(
             products = uiState.products,
             isCostFinalized = activePo?.isActualCostFinalized ?: false,
             isBangla = isBangla,
+            isSaving = uiState.isSavingReceipt,
+            saveError = uiState.receiptSaveError,
             onDismiss = { showReceivingDialog = false },
             onSaveDraft = { whId, meth, items, notes ->
                 if (activePo != null) {
-                    viewModel.createPurchaseReceiving(activePo.id, whId, meth, items, notes)
+                    viewModel.createPurchaseReceiving(activePo.id, whId, meth, items, notes, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("receiving:${activePo?.id ?: activeShipment?.id}"); showReceivingDialog = false })
                 }
             },
             onConfirmPost = { whId, items, notes, allowDiscrepancy ->
                 if (activePo != null) {
-                    viewModel.createPurchaseReceiving(activePo.id, whId, "PHYSICAL_COUNT", items, notes, postImmediately = true)
+                    viewModel.createPurchaseReceiving(activePo.id, whId, "PHYSICAL_COUNT", items, notes, postImmediately = true, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("receiving:${activePo?.id ?: activeShipment?.id}"); showReceivingDialog = false })
                 } else if (activeShipment != null) {
-                    viewModel.createAndPostWarehouseReceipt(activeShipment.id, whId, items, notes, allowDiscrepancy)
+                    viewModel.createAndPostWarehouseReceipt(activeShipment.id, whId, items, notes, allowDiscrepancy, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("receiving:${activePo?.id ?: activeShipment?.id}"); showReceivingDialog = false })
                 }
             }
         )
@@ -1046,6 +1060,9 @@ fun ImportManagementScreen(
             freightRates = uiState.selectedShipmentFreightRates,
             costItems = uiState.costItems,
             landingPreview = uiState.selectedShipmentLandingPreview,
+            previewError = uiState.landingPreviewError,
+            previewLoading = uiState.isLoadingLandingPreview,
+            onRetryPreview = { viewModel.refreshShipmentLandingPreview(selectedShipment.id) },
             snapshots = uiState.landedCostSnapshots,
             costAdjustments = uiState.selectedShipmentCostAdjustments,
             products = uiState.products,
@@ -1119,8 +1136,10 @@ fun ImportManagementScreen(
             isCostFinalized = po.isActualCostFinalized,
             isBangla = isBangla,
             onDismiss = { showCompletionDialog = false },
+            isSaving = uiState.isCompletingPurchase,
+            saveError = uiState.completionError,
             onConfirmComplete = { disp, reas, nts ->
-                viewModel.completePurchase(po.id, disp, reas, nts)
+                viewModel.completePurchase(po.id, disp, reas, nts) { showCompletionDialog = false }
             }
         )
     }
@@ -1230,7 +1249,7 @@ private fun FilterChipView(
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(if (isSelected) PrimaryPurple else Color.White)
+            .background(if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
@@ -1239,7 +1258,7 @@ private fun FilterChipView(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = if (isSelected) Color.White else TextPrimary
+            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary
         )
     }
 }
@@ -1268,7 +1287,7 @@ private fun LivePurchaseOrderCard(
                     Text(
                         text = order.poNumber,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy,
+                        color = TextPrimary,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1277,7 +1296,7 @@ private fun LivePurchaseOrderCard(
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Share,
+                            imageVector = Icons.Outlined.Share,
                             contentDescription = "Share PDF",
                             tint = SecondaryTeal,
                             modifier = Modifier.size(16.dp)
@@ -1332,7 +1351,7 @@ private fun LivePurchaseOrderCard(
             ) {
                 Column {
                     Text("Total (${order.currency})", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                    Text("${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}", fontWeight = FontWeight.Bold, color = DeepNavy)
+                    Text("${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}", fontWeight = FontWeight.Bold, color = TextPrimary)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("BDT Equivalent", style = MaterialTheme.typography.labelSmall, color = TextMuted)
@@ -1358,7 +1377,7 @@ private fun LivePurchaseOrderCard(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Outlined.Share, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = if (isBangla) "শেয়ার ও এক্সপোর্ট" else "Share PO",
@@ -1375,7 +1394,7 @@ private fun LivePurchaseOrderCard(
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (isBangla) "PO নিশ্চিত করুন" else "Confirm PO",
@@ -1399,7 +1418,7 @@ private fun LiveShipmentCard(
 ) {
     val status = com.pocketdev.advance_erp.data.entity.ShipmentStatus.entries.find { it.name == shipment.status }
     ERPCard(contentPadding = 14.dp, modifier = Modifier.clickable(onClick = onSelect),
-        backgroundColor = if (isSelected) SecondaryTeal.copy(alpha = 0.06f) else Color.White) {
+        backgroundColor = if (isSelected) SecondaryTeal.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -1408,7 +1427,7 @@ private fun LiveShipmentCard(
                         style = MaterialTheme.typography.bodySmall, color = SecondaryTeal)
                 }
                 IconButton(onClick = onSharePdf, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Default.Share, contentDescription = if (isBangla) "প্যাকিং লিস্ট শেয়ার" else "Share packing list", tint = PrimaryPurple)
+                    Icon(Icons.Outlined.Share, contentDescription = if (isBangla) "প্যাকিং লিস্ট শেয়ার" else "Share packing list", tint = PrimaryPurple)
                 }
             }
             Text("${shipment.origin} → ${shipment.destination}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)

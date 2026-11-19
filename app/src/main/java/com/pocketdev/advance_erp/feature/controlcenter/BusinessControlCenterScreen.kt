@@ -1,5 +1,10 @@
 package com.pocketdev.advance_erp.feature.controlcenter
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerPanel
 import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerRow
 import com.pocketdev.advance_erp.feature.sales.RecordCustomerPaymentDialog
@@ -30,21 +35,21 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.EditCalendar
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Print
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.EditCalendar
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Print
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -140,10 +145,10 @@ fun BusinessControlCenterScreen(
     val exportVisibility = rememberBiometricCostVisibility("ledger-export", SecurityManager.canViewCost(userRole), isBn)
     val profitFilterLocked = filterState.financialMetric in setOf(FinancialMetricFilter.PROFIT, FinancialMetricFilter.LOSS) && !canViewProfit
 
-    var showFilterDialog by remember { mutableStateOf(false) }
-    var showCustomDateRangeDialog by remember { mutableStateOf(false) }
-    var showExportSheet by remember { mutableStateOf(false) }
-    var showPresetsMenu by remember { mutableStateOf(false) }
+    var showFilterDialog by rememberSaveable { mutableStateOf(false) }
+    var showCustomDateRangeDialog by rememberSaveable { mutableStateOf(false) }
+    var showExportSheet by rememberSaveable { mutableStateOf(false) }
+    var showPresetsMenu by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(initialCategory) {
         if (initialCategory != null) viewModel.selectCategory(initialCategory)
@@ -245,7 +250,7 @@ fun BusinessControlCenterScreen(
                             modifier = Modifier.size(26.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Assessment,
+                                imageVector = Icons.Outlined.Assessment,
                                 contentDescription = null,
                                 tint = PrimaryPurple,
                                 modifier = Modifier
@@ -288,7 +293,7 @@ fun BusinessControlCenterScreen(
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Bookmark,
+                                    imageVector = Icons.Outlined.Bookmark,
                                     contentDescription = "Saved Presets",
                                     tint = if (savedPresets.isNotEmpty()) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
@@ -329,9 +334,9 @@ fun BusinessControlCenterScreen(
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                             modifier = Modifier.height(32.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = Color.White)
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = MaterialTheme.colorScheme.onPrimary)
                         ) {
-                            Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                            Icon(imageVector = Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBn) "এক্সপোর্ট" else "Export", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
@@ -370,7 +375,7 @@ fun BusinessControlCenterScreen(
                                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.CalendarMonth,
+                                        imageVector = Icons.Outlined.CalendarMonth,
                                         contentDescription = null,
                                         modifier = Modifier.size(11.dp),
                                         tint = PrimaryPurple
@@ -404,7 +409,7 @@ fun BusinessControlCenterScreen(
                                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Event,
+                                        imageVector = Icons.Outlined.Event,
                                         contentDescription = null,
                                         modifier = Modifier.size(11.dp),
                                         tint = SecondaryTeal
@@ -424,7 +429,7 @@ fun BusinessControlCenterScreen(
                                 modifier = Modifier.size(20.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.EditCalendar,
+                                    imageVector = Icons.Outlined.EditCalendar,
                                     contentDescription = "Edit Date Range",
                                     modifier = Modifier.size(13.dp),
                                     tint = PrimaryPurple
@@ -452,7 +457,7 @@ fun BusinessControlCenterScreen(
                             leadingIcon = if (isSelected) {
                                 {
                                     Icon(
-                                        imageVector = Icons.Default.Check,
+                                        imageVector = Icons.Outlined.Check,
                                         contentDescription = null,
                                         modifier = Modifier.size(12.dp),
                                         tint = Color.White
@@ -461,7 +466,7 @@ fun BusinessControlCenterScreen(
                             } else if (option == DateRangeOption.CUSTOM) {
                                 {
                                     Icon(
-                                        imageVector = Icons.Default.CalendarMonth,
+                                        imageVector = Icons.Outlined.CalendarMonth,
                                         contentDescription = null,
                                         modifier = Modifier.size(12.dp),
                                         tint = PrimaryPurple
@@ -517,7 +522,7 @@ fun BusinessControlCenterScreen(
                             leadingIcon = if (isSelected) {
                                 {
                                     Icon(
-                                        imageVector = Icons.Default.Check,
+                                        imageVector = Icons.Outlined.Check,
                                         contentDescription = null,
                                         modifier = Modifier.size(12.dp),
                                         tint = Color.White
@@ -607,11 +612,11 @@ fun BusinessControlCenterScreen(
                         value = filterState.searchQuery,
                         onValueChange = { viewModel.setSearchQuery(it) },
                         placeholder = { Text(if (isBn) "ইনভয়েস, পিও, পার্টি বা পণ্য খুঁজুন..." else "Search ref, party, items...", fontSize = 12.sp) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         trailingIcon = {
                             if (filterState.searchQuery.isNotBlank()) {
                                 IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.size(28.dp)) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
                                 }
                             }
                         },
@@ -650,8 +655,8 @@ fun BusinessControlCenterScreen(
                         badge = {
                             if (filterState.activeFilterCount > 0) {
                                 Badge(
-                                    containerColor = Color(0xFFDC2626),
-                                    contentColor = Color.White
+                                    containerColor = StatusError,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
                                 ) {
                                     Text(filterState.activeFilterCount.toString(), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -671,7 +676,7 @@ fun BusinessControlCenterScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Default.FilterList,
+                                    imageVector = Icons.Outlined.FilterList,
                                     contentDescription = "Filters",
                                     tint = if (filterState.activeFilterCount > 0) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(22.dp)
@@ -684,14 +689,14 @@ fun BusinessControlCenterScreen(
                     if (filterState.activeFilterCount > 0) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFFEE2E2),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                            color = StatusErrorContainer,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StatusError),
                             modifier = Modifier
                                 .size(46.dp)
                                 .clickable { viewModel.resetFilters() }
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(imageVector = Icons.Default.RestartAlt, contentDescription = "Reset", tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                                Icon(imageVector = Icons.Outlined.RestartAlt, contentDescription = "Reset", tint = StatusError, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -732,7 +737,7 @@ fun BusinessControlCenterScreen(
             if (ready && !profitFilterLocked && transactions.isEmpty()) {
                 item {
                     ERPEmptyState(
-                        icon = Icons.Default.FilterList,
+                        icon = Icons.Outlined.FilterList,
                         title = if (isBn) "কোনো তথ্য পাওয়া যায়নি" else "No Records Found",
                         message = if (isBn) "নির্বাচিত তারিখ ও ফিল্টার অনুযায়ী কোনো লেনদেন নেই।" else "Try adjusting the date range or clear some filters.",
                         modifier = Modifier.padding(top = 16.dp)
@@ -836,8 +841,8 @@ fun BusinessControlCenterScreen(
                 ExportActionItem(
                     title = if (isBn) "পিডিএফ রিপোর্ট শেয়ার করুন (PDF Report)" else "Share PDF Document",
                     subtitle = if (isBn) "WhatsApp, Gmail বা অন্য অ্যাপে শেয়ার করুন" else "A4 printable report with header & summary",
-                    icon = Icons.Default.Share,
-                    iconColor = Color(0xFFDC2626),
+                    icon = Icons.Outlined.Share,
+                    iconColor = StatusError,
                     onClick = {
                         showExportSheet = false
                         viewModel.exportAndSharePdf(context, exportVisibility.isVisible)
@@ -848,8 +853,8 @@ fun BusinessControlCenterScreen(
                 ExportActionItem(
                     title = if (isBn) "এক্সেল ওয়ার্কবুক শেয়ার করুন (Excel XLSX)" else "Share Excel (XLSX) Workbook",
                     subtitle = if (isBn) "ক্যাটাগরিভিত্তিক আলাদা শীট ও বিশ্লেষণ" else "Multi-sheet spreadsheet with summary & ledgers",
-                    icon = Icons.Default.TableChart,
-                    iconColor = Color(0xFF16A34A),
+                    icon = Icons.Outlined.TableChart,
+                    iconColor = StatusSuccess,
                     onClick = {
                         showExportSheet = false
                         viewModel.exportAndShareExcel(context, exportVisibility.isVisible)
@@ -860,8 +865,8 @@ fun BusinessControlCenterScreen(
                 ExportActionItem(
                     title = if (isBn) "সিএসভি ফাইল শেয়ার করুন (CSV Export)" else "Share CSV Data File",
                     subtitle = if (isBn) "সহজ ডাটা এনালাইসিসের জন্য" else "Plain comma-separated transaction records",
-                    icon = Icons.Default.Share,
-                    iconColor = Color(0xFF0284C7),
+                    icon = Icons.Outlined.Share,
+                    iconColor = StatusInfo,
                     onClick = {
                         showExportSheet = false
                         viewModel.exportAndShareCsv(context, exportVisibility.isVisible)
@@ -872,8 +877,8 @@ fun BusinessControlCenterScreen(
                 ExportActionItem(
                     title = if (isBn) "সরাসরি প্রিন্ট করুন (Print Report)" else "Print Report Directly",
                     subtitle = if (isBn) "Android PrintManager ব্যবহার করে প্রিন্ট" else "Send formatted document to WiFi or Bluetooth printer",
-                    icon = Icons.Default.Print,
-                    iconColor = Color(0xFF7C3AED),
+                    icon = Icons.Outlined.Print,
+                    iconColor = PrimaryPurple,
                     onClick = {
                         showExportSheet = false
                         viewModel.printReport(context, exportVisibility.isVisible)
@@ -884,8 +889,8 @@ fun BusinessControlCenterScreen(
                 ExportActionItem(
                     title = if (isBn) "ডিভাইসে ডাউনলোড করুন (Save to Downloads)" else "Save to Downloads Folder",
                     subtitle = if (isBn) "মোবাইলের ইন্টারনাল স্টোরেজে সংরক্ষণ" else "Save PDF & XLSX directly to device storage",
-                    icon = Icons.Default.Download,
-                    iconColor = Color(0xFFD97706),
+                    icon = Icons.Outlined.Download,
+                    iconColor = StatusWarning,
                     onClick = {
                         showExportSheet = false
                         viewModel.savePdfToStorage(context, exportVisibility.isVisible)
@@ -1014,7 +1019,7 @@ private fun UnifiedTransactionCard(
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
                 maxLines = 1, softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                color = if (item.isInflow) Color(0xFF16A34A) else Color(0xFFDC2626)
+                color = if (item.isInflow) StatusSuccess else StatusError
             )
         }
     }

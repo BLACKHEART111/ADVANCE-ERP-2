@@ -293,4 +293,8 @@
     <string name="action_barcode_scanner">Barcode / QR Scanner</string>
     <string name="action_reconciliation">Audit Reconciliation</string>
     <string name="action_export_ledger">Export Movement PDF</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_purchase_short">Purchase</string>
+    <string name="nav_stock">Stock</string>
+    <string name="more_accounts_subtitle">Cash, bank, expenses and statements</string>
 </resources>

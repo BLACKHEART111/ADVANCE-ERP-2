@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.inventory.costhistory
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import com.pocketdev.advance_erp.core.security.LockedCostPanel
 import androidx.compose.foundation.background
@@ -22,11 +24,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,7 +86,7 @@ fun ProductCostHistoryDialog(
     onAdjustLayer: ((layer: InventoryCostLayer) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
-    var selectedFilter by remember { mutableStateOf("ALL") } // "ALL", "ACTIVE", "DEPLETED", "ADJUSTMENTS"
+    var selectedFilter by rememberSaveable { mutableStateOf("ALL") } // "ALL", "ACTIVE", "DEPLETED", "ADJUSTMENTS"
     val visibility = rememberBiometricCostVisibility(summary?.productId ?: layers.firstOrNull()?.productId ?: "cost-history", canViewCost, language == AppLanguage.BANGLA)
     if (!visibility.isVisible) {
         Dialog(onDismissRequest = onDismiss) {
@@ -102,7 +104,7 @@ fun ProductCostHistoryDialog(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .clip(RoundedCornerShape(20.dp)),
-            color = Color.White
+            color = MaterialTheme.colorScheme.surface
         ) {
             Column(
                 modifier = Modifier
@@ -132,7 +134,7 @@ fun ProductCostHistoryDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(imageVector = Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
@@ -164,7 +166,7 @@ fun ProductCostHistoryDialog(
                             modifier = Modifier.weight(1.2f),
                             label = if (language == AppLanguage.BANGLA) "মোট ফিফো মূল্য" else "Total FIFO Valuation",
                             value = Formatters.formatCurrency(summary.totalValuationMinor, currency, language),
-                            valueColor = Color(0xFF0F766E),
+                            valueColor = SecondaryTeal,
                             caption = (if (language == AppLanguage.BANGLA) "গড়: " else "Avg: ") +
                                 Formatters.formatCurrency(summary.weightedAverageCostMinor, currency, language),
                             captionColor = TextMuted
@@ -193,7 +195,7 @@ fun ProductCostHistoryDialog(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) PrimaryPurple else Color(0xFFF1F5F9))
+                                .background(if (isSelected) PrimaryPurple else ERPSurfaceVariant)
                                 .clickable { selectedFilter = key }
                                 .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
@@ -217,7 +219,7 @@ fun ProductCostHistoryDialog(
                 if (selectedFilter == "ADJUSTMENTS") {
                     if (adjustments.isEmpty()) {
                         ERPEmptyState(
-                            icon = Icons.Default.Tune,
+                            icon = Icons.Outlined.Tune,
                             title = "No Cost Adjustments",
                             message = "No landed cost variance adjustments recorded for this product."
                         )
@@ -305,7 +307,7 @@ fun ProductCostHistoryDialog(
 
                     if (filteredLayers.isEmpty()) {
                         ERPEmptyState(
-                            icon = Icons.Default.Layers,
+                            icon = Icons.Outlined.Layers,
                             title = "No Cost Layers Found",
                             message = "No receipt cost layers match the selected filter."
                         )
@@ -354,7 +356,7 @@ fun ProductCostHistoryDialog(
                                                 Box(
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(6.dp))
-                                                        .background(if (isActive) StatusSuccess.copy(alpha = 0.12f) else Color(0xFFF1F5F9))
+                                                        .background(if (isActive) StatusSuccess.copy(alpha = 0.12f) else ERPSurfaceVariant)
                                                         .padding(horizontal = 7.dp, vertical = 2.dp)
                                                 ) {
                                                     Text(
@@ -374,7 +376,7 @@ fun ProductCostHistoryDialog(
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
                                                         Icon(
-                                                            imageVector = Icons.Default.Edit,
+                                                            imageVector = Icons.Outlined.Edit,
                                                             contentDescription = "Adjust Cost",
                                                             tint = SecondaryTeal,
                                                             modifier = Modifier.size(16.dp)
@@ -420,7 +422,7 @@ fun ProductCostHistoryDialog(
                                                     Formatters.formatCurrency(layerValuation, currency, language),
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (isActive) Color(0xFF0F766E) else TextMuted
+                                                    color = if (isActive) SecondaryTeal else TextMuted
                                                 )
                                             }
                                         }
@@ -473,7 +475,7 @@ fun CostAdjustmentInputDialog(
     onDismiss: () -> Unit
 ) {
     var newCostInput by remember { mutableStateOf((layer.unitLandedCostBdtMinor / 100.0).toString()) }
-    var reasonInput by remember { mutableStateOf("") }
+    var reasonInput by rememberSaveable { mutableStateOf("") }
     var errorText by remember { mutableStateOf<String?>(null) }
 
     val newCostMinor = ((newCostInput.toDoubleOrNull() ?: 0.0) * 100).toLong()
@@ -496,7 +498,7 @@ fun CostAdjustmentInputDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp)),
-            color = Color.White
+            color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
@@ -540,7 +542,7 @@ fun CostAdjustmentInputDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Real-time Variance Split Preview
-                ERPCard(contentPadding = 8.dp, backgroundColor = Color(0xFFF8FAFC)) {
+                ERPCard(contentPadding = 8.dp, backgroundColor = ERPSurfaceVariant) {
                     Column {
                         val isPos = variance >= 0
                         val sign = if (isPos) "+" else ""
@@ -615,7 +617,7 @@ private fun SummaryMetricCard(
     ERPCard(
         modifier = modifier,
         contentPadding = 8.dp,
-        backgroundColor = Color(0xFFF8FAFC)
+        backgroundColor = ERPSurfaceVariant
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)

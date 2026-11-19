@@ -1,5 +1,23 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusInfoContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import org.json.JSONObject
+import org.json.JSONArray
+import com.pocketdev.advance_erp.core.designsystem.ERPLeaveEditorDialog
+import com.pocketdev.advance_erp.core.util.EditorDraftStore
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.saveable.Saver
+import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import com.pocketdev.advance_erp.core.util.CartonMeasurement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,13 +48,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -185,6 +203,40 @@ private class CartonBoxState(
     }
 }
 
+private fun ItemDraftState.toJson() = JSONObject().apply {
+    put("product", productId); put("variant", variantId ?: ""); put("qty", quantityStr)
+    put("price", unitPriceStr); put("cartons", cartonQuantityStr); put("pcs", pcsPerCartonStr)
+    put("gross", grossWeightKgStr); put("net", netWeightKgStr)
+}
+private fun itemFromJson(j: JSONObject) = ItemDraftState(j.optString("product"), j.optString("variant").ifBlank { null },
+    j.optString("qty"), j.optString("price"), j.optString("cartons"), j.optString("pcs"), j.optString("gross"), j.optString("net"))
+private fun CartonBoxState.toJson() = JSONObject().apply {
+    put("number", cartonNumber); put("gross", grossWeightKgStr); put("net", netWeightKgStr)
+    put("measurement", measurementStr)
+    put("lines", JSONArray().apply { lines.forEach { line -> put(JSONObject().apply {
+        put("product", line.productId); put("variant", line.variantId ?: ""); put("qty", line.quantityStr); put("weight", line.manualWeightKgStr)
+    }) } })
+}
+private fun cartonFromJson(j: JSONObject): CartonBoxState {
+    val a = j.getJSONArray("lines")
+    return CartonBoxState(cartonNumber = j.optString("number"), grossWeightKgStr = j.optString("gross"),
+        netWeightKgStr = j.optString("net"), initialLines = (0 until a.length()).map { i -> a.getJSONObject(i).let {
+            CartonLineState(it.optString("product"), it.optString("variant").ifBlank { null }, it.optString("qty"), it.optString("weight"))
+        } }).also { it.updateMeasurement(j.optString("measurement")) }
+}
+private val ItemListSaver = Saver<SnapshotStateList<ItemDraftState>, String>(
+    save = { JSONArray().apply { it.forEach { item -> put(item.toJson()) } }.toString() },
+    restore = { raw -> JSONArray(raw).let { a -> mutableStateListOf<ItemDraftState>().apply { repeat(a.length()) { add(itemFromJson(a.getJSONObject(it))) } } } }
+)
+private val CartonListSaver = Saver<SnapshotStateList<CartonBoxState>, String>(
+    save = { JSONArray().apply { it.forEach { box -> put(box.toJson()) } }.toString() },
+    restore = { raw -> JSONArray(raw).let { a -> mutableStateListOf<CartonBoxState>().apply { repeat(a.length()) { add(cartonFromJson(a.getJSONObject(it))) } } } }
+)
+private val FreightMapSaver = Saver<SnapshotStateMap<String, String>, String>(
+    save = { JSONObject(it.toMap()).toString() },
+    restore = { raw -> JSONObject(raw).let { j -> mutableStateMapOf<String, String>().apply { j.keys().forEach { put(it, j.getString(it)) } } } }
+)
+
 internal typealias ParsedPoNotes = com.pocketdev.advance_erp.core.util.ParsedPoNotes
 
 internal fun parsePoNotesMetadata(rawNotes: String?): ParsedPoNotes =
@@ -258,30 +310,30 @@ fun CreatePurchaseOrderDialog(
     val parsedNotes = remember(editingOrder?.id, editingOrder?.notes) {
         parsePoNotesMetadata(editingOrder?.notes)
     }
-    var isLocalPurchase by remember(editingOrder?.id) { mutableStateOf(editingOrder?.currency == "BDT") }
-    var selectedSupplierId by remember(editingOrder?.id) { mutableStateOf(editingOrder?.supplierId ?: (suppliers.firstOrNull()?.id ?: "")) }
-    var selectedCurrency by remember(editingOrder?.id) {
+    var isLocalPurchase by rememberSaveable(editingOrder?.id) { mutableStateOf(editingOrder?.currency == "BDT") }
+    var selectedSupplierId by rememberSaveable(editingOrder?.id) { mutableStateOf(editingOrder?.supplierId ?: (suppliers.firstOrNull()?.id ?: "")) }
+    var selectedCurrency by rememberSaveable(editingOrder?.id) {
         mutableStateOf(
             if (isLocalPurchase) "BDT"
             else editingOrder?.currency ?: (suppliers.firstOrNull()?.currency?.ifBlank { "CNY" } ?: "CNY")
         )
     }
-    var exchangeRateStr by remember(editingOrder?.id) {
+    var exchangeRateStr by rememberSaveable(editingOrder?.id) {
         mutableStateOf(
             if (isLocalPurchase) "1.00"
             else editingOrder?.exchangeRateToBdt ?: (if (selectedCurrency == "USD") "120.00" else "17.00")
         )
     }
-    var chinaLocalDeliveryStr by remember(editingOrder?.id) { mutableStateOf("0") }
-    var handlingCostStr by remember(editingOrder?.id) { mutableStateOf("0") }
-    var sampleCostStr by remember(editingOrder?.id) { mutableStateOf("0") }
-    var forwarderAddressStr by remember(editingOrder?.id) { mutableStateOf(parsedNotes.forwarderAddress) }
-    var attachmentsList by remember(editingOrder?.id) { mutableStateOf(PoAttachmentStorage.parseAttachments(editingOrder?.attachments)) }
-    var selectedPaymentTerm by remember(editingOrder?.id) { mutableStateOf(parsedNotes.paymentTerm) }
-    var notes by remember(editingOrder?.id) { mutableStateOf(parsedNotes.userNotes) }
+    var chinaLocalDeliveryStr by rememberSaveable(editingOrder?.id) { mutableStateOf("0") }
+    var handlingCostStr by rememberSaveable(editingOrder?.id) { mutableStateOf("0") }
+    var sampleCostStr by rememberSaveable(editingOrder?.id) { mutableStateOf("0") }
+    var forwarderAddressStr by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.forwarderAddress) }
+    var attachmentsList by rememberSaveable(editingOrder?.id) { mutableStateOf(PoAttachmentStorage.parseAttachments(editingOrder?.attachments)) }
+    var selectedPaymentTerm by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.paymentTerm) }
+    var notes by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.userNotes) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    var hasHydratedCosts by remember(editingOrder?.id) { mutableStateOf(false) }
+    var hasHydratedCosts by rememberSaveable(editingOrder?.id) { mutableStateOf(false) }
     LaunchedEffect(editingOrder?.id, initialEditingCosts) {
         if (isEditing && initialEditingCosts.isNotEmpty() && !hasHydratedCosts) {
             val chinaDel = initialEditingCosts
@@ -307,37 +359,37 @@ fun CreatePurchaseOrderDialog(
     }
 
     // Inline Add Supplier state
-    var showInlineAddSupplierDialog by remember { mutableStateOf(false) }
-    var newSupCompany by remember { mutableStateOf("") }
-    var newSupContact by remember { mutableStateOf("") }
-    var newSupPhone by remember { mutableStateOf("") }
-    var newSupAddress by remember { mutableStateOf("Guangzhou, China") }
-    var newSupCountry by remember { mutableStateOf("China") }
-    var newSupCurrency by remember { mutableStateOf("CNY") }
+    var showInlineAddSupplierDialog by rememberSaveable { mutableStateOf(false) }
+    var newSupCompany by rememberSaveable { mutableStateOf("") }
+    var newSupContact by rememberSaveable { mutableStateOf("") }
+    var newSupPhone by rememberSaveable { mutableStateOf("") }
+    var newSupAddress by rememberSaveable { mutableStateOf("Guangzhou, China") }
+    var newSupCountry by rememberSaveable { mutableStateOf("China") }
+    var newSupCurrency by rememberSaveable { mutableStateOf("CNY") }
 
     // Inline Add Product state
-    var showInlineAddProductDialog by remember { mutableStateOf(false) }
-    var newProdNameEn by remember { mutableStateOf("") }
-    var newProdNameBn by remember { mutableStateOf("") }
-    var newProdSku by remember { mutableStateOf("") }
-    var newProdUnit by remember { mutableStateOf("Pair") }
-    var newProdPurchasePriceStr by remember { mutableStateOf("45.00") }
-    var newProdSellingPriceStr by remember { mutableStateOf("95.00") }
+    var showInlineAddProductDialog by rememberSaveable { mutableStateOf(false) }
+    var newProdNameEn by rememberSaveable { mutableStateOf("") }
+    var newProdNameBn by rememberSaveable { mutableStateOf("") }
+    var newProdSku by rememberSaveable { mutableStateOf("") }
+    var newProdUnit by rememberSaveable { mutableStateOf("Pair") }
+    var newProdPurchasePriceStr by rememberSaveable { mutableStateOf("45.00") }
+    var newProdSellingPriceStr by rememberSaveable { mutableStateOf("95.00") }
     var selectedCategoryId by remember(categories) { mutableStateOf(categories.firstOrNull()?.id ?: "cat-footwear") }
 
     // Inline Add Variant state
     var showInlineAddVariantForProductId by remember { mutableStateOf<String?>(null) }
     var targetItemIndexForVariant by remember { mutableStateOf<Int?>(null) }
-    var newVarColor by remember { mutableStateOf("") }
-    var newVarSize by remember { mutableStateOf("") }
-    var newVarSku by remember { mutableStateOf("") }
-    var newVarCostStr by remember { mutableStateOf("45.00") }
-    var newVarPriceStr by remember { mutableStateOf("95.00") }
+    var newVarColor by rememberSaveable { mutableStateOf("") }
+    var newVarSize by rememberSaveable { mutableStateOf("") }
+    var newVarSku by rememberSaveable { mutableStateOf("") }
+    var newVarCostStr by rememberSaveable { mutableStateOf("45.00") }
+    var newVarPriceStr by rememberSaveable { mutableStateOf("95.00") }
 
     // Inline Add Category state
-    var showInlineAddCategoryDialog by remember { mutableStateOf(false) }
-    var newCatNameEn by remember { mutableStateOf("") }
-    var newCatNameBn by remember { mutableStateOf("") }
+    var showInlineAddCategoryDialog by rememberSaveable { mutableStateOf(false) }
+    var newCatNameEn by rememberSaveable { mutableStateOf("") }
+    var newCatNameBn by rememberSaveable { mutableStateOf("") }
 
     val firstProdId = products.firstOrNull()?.id ?: ""
     val firstVarId = variants.firstOrNull { it.productId == firstProdId }?.id
@@ -378,8 +430,8 @@ fun CreatePurchaseOrderDialog(
             )
         }
 
-    var hasHydratedItems by remember(editingOrder?.id) { mutableStateOf(initialEditingItems.isNotEmpty()) }
-    val itemsList = remember(editingOrder?.id) {
+    var hasHydratedItems by rememberSaveable(editingOrder?.id) { mutableStateOf(initialEditingItems.isNotEmpty()) }
+    val itemsList = rememberSaveable(editingOrder?.id, saver = ItemListSaver) {
         mutableStateListOf<ItemDraftState>().apply {
             if (initialEditingItems.isNotEmpty()) {
                 addAll(initialEditingItems.map { it.toItemDraftState() })
@@ -408,8 +460,8 @@ fun CreatePurchaseOrderDialog(
     }
 
     // Carton-by-Carton Packaging list (supports mixed variants in a single carton)
-    var hasHydratedCartons by remember(editingOrder?.id) { mutableStateOf(initialEditingCartons.isNotEmpty()) }
-    val cartonBoxes = remember(editingOrder?.id) {
+    var hasHydratedCartons by rememberSaveable(editingOrder?.id) { mutableStateOf(initialEditingCartons.isNotEmpty()) }
+    val cartonBoxes = rememberSaveable(editingOrder?.id, saver = CartonListSaver) {
         mutableStateListOf<CartonBoxState>().apply {
             if (initialEditingCartons.isNotEmpty()) {
                 addAll(initialEditingCartons.toCartonBoxStates())
@@ -425,13 +477,11 @@ fun CreatePurchaseOrderDialog(
     }
 
     // Category Per-KG Freight Rate (BDT/KG) state map: categoryId -> rateStr (in BDT major units, e.g. "120")
-    val categoryRateStrings = remember { mutableStateMapOf<String, String>() }
-    val hydratedFreightCategories = remember { mutableStateListOf<String>() }
+    val categoryRateStrings = rememberSaveable(saver = FreightMapSaver) { mutableStateMapOf<String, String>() }
     LaunchedEffect(initialEditingFreightRates) {
         initialEditingFreightRates.forEach { (id, rate) ->
-            if (id !in hydratedFreightCategories) {
+            if (!categoryRateStrings.containsKey(id)) {
                 categoryRateStrings[id] = BigDecimal(rate).movePointLeft(2).toPlainString()
-                hydratedFreightCategories.add(id)
             }
         }
     }
@@ -446,6 +496,73 @@ fun CreatePurchaseOrderDialog(
             }
         }
     }
+
+    val draftContext = LocalContext.current
+    val draftStore = remember(draftContext) { EditorDraftStore(draftContext) }
+    val draftKey = "purchase:" + (editingOrder?.id ?: "new") + if (metadataOnly) ":metadata" else ""
+    val draftScope = rememberCoroutineScope()
+    var draftLoaded by rememberSaveable(draftKey) { mutableStateOf(false) }
+    var restoredDraft by rememberSaveable(draftKey) { mutableStateOf(false) }
+    var showLeavePrompt by rememberSaveable { mutableStateOf(false) }
+    var savingBuffer by remember { mutableStateOf(false) }
+    fun snapshotEditor() = JSONObject().apply {
+        put("supplier", selectedSupplierId); put("currency", selectedCurrency); put("local", isLocalPurchase)
+        put("rate", exchangeRateStr); put("delivery", chinaLocalDeliveryStr); put("handling", handlingCostStr)
+        put("sample", sampleCostStr); put("forwarder", forwarderAddressStr); put("notes", notes)
+        put("paymentTerm", selectedPaymentTerm.name); put("attachments", JSONArray(attachmentsList))
+        put("items", JSONArray().apply { itemsList.forEach { put(it.toJson()) } })
+        put("cartons", JSONArray().apply { cartonBoxes.forEach { put(it.toJson()) } })
+        put("freight", JSONObject(categoryRateStrings.toMap())); put("step", currentStep)
+    }
+    var initialSnapshot by rememberSaveable(draftKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(draftKey) {
+        if (!draftLoaded) {
+            val draft = draftStore.read(draftKey)
+            if (draft != null) {
+                selectedSupplierId = draft.optString("supplier"); selectedCurrency = draft.optString("currency")
+                isLocalPurchase = draft.optBoolean("local"); exchangeRateStr = draft.optString("rate")
+                chinaLocalDeliveryStr = draft.optString("delivery"); handlingCostStr = draft.optString("handling")
+                sampleCostStr = draft.optString("sample"); forwarderAddressStr = draft.optString("forwarder")
+                notes = draft.optString("notes")
+                selectedPaymentTerm = selectedPaymentTerm.javaClass.enumConstants.firstOrNull { it.name == draft.optString("paymentTerm") } ?: selectedPaymentTerm
+                draft.optJSONArray("attachments")?.let { a -> attachmentsList = (0 until a.length()).map { a.getString(it) } }
+                draft.optJSONArray("items")?.let { a -> itemsList.clear(); repeat(a.length()) { itemsList.add(itemFromJson(a.getJSONObject(it))) } }
+                draft.optJSONArray("cartons")?.let { a -> cartonBoxes.clear(); repeat(a.length()) { cartonBoxes.add(cartonFromJson(a.getJSONObject(it))) } }
+                draft.optJSONObject("freight")?.let { j -> categoryRateStrings.clear(); j.keys().forEach { categoryRateStrings[it] = j.getString(it) } }
+                currentStep = draft.optInt("step").coerceIn(0, 3)
+                hasHydratedItems = true; hasHydratedCartons = true; hasHydratedCosts = true
+                restoredDraft = true
+            }
+            draftLoaded = true
+            initialSnapshot = snapshotEditor().toString()
+        }
+    }
+    val requestClose: () -> Unit = {
+        if (!isSaving && !savingBuffer) {
+            if (snapshotEditor().toString() != initialSnapshot) showLeavePrompt = true else onDismiss()
+        }
+    }
+    if (showLeavePrompt) ERPLeaveEditorDialog(
+        isBangla = isBangla,
+        onContinue = { showLeavePrompt = false },
+        onDiscard = { draftStore.remove(draftKey); showLeavePrompt = false; onDismiss() },
+        onSaveDraft = {
+            if (!savingBuffer) {
+                val snapshot = snapshotEditor()
+                savingBuffer = true
+                draftScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) { draftStore.save(draftKey, snapshot) }
+                        onDismiss()
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        errorMessage = e.message
+                        showLeavePrompt = false
+                    } finally { savingBuffer = false }
+                }
+            }
+        }
+    )
 
     fun variantLabel(v: ProductVariant?): String {
         if (v == null) return if (isBangla) "ডিফল্ট / ভ্যারিয়েন্ট ছাড়া" else "Default / Base"
@@ -664,15 +781,14 @@ fun CreatePurchaseOrderDialog(
         }
     }
 
-    Dialog(
-        onDismissRequest = { if (!isSaving) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ERPFullScreenEditor(
+        onDismissRequest = requestClose
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.94f)
-                .clip(RoundedCornerShape(20.dp)),
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(0.dp)),
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp
         ) {
@@ -695,7 +811,7 @@ fun CreatePurchaseOrderDialog(
                             } else if (isBangla) "নতুন ক্রয়াদেশ" else "New purchase order",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = DeepNavy
+                            color = TextPrimary
                         )
                         Text(
                             text = editingOrder?.poNumber ?: if (isBangla) "তথ্য → পণ্য → প্যাকিং → পর্যালোচনা" else "Details → Items → Packing → Review",
@@ -703,11 +819,13 @@ fun CreatePurchaseOrderDialog(
                             color = TextSecondary
                         )
                     }
-                    IconButton(onClick = onDismiss, enabled = !isSaving) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                    IconButton(onClick = requestClose, enabled = !isSaving && !savingBuffer) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
+                if (restoredDraft) Text(if (isBangla) "সংরক্ষিত খসড়া থেকে চালু হয়েছে" else "Resumed saved draft",
+                    color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                 // Purchase Type Toggle (International Import vs Local Purchase)
                 if (currentStep == 0) Row(
                     modifier = Modifier
@@ -819,7 +937,7 @@ fun CreatePurchaseOrderDialog(
                                     text = if (isBangla) "সরবরাহকারী" else "Supplier",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 if (onAddNewSupplier != null) {
                                     Button(
@@ -828,7 +946,7 @@ fun CreatePurchaseOrderDialog(
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = "New Supplier", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Outlined.Add, contentDescription = "New Supplier", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = if (isBangla) "নতুন" else "New",
@@ -842,19 +960,19 @@ fun CreatePurchaseOrderDialog(
                             Spacer(modifier = Modifier.height(6.dp))
                             if (suppliers.isEmpty()) {
                                 Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+                                    colors = CardDefaults.cardColors(containerColor = StatusWarningContainer),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Default.Info, contentDescription = null, tint = StatusWarning)
+                                        Icon(Icons.Outlined.Info, contentDescription = null, tint = StatusWarning)
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = if (isBangla) "কোনো সরবরাহকারী নেই। উপরের '+ নতুন সরবরাহকারী' বাটনে চাপ দিয়ে নতুন সরবরাহকারী তৈরি করুন।" else "No suppliers found. Tap '+ New Supplier' above to create one.",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFF92400E)
+                                            color = StatusWarning
                                         )
                                     }
                                 }
@@ -866,7 +984,7 @@ fun CreatePurchaseOrderDialog(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(10.dp))
-                                                .background(if (isSelected) PrimaryPurple.copy(alpha = 0.12f) else Color(0xFFF1F5F9))
+                                                .background(if (isSelected) PrimaryPurple.copy(alpha = 0.12f) else ERPSurfaceVariant)
                                                 .border(
                                                     width = if (isSelected) 1.5.dp else 0.dp,
                                                     color = if (isSelected) PrimaryPurple else Color.Transparent,
@@ -921,7 +1039,7 @@ fun CreatePurchaseOrderDialog(
                     item {
                         if (isLocalPurchase) {
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                                colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
                                 shape = RoundedCornerShape(10.dp),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.4f))
                             ) {
@@ -935,7 +1053,7 @@ fun CreatePurchaseOrderDialog(
                                             text = if (isBangla) "২. স্থানীয় ক্রয় খরচ ও পরিবহন (বাংলাদেশ):" else "2. Local Purchase & Transport Costs (BD):",
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                         Surface(
                                             shape = RoundedCornerShape(6.dp),
@@ -984,7 +1102,7 @@ fun CreatePurchaseOrderDialog(
                                     text = if (isBangla) "মুদ্রা ও বিনিময় হার" else "Currency & exchange rate",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Row(
@@ -995,7 +1113,7 @@ fun CreatePurchaseOrderDialog(
                                     // Currency Toggle (CNY / USD)
                                     Row(
                                         modifier = Modifier
-                                            .background(Color(0xFFF1F5F9), RoundedCornerShape(10.dp))
+                                            .background(ERPSurfaceVariant, RoundedCornerShape(10.dp))
                                             .padding(3.dp)
                                     ) {
                                         listOf("CNY", "USD").forEach { cur ->
@@ -1013,7 +1131,7 @@ fun CreatePurchaseOrderDialog(
                                                 Text(
                                                     text = cur,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (isSel) Color.White else TextPrimary
+                                                    color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary
                                                 )
                                             }
                                         }
@@ -1085,7 +1203,7 @@ fun CreatePurchaseOrderDialog(
                                     text = if (isBangla) "পণ্য ও ভ্যারিয়েন্ট" else "Order items",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy,
+                                    color = TextPrimary,
                                     modifier = Modifier.weight(1f).padding(end = 8.dp)
                                 )
                                 if (itemsList.isNotEmpty()) {
@@ -1111,7 +1229,7 @@ fun CreatePurchaseOrderDialog(
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = "New Product", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Outlined.Add, contentDescription = "New Product", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = if (isBangla) "নতুন পণ্য" else "New product",
@@ -1136,7 +1254,7 @@ fun CreatePurchaseOrderDialog(
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = "Add Item", tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Add, contentDescription = "Add Item", tint = PrimaryPurple, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (isBangla) "+ আইটেম/ভ্যারিয়েন্ট লাইন" else "+ Add Line",
@@ -1153,19 +1271,19 @@ fun CreatePurchaseOrderDialog(
                     if (products.isEmpty()) {
                         item {
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+                                colors = CardDefaults.cardColors(containerColor = StatusWarningContainer),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Info, contentDescription = null, tint = StatusWarning)
+                                    Icon(Icons.Outlined.Info, contentDescription = null, tint = StatusWarning)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = if (isBangla) "কোনো পণ্য পাওয়া যায়নি। ওপরের '+ নতুন পণ্য' বোতামে ক্লিক করুন।" else "No products found. Click '+ New Product' above to create one.",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF92400E)
+                                        color = StatusWarning
                                     )
                                 }
                             }
@@ -1173,9 +1291,9 @@ fun CreatePurchaseOrderDialog(
                     } else if (itemsList.isEmpty()) {
                         item {
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
                                 shape = RoundedCornerShape(10.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -1183,7 +1301,7 @@ fun CreatePurchaseOrderDialog(
                                         .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Info, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Outlined.Info, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = if (isBangla) "কোনো পণ্য লাইন এখনও যোগ করা হয়নি। ওপরের বোতাম ব্যবহার করে পণ্য বা লাইন যোগ করুন।" else "No product lines added yet. Click '+ New Product' or '+ Add Line' above.",
@@ -1201,9 +1319,9 @@ fun CreatePurchaseOrderDialog(
                         val selectedCat = categories.find { it.id == selectedProd?.categoryId }
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                            border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(
@@ -1234,7 +1352,7 @@ fun CreatePurchaseOrderDialog(
                                             modifier = Modifier.size(24.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Delete,
+                                                imageVector = Icons.Outlined.Delete,
                                                 contentDescription = "Remove",
                                                 tint = StatusError,
                                                 modifier = Modifier.size(18.dp)
@@ -1261,10 +1379,10 @@ fun CreatePurchaseOrderDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isProdSel) PrimaryPurple.copy(alpha = 0.15f) else Color.White)
+                                                .background(if (isProdSel) PrimaryPurple.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
                                                 .border(
                                                     width = if (isProdSel) 1.dp else 0.5.dp,
-                                                    color = if (isProdSel) PrimaryPurple else Color(0xFFCBD5E1),
+                                                    color = if (isProdSel) PrimaryPurple else ERPDivider,
                                                     shape = RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable {
@@ -1300,7 +1418,7 @@ fun CreatePurchaseOrderDialog(
                                         text = if (isBangla) "ভ্যারিয়েন্ট (${productVariants.size})" else "Variant (${productVariants.size})",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         if (productVariants.size > 1) {
@@ -1370,10 +1488,10 @@ fun CreatePurchaseOrderDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isBaseSel) SecondaryTeal.copy(alpha = 0.15f) else Color.White)
+                                                .background(if (isBaseSel) SecondaryTeal.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
                                                 .border(
                                                     width = if (isBaseSel) 1.dp else 0.5.dp,
-                                                    color = if (isBaseSel) SecondaryTeal else Color(0xFFCBD5E1),
+                                                    color = if (isBaseSel) SecondaryTeal else ERPDivider,
                                                     shape = RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable { itemState.variantId = null }
@@ -1392,10 +1510,10 @@ fun CreatePurchaseOrderDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isVarSel) SecondaryTeal.copy(alpha = 0.18f) else Color.White)
+                                                .background(if (isVarSel) SecondaryTeal.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface)
                                                 .border(
                                                     width = if (isVarSel) 1.2.dp else 0.5.dp,
-                                                    color = if (isVarSel) SecondaryTeal else Color(0xFFCBD5E1),
+                                                    color = if (isVarSel) SecondaryTeal else ERPDivider,
                                                     shape = RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable {
@@ -1469,7 +1587,7 @@ fun CreatePurchaseOrderDialog(
                     // ==========================================
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                            colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
                             shape = RoundedCornerShape(12.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.4f))
                         ) {
@@ -1484,7 +1602,7 @@ fun CreatePurchaseOrderDialog(
                                             text = if (isBangla) "৪. কার্টন অনুযায়ী প্যাকিং ও ওজন (একই কার্টনে একাধিক ভ্যারিয়েন্ট)" else "4. Carton-by-Carton Packing (Mixed Variants Supported)",
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                         Text(
                                             text = if (isBangla) "প্রতিটি কার্টনে কোন ভ্যারিয়েন্ট কত পিস ও কার্টনের ওজন (KG) দিন — শিপমেন্টে অটো যুক্ত হবে" else "Assign single or multiple variants per carton with carton weight (KG)",
@@ -1547,7 +1665,7 @@ fun CreatePurchaseOrderDialog(
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                         ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                            Icon(Icons.Outlined.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isBangla) "+ কার্টন যোগ" else "+ Add Carton",
@@ -1564,19 +1682,19 @@ fun CreatePurchaseOrderDialog(
 
                                     // Mixed Carton Explanatory Guide
                                     Card(
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
+                                        colors = CardDefaults.cardColors(containerColor = StatusInfoContainer),
                                         shape = RoundedCornerShape(8.dp),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusInfoContainer),
                                         modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
                                     ) {
                                         Column(modifier = Modifier.padding(10.dp)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.Info, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Outlined.Info, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
                                                     text = if (isBangla) "💡 একই কার্টনে একাধিক প্রোডাক্ট বা ভ্যারিয়েন্ট (মিক্সড কার্টন) প্যাকিং গাইড:" else "💡 Mixed Carton Packing Guide:",
                                                     fontWeight = FontWeight.Bold,
-                                                    color = DeepNavy,
+                                                    color = TextPrimary,
                                                     fontSize = 11.sp
                                                 )
                                             }
@@ -1587,7 +1705,7 @@ fun CreatePurchaseOrderDialog(
                                                 else
                                                     "• Pack single or multiple different products and variants inside any carton.\n• Tap '+ Mix Another Product/Variant' below to add another item to this box.\n• Enter gross weight (KG); weights are allocated proportionally per piece.",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFF1E3A8A),
+                                                color = StatusInfo,
                                                 fontSize = 10.5.sp,
                                                 lineHeight = 15.sp
                                             )
@@ -1602,11 +1720,11 @@ fun CreatePurchaseOrderDialog(
                                             val isMixedCarton = distinctLinesCount > 1
 
                                             Card(
-                                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                                 shape = RoundedCornerShape(10.dp),
                                                 border = androidx.compose.foundation.BorderStroke(
                                                     width = if (isMixedCarton) 1.5.dp else 1.dp,
-                                                    color = if (isMixedCarton) SecondaryTeal else Color(0xFFCBD5E1)
+                                                    color = if (isMixedCarton) SecondaryTeal else ERPDivider
                                                 )
                                             ) {
                                                 Column(modifier = Modifier.padding(10.dp)) {
@@ -1654,7 +1772,7 @@ fun CreatePurchaseOrderDialog(
                                                                 modifier = Modifier.size(48.dp)
                                                             ) {
                                                                 Icon(
-                                                                    imageVector = Icons.Default.ContentCopy,
+                                                                    imageVector = Icons.Outlined.ContentCopy,
                                                                     contentDescription = "Duplicate Carton",
                                                                     tint = SecondaryTeal,
                                                                     modifier = Modifier.size(16.dp)
@@ -1664,7 +1782,7 @@ fun CreatePurchaseOrderDialog(
                                                                 onClick = { cartonBoxes.removeAt(cIdx) },
                                                                 modifier = Modifier.size(48.dp)
                                                             ) {
-                                                                Icon(Icons.Default.Delete, contentDescription = "Remove Carton", tint = StatusError, modifier = Modifier.size(17.dp))
+                                                                Icon(Icons.Outlined.Delete, contentDescription = "Remove Carton", tint = StatusError, modifier = Modifier.size(17.dp))
                                                             }
                                                         }
                                                     }
@@ -1753,8 +1871,8 @@ fun CreatePurchaseOrderDialog(
                                                                 .fillMaxWidth()
                                                                 .padding(vertical = 4.dp)
                                                                 .clip(RoundedCornerShape(8.dp))
-                                                                .background(Color(0xFFF8FAFC))
-                                                                .border(0.5.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                                                .background(ERPSurfaceVariant)
+                                                                .border(0.5.dp, ERPDivider, RoundedCornerShape(8.dp))
                                                                 .padding(8.dp)
                                                         ) {
                                                             // Select from PO Order Items & Catalog Variants
@@ -1797,8 +1915,8 @@ fun CreatePurchaseOrderDialog(
                                                                     Box(
                                                                         modifier = Modifier
                                                                             .clip(RoundedCornerShape(6.dp))
-                                                                            .background(if (isSel) PrimaryPurple else Color.White)
-                                                                            .border(1.dp, if (isSel) PrimaryPurple else Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                                                                            .background(if (isSel) PrimaryPurple else MaterialTheme.colorScheme.surface)
+                                                                            .border(1.dp, if (isSel) PrimaryPurple else ERPDivider, RoundedCornerShape(6.dp))
                                                                             .clickable {
                                                                                 lineState.productId = opt.first
                                                                                 lineState.variantId = opt.second
@@ -1822,7 +1940,7 @@ fun CreatePurchaseOrderDialog(
                                                                         Text(
                                                                             text = opt.third,
                                                                             style = MaterialTheme.typography.labelSmall,
-                                                                            color = if (isSel) Color.White else TextPrimary,
+                                                                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                                                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
                                                                         )
                                                                     }
@@ -1858,7 +1976,7 @@ fun CreatePurchaseOrderDialog(
                                                                         onClick = { box.lines.removeAt(lIdx) },
                                                                         modifier = Modifier.size(24.dp)
                                                                     ) {
-                                                                        Icon(Icons.Default.Close, contentDescription = "Remove Line", tint = StatusError, modifier = Modifier.size(16.dp))
+                                                                        Icon(Icons.Outlined.Close, contentDescription = "Remove Line", tint = StatusError, modifier = Modifier.size(16.dp))
                                                                     }
                                                                 }
                                                             }
@@ -1902,7 +2020,7 @@ fun CreatePurchaseOrderDialog(
                                                         shape = RoundedCornerShape(8.dp),
                                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                                                     ) {
-                                                        Icon(Icons.Default.Add, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                                        Icon(Icons.Outlined.Add, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Text(
                                                             text = if (isBangla)
@@ -1999,7 +2117,7 @@ fun CreatePurchaseOrderDialog(
                         } else BigDecimal.ZERO
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFEEF2FF)),
+                            colors = CardDefaults.cardColors(containerColor = StatusInfoContainer),
                             shape = RoundedCornerShape(14.dp),
                             border = androidx.compose.foundation.BorderStroke(1.5.dp, PrimaryPurple.copy(alpha = 0.4f))
                         ) {
@@ -2011,7 +2129,7 @@ fun CreatePurchaseOrderDialog(
                                         "5. Financial Summary & Weight-Based Costing Allocation",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -2022,7 +2140,7 @@ fun CreatePurchaseOrderDialog(
                                 ) {
                                     Column {
                                         Text(if (isBangla) "মোট কার্টন" else "Total Cartons", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                                        Text("$totalCartonsCount CTN", fontWeight = FontWeight.Bold, color = DeepNavy)
+                                        Text("$totalCartonsCount CTN", fontWeight = FontWeight.Bold, color = TextPrimary)
                                     }
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text(if (isBangla) "মোট পিস (PCS)" else "Total Quantity", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
@@ -2045,7 +2163,7 @@ fun CreatePurchaseOrderDialog(
                                             "Category International Freight Rate (BDT/KG):",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
 
@@ -2144,20 +2262,20 @@ fun CreatePurchaseOrderDialog(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(if (isBangla) "হ্যান্ডলিং ও আনলোডিং খরচ (ক্যাপিটালাইজড):" else "Handling & Porter (Capitalized):", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                    Text("৳ $handlingCostBdt", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = DeepNavy)
+                                    Text("৳ $handlingCostBdt", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = TextPrimary)
                                 }
                                 if (sampleCostBdt > BigDecimal.ZERO) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text(if (isBangla) "স্যাম্পল প্রসেসিং খরচ (ক্যাপিটালাইজড):" else "Sample Processing (Capitalized):", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                        Text("৳ $sampleCostBdt", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = DeepNavy)
+                                        Text("৳ $sampleCostBdt", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = TextPrimary)
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
                                 HorizontalDivider(color = ERPDivider)
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(if (isBangla) "সর্বমোট প্রকৃত ল্যান্ডিং কস্ট:" else "Total Landed Cost:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
+                                    Text(if (isBangla) "সর্বমোট প্রকৃত ল্যান্ডিং কস্ট:" else "Total Landed Cost:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                                     Text("৳ $grandTotalEstimatedBdt", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = PrimaryPurple)
                                 }
                                 Text(
@@ -2174,9 +2292,9 @@ fun CreatePurchaseOrderDialog(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 // Warehouse Rent OPEX Note
                                 Surface(
-                                    color = Color(0xFFFFFBEB),
+                                    color = StatusWarningContainer,
                                     shape = RoundedCornerShape(8.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusWarningContainer),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
@@ -2185,7 +2303,7 @@ fun CreatePurchaseOrderDialog(
                                         else
                                             "ℹ️ Warehouse Rent is treated as an Operational Expense (OPEX) and deducted from Gross Profit, NOT capitalized into unit cost.",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFF92400E),
+                                        color = StatusWarning,
                                         modifier = Modifier.padding(8.dp)
                                     )
                                 }
@@ -2248,7 +2366,7 @@ fun CreatePurchaseOrderDialog(
                                 text = if (isBangla) "পেমেন্ট শর্ত ও সময়সূচি (Payment Terms):" else "Payment Terms & Schedule:",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = DeepNavy
+                                color = TextPrimary
                             )
                             Spacer(modifier = Modifier.height(6.dp))
 
@@ -2261,7 +2379,7 @@ fun CreatePurchaseOrderDialog(
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSel) PrimaryPurple else Color(0xFFF1F5F9))
+                                            .background(if (isSel) PrimaryPurple else ERPSurfaceVariant)
                                             .clickable { selectedPaymentTerm = term }
                                             .heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 12.dp)
                                     ) {
@@ -2269,7 +2387,7 @@ fun CreatePurchaseOrderDialog(
                                             text = if (isBangla) term.labelBn else term.labelEn,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSel) Color.White else TextPrimary
+                                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary
                                         )
                                     }
                                 }
@@ -2291,9 +2409,9 @@ fun CreatePurchaseOrderDialog(
                             if (schedule.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                    colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
                                     shape = RoundedCornerShape(10.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text(
@@ -2375,7 +2493,7 @@ fun CreatePurchaseOrderDialog(
                 Text(
                     text = if (isBangla) "নতুন সরবরাহকারী (Supplier) যোগ করুন" else "Add New Supplier",
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
             },
             text = {
@@ -2469,7 +2587,7 @@ fun CreatePurchaseOrderDialog(
                 Text(
                     text = if (isBangla) "নতুন ভ্যারিয়েন্ট যোগ (${targetProd?.nameEn ?: ""})" else "Add Variant (${targetProd?.nameEn ?: ""})",
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
             },
             text = {

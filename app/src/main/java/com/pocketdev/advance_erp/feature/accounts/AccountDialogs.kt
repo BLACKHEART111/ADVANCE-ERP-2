@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.accounts
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,14 +30,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -158,7 +160,7 @@ fun CreateOrEditAccountDialog(
                 selectedBank == null
         )
     }
-    var showBankPicker by remember { mutableStateOf(false) }
+    var showBankPicker by rememberSaveable { mutableStateOf(false) }
 
     var selectedMfs by remember {
         mutableStateOf(
@@ -170,7 +172,7 @@ fun CreateOrEditAccountDialog(
 
     var branchName by remember { mutableStateOf(editingAccount?.branchName ?: "") }
     var accountNumber by remember { mutableStateOf(editingAccount?.accountNumber ?: "") }
-    var openingBalanceStr by remember { mutableStateOf("") }
+    var openingBalanceStr by rememberSaveable { mutableStateOf("") }
 
     // Common / GL fields
     var accountCode by remember { mutableStateOf(editingAccount?.accountCode ?: "") }
@@ -236,7 +238,7 @@ fun CreateOrEditAccountDialog(
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = DeepNavy
+                            color = TextPrimary
                         )
                         Text(
                             text = if (isEditing) {
@@ -249,7 +251,7 @@ fun CreateOrEditAccountDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -286,7 +288,7 @@ fun CreateOrEditAccountDialog(
                             ) {
                                 Text(
                                     text = if (isBangla) "ব্যাংক / নগদ / বিকাশ" else "Bank / Cash / MFS",
-                                    color = if (moneySel) Color.White else TextPrimary,
+                                    color = if (moneySel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -306,7 +308,7 @@ fun CreateOrEditAccountDialog(
                             ) {
                                 Text(
                                     text = if (isBangla) "সাধারণ লেজার (GL)" else "General Ledger",
-                                    color = if (glSel) Color.White else TextPrimary,
+                                    color = if (glSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -327,9 +329,9 @@ fun CreateOrEditAccountDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 listOf(
-                                    Triple(LiquidAccountKind.BANK, if (isBangla) "ব্যাংক" else "Bank", Icons.Default.AccountBalance),
-                                    Triple(LiquidAccountKind.CASH, if (isBangla) "নগদ" else "Cash", Icons.Default.AccountBalanceWallet),
-                                    Triple(LiquidAccountKind.MOBILE_BANKING, if (isBangla) "বিকাশ/নগদ" else "MFS", Icons.Default.PhoneAndroid)
+                                    Triple(LiquidAccountKind.BANK, if (isBangla) "ব্যাংক" else "Bank", Icons.Outlined.AccountBalance),
+                                    Triple(LiquidAccountKind.CASH, if (isBangla) "নগদ" else "Cash", Icons.Outlined.AccountBalanceWallet),
+                                    Triple(LiquidAccountKind.MOBILE_BANKING, if (isBangla) "বিকাশ/নগদ" else "MFS", Icons.Outlined.PhoneAndroid)
                                 ).forEach { (kindOption, label, icon) ->
                                     val isSel = liquidKind == kindOption
                                     Surface(
@@ -368,7 +370,7 @@ fun CreateOrEditAccountDialog(
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = label,
-                                                color = if (isSel) Color.White else TextPrimary,
+                                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 maxLines = 1
@@ -407,7 +409,7 @@ fun CreateOrEditAccountDialog(
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.AccountBalance,
+                                            imageVector = Icons.Outlined.AccountBalance,
                                             contentDescription = null,
                                             tint = SecondaryTeal,
                                             modifier = Modifier.size(20.dp)
@@ -435,7 +437,7 @@ fun CreateOrEditAccountDialog(
                                             }
                                         }
                                     }
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pick bank", tint = TextSecondary)
+                                    Icon(Icons.Outlined.ArrowDropDown, contentDescription = "Pick bank", tint = TextSecondary)
                                 }
                             }
 
@@ -513,7 +515,7 @@ fun CreateOrEditAccountDialog(
                                     ) {
                                         Text(
                                             text = if (isBangla) provider.nameBn else provider.nameEn,
-                                            color = if (isSel) Color.White else TextPrimary,
+                                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                             fontSize = 12.sp,
                                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
                                         )
@@ -641,7 +643,7 @@ fun CreateOrEditAccountDialog(
                                     ) {
                                         Text(
                                             text = if (isBangla) "${t.titleBn} (${t.titleEn})" else t.titleEn,
-                                            color = if (isSel) Color.White else TextPrimary,
+                                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                             fontSize = 11.sp,
                                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
                                         )
@@ -684,7 +686,7 @@ fun CreateOrEditAccountDialog(
                                             ) {
                                                 Text(
                                                     text = nb.name,
-                                                    color = if (isSel) Color.White else TextPrimary,
+                                                    color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
@@ -738,7 +740,7 @@ fun CreateOrEditAccountDialog(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                     if (isProtected) {
-                                        Icon(Icons.Default.Lock, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Outlined.Lock, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                     }
                                     Column {
@@ -915,7 +917,7 @@ fun BangladeshBankPickerDialog(
     onSelectBank: (BangladeshBankInfo) -> Unit,
     onSelectCustom: () -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<BankCategory?>(null) }
 
     val filteredBanks = remember(query, selectedCategory) {
@@ -958,7 +960,7 @@ fun BangladeshBankPickerDialog(
                             text = if (isBangla) "বাংলাদেশের সকল ব্যাংক (${BangladeshBanks.allBanks.size})" else "Bangladesh Banks Directory (${BangladeshBanks.allBanks.size})",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = DeepNavy
+                            color = TextPrimary
                         )
                         Text(
                             text = if (isBangla) "বাংলাদেশ ব্যাংক তফসিলি ও অন্যান্য ব্যাংক" else "Bangladesh Bank Scheduled & Domestic Banks",
@@ -967,7 +969,7 @@ fun BangladeshBankPickerDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -987,14 +989,14 @@ fun BangladeshBankPickerDialog(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(if (isAll) PrimaryPurple else Color.White)
+                                .background(if (isAll) PrimaryPurple else MaterialTheme.colorScheme.surface)
                                 .border(1.dp, if (isAll) PrimaryPurple else ERPDivider, RoundedCornerShape(16.dp))
                                 .clickable { selectedCategory = null }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 text = if (isBangla) "সকল (${BangladeshBanks.allBanks.size})" else "All (${BangladeshBanks.allBanks.size})",
-                                color = if (isAll) Color.White else TextPrimary,
+                                color = if (isAll) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -1005,14 +1007,14 @@ fun BangladeshBankPickerDialog(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(if (isSel) SecondaryTeal else Color.White)
+                                .background(if (isSel) SecondaryTeal else MaterialTheme.colorScheme.surface)
                                 .border(1.dp, if (isSel) SecondaryTeal else ERPDivider, RoundedCornerShape(16.dp))
                                 .clickable { selectedCategory = cat }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 text = if (isBangla) cat.titleBn else cat.titleEn,
-                                color = if (isSel) Color.White else TextPrimary,
+                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -1086,19 +1088,19 @@ fun BangladeshBankPickerDialog(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Box(
                                         modifier = Modifier
-                                            .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
+                                            .background(ERPSurfaceVariant, RoundedCornerShape(6.dp))
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
                                         Text(
                                             text = bank.category.titleEn.substringBefore(" "),
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                     }
                                     if (isSel) {
                                         Spacer(modifier = Modifier.height(4.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Outlined.Check, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }
@@ -1112,7 +1114,7 @@ fun BangladeshBankPickerDialog(
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable { onSelectCustom() },
                             shape = RoundedCornerShape(12.dp),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.35f))
                         ) {
                             Row(
@@ -1199,7 +1201,7 @@ fun AccountDetailDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -1255,7 +1257,7 @@ fun AccountDetailDialog(
                         onClick = onEdit,
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(if (isBangla) "সম্পাদনা করুন" else "Edit")
                     }

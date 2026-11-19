@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,12 +27,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -119,7 +121,7 @@ fun RecordCustomerPaymentDialog(
     var selectedCustomerId by remember {
         mutableStateOf(preselectedInvoice?.customerId ?: preselectedCustomerId ?: customers.firstOrNull()?.id ?: "")
     }
-    var customerExpanded by remember { mutableStateOf(false) }
+    var customerExpanded by rememberSaveable { mutableStateOf(false) }
 
     var amountStr by remember {
         mutableStateOf(
@@ -132,14 +134,14 @@ fun RecordCustomerPaymentDialog(
             }
         )
     }
-    var amountManuallyEdited by remember { mutableStateOf(false) }
+    var amountManuallyEdited by rememberSaveable { mutableStateOf(false) }
 
     var channelFilter by remember { mutableStateOf(PaymentChannelFilter.ALL) }
     var selectedAccountId by remember(availableAccounts) {
         mutableStateOf(availableAccounts.firstOrNull()?.id ?: "coa-1010")
     }
     var selectedAccount = availableAccounts.find { it.id == selectedAccountId } ?: availableAccounts.first()
-    var isChequeForBank by remember { mutableStateOf(false) }
+    var isChequeForBank by rememberSaveable { mutableStateOf(false) }
 
     val selectedPaymentMethod = remember(selectedAccount, isChequeForBank) {
         if (selectedAccount.liquidKind == LiquidAccountKind.BANK && isChequeForBank) {
@@ -158,13 +160,13 @@ fun RecordCustomerPaymentDialog(
         }
     }
 
-    var referenceNote by remember { mutableStateOf("") }
+    var referenceNote by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     var allocationInvoiceId by remember(selectedCustomerId, preselectedInvoice?.id) {
         mutableStateOf(preselectedInvoice?.takeIf { it.customerId == selectedCustomerId }?.id)
     }
-    var invoiceExpanded by remember { mutableStateOf(false) }
+    var invoiceExpanded by rememberSaveable { mutableStateOf(false) }
     val allocationInvoice = invoices.firstOrNull { it.id == allocationInvoiceId && it.customerId == selectedCustomerId && it.isPosted && it.status != "CANCELLED" && it.dueAmountMinor > 0 }
     val selectedCustomer = customers.find { it.id == selectedCustomerId }
     val unpaidInvoicesForCustomer = remember(selectedCustomerId, invoices) {
@@ -214,7 +216,7 @@ fun RecordCustomerPaymentDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -234,7 +236,7 @@ fun RecordCustomerPaymentDialog(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.ReceiptLong,
+                                imageVector = Icons.Outlined.ReceiptLong,
                                 contentDescription = null,
                                 tint = PrimaryPurple,
                                 modifier = Modifier.size(18.dp)
@@ -352,7 +354,7 @@ fun RecordCustomerPaymentDialog(
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(16.dp))
-                                            .background(if (isSel) PrimaryPurple else Color.White)
+                                            .background(if (isSel) PrimaryPurple else MaterialTheme.colorScheme.surface)
                                             .border(1.dp, if (isSel) PrimaryPurple else ERPDivider, RoundedCornerShape(16.dp))
                                             .clickable {
                                                 channelFilter = filter
@@ -371,7 +373,7 @@ fun RecordCustomerPaymentDialog(
                                     ) {
                                         Text(
                                             text = if (isBangla) filter.titleBn else filter.titleEn,
-                                            color = if (isSel) Color.White else TextPrimary,
+                                            color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -382,7 +384,7 @@ fun RecordCustomerPaymentDialog(
                             if (filteredAccounts.isEmpty()) {
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.surface,
                                     border = BorderStroke(1.dp, ERPDivider),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -405,10 +407,10 @@ fun RecordCustomerPaymentDialog(
                                             null -> DeepNavy
                                         }
                                         val icon = when (acc.liquidKind) {
-                                            LiquidAccountKind.CASH -> Icons.Default.AccountBalanceWallet
-                                            LiquidAccountKind.BANK -> Icons.Default.AccountBalance
-                                            LiquidAccountKind.MOBILE_BANKING -> Icons.Default.PhoneAndroid
-                                            null -> Icons.Default.AccountBalanceWallet
+                                            LiquidAccountKind.CASH -> Icons.Outlined.AccountBalanceWallet
+                                            LiquidAccountKind.BANK -> Icons.Outlined.AccountBalance
+                                            LiquidAccountKind.MOBILE_BANKING -> Icons.Outlined.PhoneAndroid
+                                            null -> Icons.Outlined.AccountBalanceWallet
                                         }
                                         val subtitle = buildList {
                                             acc.institutionName?.takeIf { it !in acc.nameEn }?.let { add(it) }
@@ -476,7 +478,7 @@ fun RecordCustomerPaymentDialog(
                                                 }
                                                 if (isSel) {
                                                     Spacer(modifier = Modifier.width(6.dp))
-                                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+                                                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
                                                 }
                                             }
                                         }
@@ -503,14 +505,14 @@ fun RecordCustomerPaymentDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSel) SecondaryTeal else Color.White)
+                                                .background(if (isSel) SecondaryTeal else MaterialTheme.colorScheme.surface)
                                                 .border(1.dp, if (isSel) SecondaryTeal else ERPDivider, RoundedCornerShape(8.dp))
                                                 .clickable { isChequeForBank = chequeMode }
                                                 .padding(horizontal = 10.dp, vertical = 5.dp)
                                         ) {
                                             Text(
                                                 text = label,
-                                                color = if (isSel) Color.White else TextPrimary,
+                                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold
                                             )
@@ -589,7 +591,7 @@ fun RecordCustomerPaymentDialog(
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Text(inv.invoiceNumber, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                                            Text("Due: ৳" + Formatters.formatMinorUnit(inv.dueAmountMinor), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Color(0xFFC53030))
+                                            Text("Due: ৳" + Formatters.formatMinorUnit(inv.dueAmountMinor), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = StatusError)
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))

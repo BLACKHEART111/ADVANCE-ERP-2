@@ -25,6 +25,16 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class UserPreferencesRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    private val keyTheme = stringPreferencesKey("app_theme")
+    val selectedTheme: Flow<String> = context.dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it[keyTheme]?.takeIf { mode -> mode in setOf("system", "light", "dark") } ?: "system" }
+
+    suspend fun setTheme(mode: String) {
+        require(mode in setOf("system", "light", "dark"))
+        context.dataStore.edit { it[keyTheme] = mode }
+    }
+
     private val keyLanguage = stringPreferencesKey("app_language")
     private val keyCurrency = stringPreferencesKey("app_currency")
     private val keyProfilePhotoUri = stringPreferencesKey("profile_photo_uri")

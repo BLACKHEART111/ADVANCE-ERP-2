@@ -26,6 +26,7 @@ import java.io.File
 import javax.inject.Inject
 
 data class SettingsUiState(
+    val themeMode: String = "system",
     val language: AppLanguage = AppLanguage.BANGLA,
     val currency: CurrencyCode = CurrencyCode.BDT,
     val profile: BusinessProfile? = null,
@@ -67,12 +68,14 @@ class SettingsViewModel @Inject constructor(
         preferencesRepository.backupFolderUri,
         preferencesRepository.backupPassphrase,
         backupRepository.getAllBackupRecords(),
-        _userMessage
+        _userMessage,
+        preferencesRepository.selectedTheme
     ) { args: Array<Any?> ->
         val profile = args[2] as? BusinessProfile
         val prefLogoPath = args[3] as? String
         val effectiveLogoPath = prefLogoPath ?: profile?.logoPath
         SettingsUiState(
+            themeMode = args[14] as String,
             language = args[0] as AppLanguage,
             currency = args[1] as CurrencyCode,
             profile = profile?.copy(logoPath = effectiveLogoPath) ?: profile,
@@ -94,6 +97,10 @@ class SettingsViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SettingsUiState(isBiometricSupported = BiometricHelper.isBiometricAvailable(context))
     )
+
+    fun onThemeSelected(mode: String) {
+        viewModelScope.launch { preferencesRepository.setTheme(mode) }
+    }
 
     fun onLanguageSelected(language: AppLanguage) {
         viewModelScope.launch {

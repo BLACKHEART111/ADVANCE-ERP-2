@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -23,13 +26,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,9 +88,9 @@ fun PoAttachmentPickerSection(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var isProcessing by remember { mutableStateOf(false) }
-    var showLinkInput by remember { mutableStateOf(false) }
-    var linkDraft by remember { mutableStateOf("") }
+    var isProcessing by rememberSaveable { mutableStateOf(false) }
+    var showLinkInput by rememberSaveable { mutableStateOf(false) }
+    var linkDraft by rememberSaveable { mutableStateOf("") }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -193,7 +196,7 @@ fun PoAttachmentPickerSection(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFFF8FAFC),
+        color = ERPSurfaceVariant,
         border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -204,7 +207,7 @@ fun PoAttachmentPickerSection(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Icon(
-                        imageVector = Icons.Default.AttachFile,
+                        imageVector = Icons.Outlined.AttachFile,
                         contentDescription = null,
                         tint = PrimaryPurple,
                         modifier = Modifier.size(16.dp)
@@ -214,7 +217,7 @@ fun PoAttachmentPickerSection(
                         text = if (isBangla) "ইনভয়েস / ডকুমেন্ট / ছবি সংযুক্তি (${attachments.size})" else "Invoice / Document / Photo Attachments (${attachments.size})",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                 }
                 if (isProcessing) {
@@ -224,7 +227,7 @@ fun PoAttachmentPickerSection(
                         onClick = { showLinkInput = !showLinkInput },
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                     ) {
-                        Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(14.dp), tint = TextSecondary)
+                        Icon(Icons.Outlined.Link, contentDescription = null, modifier = Modifier.size(14.dp), tint = TextSecondary)
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = if (isBangla) "লিংক" else "Link",
@@ -256,9 +259,9 @@ fun PoAttachmentPickerSection(
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp), tint = PrimaryPurple)
+                    Icon(Icons.Outlined.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp), tint = PrimaryPurple)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isBangla) "ক্যামেরা" else "Camera", fontSize = 11.sp, color = DeepNavy, maxLines = 1)
+                    Text(if (isBangla) "ক্যামেরা" else "Camera", fontSize = 11.sp, color = TextPrimary, maxLines = 1)
                 }
 
                 OutlinedButton(
@@ -272,9 +275,9 @@ fun PoAttachmentPickerSection(
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(15.dp), tint = SecondaryTeal)
+                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, modifier = Modifier.size(15.dp), tint = SecondaryTeal)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isBangla) "গ্যালারি" else "Gallery", fontSize = 11.sp, color = DeepNavy, maxLines = 1)
+                    Text(if (isBangla) "গ্যালারি" else "Gallery", fontSize = 11.sp, color = TextPrimary, maxLines = 1)
                 }
 
                 OutlinedButton(
@@ -286,9 +289,9 @@ fun PoAttachmentPickerSection(
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFFDC2626))
+                    Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(15.dp), tint = StatusError)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isBangla) "ফাইল/PDF" else "File/PDF", fontSize = 11.sp, color = DeepNavy, maxLines = 1)
+                    Text(if (isBangla) "ফাইল/PDF" else "File/PDF", fontSize = 11.sp, color = TextPrimary, maxLines = 1)
                 }
             }
 
@@ -365,7 +368,7 @@ fun PoAttachmentCards(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White)
+                    .background(MaterialTheme.colorScheme.surface)
                     .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
                     .clickable {
                         if (canPreviewImage) {
@@ -388,13 +391,13 @@ fun PoAttachmentCards(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFFF1F5F9))
+                            .background(ERPSurfaceVariant)
                     )
                 } else {
                     val (icon, tint, bg) = when (info.kind) {
-                        PoAttachmentKind.PDF -> Triple(Icons.Default.PictureAsPdf, Color(0xFFDC2626), Color(0xFFFEE2E2))
-                        PoAttachmentKind.LINK -> Triple(Icons.Default.Link, PrimaryPurple, PrimaryPurple.copy(alpha = 0.12f))
-                        else -> Triple(Icons.Default.Description, SecondaryTeal, SecondaryTeal.copy(alpha = 0.12f))
+                        PoAttachmentKind.PDF -> Triple(Icons.Outlined.PictureAsPdf, StatusError, StatusErrorContainer)
+                        PoAttachmentKind.LINK -> Triple(Icons.Outlined.Link, PrimaryPurple, PrimaryPurple.copy(alpha = 0.12f))
+                        else -> Triple(Icons.Outlined.Description, SecondaryTeal, SecondaryTeal.copy(alpha = 0.12f))
                     }
                     Box(
                         modifier = Modifier
@@ -439,7 +442,7 @@ fun PoAttachmentCards(
                         modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
+                            imageVector = Icons.Outlined.Close,
                             contentDescription = "Remove",
                             tint = StatusError,
                             modifier = Modifier.size(16.dp)

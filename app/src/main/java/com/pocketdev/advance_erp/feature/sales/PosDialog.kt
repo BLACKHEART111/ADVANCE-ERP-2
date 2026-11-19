@@ -1,5 +1,11 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,15 +16,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -73,18 +79,18 @@ fun PosDialog(
     val context = LocalContext.current
     var selectedWarehouse by remember { mutableStateOf(warehouses.firstOrNull()) }
     var selectedCustomer by remember { mutableStateOf<Customer?>(null) }
-    var isWholesale by remember { mutableStateOf(false) }
-    var showCostAndProfit by remember { mutableStateOf(false) }
+    var isWholesale by rememberSaveable { mutableStateOf(false) }
+    var showCostAndProfit by rememberSaveable { mutableStateOf(false) }
 
     val cartItems = remember { mutableStateListOf<PosCartItem>() }
-    var barcodeInput by remember { mutableStateOf("") }
-    var showScannerDialog by remember { mutableStateOf(false) }
+    var barcodeInput by rememberSaveable { mutableStateOf("") }
+    var showScannerDialog by rememberSaveable { mutableStateOf(false) }
 
-    var overallDiscountPercent by remember { mutableStateOf(false) }
-    var overallDiscountText by remember { mutableStateOf("0") }
-    var cashTenderedText by remember { mutableStateOf("") }
-    var autoPrintReceipt by remember { mutableStateOf(true) }
-    var isCheckingOut by remember { mutableStateOf(false) }
+    var overallDiscountPercent by rememberSaveable { mutableStateOf(false) }
+    var overallDiscountText by rememberSaveable { mutableStateOf("0") }
+    var cashTenderedText by rememberSaveable { mutableStateOf("") }
+    var autoPrintReceipt by rememberSaveable { mutableStateOf(true) }
+    var isCheckingOut by rememberSaveable { mutableStateOf(false) }
     var lastCreatedReceiptNote by remember { mutableStateOf<String?>(null) }
 
     // Computations
@@ -149,8 +155,8 @@ fun PosDialog(
     val isWalkIn = selectedCustomer == null
     val canCheckout = cartItems.isNotEmpty() && !isCheckingOut && selectedWarehouse != null &&
         (!isWalkIn || dueMinor == 0L)
-    var customerMenu by remember { mutableStateOf(false) }
-    var warehouseMenu by remember { mutableStateOf(false) }
+    var customerMenu by rememberSaveable { mutableStateOf(false) }
+    var warehouseMenu by rememberSaveable { mutableStateOf(false) }
 
     val suggestions = remember(barcodeInput, products) {
         val q = barcodeInput.trim()
@@ -214,12 +220,12 @@ fun PosDialog(
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = if (showCostAndProfit) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            imageVector = if (showCostAndProfit) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                             contentDescription = "Cost & Profit Visibility",
                             tint = if (showCostAndProfit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         )
                     }
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = "Close") }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
 
@@ -281,7 +287,7 @@ fun PosDialog(
                             onClick = { showScannerDialog = true },
                             modifier = Modifier.size(52.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
                         ) {
-                            Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan", tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
                     suggestions.forEach { p ->
@@ -319,14 +325,14 @@ fun PosDialog(
                                             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                         }
                                         IconButton(onClick = { cartItems.remove(item) }, modifier = Modifier.size(28.dp)) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
+                                            Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
                                         }
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         IconButton(onClick = {
                                             val idx = cartItems.indexOf(item)
                                             if (idx >= 0) { if (item.quantity > 1) cartItems[idx] = item.copy(quantity = item.quantity - 1) else cartItems.removeAt(idx) }
-                                        }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Remove, contentDescription = "Decrease") }
+                                        }, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Remove, contentDescription = "Decrease") }
                                         // Editable quantity
                                         OutlinedTextField(
                                             value = item.quantity.toString(),
@@ -342,7 +348,7 @@ fun PosDialog(
                                         IconButton(onClick = {
                                             val idx = cartItems.indexOf(item)
                                             if (idx >= 0) cartItems[idx] = item.copy(quantity = item.quantity + 1)
-                                        }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Add, contentDescription = "Increase") }
+                                        }, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Add, contentDescription = "Increase") }
                                         // Editable unit price
                                         var priceText by remember(item.product.id, item.variant?.id) { mutableStateOf(Formatters.formatMinorUnit(item.unitPriceMinor).replace(",", "")) }
                                         OutlinedTextField(
@@ -368,12 +374,12 @@ fun PosDialog(
                                         }
                                         val lineCostMinor = unitCostMinor * item.quantity
                                         val lineProfitMinor = item.lineTotalMinor - lineCostMinor
-                                        val profitColor = if (lineProfitMinor >= 0) Color(0xFF16A34A) else Color(0xFFDC2626)
+                                        val profitColor = if (lineProfitMinor >= 0) StatusSuccess else StatusError
 
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
+                                                .background(ERPSurfaceVariant, RoundedCornerShape(6.dp))
                                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
@@ -434,19 +440,19 @@ fun PosDialog(
                             unitCost * item.quantity
                         }
                         val totalProfitMinor = netTotalMinor - totalCostMinor
-                        val totalProfitColor = if (totalProfitMinor >= 0) Color(0xFF16A34A) else Color(0xFFDC2626)
+                        val totalProfitColor = if (totalProfitMinor >= 0) StatusSuccess else StatusError
                         val marginPct = if (netTotalMinor > 0) (totalProfitMinor.toDouble() / netTotalMinor.toDouble()) * 100 else 0.0
 
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFF86EFAC), RoundedCornerShape(8.dp))
+                                .background(StatusSuccessContainer, RoundedCornerShape(8.dp))
+                                .border(1.dp, StatusSuccessContainer, RoundedCornerShape(8.dp))
                                 .padding(10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("মোট আনুমানিক লাভ:", fontWeight = FontWeight.Bold, color = Color(0xFF166534))
+                            Text("মোট আনুমানিক লাভ:", fontWeight = FontWeight.Bold, color = StatusSuccess)
                             Text(
                                 "৳${Formatters.formatMinorUnit(totalProfitMinor)} (${String.format(java.util.Locale.US, "%.1f", marginPct)}%)",
                                 fontWeight = FontWeight.Bold,
@@ -473,21 +479,21 @@ fun PosDialog(
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                     )
-                    Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFE8F5E9), RoundedCornerShape(8.dp)).border(1.dp, Color(0xFF81C784), RoundedCornerShape(8.dp)).padding(10.dp)) {
+                    Box(modifier = Modifier.fillMaxWidth().background(StatusSuccessContainer, RoundedCornerShape(8.dp)).border(1.dp, StatusSuccessContainer, RoundedCornerShape(8.dp)).padding(10.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Change / ফেরত:", fontWeight = FontWeight.SemiBold, color = Color(0xFF2E7D32))
-                            Text("৳${Formatters.formatMinorUnit(changeDueMinor)}", fontWeight = FontWeight.Bold, color = Color(0xFF1B5E20))
+                            Text("Change / ফেরত:", fontWeight = FontWeight.SemiBold, color = StatusSuccess)
+                            Text("৳${Formatters.formatMinorUnit(changeDueMinor)}", fontWeight = FontWeight.Bold, color = StatusSuccess)
                         }
                     }
                     if (dueMinor > 0L) {
-                        Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFFEBEE), RoundedCornerShape(8.dp)).border(1.dp, Color(0xFFE57373), RoundedCornerShape(8.dp)).padding(10.dp)) {
+                        Box(modifier = Modifier.fillMaxWidth().background(StatusErrorContainer, RoundedCornerShape(8.dp)).border(1.dp, StatusError, RoundedCornerShape(8.dp)).padding(10.dp)) {
                             Column {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Due / বকেয়া:", fontWeight = FontWeight.SemiBold, color = Color(0xFFC62828))
-                                    Text("৳${Formatters.formatMinorUnit(dueMinor)}", fontWeight = FontWeight.Bold, color = Color(0xFFB71C1C))
+                                    Text("Due / বকেয়া:", fontWeight = FontWeight.SemiBold, color = StatusError)
+                                    Text("৳${Formatters.formatMinorUnit(dueMinor)}", fontWeight = FontWeight.Bold, color = StatusError)
                                 }
                                 if (isWalkIn) {
-                                    Text("বকেয়া বিক্রির জন্য একজন ক্রেতা নির্বাচন করুন / Select a customer to sell on credit", style = MaterialTheme.typography.bodySmall, color = Color(0xFFC62828))
+                                    Text("বকেয়া বিক্রির জন্য একজন ক্রেতা নির্বাচন করুন / Select a customer to sell on credit", style = MaterialTheme.typography.bodySmall, color = StatusError)
                                 }
                             }
                         }
@@ -496,7 +502,7 @@ fun PosDialog(
                         Checkbox(checked = autoPrintReceipt, onCheckedChange = { autoPrintReceipt = it })
                         Text("Auto-print Thermal Receipt", style = MaterialTheme.typography.bodySmall)
                     }
-                    lastCreatedReceiptNote?.let { Text(it, color = Color(0xFF2E7D32), fontWeight = FontWeight.SemiBold) }
+                    lastCreatedReceiptNote?.let { Text(it, color = StatusSuccess, fontWeight = FontWeight.SemiBold) }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -536,7 +542,7 @@ fun PosDialog(
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     enabled = canCheckout,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess)
                 ) {
                     Text(
                         if (isCheckingOut) "Processing..." else "COMPLETE SALE / বিক্রি সম্পন্ন (৳${Formatters.formatMinorUnit(netTotalMinor)})",

@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -71,7 +73,7 @@ fun ProcessSalesReturnDialog(
     onSubmit: (SalesReturnDraft) -> Unit
 ) {
     var selectedRefundOption by remember { mutableStateOf(ReturnRefundOption.CUSTOMER_CREDIT) }
-    var reason by remember { mutableStateOf("") }
+    var reason by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Map of invoiceItemId -> returnQuantityStr
@@ -124,7 +126,7 @@ fun ProcessSalesReturnDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -150,7 +152,7 @@ fun ProcessSalesReturnDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.surface,
                             shadowElevation = 0.5.dp
                         ) {
                             Row(
@@ -244,7 +246,7 @@ fun ProcessSalesReturnDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("Total Return Credit:", color = Color.White, fontWeight = FontWeight.Bold)
-                                Text("৳" + Formatters.formatMinorUnit(totalReturnMinor), color = Color(0xFFFF8A80), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                Text("৳" + Formatters.formatMinorUnit(totalReturnMinor), color = StatusError, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             }
                         }
                     }
@@ -306,7 +308,7 @@ fun ProcessSalesReturnDialog(
                                 )
                             )
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC53030)),
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusError),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(if (isBangla) "ফেরত নিশ্চিত করুন" else "Confirm Return & Stock Restore")

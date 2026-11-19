@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.controlcenter.components
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,8 +23,8 @@ fun PartyLedgerPanel(report: LedgerReport, filter: ControlCenterFilterState, cus
     language: AppLanguage, ready: Boolean, onParty: (String?, Boolean) -> Unit, onPayment: () -> Unit, onShare: () -> Unit) {
     val bn = language == AppLanguage.BANGLA
     val supplier = filter.category == ReportCategory.SUPPLIER_LEDGER
-    var picker by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
+    var picker by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
     fun money(value: Long) = Formatters.formatMoney(value,CurrencyCode.BDT,language)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

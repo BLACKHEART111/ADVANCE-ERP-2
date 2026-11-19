@@ -2368,9 +2368,15 @@ class ImportRepositoryImpl @Inject constructor(
         disposition: String?,
         reason: String?,
         notes: String?
-    ): PurchaseCompletionRecord {
+    ): PurchaseCompletionRecord = database.withTransaction {
+        val existing = minimalImportDao.getCompletionRecordForOrder(orderId)
+        if (existing != null) return@withTransaction existing
         val po = purchaseOrderDao.getOrderById(orderId)
             ?: throw IllegalArgumentException("Purchase order not found: $orderId")
+
+        require(po.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name, PurchaseOrderStatus.COMPLETED.name)) {
+            "Only an active confirmed purchase can be completed"
+        }
 
         val poItems = purchaseOrderDao.getItemsForOrderSync(orderId)
         val totalOrdered = poItems.sumOf { it.quantity }
@@ -2384,7 +2390,7 @@ class ImportRepositoryImpl @Inject constructor(
         val missingQty = allReceiptItems.sumOf { it.missingQuantity }
 
         if (remaining > 0) {
-            require(!disposition.isNullOrBlank()) {
+            require(disposition in setOf("SHORTAGE", "CANCELLED_BALANCE", "SUPPLIER_CLAIM") && !reason.isNullOrBlank()) {
                 "Purchase has $remaining unreceived units. A disposition reason (Shortage, Cancelled Balance, or Supplier Claim) is required!"
             }
         }
@@ -2410,7 +2416,7 @@ class ImportRepositoryImpl @Inject constructor(
         minimalImportDao.insertCompletionRecord(record)
         purchaseOrderDao.updateOrderStatus(orderId, PurchaseOrderStatus.COMPLETED.name)
 
-        return record
+        record
     }
 
     override fun getCompletionRecordForOrder(orderId: String): Flow<PurchaseCompletionRecord?> =

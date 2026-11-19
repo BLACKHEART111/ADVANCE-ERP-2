@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,13 +22,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Send
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -86,7 +88,7 @@ fun DueCollectionStatementShareDialog(
     var captionText by remember(isBangla) {
         mutableStateOf(DueCollectionCaptionHelper.generateCaption(data, isBangla))
     }
-    var showPdfPreviewDialog by remember { mutableStateOf(false) }
+    var showPdfPreviewDialog by rememberSaveable { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -123,7 +125,7 @@ fun DueCollectionStatementShareDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Send,
+                                imageVector = Icons.Outlined.Send,
                                 contentDescription = "WhatsApp",
                                 tint = WhatsAppDarkGreen,
                                 modifier = Modifier.size(22.dp)
@@ -148,7 +150,7 @@ fun DueCollectionStatementShareDialog(
                     }
 
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -172,7 +174,7 @@ fun DueCollectionStatementShareDialog(
                         SummaryMiniCard(
                             label = if (isBangla) "পূর্বের বকেয়া" else "Previous Due",
                             value = "৳" + Formatters.formatMinorUnit(data.previousDueMinor),
-                            color = Color(0xFFC53030),
+                            color = StatusError,
                             modifier = Modifier.weight(1f)
                         )
                         // Paid Today
@@ -192,7 +194,7 @@ fun DueCollectionStatementShareDialog(
                             label = if (data.isAdvancePayment) (if (isBangla) "অ্যাডভান্স ব্যালেন্স" else "Advance Balance")
                                     else (if (isBangla) "বর্তমান বকেয়া" else "Current Due"),
                             value = currentDueVal,
-                            color = if (data.isAdvancePayment) SecondaryTeal else if (data.currentDueMinor == 0L) StatusSuccess else Color(0xFFC53030),
+                            color = if (data.isAdvancePayment) SecondaryTeal else if (data.currentDueMinor == 0L) StatusSuccess else StatusError,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -273,7 +275,7 @@ fun DueCollectionStatementShareDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Default.PictureAsPdf,
+                                Icons.Outlined.PictureAsPdf,
                                 contentDescription = "PDF",
                                 tint = WhatsAppDarkGreen,
                                 modifier = Modifier.size(20.dp)
@@ -285,7 +287,7 @@ fun DueCollectionStatementShareDialog(
                                 else
                                     "Customer's statement PDF is ready. Sharing will send both the PDF document and this text caption.",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = DeepNavy
+                                color = TextPrimary
                             )
                         }
                     }
@@ -315,7 +317,7 @@ fun DueCollectionStatementShareDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = WhatsAppDarkGreen),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (isBangla) "WhatsApp-এ পাঠান (PDF + ক্যাপশন)" else "Share to WhatsApp (PDF + Caption)",
@@ -334,7 +336,7 @@ fun DueCollectionStatementShareDialog(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBangla) "PDF প্রিভিউ" else "PDF Preview", fontSize = 12.sp)
                         }
@@ -349,7 +351,7 @@ fun DueCollectionStatementShareDialog(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBangla) "শুধু PDF" else "PDF Only", fontSize = 12.sp)
                         }
@@ -362,7 +364,7 @@ fun DueCollectionStatementShareDialog(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.TextFields, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBangla) "শুধু টেক্সট" else "Text Only", fontSize = 12.sp)
                         }
@@ -380,7 +382,7 @@ fun DueCollectionStatementShareDialog(
                             },
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (isBangla) "ক্যাপশন কপি" else "Copy Text", fontSize = 12.sp)
                         }
@@ -391,7 +393,7 @@ fun DueCollectionStatementShareDialog(
                             },
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (isBangla) "অন্যান্য অ্যাপ" else "Other Apps", fontSize = 12.sp)
                         }
@@ -422,7 +424,7 @@ private fun SummaryMiniCard(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(8.dp),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 1.dp
     ) {
         Column(

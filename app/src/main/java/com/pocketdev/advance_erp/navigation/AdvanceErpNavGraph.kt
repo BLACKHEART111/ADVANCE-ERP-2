@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.pocketdev.advance_erp.domain.model.ReportCategory
@@ -51,8 +53,8 @@ fun AdvanceErpNavGraph(
         composable(Destinations.DASHBOARD) {
             DashboardScreen(
                 viewModel = hiltViewModel(),
-                onNavigateToAddProduct = { navController.navigate(Destinations.PRODUCTS) },
-                onNavigateToStockAdjust = { navController.navigate(Destinations.INVENTORY) },
+                onNavigateToAddProduct = { navController.navigate("${Destinations.PRODUCTS}?action=add") },
+                onNavigateToStockAdjust = { navController.navigate("${Destinations.INVENTORY}?action=adjust") },
                 onNavigateToLedger = { navController.navigate(Destinations.LEDGER) },
                 onNavigateToImports = { navController.navigate(Destinations.PURCHASES) },
                 onNavigateToSales = { navController.navigate(Destinations.SALES) },
@@ -60,12 +62,12 @@ fun AdvanceErpNavGraph(
             )
         }
 
-        composable(Destinations.PRODUCTS) {
-            ProductListScreen(viewModel = hiltViewModel())
+        composable("${Destinations.PRODUCTS}?action={action}", arguments = listOf(navArgument("action") { type = NavType.StringType; defaultValue = "" })) { entry ->
+            ProductListScreen(viewModel = hiltViewModel(), initialAction = entry.arguments?.getString("action").orEmpty())
         }
 
-        composable(Destinations.INVENTORY) {
-            InventoryScreen(viewModel = hiltViewModel())
+        composable("${Destinations.INVENTORY}?action={action}", arguments = listOf(navArgument("action") { type = NavType.StringType; defaultValue = "" })) { entry ->
+            InventoryScreen(viewModel = hiltViewModel(), initialAction = entry.arguments?.getString("action").orEmpty())
         }
 
         composable(Destinations.SALES) {

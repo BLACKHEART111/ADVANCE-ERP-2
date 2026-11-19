@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.product
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,12 +25,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -44,6 +46,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -90,14 +93,22 @@ import kotlinx.coroutines.launch
 @Composable
 fun ProductListScreen(
     viewModel: ProductViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialAction: String = ""
 ) {
+    var actionHandled by rememberSaveable(initialAction) { mutableStateOf(false) }
+    LaunchedEffect(initialAction) {
+        if (!actionHandled && initialAction == "add") {
+            viewModel.setAddDialogVisible(true)
+            actionHandled = true
+        }
+    }
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
     val canViewCost by viewModel.canViewCost.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showAddCategoryDialog by remember { mutableStateOf(false) }
-    var showManageCategoriesDialog by remember { mutableStateOf(false) }
+    var showAddCategoryDialog by rememberSaveable { mutableStateOf(false) }
+    var showManageCategoriesDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(state.userMessage) {
         state.userMessage?.let {
@@ -114,11 +125,11 @@ fun ProductListScreen(
             FloatingActionButton(
                 onClick = { viewModel.setAddDialogVisible(true) },
                 containerColor = PrimaryPurple,
-                contentColor = Color.White,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape
             ) {
                 Icon(
-                    imageVector = Icons.Default.Add,
+                    imageVector = Icons.Outlined.Add,
                     contentDescription = stringResource(R.string.add_product)
                 )
             }
@@ -143,7 +154,7 @@ fun ProductListScreen(
                 },
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Search,
+                        imageVector = Icons.Outlined.Search,
                         contentDescription = "Search",
                         tint = TextSecondary,
                         modifier = Modifier.size(20.dp)
@@ -153,7 +164,7 @@ fun ProductListScreen(
                     if (state.searchQuery.isNotEmpty()) {
                         IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
                             Icon(
-                                imageVector = Icons.Default.Clear,
+                                imageVector = Icons.Outlined.Clear,
                                 contentDescription = "Clear",
                                 tint = TextSecondary,
                                 modifier = Modifier.size(18.dp)
@@ -186,7 +197,7 @@ fun ProductListScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (isAllSelected) PrimaryPurple else Color.White)
+                            .background(if (isAllSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (isAllSelected) PrimaryPurple else ERPDivider, RoundedCornerShape(20.dp))
                             .clickable { viewModel.onCategorySelect(null) }
                             .padding(horizontal = 14.dp, vertical = 6.dp)
@@ -205,7 +216,7 @@ fun ProductListScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) PrimaryPurple else Color.White)
+                            .background(if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (isSelected) PrimaryPurple else ERPDivider, RoundedCornerShape(20.dp))
                             .clickable { viewModel.onCategorySelect(cat.id) }
                             .padding(horizontal = 14.dp, vertical = 6.dp)
@@ -223,13 +234,13 @@ fun ProductListScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White)
+                            .background(MaterialTheme.colorScheme.surface)
                             .border(1.dp, SecondaryTeal, RoundedCornerShape(20.dp))
                             .clickable { showManageCategoriesDialog = true }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Settings, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Outlined.Settings, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (state.language == AppLanguage.BANGLA) "ক্যাটাগরি পরিচালনা" else "Manage",
@@ -247,7 +258,7 @@ fun ProductListScreen(
             // Products List
             if (state.products.isEmpty()) {
                 ERPEmptyState(
-                    icon = Icons.Default.Inventory2,
+                    icon = Icons.Outlined.Inventory2,
                     title = stringResource(R.string.no_products_found),
                     message = if (state.searchQuery.isNotBlank()) "No products match '${state.searchQuery}'" else "Tap '+' to add your first product."
                 )
@@ -261,7 +272,7 @@ fun ProductListScreen(
                         val isLowStock = product.totalStock <= product.minStockAlert
                         val stockColor = when {
                             product.totalStock == 0 -> StatusError
-                            isLowStock -> Color(0xFFF59E0B)
+                            isLowStock -> StatusWarning
                             else -> StatusSuccess
                         }
 
@@ -279,7 +290,7 @@ fun ProductListScreen(
                                         modifier = Modifier
                                             .size(52.dp)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFFF1F5F9))
+                                            .background(ERPSurfaceVariant)
                                     ) {
                                         if (!product.primaryImageUri.isNullOrBlank()) {
                                             AsyncImage(
@@ -293,7 +304,7 @@ fun ProductListScreen(
                                             )
                                         } else {
                                             Icon(
-                                                imageVector = Icons.Default.Inventory2,
+                                                imageVector = Icons.Outlined.Inventory2,
                                                 contentDescription = null,
                                                 tint = TextMuted,
                                                 modifier = Modifier.align(Alignment.Center).size(24.dp)
@@ -517,8 +528,8 @@ fun ProductListScreen(
 
     // Add Category Dialog
     if (showAddCategoryDialog) {
-        var catEn by remember { mutableStateOf("") }
-        var catBn by remember { mutableStateOf("") }
+        var catEn by rememberSaveable { mutableStateOf("") }
+        var catBn by rememberSaveable { mutableStateOf("") }
         var catErr by remember { mutableStateOf<String?>(null) }
 
         AlertDialog(
@@ -527,7 +538,7 @@ fun ProductListScreen(
                 Text(
                     text = if (state.language == AppLanguage.BANGLA) "নতুন ক্যাটাগরি যোগ করুন" else "Add New Category",
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
             },
             text = {
@@ -579,9 +590,9 @@ fun ProductListScreen(
         val coroutineScope = rememberCoroutineScope()
         var categoryToDelete by remember { mutableStateOf<ProductCategory?>(null) }
         var linkedCountForDelete by remember { mutableStateOf(0) }
-        var showReassignDialog by remember { mutableStateOf(false) }
-        var showConfirmEmptyDeleteDialog by remember { mutableStateOf(false) }
-        var targetCategoryId by remember { mutableStateOf("") }
+        var showReassignDialog by rememberSaveable { mutableStateOf(false) }
+        var showConfirmEmptyDeleteDialog by rememberSaveable { mutableStateOf(false) }
+        var targetCategoryId by rememberSaveable { mutableStateOf("") }
 
         Dialog(
             onDismissRequest = { showManageCategoriesDialog = false },
@@ -610,7 +621,7 @@ fun ProductListScreen(
                             color = TextPrimary
                         )
                         IconButton(onClick = { showManageCategoriesDialog = false }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Close", tint = TextMuted)
+                            Icon(Icons.Outlined.Clear, contentDescription = "Close", tint = TextMuted)
                         }
                     }
 
@@ -627,7 +638,7 @@ fun ProductListScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp)),
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.surface
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -680,7 +691,7 @@ fun ProductListScreen(
                                                 }
                                             }
                                         ) {
-                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete Category", tint = StatusError)
+                                            Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete Category", tint = StatusError)
                                         }
                                     }
                                 }

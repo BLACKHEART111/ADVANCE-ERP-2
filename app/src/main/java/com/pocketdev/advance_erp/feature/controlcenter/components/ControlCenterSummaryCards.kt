@@ -1,5 +1,11 @@
 package com.pocketdev.advance_erp.feature.controlcenter.components
 
+import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
+import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusError
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -19,21 +25,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MonetizationOn
-import androidx.compose.material.icons.filled.MoneyOff
-import androidx.compose.material.icons.filled.Payment
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.TrendingDown
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.MonetizationOn
+import androidx.compose.material.icons.outlined.MoneyOff
+import androidx.compose.material.icons.outlined.Payment
+import androidx.compose.material.icons.outlined.Receipt
+import androidx.compose.material.icons.outlined.Replay
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.TrendingDown
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -86,8 +92,8 @@ fun ControlCenterSummaryCards(
                 amountMinor = summary.totalSalesMinor,
                 currencyCode = currencyCode,
                 language = language,
-                icon = Icons.Default.TrendingUp,
-                accentColor = Color(0xFF10B981),
+                icon = Icons.Outlined.TrendingUp,
+                accentColor = StatusSuccess,
                 onClick = { onCategoryClick(ReportCategory.SALES) }
             )
 
@@ -98,8 +104,8 @@ fun ControlCenterSummaryCards(
                 amountMinor = summary.totalReceivedMinor,
                 currencyCode = currencyCode,
                 language = language,
-                icon = Icons.Default.ArrowDownward,
-                accentColor = Color(0xFF059669),
+                icon = Icons.Outlined.ArrowDownward,
+                accentColor = StatusSuccess,
                 onClick = { onCategoryClick(ReportCategory.RECEIPT) }
             )
 
@@ -110,8 +116,8 @@ fun ControlCenterSummaryCards(
                 amountMinor = summary.totalPurchaseMinor,
                 currencyCode = currencyCode,
                 language = language,
-                icon = Icons.Default.ShoppingCart,
-                accentColor = Color(0xFF8B5CF6),
+                icon = Icons.Outlined.ShoppingCart,
+                accentColor = PrimaryPurple,
                 onClick = { onCategoryClick(ReportCategory.PURCHASE) }
             )
 
@@ -123,8 +129,8 @@ fun ControlCenterSummaryCards(
                     amountMinor = summary.netProfitMinor,
                     currencyCode = currencyCode,
                     language = language,
-                    icon = if (summary.netProfitMinor >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
-                    accentColor = if (summary.netProfitMinor >= 0) Color(0xFF16A34A) else Color(0xFFDC2626),
+                    icon = if (summary.netProfitMinor >= 0) Icons.Outlined.TrendingUp else Icons.Outlined.TrendingDown,
+                    accentColor = if (summary.netProfitMinor >= 0) StatusSuccess else StatusError,
                     onClick = { onCategoryClick(ReportCategory.SALES) }
                 )
             } else {
@@ -134,8 +140,8 @@ fun ControlCenterSummaryCards(
                     amountMinor = summary.totalOutstandingPayableMinor,
                     currencyCode = currencyCode,
                     language = language,
-                    icon = Icons.Default.MonetizationOn,
-                    accentColor = Color(0xFFEF4444),
+                    icon = Icons.Outlined.MonetizationOn,
+                    accentColor = StatusError,
                     onClick = { onCategoryClick(ReportCategory.SUPPLIER_LEDGER) }
                 )
             }
@@ -161,8 +167,8 @@ fun ControlCenterSummaryCards(
                         amountMinor = summary.totalPaidMinor,
                         currencyCode = currencyCode,
                         language = language,
-                        icon = Icons.Default.ArrowUpward,
-                        accentColor = Color(0xFF0284C7),
+                        icon = Icons.Outlined.ArrowUpward,
+                        accentColor = StatusInfo,
                         onClick = { onCategoryClick(ReportCategory.PAYMENT) }
                     )
 
@@ -173,8 +179,8 @@ fun ControlCenterSummaryCards(
                         amountMinor = summary.totalExpensesMinor,
                         currencyCode = currencyCode,
                         language = language,
-                        icon = Icons.Default.MoneyOff,
-                        accentColor = Color(0xFFF59E0B),
+                        icon = Icons.Outlined.MoneyOff,
+                        accentColor = StatusWarning,
                         onClick = { onCategoryClick(ReportCategory.EXPENSE) }
                     )
 
@@ -185,8 +191,8 @@ fun ControlCenterSummaryCards(
                         amountMinor = summary.totalSalesReturnMinor,
                         currencyCode = currencyCode,
                         language = language,
-                        icon = Icons.Default.Replay,
-                        accentColor = Color(0xFFEF4444),
+                        icon = Icons.Outlined.Replay,
+                        accentColor = StatusError,
                         onClick = { onCategoryClick(ReportCategory.SALES_RETURN) }
                     )
 
@@ -197,8 +203,8 @@ fun ControlCenterSummaryCards(
                         amountMinor = summary.totalPurchaseReturnMinor,
                         currencyCode = currencyCode,
                         language = language,
-                        icon = Icons.Default.Replay,
-                        accentColor = Color(0xFFF97316),
+                        icon = Icons.Outlined.Replay,
+                        accentColor = StatusWarning,
                         onClick = { onCategoryClick(ReportCategory.PURCHASE_RETURN) }
                     )
 
@@ -219,13 +225,13 @@ fun ControlCenterSummaryCards(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFF06B6D4).copy(alpha = 0.12f),
+                                color = SecondaryTeal.copy(alpha = 0.12f),
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.LocalShipping,
+                                    imageVector = Icons.Outlined.LocalShipping,
                                     contentDescription = null,
-                                    tint = Color(0xFF06B6D4),
+                                    tint = SecondaryTeal,
                                     modifier = Modifier
                                         .padding(5.dp)
                                         .size(16.dp)
@@ -243,7 +249,7 @@ fun ControlCenterSummaryCards(
                                     text = "${summary.totalDeliveryCount} ${if (isBn) "টি সম্পন্ন" else "Orders"}",
                                     style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.5.sp),
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF06B6D4),
+                                    color = SecondaryTeal,
                                     maxLines = 1
                                 )
                             }
@@ -257,8 +263,8 @@ fun ControlCenterSummaryCards(
                         amountMinor = summary.totalOutstandingReceivableMinor,
                         currencyCode = currencyCode,
                         language = language,
-                        icon = Icons.Default.AttachMoney,
-                        accentColor = Color(0xFFE11D48),
+                        icon = Icons.Outlined.AttachMoney,
+                        accentColor = StatusError,
                         onClick = { onCategoryClick(ReportCategory.CUSTOMER_LEDGER) }
                     )
 
@@ -270,8 +276,8 @@ fun ControlCenterSummaryCards(
                             amountMinor = summary.grossProfitMinor,
                             currencyCode = currencyCode,
                             language = language,
-                            icon = if (summary.grossProfitMinor >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
-                            accentColor = if (summary.grossProfitMinor >= 0) Color(0xFF10B981) else Color(0xFFDC2626),
+                            icon = if (summary.grossProfitMinor >= 0) Icons.Outlined.TrendingUp else Icons.Outlined.TrendingDown,
+                            accentColor = if (summary.grossProfitMinor >= 0) StatusSuccess else StatusError,
                             onClick = { onCategoryClick(ReportCategory.SALES) }
                         )
                     } else {
@@ -290,8 +296,8 @@ fun ControlCenterSummaryCards(
                             amountMinor = summary.totalOutstandingPayableMinor,
                             currencyCode = currencyCode,
                             language = language,
-                            icon = Icons.Default.MonetizationOn,
-                            accentColor = Color(0xFFEF4444),
+                            icon = Icons.Outlined.MonetizationOn,
+                            accentColor = StatusError,
                             onClick = { onCategoryClick(ReportCategory.SUPPLIER_LEDGER) }
                         )
                     }
@@ -321,7 +327,7 @@ fun ControlCenterSummaryCards(
             )
             Spacer(modifier = Modifier.width(3.dp))
             Icon(
-                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(16.dp)
@@ -411,7 +417,7 @@ private fun LockedProfitCard(
                 modifier = Modifier.size(28.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Lock,
+                    imageVector = Icons.Outlined.Lock,
                     contentDescription = null,
                     tint = Color.Gray,
                     modifier = Modifier

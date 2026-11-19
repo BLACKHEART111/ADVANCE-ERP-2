@@ -1,20 +1,30 @@
 package com.pocketdev.advance_erp.core.designsystem
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.luminance
 
 // Primary Purple tokens
-val PrimaryPurple = Color(0xFF792B87)
+val PrimaryPurple: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primary
 val PrimaryPurpleDark = Color(0xFF5B1F67)
 val PrimaryPurpleLight = Color(0xFF9944A9)
-val PrimaryPurpleContainer = Color(0xFFF6EBF8)
-val OnPrimaryPurpleContainer = Color(0xFF3B0B44)
+val PrimaryPurpleContainer: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primaryContainer
+val OnPrimaryPurpleContainer: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onPrimaryContainer
 
 // Secondary Teal tokens
-val SecondaryTeal = Color(0xFF299DB2)
+val SecondaryTeal: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.secondary
 val SecondaryTealDark = Color(0xFF1B6E7D)
 val SecondaryTealLight = Color(0xFF4DBFD4)
-val SecondaryTealContainer = Color(0xFFE4F6F9)
-val OnSecondaryTealContainer = Color(0xFF093942)
+val SecondaryTealContainer: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.secondaryContainer
+val OnSecondaryTealContainer: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onSecondaryContainer
 
 // Deep Navy tokens
 val DeepNavy = Color(0xFF263849)
@@ -34,23 +44,38 @@ val DrawerTextMuted = Color(0xB3FFFFFF)
 val DrawerIconTint = Color(0xF2FFFFFF)
 
 // Surfaces & Backgrounds
-val ERPBackground = Color(0xFFF2F5F7)
-val ERPSurface = Color(0xFFFFFFFF)
-val ERPSurfaceVariant = Color(0xFFE8EEF3)
-val ERPDivider = Color(0xFFE2E8F0)
+val ERPBackground: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.background
+val ERPSurface: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surface
+val ERPSurfaceVariant: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surfaceVariant
+val ERPDivider: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.outlineVariant
 
 // Text tokens
-val TextPrimary = Color(0xFF1E293B)
-val TextSecondary = Color(0xFF64748B)
-val TextMuted = Color(0xFF94A3B8)
+val TextPrimary: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onSurface
+val TextSecondary: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onSurfaceVariant
+val TextMuted: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onSurfaceVariant
 val TextOnDark = Color(0xFFFFFFFF)
 
 // Accent / Status tokens
-val StatusSuccess = Color(0xFF10B981)
-val StatusSuccessContainer = Color(0xFFD1FAE5)
-val StatusWarning = Color(0xFFF59E0B)
-val StatusWarningContainer = Color(0xFFFEF3C7)
-val StatusError = Color(0xFFEF4444)
-val StatusErrorContainer = Color(0xFFFEE2E2)
-val StatusInfo = Color(0xFF3B82F6)
-val StatusInfoContainer = Color(0xFFDBEAFE)
+val StatusSuccess: Color
+    @Composable @ReadOnlyComposable get() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF83D8A7) else Color(0xFF167347)
+val StatusSuccessContainer: Color
+    @Composable @ReadOnlyComposable get() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF173E2A) else Color(0xFFE3F3E9)
+val StatusWarning: Color
+    @Composable @ReadOnlyComposable get() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFFF5CD81) else Color(0xFF855500)
+val StatusWarningContainer: Color
+    @Composable @ReadOnlyComposable get() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF47371B) else Color(0xFFFFF1D2)
+val StatusError: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.error
+val StatusErrorContainer: Color
+    @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.errorContainer
+val StatusInfo: Color
+    @Composable @ReadOnlyComposable get() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFFA8C7FA) else Color(0xFF245FB0)
+val StatusInfoContainer: Color
+    @Composable @ReadOnlyComposable get() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF203A60) else Color(0xFFE4EDFA)

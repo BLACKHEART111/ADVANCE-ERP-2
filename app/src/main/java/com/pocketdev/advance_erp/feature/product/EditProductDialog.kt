@@ -1,5 +1,9 @@
 package com.pocketdev.advance_erp.feature.product
 
+import com.pocketdev.advance_erp.core.designsystem.StatusInfoContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,11 +28,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
 import java.util.UUID
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
@@ -124,7 +128,7 @@ fun EditProductDialog(
     var selectedCategory by remember {
         mutableStateOf(categories.firstOrNull { it.id == product.categoryId } ?: categories.firstOrNull())
     }
-    var categoryDropdownExpanded by remember { mutableStateOf(false) }
+    var categoryDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     val productPhotos = remember {
         mutableStateListOf<GalleryItemDraft>().apply {
@@ -155,19 +159,19 @@ fun EditProductDialog(
     }
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isCheckingDuplicates by remember { mutableStateOf(false) }
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var isCheckingDuplicates by rememberSaveable { mutableStateOf(false) }
+    var showDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
 
     // Variant Add / Edit state
-    var showVariantForm by remember { mutableStateOf(false) }
+    var showVariantForm by rememberSaveable { mutableStateOf(false) }
     var editingVariantIndex by remember { mutableStateOf<Int?>(null) }
-    var varColor by remember { mutableStateOf("") }
-    var varSize by remember { mutableStateOf("") }
-    var varSku by remember { mutableStateOf("") }
-    var varBarcode by remember { mutableStateOf("") }
-    var varCostStr by remember { mutableStateOf("") }
-    var varPriceStr by remember { mutableStateOf("") }
-    var varStockStr by remember { mutableStateOf("") }
+    var varColor by rememberSaveable { mutableStateOf("") }
+    var varSize by rememberSaveable { mutableStateOf("") }
+    var varSku by rememberSaveable { mutableStateOf("") }
+    var varBarcode by rememberSaveable { mutableStateOf("") }
+    var varCostStr by rememberSaveable { mutableStateOf("") }
+    var varPriceStr by rememberSaveable { mutableStateOf("") }
+    var varStockStr by rememberSaveable { mutableStateOf("") }
 
     fun resetVariantForm() {
         editingVariantIndex = null
@@ -227,7 +231,7 @@ fun EditProductDialog(
                         color = TextPrimary
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(imageVector = Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
@@ -364,7 +368,7 @@ fun EditProductDialog(
                             .size(48.dp)
                             .background(SecondaryTeal.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                     ) {
-                        Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = "Auto SKU", tint = SecondaryTeal)
+                        Icon(imageVector = Icons.Outlined.AutoFixHigh, contentDescription = "Auto SKU", tint = SecondaryTeal)
                     }
                 }
 
@@ -394,7 +398,7 @@ fun EditProductDialog(
                             .size(48.dp)
                             .background(PrimaryPurple.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
                     ) {
-                        Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = "Auto Barcode", tint = PrimaryPurple)
+                        Icon(imageVector = Icons.Outlined.AutoFixHigh, contentDescription = "Auto Barcode", tint = PrimaryPurple)
                     }
                 }
 
@@ -484,7 +488,7 @@ fun EditProductDialog(
                         } else {
                             if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্ট যোগ" else "Add Variant"
                         },
-                        icon = if (showVariantForm && editingVariantIndex == null) Icons.Default.Close else Icons.Default.Add,
+                        icon = if (showVariantForm && editingVariantIndex == null) Icons.Outlined.Close else Icons.Outlined.Add,
                         onClick = {
                             if (showVariantForm && editingVariantIndex == null) {
                                 showVariantForm = false
@@ -506,7 +510,7 @@ fun EditProductDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFF8FAFC))
+                            .background(ERPSurfaceVariant)
                             .border(1.dp, ERPDivider, RoundedCornerShape(10.dp))
                             .padding(12.dp)
                     ) {
@@ -524,7 +528,7 @@ fun EditProductDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isBeingEdited) Color(0xFFEEF2FF) else Color(0xFFF8FAFC))
+                                    .background(if (isBeingEdited) StatusInfoContainer else ERPSurfaceVariant)
                                     .border(
                                         1.dp,
                                         if (isBeingEdited) PrimaryPurple else ERPDivider,
@@ -604,7 +608,7 @@ fun EditProductDialog(
                                             }
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Edit,
+                                                imageVector = Icons.Outlined.Edit,
                                                 contentDescription = "Edit Variant",
                                                 tint = PrimaryPurple
                                             )
@@ -621,7 +625,7 @@ fun EditProductDialog(
                                             }
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.DeleteOutline,
+                                                imageVector = Icons.Outlined.DeleteOutline,
                                                 contentDescription = "Remove Variant",
                                                 tint = StatusError
                                             )
@@ -640,7 +644,7 @@ fun EditProductDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF1F5F9))
+                            .background(ERPSurfaceVariant)
                             .border(1.dp, SecondaryTeal.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
                             .padding(14.dp)
                     ) {
@@ -710,10 +714,10 @@ fun EditProductDialog(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White)
+                                    .background(MaterialTheme.colorScheme.surface)
                                     .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
                             ) {
-                                Icon(Icons.Default.AutoFixHigh, contentDescription = "Auto Variant SKU", tint = PrimaryPurple)
+                                Icon(Icons.Outlined.AutoFixHigh, contentDescription = "Auto Variant SKU", tint = PrimaryPurple)
                             }
                         }
 
@@ -742,10 +746,10 @@ fun EditProductDialog(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White)
+                                    .background(MaterialTheme.colorScheme.surface)
                                     .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
                             ) {
-                                Icon(Icons.Default.AutoFixHigh, contentDescription = "Auto Barcode", tint = PrimaryPurple)
+                                Icon(Icons.Outlined.AutoFixHigh, contentDescription = "Auto Barcode", tint = PrimaryPurple)
                             }
                         }
 
@@ -892,7 +896,7 @@ fun EditProductDialog(
                     if (onDeleteProduct != null) {
                         ERPActionButton(
                             text = if (language == AppLanguage.BANGLA) "পণ্য মুছুন" else "Delete",
-                            icon = Icons.Default.DeleteOutline,
+                            icon = Icons.Outlined.DeleteOutline,
                             onClick = { showDeleteConfirmation = true },
                             variant = ERPButtonVariant.GHOST
                         )
@@ -993,7 +997,7 @@ fun EditProductDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFFEF2F2))
+                                .background(StatusErrorContainer)
                                 .border(1.dp, StatusError.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                                 .padding(10.dp)
                         ) {

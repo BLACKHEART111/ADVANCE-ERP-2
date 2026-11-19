@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.settings.components
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,17 +20,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.EventRepeat
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.EventRepeat
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -97,18 +98,18 @@ fun BackupManagementSection(
     val isBn = language == AppLanguage.BANGLA
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US) }
 
-    var isCreatingBackup by remember { mutableStateOf(false) }
+    var isCreatingBackup by rememberSaveable { mutableStateOf(false) }
     var backupToRestore by remember { mutableStateOf<BackupRecord?>(null) }
-    var restoreHistoryPassphrase by remember { mutableStateOf("") }
+    var restoreHistoryPassphrase by rememberSaveable { mutableStateOf("") }
     var backupToDelete by remember { mutableStateOf<BackupRecord?>(null) }
     var backupToShare by remember { mutableStateOf<BackupRecord?>(null) }
-    var exportPassphrase by remember { mutableStateOf("") }
-    var confirmExportPassphrase by remember { mutableStateOf("") }
-    var restorePassphrase by remember { mutableStateOf("") }
+    var exportPassphrase by rememberSaveable { mutableStateOf("") }
+    var confirmExportPassphrase by rememberSaveable { mutableStateOf("") }
+    var restorePassphrase by rememberSaveable { mutableStateOf("") }
     var pendingUriToRestore by remember { mutableStateOf<Uri?>(null) }
-    var showPasswordDialog by remember { mutableStateOf(false) }
-    var newPassphrase by remember { mutableStateOf("") }
-    var confirmNewPassphrase by remember { mutableStateOf("") }
+    var showPasswordDialog by rememberSaveable { mutableStateOf(false) }
+    var newPassphrase by rememberSaveable { mutableStateOf("") }
+    var confirmNewPassphrase by rememberSaveable { mutableStateOf("") }
 
     // File Picker Launcher for Restoring .zip
     val zipPickerLauncher = rememberLauncherForActivityResult(
@@ -176,7 +177,7 @@ fun BackupManagementSection(
                         if (isCreatingBackup) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                         } else {
-                            Icon(imageVector = Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(imageVector = Icons.Outlined.Archive, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (isBn) "ব্যাকআপ নিন" else "Create Backup", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
@@ -197,7 +198,7 @@ fun BackupManagementSection(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp), tint = SecondaryTeal)
+                    Icon(imageVector = Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp), tint = SecondaryTeal)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = if (isBn) "ডিভাইস থেকে ব্যাকআপ ফাইল রিস্টোর করুন (.zip)" else "Choose Backup ZIP from Storage to Restore",
@@ -220,7 +221,7 @@ fun BackupManagementSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.EventRepeat,
+                            imageVector = Icons.Outlined.EventRepeat,
                             contentDescription = null,
                             tint = if (isFridayAutoBackupEnabled) StatusSuccess else TextSecondary,
                             modifier = Modifier.size(22.dp)
@@ -290,7 +291,7 @@ fun BackupManagementSection(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.FolderZip,
+                                imageVector = Icons.Outlined.FolderZip,
                                 contentDescription = null,
                                 tint = PrimaryPurple,
                                 modifier = Modifier.size(22.dp)
@@ -330,7 +331,7 @@ fun BackupManagementSection(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.FolderZip, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryPurple)
+                            Icon(imageVector = Icons.Outlined.FolderZip, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryPurple)
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (isBn) "ফাইল ম্যানেজার থেকে ফোল্ডার সিলেক্ট করুন" else "Select Folder in File Manager",
@@ -370,7 +371,7 @@ fun BackupManagementSection(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = if (isPassSet) Icons.Default.Lock else Icons.Default.LockOpen,
+                                imageVector = if (isPassSet) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
                                 contentDescription = null,
                                 tint = if (isPassSet) StatusSuccess else PrimaryPurple,
                                 modifier = Modifier.size(22.dp)
@@ -411,7 +412,7 @@ fun BackupManagementSection(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(
-                            imageVector = if (isPassSet) Icons.Default.Lock else Icons.Default.LockOpen,
+                            imageVector = if (isPassSet) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
                             tint = if (isPassSet) StatusSuccess else PrimaryPurple
@@ -440,7 +441,7 @@ fun BackupManagementSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.History, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
+                        Icon(imageVector = Icons.Outlined.History, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
                         Text(
                             text = if (isBn) "পূর্ববর্তী ব্যাকআপের তালিকা (${backupRecords.size})" else "Backup History (${backupRecords.size})",
                             style = MaterialTheme.typography.titleSmall,
@@ -476,7 +477,7 @@ fun BackupManagementSection(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.FolderZip,
+                                        imageVector = Icons.Outlined.FolderZip,
                                         contentDescription = null,
                                         tint = PrimaryPurple,
                                         modifier = Modifier.size(24.dp)
@@ -542,7 +543,7 @@ fun BackupManagementSection(
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Share,
+                                            imageVector = Icons.Outlined.Share,
                                             contentDescription = "Share",
                                             tint = PrimaryPurple,
                                             modifier = Modifier.size(18.dp)
@@ -558,7 +559,7 @@ fun BackupManagementSection(
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Restore,
+                                            imageVector = Icons.Outlined.Restore,
                                             contentDescription = "Restore",
                                             tint = SecondaryTeal,
                                             modifier = Modifier.size(18.dp)
@@ -571,7 +572,7 @@ fun BackupManagementSection(
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.DeleteOutline,
+                                            imageVector = Icons.Outlined.DeleteOutline,
                                             contentDescription = "Delete",
                                             tint = MaterialTheme.colorScheme.error,
                                             modifier = Modifier.size(18.dp)
@@ -591,7 +592,7 @@ fun BackupManagementSection(
         val isEnc = bak.fileName.endsWith(".enc") || bak.notes?.contains("Encrypted") == true
         AlertDialog(
             onDismissRequest = { backupToRestore = null; restoreHistoryPassphrase = "" },
-            icon = { Icon(Icons.Default.Restore, contentDescription = null, tint = SecondaryTeal) },
+            icon = { Icon(Icons.Outlined.Restore, contentDescription = null, tint = SecondaryTeal) },
             title = {
                 Text(
                     text = if (isBn) "ব্যাকআপ ফাইল রিস্টোর নিশ্চিতকরণ" else "Confirm Database Restore",
@@ -650,7 +651,7 @@ fun BackupManagementSection(
     pendingUriToRestore?.let { uri ->
         AlertDialog(
             onDismissRequest = { pendingUriToRestore = null; restorePassphrase = "" },
-            icon = { Icon(Icons.Default.CloudDownload, contentDescription = null, tint = SecondaryTeal) },
+            icon = { Icon(Icons.Outlined.CloudDownload, contentDescription = null, tint = SecondaryTeal) },
             title = {
                 Text(
                     text = if (isBn) "নির্বাচিত জিপ ফাইল রিস্টোর করুন" else "Restore Selected ZIP File",
@@ -697,7 +698,7 @@ fun BackupManagementSection(
                 exportPassphrase = ""
                 confirmExportPassphrase = ""
             },
-            icon = { Icon(Icons.Default.Share, contentDescription = null, tint = PrimaryPurple) },
+            icon = { Icon(Icons.Outlined.Share, contentDescription = null, tint = PrimaryPurple) },
             title = { Text(if (isBn) "এনক্রিপ্ট করা ব্যাকআপ শেয়ার" else "Share encrypted backup", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -747,7 +748,7 @@ fun BackupManagementSection(
     backupToDelete?.let { bak ->
         AlertDialog(
             onDismissRequest = { backupToDelete = null },
-            icon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            icon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = {
                 Text(
                     text = if (isBn) "ব্যাকআপ ফাইল মুছবেন?" else "Delete Backup File?",
@@ -784,7 +785,7 @@ fun BackupManagementSection(
         val isMatching = newPassphrase == confirmNewPassphrase
         AlertDialog(
             onDismissRequest = { showPasswordDialog = false },
-            icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = PrimaryPurple) },
+            icon = { Icon(Icons.Outlined.Lock, contentDescription = null, tint = PrimaryPurple) },
             title = {
                 Text(
                     text = if (isBn) "ব্যাকআপ পাসওয়ার্ড সেট করুন" else "Set Backup Password",

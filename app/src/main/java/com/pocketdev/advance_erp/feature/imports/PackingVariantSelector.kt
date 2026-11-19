@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.DropdownMenu
@@ -15,7 +16,7 @@ internal fun PackingVariantSelector(productId: String, variantId: String?, varia
     isBangla: Boolean, onSelect: (String?) -> Unit) {
     val choices = variants.filter { it.productId == productId && it.isActive }
     if (choices.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     fun label(v: ProductVariant) = listOfNotNull(v.color, v.size, v.sku).filter { it.isNotBlank() }.joinToString(" / ")
     val base = if (isBangla) "ভ্যারিয়েন্ট ছাড়া" else "Base product"
     Box {

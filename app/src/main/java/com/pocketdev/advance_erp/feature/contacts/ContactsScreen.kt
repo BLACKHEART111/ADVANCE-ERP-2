@@ -1,16 +1,17 @@
 package com.pocketdev.advance_erp.feature.contacts
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.Activity
 import android.content.Intent
 import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
-import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.ContactPhone
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.ContactPhone
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
@@ -46,13 +47,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FloatingActionButton
@@ -152,10 +153,10 @@ fun ContactsScreen(
             FloatingActionButton(
                 onClick = { viewModel.setAddDialogVisible(true) },
                 containerColor = PrimaryPurple,
-                contentColor = Color.White,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Contact")
+                Icon(Icons.Outlined.Add, contentDescription = "Add Contact")
             }
         }
     ) { padding ->
@@ -186,7 +187,7 @@ fun ContactsScreen(
                         text = stringResource(R.string.customers),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (isCustomers) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isCustomers) Color.White else TextPrimary
+                        color = if (isCustomers) MaterialTheme.colorScheme.onPrimary else TextPrimary
                     )
                 }
 
@@ -203,7 +204,7 @@ fun ContactsScreen(
                         text = stringResource(R.string.suppliers),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (!isCustomers) FontWeight.Bold else FontWeight.Medium,
-                        color = if (!isCustomers) Color.White else TextPrimary
+                        color = if (!isCustomers) MaterialTheme.colorScheme.onPrimary else TextPrimary
                     )
                 }
             }
@@ -214,7 +215,7 @@ fun ContactsScreen(
             if (state.selectedTab == ContactsTab.CUSTOMERS) {
                 if (state.customers.isEmpty()) {
                     ERPEmptyState(
-                        icon = Icons.Default.Group,
+                        icon = Icons.Outlined.Group,
                         title = stringResource(R.string.no_contacts),
                         message = "No customers registered yet.",
                         actionText = stringResource(R.string.add_customer),
@@ -320,11 +321,11 @@ fun ContactsScreen(
                                             modifier = Modifier.weight(1f),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Default.Call, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
+                                            Icon(Icons.Outlined.Call, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(text = c.phone, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
                                             Spacer(modifier = Modifier.width(16.dp))
-                                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                                            Icon(Icons.Outlined.LocationOn, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(text = c.address, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1)
                                         }
@@ -342,7 +343,7 @@ fun ContactsScreen(
                                                     modifier = Modifier.height(30.dp)
                                                 ) {
                                                     Icon(
-                                                        Icons.Default.Send,
+                                                        Icons.Outlined.Send,
                                                         contentDescription = null,
                                                         modifier = Modifier.size(12.dp),
                                                         tint = Color.White
@@ -362,7 +363,7 @@ fun ContactsScreen(
                                                 modifier = Modifier.size(28.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    imageVector = Icons.Outlined.DeleteOutline,
                                                     contentDescription = "Delete Customer",
                                                     tint = StatusError,
                                                     modifier = Modifier.size(18.dp)
@@ -378,7 +379,7 @@ fun ContactsScreen(
             } else {
                 if (state.suppliers.isEmpty()) {
                     ERPEmptyState(
-                        icon = Icons.Default.Storefront,
+                        icon = Icons.Outlined.Storefront,
                         title = stringResource(R.string.no_contacts),
                         message = "No overseas suppliers recorded.",
                         actionText = stringResource(R.string.add_supplier),
@@ -407,7 +408,7 @@ fun ContactsScreen(
                                                 text = Formatters.formatMoney(s.outstandingPayableMinor, state.currency, state.language),
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                color = DeepNavy
+                                                color = TextPrimary
                                             )
                                             Text(text = "Payable Due", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                         }
@@ -538,14 +539,14 @@ private fun AddContactDialog(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var name by remember { mutableStateOf("") }
-    var contactPerson by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
-    var creditLimitStr by remember { mutableStateOf("") }
-    var country by remember { mutableStateOf("China") }
-    var currency by remember { mutableStateOf("CNY") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var contactPerson by rememberSaveable { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var address by rememberSaveable { mutableStateOf("") }
+    var creditLimitStr by rememberSaveable { mutableStateOf("") }
+    var country by rememberSaveable { mutableStateOf("China") }
+    var currency by rememberSaveable { mutableStateOf("CNY") }
     var profileImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
@@ -596,7 +597,7 @@ private fun AddContactDialog(
                         fontWeight = FontWeight.Bold
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Outlined.Close, contentDescription = "Close")
                     }
                 }
 
@@ -637,7 +638,7 @@ private fun AddContactDialog(
                                     )
                                 } else {
                                     Icon(
-                                        Icons.Default.CameraAlt,
+                                        Icons.Outlined.CameraAlt,
                                         contentDescription = "Add Photo",
                                         tint = PrimaryPurple,
                                         modifier = Modifier.size(24.dp)
@@ -674,7 +675,7 @@ private fun AddContactDialog(
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                         ) {
-                            Icon(Icons.Default.ContactPhone, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                            Icon(Icons.Outlined.ContactPhone, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (isBangla) "কন্টাক্ট থেকে আনুন" else "Pick from Contacts",

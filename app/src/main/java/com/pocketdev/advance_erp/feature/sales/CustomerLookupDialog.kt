@@ -1,11 +1,12 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.Activity
 import android.content.Intent
 import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.filled.ContactPhone
+import androidx.compose.material.icons.outlined.ContactPhone
 import androidx.compose.ui.platform.LocalContext
 import com.pocketdev.advance_erp.core.util.ContactPickerHelper
 import androidx.compose.foundation.background
@@ -28,12 +29,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -82,15 +83,15 @@ fun CustomerLookupDialog(
     onSelectCustomer: (Customer) -> Unit,
     onCreateNewCustomer: (NewCustomerDraft) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var isCreatingNew by remember { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isCreatingNew by rememberSaveable { mutableStateOf(false) }
 
     // New Customer Form State
-    var newName by remember { mutableStateOf("") }
-    var newPhone by remember { mutableStateOf("") }
-    var newAddress by remember { mutableStateOf("") }
-    var newEmail by remember { mutableStateOf("") }
-    var newOpeningBalanceStr by remember { mutableStateOf("0.00") }
+    var newName by rememberSaveable { mutableStateOf("") }
+    var newPhone by rememberSaveable { mutableStateOf("") }
+    var newAddress by rememberSaveable { mutableStateOf("") }
+    var newEmail by rememberSaveable { mutableStateOf("") }
+    var newOpeningBalanceStr by rememberSaveable { mutableStateOf("0.00") }
     var formError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
@@ -168,7 +169,7 @@ fun CustomerLookupDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -188,12 +189,12 @@ fun CustomerLookupDialog(
                             )
                         },
                         leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = "Search", tint = PrimaryPurple)
+                            Icon(Icons.Outlined.Search, contentDescription = "Search", tint = PrimaryPurple)
                         },
                         trailingIcon = {
                             if (searchQuery.isNotBlank()) {
                                 IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextMuted)
+                                    Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = TextMuted)
                                 }
                             }
                         },
@@ -232,7 +233,7 @@ fun CustomerLookupDialog(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Add, contentDescription = "Add", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Add, contentDescription = "Add", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (isBangla) "নতুন গ্রাহক — তৈরি ও চালিয়ে যান" else "New Customer — Create & Continue",
@@ -311,7 +312,7 @@ fun CustomerLookupDialog(
                                             onDismiss()
                                         },
                                     shape = RoundedCornerShape(8.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                                 ) {
                                     Row(
@@ -330,7 +331,7 @@ fun CustomerLookupDialog(
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
-                                                    Icons.Default.Person,
+                                                    Icons.Outlined.Person,
                                                     contentDescription = null,
                                                     tint = PrimaryPurple,
                                                     modifier = Modifier.size(18.dp)
@@ -352,7 +353,7 @@ fun CustomerLookupDialog(
                                             }
                                         }
                                         Icon(
-                                            Icons.Default.Check,
+                                            Icons.Outlined.Check,
                                             contentDescription = "Select",
                                             tint = SecondaryTeal,
                                             modifier = Modifier.size(18.dp)
@@ -389,7 +390,7 @@ fun CustomerLookupDialog(
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Icon(
-                                    Icons.Default.ContactPhone,
+                                    Icons.Outlined.ContactPhone,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp),
                                     tint = Color.White

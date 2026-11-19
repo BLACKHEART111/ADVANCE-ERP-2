@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.EditCalendar
-import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.EditCalendar
+import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -154,7 +154,7 @@ fun CustomDateRangeDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.EditCalendar,
+                            imageVector = Icons.Outlined.EditCalendar,
                             contentDescription = null,
                             tint = PrimaryPurple,
                             modifier = Modifier.size(22.dp)
@@ -168,7 +168,7 @@ fun CustomDateRangeDialog(
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(
-                            imageVector = Icons.Default.Close,
+                            imageVector = Icons.Outlined.Close,
                             contentDescription = "Close",
                             modifier = Modifier.size(20.dp)
                         )
@@ -200,7 +200,7 @@ fun CustomDateRangeDialog(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.CalendarMonth,
+                                    imageVector = Icons.Outlined.CalendarMonth,
                                     contentDescription = null,
                                     tint = PrimaryPurple,
                                     modifier = Modifier.size(14.dp)
@@ -246,7 +246,7 @@ fun CustomDateRangeDialog(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Event,
+                                    imageVector = Icons.Outlined.Event,
                                     contentDescription = null,
                                     tint = SecondaryTeal,
                                     modifier = Modifier.size(14.dp)
@@ -374,7 +374,7 @@ fun CustomDateRangeDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.DateRange,
+                            imageVector = Icons.Outlined.DateRange,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
                             tint = Color.White

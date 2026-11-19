@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.accounts
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -26,24 +29,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Equalizer
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Equalizer
+import androidx.compose.material.icons.outlined.Error
+import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Replay
+import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -123,14 +126,14 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 enum class AccountsTab(val titleEn: String, val titleBn: String, val icon: ImageVector) {
-    CASH_BANK("Cash & Bank", "নগদ ও ব্যাংক", Icons.Default.AccountBalance),
-    EXPENSES("Expenses", "ব্যয় ব্যবস্থাপনা", Icons.Default.ReceiptLong),
-    STATEMENTS("Financial Statements", "আর্থিক বিবরণী", Icons.Default.Assessment),
-    RECONCILIATION("Bank Reconcile", "ব্যাংক সমন্বয়", Icons.Default.CheckCircle),
-    CHART_OF_ACCOUNTS("Chart of Accounts", "হিসাব তালিকা", Icons.Default.FormatListNumbered),
-    JOURNAL("Journal Entries", "জাবেদা দাখিলা", Icons.Default.MenuBook),
-    TRIAL_BALANCE("Trial Balance", "রেওয়ামিল", Icons.Default.Equalizer),
-    BACKUP_RESTORE("Backup & Safety", "ব্যাকআপ ও নিরাপত্তা", Icons.Default.Security)
+    CASH_BANK("Cash & Bank", "নগদ ও ব্যাংক", Icons.Outlined.AccountBalance),
+    EXPENSES("Expenses", "ব্যয় ব্যবস্থাপনা", Icons.Outlined.ReceiptLong),
+    STATEMENTS("Financial Statements", "আর্থিক বিবরণী", Icons.Outlined.Assessment),
+    RECONCILIATION("Bank Reconcile", "ব্যাংক সমন্বয়", Icons.Outlined.CheckCircle),
+    CHART_OF_ACCOUNTS("Chart of Accounts", "হিসাব তালিকা", Icons.Outlined.FormatListNumbered),
+    JOURNAL("Journal Entries", "জাবেদা দাখিলা", Icons.Outlined.MenuBook),
+    TRIAL_BALANCE("Trial Balance", "রেওয়ামিল", Icons.Outlined.Equalizer),
+    BACKUP_RESTORE("Backup & Safety", "ব্যাকআপ ও নিরাপত্তা", Icons.Outlined.Security)
 }
 
 private enum class CoaFilterCategory(val titleEn: String, val titleBn: String) {
@@ -152,23 +155,23 @@ fun AccountsScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val isBangla = uiState.language == AppLanguage.BANGLA
-    var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
+    var selectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
 
     // Dialog state
-    var showNewAccountDialog by remember { mutableStateOf(false) }
+    var showNewAccountDialog by rememberSaveable { mutableStateOf(false) }
     var newAccountInitialKind by remember { mutableStateOf<LiquidAccountKind?>(LiquidAccountKind.BANK) }
-    var newAccountGeneralMode by remember { mutableStateOf(false) }
+    var newAccountGeneralMode by rememberSaveable { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<ChartOfAccount?>(null) }
     var detailAccount by remember { mutableStateOf<ChartOfAccount?>(null) }
 
-    var coaSearchQuery by remember { mutableStateOf("") }
+    var coaSearchQuery by rememberSaveable { mutableStateOf("") }
     var coaCategoryFilter by remember { mutableStateOf(CoaFilterCategory.ALL) }
 
-    var showNewJournalDialog by remember { mutableStateOf(false) }
-    var showRecordExpenseDialog by remember { mutableStateOf(false) }
-    var showTransferDialog by remember { mutableStateOf(false) }
-    var showReconciliationDialog by remember { mutableStateOf(false) }
-    var showCreateBackupDialog by remember { mutableStateOf(false) }
+    var showNewJournalDialog by rememberSaveable { mutableStateOf(false) }
+    var showRecordExpenseDialog by rememberSaveable { mutableStateOf(false) }
+    var showTransferDialog by rememberSaveable { mutableStateOf(false) }
+    var showReconciliationDialog by rememberSaveable { mutableStateOf(false) }
+    var showCreateBackupDialog by rememberSaveable { mutableStateOf(false) }
 
     var entryToReverse by remember { mutableStateOf<JournalEntry?>(null) }
     var expenseToReverse by remember { mutableStateOf<ExpenseVoucher?>(null) }
@@ -237,7 +240,7 @@ fun AccountsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AccountBalance,
+                            imageVector = Icons.Outlined.AccountBalance,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(24.dp)
@@ -287,7 +290,7 @@ fun AccountsScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) PrimaryPurple else Color.White)
+                            .background(if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .clickable {
                                 selectedTab = tab
                                 if (tab == AccountsTab.TRIAL_BALANCE) {
@@ -311,7 +314,7 @@ fun AccountsScreen(
                                 text = if (uiState.language == AppLanguage.BANGLA) tab.titleBn else tab.titleEn,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color.White else TextPrimary
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary
                             )
                         }
                     }
@@ -374,7 +377,7 @@ fun AccountsScreen(
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(if (isBangla) "ব্যাংক / বিকাশ যোগ" else "Add Bank / MFS", fontSize = 12.sp, maxLines = 1)
                                 }
@@ -384,7 +387,7 @@ fun AccountsScreen(
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(if (isBangla) "ফান্ড ট্রান্সফার" else "Transfer Funds", fontSize = 12.sp, maxLines = 1)
                                 }
@@ -491,7 +494,7 @@ fun AccountsScreen(
                                     },
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("CSV", fontSize = 11.sp)
                                 }
@@ -507,14 +510,14 @@ fun AccountsScreen(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(16.dp))
-                                                .background(if (isSel) SecondaryTeal else Color.White)
+                                                .background(if (isSel) SecondaryTeal else MaterialTheme.colorScheme.surface)
                                                 .border(1.dp, if (isSel) SecondaryTeal else ERPDivider, RoundedCornerShape(16.dp))
                                                 .clickable { viewModel.selectBankAccountForBook(acc.id) }
                                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                                         ) {
                                             Text(
                                                 text = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn,
-                                                color = if (isSel) Color.White else TextPrimary,
+                                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                                 fontSize = 11.sp,
                                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                                 maxLines = 1
@@ -583,7 +586,7 @@ fun AccountsScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("New Expense", fontSize = 12.sp)
                             }
@@ -607,12 +610,12 @@ fun AccountsScreen(
                                     ) {
                                         Column {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(exp.voucherNumber, fontWeight = FontWeight.Bold, color = DeepNavy)
+                                                Text(exp.voucherNumber, fontWeight = FontWeight.Bold, color = TextPrimary)
                                                 if (exp.isReversed) {
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Box(
                                                         modifier = Modifier
-                                                            .background(Color(0xFFFEE2E2), RoundedCornerShape(4.dp))
+                                                            .background(StatusErrorContainer, RoundedCornerShape(4.dp))
                                                             .padding(horizontal = 4.dp, vertical = 1.dp)
                                                     ) {
                                                         Text("VOID/REVERSED", color = StatusError, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -627,7 +630,7 @@ fun AccountsScreen(
                                             Text(
                                                 Formatters.formatMoney(exp.bdtAmountMinor, CurrencyCode.BDT, uiState.language),
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFE11D48)
+                                                color = StatusError
                                             )
                                             if (exp.currency != "BDT") {
                                                 Text("${exp.currency} ${exp.amountMinor / 100.0} @ ${exp.exchangeRateToBdt}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
@@ -640,7 +643,7 @@ fun AccountsScreen(
                                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                                     modifier = Modifier.height(26.dp)
                                                 ) {
-                                                    Icon(Icons.Default.Replay, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                    Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(12.dp))
                                                     Spacer(modifier = Modifier.width(2.dp))
                                                     Text("Reverse", fontSize = 10.sp)
                                                 }
@@ -674,7 +677,7 @@ fun AccountsScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("P&L PDF", fontSize = 11.sp)
                                 }
@@ -683,7 +686,7 @@ fun AccountsScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Balance PDF", fontSize = 11.sp)
                                 }
@@ -694,9 +697,9 @@ fun AccountsScreen(
                     // Profit & Loss Card
                     uiState.profitAndLoss?.let { pnl ->
                         item {
-                            ERPCard(backgroundColor = Color(0xFFF8FAFC), contentPadding = 14.dp) {
+                            ERPCard(backgroundColor = ERPSurfaceVariant, contentPadding = 14.dp) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    Text("Profit & Loss Summary (Income Statement)", fontWeight = FontWeight.Bold, color = DeepNavy)
+                                    Text("Profit & Loss Summary (Income Statement)", fontWeight = FontWeight.Bold, color = TextPrimary)
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Gross Sales Revenue", style = MaterialTheme.typography.bodySmall)
@@ -708,7 +711,7 @@ fun AccountsScreen(
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Cost of Goods Sold (COGS)", style = MaterialTheme.typography.bodySmall)
-                                        Text("- ${Formatters.formatMoney(pnl.costOfGoodsSoldMinor, CurrencyCode.BDT, uiState.language)}", color = Color(0xFFE11D48))
+                                        Text("- ${Formatters.formatMoney(pnl.costOfGoodsSoldMinor, CurrencyCode.BDT, uiState.language)}", color = StatusError)
                                     }
                                     Divider(color = ERPDivider, modifier = Modifier.padding(vertical = 4.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -717,7 +720,7 @@ fun AccountsScreen(
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Operating Expenses", style = MaterialTheme.typography.bodySmall)
-                                        Text("- ${Formatters.formatMoney(pnl.totalOperatingExpensesMinor, CurrencyCode.BDT, uiState.language)}", color = Color(0xFFE11D48))
+                                        Text("- ${Formatters.formatMoney(pnl.totalOperatingExpensesMinor, CurrencyCode.BDT, uiState.language)}", color = StatusError)
                                     }
                                     Divider(color = ERPDivider, modifier = Modifier.padding(vertical = 4.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -733,10 +736,10 @@ fun AccountsScreen(
                     // Balance Sheet Card
                     uiState.balanceSheet?.let { bs ->
                         item {
-                            ERPCard(backgroundColor = Color(0xFFF8FAFC), contentPadding = 14.dp) {
+                            ERPCard(backgroundColor = ERPSurfaceVariant, contentPadding = 14.dp) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Balance Sheet (Financial Position)", fontWeight = FontWeight.Bold, color = DeepNavy)
+                                        Text("Balance Sheet (Financial Position)", fontWeight = FontWeight.Bold, color = TextPrimary)
                                         Box(
                                             modifier = Modifier
                                                 .background(if (bs.isBalanced) StatusSuccess.copy(alpha = 0.15f) else StatusError.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
@@ -752,7 +755,7 @@ fun AccountsScreen(
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Total Liabilities", style = MaterialTheme.typography.bodySmall)
-                                        Text(Formatters.formatMoney(bs.totalLiabilitiesMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold, color = Color(0xFFE11D48))
+                                        Text(Formatters.formatMoney(bs.totalLiabilitiesMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold, color = StatusError)
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Total Equity (Capital + Retained)", style = MaterialTheme.typography.bodySmall)
@@ -767,7 +770,7 @@ fun AccountsScreen(
                     item {
                         ERPCard(contentPadding = 14.dp) {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                Text("Working Capital Aging Breakdown", fontWeight = FontWeight.Bold, color = DeepNavy)
+                                Text("Working Capital Aging Breakdown", fontWeight = FontWeight.Bold, color = TextPrimary)
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text("Customer Receivables Aging:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                                 uiState.receivablesAging?.buckets?.forEach { b ->
@@ -809,7 +812,7 @@ fun AccountsScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("New Reconciliation", fontSize = 12.sp)
                             }
@@ -832,7 +835,7 @@ fun AccountsScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column {
-                                            Text(rec.reconciliationNumber, fontWeight = FontWeight.Bold, color = DeepNavy)
+                                            Text(rec.reconciliationNumber, fontWeight = FontWeight.Bold, color = TextPrimary)
                                             Text("Bank A/C: ${rec.bankAccountId} • ${rec.status}", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
                                             Text("Period: ${Formatters.formatDate(rec.statementStartDate, uiState.language)} - ${Formatters.formatDate(rec.statementEndDate, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                         }
@@ -880,7 +883,7 @@ fun AccountsScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(if (isBangla) "নতুন A/C" else "New A/C", fontSize = 12.sp)
                             }
@@ -914,14 +917,14 @@ fun AccountsScreen(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(18.dp))
-                                        .background(if (isSel) PrimaryPurple else Color.White)
+                                        .background(if (isSel) PrimaryPurple else MaterialTheme.colorScheme.surface)
                                         .border(1.dp, if (isSel) PrimaryPurple else ERPDivider, RoundedCornerShape(18.dp))
                                         .clickable { coaCategoryFilter = cat }
                                         .padding(horizontal = 11.dp, vertical = 6.dp)
                                 ) {
                                     Text(
                                         text = "${if (isBangla) cat.titleBn else cat.titleEn} ($count)",
-                                        color = if (isSel) Color.White else TextPrimary,
+                                        color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                         fontSize = 11.sp,
                                         fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
                                     )
@@ -992,7 +995,7 @@ fun AccountsScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("New Entry", fontSize = 12.sp)
                             }
@@ -1016,12 +1019,12 @@ fun AccountsScreen(
                                     ) {
                                         Column {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(entry.entryNumber, fontWeight = FontWeight.Bold, color = DeepNavy)
+                                                Text(entry.entryNumber, fontWeight = FontWeight.Bold, color = TextPrimary)
                                                 if (entry.isReversed) {
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Box(
                                                         modifier = Modifier
-                                                            .background(Color(0xFFFEE2E2), RoundedCornerShape(4.dp))
+                                                            .background(StatusErrorContainer, RoundedCornerShape(4.dp))
                                                             .padding(horizontal = 4.dp, vertical = 1.dp)
                                                     ) {
                                                         Text("REVERSED", color = StatusError, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -1046,7 +1049,7 @@ fun AccountsScreen(
                                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                                     modifier = Modifier.height(26.dp)
                                                 ) {
-                                                    Icon(Icons.Default.Replay, contentDescription = null, modifier = Modifier.size(12.dp))
+                                                    Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(12.dp))
                                                     Spacer(modifier = Modifier.width(2.dp))
                                                     Text("Reverse", fontSize = 10.sp)
                                                 }
@@ -1085,7 +1088,7 @@ fun AccountsScreen(
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            imageVector = if (uiState.isBalanced) Icons.Default.CheckCircle else Icons.Default.Error,
+                                            imageVector = if (uiState.isBalanced) Icons.Outlined.CheckCircle else Icons.Outlined.Error,
                                             contentDescription = null,
                                             tint = if (uiState.isBalanced) StatusSuccess else StatusError,
                                             modifier = Modifier.size(14.dp)
@@ -1100,7 +1103,7 @@ fun AccountsScreen(
                                     }
                                 }
                                 IconButton(onClick = { viewModel.exportFinancialCsv(context, "TRIAL_BALANCE") }) {
-                                    Icon(Icons.Default.Download, contentDescription = "CSV", tint = PrimaryPurple)
+                                    Icon(Icons.Outlined.Download, contentDescription = "CSV", tint = PrimaryPurple)
                                 }
                             }
                         }
@@ -1154,7 +1157,7 @@ fun AccountsScreen(
                                                 if (tb.netDebitMinor > 0L) Formatters.formatMoney(tb.netDebitMinor, CurrencyCode.BDT, uiState.language) else "-",
                                                 fontWeight = FontWeight.Bold,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = DeepNavy
+                                                color = TextPrimary
                                             )
                                         }
                                         Column(horizontalAlignment = Alignment.End) {
@@ -1193,7 +1196,7 @@ fun AccountsScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Security, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Create Backup", fontSize = 12.sp)
                             }
@@ -1516,9 +1519,9 @@ private fun AccountBalanceCard(
     onClick: () -> Unit
 ) {
     val icon = when (kind) {
-        LiquidAccountKind.CASH -> Icons.Default.AccountBalanceWallet
-        LiquidAccountKind.BANK -> Icons.Default.AccountBalance
-        LiquidAccountKind.MOBILE_BANKING -> Icons.Default.PhoneAndroid
+        LiquidAccountKind.CASH -> Icons.Outlined.AccountBalanceWallet
+        LiquidAccountKind.BANK -> Icons.Outlined.AccountBalance
+        LiquidAccountKind.MOBILE_BANKING -> Icons.Outlined.PhoneAndroid
     }
     ERPCard(
         contentPadding = 14.dp,
@@ -1593,7 +1596,7 @@ private fun CoaGroupHeader(
                 text = if (isBangla) "${accountType.titleBn} (${accountType.titleEn})" else accountType.titleEn.uppercase(),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.ExtraBold,
-                color = DeepNavy
+                color = TextPrimary
             )
         }
         Box(
@@ -1730,12 +1733,13 @@ private fun ChartOfAccountCard(
     }
 }
 
+@Composable
 private fun accountTypeColor(accountType: String): Color = when (accountType) {
     "ASSET" -> StatusSuccess
     "LIABILITY" -> PrimaryPurple
     "EQUITY" -> DeepNavy
     "REVENUE" -> SecondaryTeal
-    else -> Color(0xFFE11D48)
+    else -> StatusError
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1747,7 +1751,7 @@ private fun AccountDropdownField(
     onSelect: (ChartOfAccount) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val selected = accounts.find { it.id == selectedAccountId }
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -1815,11 +1819,11 @@ private fun RecordExpenseDialog(
 ) {
     val categories = ExpenseCategory.entries
     var selectedCat by remember { mutableStateOf(categories.first()) }
-    var descEn by remember { mutableStateOf("") }
-    var descBn by remember { mutableStateOf("") }
-    var amountStr by remember { mutableStateOf("") }
-    var currency by remember { mutableStateOf("BDT") }
-    var exchangeRate by remember { mutableStateOf("1.0000") }
+    var descEn by rememberSaveable { mutableStateOf("") }
+    var descBn by rememberSaveable { mutableStateOf("") }
+    var amountStr by rememberSaveable { mutableStateOf("") }
+    var currency by rememberSaveable { mutableStateOf("BDT") }
+    var exchangeRate by rememberSaveable { mutableStateOf("1.0000") }
     val paymentAccounts = remember(accounts) {
         val liquid = accounts.filter { it.liquidKind != null }
         val others = accounts.filter { it.liquidKind == null && it.accountType in listOf("ASSET", "LIABILITY") }
@@ -1828,7 +1832,7 @@ private fun RecordExpenseDialog(
     var paymentAccountId by remember(paymentAccounts) {
         mutableStateOf(paymentAccounts.find { it.accountCode == "1010" }?.id ?: paymentAccounts.firstOrNull()?.id ?: "")
     }
-    var refNumber by remember { mutableStateOf("") }
+    var refNumber by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Dialog(
@@ -1844,7 +1848,7 @@ private fun RecordExpenseDialog(
                     .padding(18.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Text("Record Operating Expense", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
+                Text("Record Operating Expense", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text("Expense Category:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
@@ -1854,11 +1858,11 @@ private fun RecordExpenseDialog(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) PrimaryPurple else Color(0xFFF1F5F9))
+                                .background(if (isSel) PrimaryPurple else ERPSurfaceVariant)
                                 .clickable { selectedCat = cat }
                                 .padding(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            Text(cat.titleEn, color = if (isSel) Color.White else TextPrimary, fontSize = 11.sp)
+                            Text(cat.titleEn, color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary, fontSize = 11.sp)
                         }
                     }
                 }
@@ -1973,8 +1977,8 @@ private fun AccountTransferDialog(
 ) {
     var sourceId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
     var destId by remember { mutableStateOf(accounts.getOrNull(1)?.id ?: "") }
-    var amountStr by remember { mutableStateOf("") }
-    var refStr by remember { mutableStateOf("") }
+    var amountStr by rememberSaveable { mutableStateOf("") }
+    var refStr by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Dialog(
@@ -1986,7 +1990,7 @@ private fun AccountTransferDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Inter-Account Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
+                Text("Inter-Account Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 AccountDropdownField(
@@ -2065,9 +2069,9 @@ private fun StartReconciliationDialog(
     onConfirm: (bankAccountId: String, start: Long, end: Long, openBal: Long, closeBal: Long, notes: String?) -> Unit
 ) {
     var selectedAccId by remember { mutableStateOf(bankAccounts.firstOrNull()?.id ?: "") }
-    var openBalStr by remember { mutableStateOf("0.00") }
-    var closeBalStr by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var openBalStr by rememberSaveable { mutableStateOf("0.00") }
+    var closeBalStr by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -2076,7 +2080,7 @@ private fun StartReconciliationDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Start Bank Reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
+                Text("Start Bank Reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 AccountDropdownField(
@@ -2147,7 +2151,7 @@ private fun CreateBackupDialog(
     onDismiss: () -> Unit,
     onConfirm: (notes: String?) -> Unit
 ) {
-    var notes by remember { mutableStateOf("Manual offline archive snapshot") }
+    var notes by rememberSaveable { mutableStateOf("Manual offline archive snapshot") }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -2155,7 +2159,7 @@ private fun CreateBackupDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Create Offline Safety Backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
+                Text("Create Offline Safety Backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "This creates an immutable copy of advance_erp.db on local storage, flushes active SQLite WAL journals, and records a SHA-256 integrity checksum.",
@@ -2197,10 +2201,10 @@ private fun NewJournalEntryDialog(
     onDismiss: () -> Unit,
     onConfirm: (descEn: String, descBn: String, lines: List<JournalLineDraft>) -> Unit
 ) {
-    var descEn by remember { mutableStateOf("Manual Adjustment Entry") }
+    var descEn by rememberSaveable { mutableStateOf("Manual Adjustment Entry") }
     var debitAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
     var creditAccountId by remember { mutableStateOf(accounts.getOrNull(1)?.id ?: "") }
-    var amountStr by remember { mutableStateOf("10000.00") }
+    var amountStr by rememberSaveable { mutableStateOf("10000.00") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Dialog(
@@ -2212,7 +2216,7 @@ private fun NewJournalEntryDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("New Double-Entry Journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = DeepNavy)
+                Text("New Double-Entry Journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(

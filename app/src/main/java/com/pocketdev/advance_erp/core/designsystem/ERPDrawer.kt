@@ -25,22 +25,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Inventory
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Inventory
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -91,19 +91,19 @@ enum class DrawerDestination(
     val icon: ImageVector,
     val labelResId: Int
 ) {
-    DASHBOARD("dashboard", Icons.Default.Dashboard, R.string.nav_dashboard),
-    PRODUCTS("products", Icons.Default.Category, R.string.nav_products),
-    INVENTORY("inventory", Icons.Default.Inventory, R.string.nav_inventory),
-    PURCHASES("purchases", Icons.Default.ShoppingCart, R.string.nav_purchases),
-    IMPORT_MANAGEMENT("import_management", Icons.Default.Public, R.string.nav_import_management),
-    SHIPMENTS("shipments", Icons.Default.FlightTakeoff, R.string.nav_shipments),
-    CUSTOMERS("customers", Icons.Default.Group, R.string.nav_customers),
-    SUPPLIERS("suppliers", Icons.Default.Storefront, R.string.nav_suppliers),
-    SALES("sales", Icons.Default.ShoppingBag, R.string.nav_sales),
-    ACCOUNTS("accounts", Icons.Default.AccountBalance, R.string.nav_accounts),
-    LEDGER("ledger", Icons.Default.MenuBook, R.string.nav_ledger),
-    REPORTS("reports", Icons.Default.Assessment, R.string.nav_reports),
-    SETTINGS("settings", Icons.Default.Settings, R.string.nav_settings)
+    DASHBOARD("dashboard", Icons.Outlined.Dashboard, R.string.nav_dashboard),
+    PRODUCTS("products", Icons.Outlined.Category, R.string.nav_products),
+    INVENTORY("inventory", Icons.Outlined.Inventory, R.string.nav_inventory),
+    PURCHASES("purchases", Icons.Outlined.ShoppingCart, R.string.nav_purchases),
+    IMPORT_MANAGEMENT("import_management", Icons.Outlined.Public, R.string.nav_import_management),
+    SHIPMENTS("shipments", Icons.Outlined.FlightTakeoff, R.string.nav_shipments),
+    CUSTOMERS("customers", Icons.Outlined.Group, R.string.nav_customers),
+    SUPPLIERS("suppliers", Icons.Outlined.Storefront, R.string.nav_suppliers),
+    SALES("sales", Icons.Outlined.ShoppingBag, R.string.nav_sales),
+    ACCOUNTS("accounts", Icons.Outlined.AccountBalance, R.string.nav_accounts),
+    LEDGER("ledger", Icons.Outlined.MenuBook, R.string.nav_ledger),
+    REPORTS("reports", Icons.Outlined.Assessment, R.string.nav_reports),
+    SETTINGS("settings", Icons.Outlined.Settings, R.string.nav_settings)
 }
 
 @Composable
@@ -121,12 +121,12 @@ fun ERPDrawer(
     ModalDrawerSheet(
         modifier = modifier.width(300.dp),
         drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
-        drawerContainerColor = DrawerTeal
+        drawerContainerColor = ERPSurface
     ) {
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .background(DrawerTeal)
+                .background(ERPSurface)
         ) {
             // Header with seamless curved wave & real-time clock & profile photo picker
             DrawerWaveHeader(
@@ -349,7 +349,7 @@ private fun DrawerWaveHeader(
                         .clip(CircleShape)
                         .clickable { showPhotoOptionsDialog = true },
                     shape = CircleShape,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 4.dp
                 ) {
                     val customFile = profilePhotoUri?.let { File(it) }
@@ -389,7 +389,7 @@ private fun DrawerWaveHeader(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Edit,
+                        imageVector = Icons.Outlined.Edit,
                         contentDescription = stringResource(R.string.drawer_select_photo),
                         tint = Color.White,
                         modifier = Modifier.size(12.dp)
@@ -414,7 +414,7 @@ private fun DrawerWaveHeader(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Icon(
-                    imageVector = Icons.Default.Edit,
+                    imageVector = Icons.Outlined.Edit,
                     contentDescription = null,
                     tint = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.size(13.dp)
@@ -446,7 +446,7 @@ private fun DrawerWaveHeader(
                             .size(72.dp)
                             .border(2.dp, SecondaryTeal, CircleShape),
                         shape = CircleShape,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.surface
                     ) {
                         val customFile = profilePhotoUri?.let { File(it) }
                         if (customFile != null && customFile.exists()) {
@@ -480,7 +480,7 @@ private fun DrawerWaveHeader(
                         colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Outlined.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.drawer_select_photo))
                     }
@@ -494,7 +494,7 @@ private fun DrawerWaveHeader(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Outlined.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(stringResource(R.string.drawer_remove_photo))
                         }
@@ -557,7 +557,7 @@ private fun DrawerMenuItemRow(
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .background(
-                    if (isSelected) DrawerTealDark.copy(alpha = 0.5f) else Color.Transparent
+                    if (isSelected) PrimaryPurpleContainer else Color.Transparent
                 )
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -565,7 +565,7 @@ private fun DrawerMenuItemRow(
             Icon(
                 imageVector = destination.icon,
                 contentDescription = stringResource(destination.labelResId),
-                tint = if (isSelected) Color.White else DrawerIconTint,
+                tint = if (isSelected) PrimaryPurple else TextSecondary,
                 modifier = Modifier.size(20.dp)
             )
 
@@ -577,13 +577,13 @@ private fun DrawerMenuItemRow(
                     fontSize = 15.sp,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                 ),
-                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.95f)
+                color = if (isSelected) PrimaryPurple else TextPrimary
             )
         }
 
         // Elegant thin divider line aligned with text
         HorizontalDivider(
-            color = DrawerDivider,
+            color = ERPDivider,
             thickness = 0.8.dp,
             modifier = Modifier.padding(start = 56.dp, end = 20.dp)
         )

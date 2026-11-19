@@ -1,5 +1,9 @@
 package com.pocketdev.advance_erp.feature.more
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusError
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,16 +22,17 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -63,15 +68,16 @@ fun MoreHubScreen(
     modifier: Modifier = Modifier
 ) {
     val items = listOf(
-        MoreHubItem("products", R.string.nav_products, R.string.more_products_subtitle, Icons.Default.Category, PrimaryPurple),
-        MoreHubItem("import_management", R.string.nav_import_management, R.string.more_import_subtitle, Icons.Default.Public, SecondaryTeal),
-        MoreHubItem("purchases", R.string.nav_purchases, R.string.more_purchases_subtitle, Icons.Default.ShoppingCart, Color(0xFFE11D48)),
-        MoreHubItem("shipments", R.string.nav_shipments, R.string.more_shipments_subtitle, Icons.Default.FlightTakeoff, Color(0xFF0284C7)),
-        MoreHubItem("customers", R.string.nav_customers, R.string.more_customers_subtitle, Icons.Default.Group, Color(0xFF16A34A)),
-        MoreHubItem("suppliers", R.string.nav_suppliers, R.string.more_suppliers_subtitle, Icons.Default.Storefront, Color(0xFFD97706)),
-        MoreHubItem("ledger", R.string.nav_ledger, R.string.more_ledger_subtitle, Icons.Default.MenuBook, Color(0xFF7C3AED)),
-        MoreHubItem("reports", R.string.nav_reports, R.string.more_reports_subtitle, Icons.Default.Assessment, Color(0xFF059669)),
-        MoreHubItem("settings", R.string.nav_settings, R.string.more_settings_subtitle, Icons.Default.Settings, Color(0xFF475569))
+        MoreHubItem("accounts", R.string.nav_accounts, R.string.more_accounts_subtitle, Icons.Outlined.AccountBalance, PrimaryPurple),
+        MoreHubItem("products", R.string.nav_products, R.string.more_products_subtitle, Icons.Outlined.Category, PrimaryPurple),
+        MoreHubItem("import_management", R.string.nav_import_management, R.string.more_import_subtitle, Icons.Outlined.Public, SecondaryTeal),
+        MoreHubItem("purchases", R.string.nav_purchases, R.string.more_purchases_subtitle, Icons.Outlined.ShoppingCart, StatusError),
+        MoreHubItem("shipments", R.string.nav_shipments, R.string.more_shipments_subtitle, Icons.Outlined.FlightTakeoff, StatusInfo),
+        MoreHubItem("customers", R.string.nav_customers, R.string.more_customers_subtitle, Icons.Outlined.Group, StatusSuccess),
+        MoreHubItem("suppliers", R.string.nav_suppliers, R.string.more_suppliers_subtitle, Icons.Outlined.Storefront, StatusWarning),
+        MoreHubItem("ledger", R.string.nav_ledger, R.string.more_ledger_subtitle, Icons.Outlined.MenuBook, PrimaryPurple),
+        MoreHubItem("reports", R.string.nav_reports, R.string.more_reports_subtitle, Icons.Outlined.Assessment, StatusSuccess),
+        MoreHubItem("settings", R.string.nav_settings, R.string.more_settings_subtitle, Icons.Outlined.Settings, TextSecondary)
     )
 
     Column(

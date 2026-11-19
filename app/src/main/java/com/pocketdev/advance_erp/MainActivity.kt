@@ -39,6 +39,8 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
+            val themeMode by preferencesRepository.selectedTheme.collectAsState(initial = "system")
+            val useDarkTheme = when (themeMode) { "dark" -> true; "light" -> false; else -> androidx.compose.foundation.isSystemInDarkTheme() }
             val language by preferencesRepository.selectedLanguage.collectAsState(initial = AppLanguage.BANGLA)
             val isAppLockEnabled by preferencesRepository.isAppLockEnabled.collectAsState(initial = false)
             val storedPinHash by preferencesRepository.pinCodeHash.collectAsState(initial = null)
@@ -63,7 +65,7 @@ class MainActivity : FragmentActivity() {
             CompositionLocalProvider(
                 LocalConfiguration provides localizedConfig
             ) {
-                AdvanceErpTheme {
+                AdvanceErpTheme(darkTheme = useDarkTheme) {
                     if (isAppLockEnabled && !isAppUnlocked && !storedPinHash.isNullOrBlank()) {
                         AppLockScreen(
                             storedPinHash = storedPinHash,

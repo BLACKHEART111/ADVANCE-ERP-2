@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,16 +28,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -135,27 +138,27 @@ fun CreateInvoiceDialog(
 ) {
     var selectedCustomerId by remember { mutableStateOf(customers.firstOrNull()?.id ?: "") }
     var pendingNewCustomerDraft by remember { mutableStateOf<NewCustomerDraft?>(null) }
-    var showCustomerLookup by remember { mutableStateOf(false) }
+    var showCustomerLookup by rememberSaveable { mutableStateOf(false) }
 
     var selectedWarehouseId by remember { mutableStateOf(warehouses.firstOrNull()?.id ?: "") }
-    var warehouseExpanded by remember { mutableStateOf(false) }
+    var warehouseExpanded by rememberSaveable { mutableStateOf(false) }
 
-    var invoiceDiscountStr by remember { mutableStateOf("0.00") }
-    var isInvoiceDiscountPercentage by remember { mutableStateOf(false) }
-    var additionalChargesStr by remember { mutableStateOf("0.00") }
-    var paidAmountStr by remember { mutableStateOf("0.00") }
-    var isFullPaymentSelected by remember { mutableStateOf(false) }
-    var paymentMethod by remember { mutableStateOf("CASH") } // CASH, BANK, MFS, CREDIT
-    var selectedPaymentAccountId by remember { mutableStateOf("coa-1010") }
-    var notes by remember { mutableStateOf("") }
-    var showCostAndProfit by remember { mutableStateOf(false) }
+    var invoiceDiscountStr by rememberSaveable { mutableStateOf("0.00") }
+    var isInvoiceDiscountPercentage by rememberSaveable { mutableStateOf(false) }
+    var additionalChargesStr by rememberSaveable { mutableStateOf("0.00") }
+    var paidAmountStr by rememberSaveable { mutableStateOf("0.00") }
+    var isFullPaymentSelected by rememberSaveable { mutableStateOf(false) }
+    var paymentMethod by rememberSaveable { mutableStateOf("CASH") } // CASH, BANK, MFS, CREDIT
+    var selectedPaymentAccountId by rememberSaveable { mutableStateOf("coa-1010") }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var showCostAndProfit by rememberSaveable { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Option C Credit Limit Control State
-    var showCreditLimitWarningDialog by remember { mutableStateOf(false) }
-    var creditLimitApproved by remember { mutableStateOf(false) }
-    var creditApproverName by remember { mutableStateOf("Manager") }
-    var creditApprovalReason by remember { mutableStateOf("Authorized credit override") }
+    var showCreditLimitWarningDialog by rememberSaveable { mutableStateOf(false) }
+    var creditLimitApproved by rememberSaveable { mutableStateOf(false) }
+    var creditApproverName by rememberSaveable { mutableStateOf("Manager") }
+    var creditApprovalReason by rememberSaveable { mutableStateOf("Authorized credit override") }
 
     LaunchedEffect(selectedCustomerId) {
         if (selectedCustomerId.isNotBlank()) {
@@ -345,7 +348,7 @@ fun CreateInvoiceDialog(
                                 .background(PrimaryPurple.copy(alpha = 0.12f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.ShoppingBag, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(20.dp))
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
@@ -368,13 +371,13 @@ fun CreateInvoiceDialog(
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = if (showCostAndProfit) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                imageVector = if (showCostAndProfit) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                                 contentDescription = "Cost & Profit Visibility",
                                 tint = if (showCostAndProfit) PrimaryPurple else TextMuted
                             )
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                            Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                         }
                     }
                 }
@@ -393,7 +396,7 @@ fun CreateInvoiceDialog(
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                             ) {
                                 Row(
@@ -411,7 +414,7 @@ fun CreateInvoiceDialog(
                                                 .background(SecondaryTeal.copy(alpha = 0.15f)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(Icons.Default.PersonAdd, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
+                                            Icon(Icons.Outlined.PersonAdd, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
                                         }
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column {
@@ -525,7 +528,7 @@ fun CreateInvoiceDialog(
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(if (isBangla) "পণ্য যোগ করুন" else "Add Item", fontSize = 12.sp)
                             }
@@ -534,8 +537,8 @@ fun CreateInvoiceDialog(
 
                     // 4. Product Rows with Variant Selection & Sellable Stock
                     itemsIndexed(itemsList) { index, itemDraft ->
-                        var productDropdown by remember { mutableStateOf(false) }
-                        var variantDropdown by remember { mutableStateOf(false) }
+                        var productDropdown by rememberSaveable { mutableStateOf(false) }
+                        var variantDropdown by rememberSaveable { mutableStateOf(false) }
 
                         val curProduct = productsMap[itemDraft.productId]
                         val prodVariants: List<ProductVariant> = variantsByProduct[itemDraft.productId] ?: emptyList()
@@ -546,7 +549,7 @@ fun CreateInvoiceDialog(
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -585,7 +588,7 @@ fun CreateInvoiceDialog(
                                     }
                                     if (itemsList.size > 1) {
                                         IconButton(onClick = { itemsList.removeAt(index) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Outlined.Delete, contentDescription = "Delete", tint = Color.Red, modifier = Modifier.size(16.dp))
                                         }
                                     }
                                 }
@@ -695,7 +698,7 @@ fun CreateInvoiceDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Icon(
-                                        Icons.Default.Inventory2,
+                                        Icons.Outlined.Inventory2,
                                         contentDescription = null,
                                         tint = if (sellableStock > 0) StatusSuccess else StatusError,
                                         modifier = Modifier.size(14.dp)
@@ -759,13 +762,13 @@ fun CreateInvoiceDialog(
                                     val lineNetMinor = (lineGrossMinor - discMinor).coerceAtLeast(0L)
                                     val lineCostMinor = unitCostMinor * qty
                                     val lineProfitMinor = lineNetMinor - lineCostMinor
-                                    val profitColor = if (lineProfitMinor >= 0) Color(0xFF16A34A) else Color(0xFFDC2626)
+                                    val profitColor = if (lineProfitMinor >= 0) StatusSuccess else StatusError
 
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
+                                            .background(ERPSurfaceVariant, RoundedCornerShape(6.dp))
                                             .padding(horizontal = 8.dp, vertical = 4.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
@@ -827,7 +830,7 @@ fun CreateInvoiceDialog(
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
@@ -878,7 +881,7 @@ fun CreateInvoiceDialog(
                                                         text = label,
                                                         fontSize = 11.sp,
                                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                                        color = if (isSelected) Color.White else TextPrimary,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                                         textAlign = TextAlign.Center,
                                                         modifier = Modifier
                                                             .fillMaxWidth()
@@ -920,7 +923,7 @@ fun CreateInvoiceDialog(
                                                     text = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn,
                                                     fontSize = 11.sp,
                                                     fontWeight = if (isAccSel) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (isAccSel) Color.White else TextPrimary,
+                                                    color = if (isAccSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                                 )
                                             }
@@ -982,8 +985,8 @@ fun CreateInvoiceDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Invoice Discount / বাট্টা:", color = Color(0xFFFF8A80))
-                                        Text("-৳" + Formatters.formatMinorUnit(invDiscountMinor), color = Color(0xFFFF8A80), fontWeight = FontWeight.SemiBold)
+                                        Text("Invoice Discount / বাট্টা:", color = StatusError)
+                                        Text("-৳" + Formatters.formatMinorUnit(invDiscountMinor), color = StatusError, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
                                 if (addChargesMinor > 0) {
@@ -1016,8 +1019,8 @@ fun CreateInvoiceDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Due Amount / বকেয়া:", color = if (dueAmountMinor > 0) Color(0xFFFF8A80) else Color.White.copy(alpha = 0.8f))
-                                    Text("৳" + Formatters.formatMinorUnit(dueAmountMinor), color = if (dueAmountMinor > 0) Color(0xFFFF8A80) else Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Due Amount / বকেয়া:", color = if (dueAmountMinor > 0) StatusError else Color.White.copy(alpha = 0.8f))
+                                    Text("৳" + Formatters.formatMinorUnit(dueAmountMinor), color = if (dueAmountMinor > 0) StatusError else Color.White, fontWeight = FontWeight.Bold)
                                 }
 
                                 if (showCostAndProfit && itemsList.isNotEmpty()) {
@@ -1036,10 +1039,10 @@ fun CreateInvoiceDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Estimated Profit / আনুমানিক লাভ:", color = Color(0xFFA7F3D0), fontWeight = FontWeight.SemiBold)
+                                        Text("Estimated Profit / আনুমানিক লাভ:", color = StatusSuccessContainer, fontWeight = FontWeight.SemiBold)
                                         Text(
                                             "৳" + Formatters.formatMinorUnit(totalProfitMinor) + " (${String.format(java.util.Locale.US, "%.1f", marginPct)}%)",
-                                            color = Color(0xFFA7F3D0),
+                                            color = StatusSuccessContainer,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
@@ -1093,7 +1096,7 @@ fun CreateInvoiceDialog(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = DeepNavy),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (isBangla) "খসড়া সংরক্ষণ" else "Save Draft",
@@ -1127,7 +1130,7 @@ fun CreateInvoiceDialog(
                         modifier = Modifier.weight(1.15f),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (isBangla) "নিশ্চিত বিক্রয়" else "Confirm Sale",
@@ -1167,7 +1170,7 @@ fun CreateInvoiceDialog(
         Dialog(onDismissRequest = { showCreditLimitWarningDialog = false }) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.fillMaxWidth(0.95f)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
@@ -1175,7 +1178,7 @@ fun CreateInvoiceDialog(
                         text = if (isBangla) "ক্রেডিট লিমিট সতর্কবার্তা (Option C)" else "Credit Limit Warning (Option C)",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFC53030)
+                        color = StatusError
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
@@ -1221,7 +1224,7 @@ fun CreateInvoiceDialog(
                                     onConfirmSale(finalDraft)
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC53030))
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusError)
                         ) {
                             Text(if (isBangla) "অনুমোদন ও নিশ্চিত করুন" else "Approve & Confirm")
                         }

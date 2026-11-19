@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
@@ -19,9 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -70,13 +73,15 @@ fun PurchaseCompletionDialog(
     paymentDueMinor: Long,
     isCostFinalized: Boolean,
     isBangla: Boolean = false,
+    isSaving: Boolean = false,
+    saveError: String? = null,
     onDismiss: () -> Unit,
     onConfirmComplete: (disposition: String?, reason: String?, notes: String?) -> Unit
 ) {
     val remainingQuantity = (totalOrdered - totalReceived).coerceAtLeast(0)
-    var selectedDisposition by remember { mutableStateOf("SHORTAGE") }
-    var reason by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var selectedDisposition by rememberSaveable { mutableStateOf("SHORTAGE") }
+    var reason by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val dispositions = listOf(
@@ -86,7 +91,7 @@ fun PurchaseCompletionDialog(
     )
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
@@ -114,7 +119,7 @@ fun PurchaseCompletionDialog(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (isBangla) "ক্রয়াদেশ সমাপ্তিকরণ (Manual Completion)" else "Manual Purchase Completion",
@@ -130,7 +135,7 @@ fun PurchaseCompletionDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
                     }
                 }
 
@@ -142,7 +147,7 @@ fun PurchaseCompletionDialog(
                 ) {
                     // Summary Audit Card
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -150,7 +155,7 @@ fun PurchaseCompletionDialog(
                                 text = if (isBangla) "চূড়ান্ত নিরীক্ষা ও স্থিতি সারসংক্ষেপ:" else "Final Order Reconciliation Summary:",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = DeepNavy
+                                color = TextPrimary
                             )
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -171,7 +176,7 @@ fun PurchaseCompletionDialog(
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Missing (Shortage Claim):", color = TextSecondary, fontSize = 13.sp)
-                                Text("$missingQuantity units", fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
+                                Text("$missingQuantity units", fontWeight = FontWeight.Bold, color = StatusWarning)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Remaining Unreceived:", color = TextSecondary, fontSize = 13.sp)
@@ -188,7 +193,7 @@ fun PurchaseCompletionDialog(
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Actual Cost Status:", color = TextSecondary, fontSize = 13.sp)
-                                Text(if (isCostFinalized) "FINALIZED" else "PENDING", fontWeight = FontWeight.Bold, color = if (isCostFinalized) StatusSuccess else Color(0xFFD97706))
+                                Text(if (isCostFinalized) "FINALIZED" else "PENDING", fontWeight = FontWeight.Bold, color = if (isCostFinalized) StatusSuccess else StatusWarning)
                             }
                         }
                     }
@@ -196,13 +201,13 @@ fun PurchaseCompletionDialog(
                     // If remaining unreceived units exist: require disposition and reason!
                     if (remainingQuantity > 0) {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                            colors = CardDefaults.cardColors(containerColor = StatusWarningContainer),
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A))
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StatusWarningContainer)
                         ) {
                             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Outlined.Warning, contentDescription = null, tint = StatusWarning, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = if (isBangla)
@@ -211,7 +216,7 @@ fun PurchaseCompletionDialog(
                                             "Notice: $remainingQuantity units unreceived! Explicit disposition required.",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF92400E)
+                                        color = StatusWarning
                                     )
                                 }
 
@@ -228,8 +233,8 @@ fun PurchaseCompletionDialog(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color.White)
-                                            .border(1.dp, if (isSel) PrimaryPurple else Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                            .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
+                                            .border(1.dp, if (isSel) PrimaryPurple else ERPDivider, RoundedCornerShape(8.dp))
                                             .clickable { selectedDisposition = dispKey }
                                             .padding(10.dp)
                                     ) {
@@ -253,9 +258,9 @@ fun PurchaseCompletionDialog(
                         }
                     }
 
-                    if (errorMessage != null) {
+                    if (errorMessage != null || saveError != null) {
                         Text(
-                            text = errorMessage!!,
+                            text = saveError ?: errorMessage.orEmpty(),
                             color = StatusError,
                             style = MaterialTheme.typography.bodySmall
                         )
@@ -276,6 +281,7 @@ fun PurchaseCompletionDialog(
                     ) {
                         OutlinedButton(
                             onClick = onDismiss,
+                            enabled = !isSaving,
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(text = if (isBangla) "বাতিল" else "Cancel")
@@ -295,8 +301,8 @@ fun PurchaseCompletionDialog(
                                     reason.ifBlank { null },
                                     notes.ifBlank { null }
                                 )
-                                onDismiss()
                             },
+                            enabled = !isSaving,
                             modifier = Modifier.weight(1.5f),
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                         ) {

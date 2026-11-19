@@ -1,5 +1,12 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import com.pocketdev.advance_erp.core.designsystem.SecondaryTealContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,11 +27,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -76,7 +83,7 @@ fun StockForecastDialog(
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(ForecastTab.ALL) }
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
 
     val filteredItems = remember(summary, selectedTab, searchQuery) {
         summary.items.filter { item ->
@@ -127,7 +134,7 @@ fun StockForecastDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                Icons.Default.AutoAwesome,
+                                Icons.Outlined.AutoAwesome,
                                 contentDescription = null,
                                 tint = PrimaryPurple,
                                 modifier = Modifier.size(22.dp)
@@ -150,7 +157,7 @@ fun StockForecastDialog(
                     }
 
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
@@ -166,7 +173,7 @@ fun StockForecastDialog(
                         title = if (isBangla) "জরুরি রিরর্ডার" else "Urgent Reorder",
                         count = "${summary.urgentReorderCount} টি",
                         sub = if (isBangla) "৭ দিনের মধ্যে শেষ হবে" else "Runout in ≤7 days",
-                        color = Color(0xFFC53030),
+                        color = StatusError,
                         modifier = Modifier.weight(1f)
                     )
                     // Dead Stock Capital
@@ -194,11 +201,11 @@ fun StockForecastDialog(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = { Text(if (isBangla) "পণ্য বা SKU দিয়ে খুঁজুন..." else "Search product or SKU...", style = MaterialTheme.typography.bodySmall) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = TextMuted) },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextMuted)
+                                Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = TextMuted)
                             }
                         }
                     },
@@ -232,19 +239,19 @@ fun StockForecastDialog(
                         selected = selectedTab == ForecastTab.URGENT,
                         onClick = { selectedTab = ForecastTab.URGENT },
                         label = { Text(if (isBangla) "🚨 রিরর্ডার (${summary.urgentReorderCount})" else "🚨 Reorder (${summary.urgentReorderCount})", fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFFFEBEE))
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = StatusErrorContainer)
                     )
                     FilterChip(
                         selected = selectedTab == ForecastTab.DEAD_STOCK,
                         onClick = { selectedTab = ForecastTab.DEAD_STOCK },
                         label = { Text(if (isBangla) "🧊 অচল স্টক (${summary.deadStockCount})" else "🧊 Dead (${summary.deadStockCount})", fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFE0F7FA))
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = SecondaryTealContainer)
                     )
                     FilterChip(
                         selected = selectedTab == ForecastTab.FAST_MOVING,
                         onClick = { selectedTab = ForecastTab.FAST_MOVING },
                         label = { Text(if (isBangla) "⚡ ফাস্ট (${summary.fastMovingCount})" else "⚡ Fast (${summary.fastMovingCount})", fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFE8F5E9))
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = StatusSuccessContainer)
                     )
                 }
 
@@ -292,7 +299,7 @@ private fun ForecastKpiCard(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(10.dp),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 1.dp
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
@@ -311,7 +318,7 @@ private fun ForecastItemCard(
     isBangla: Boolean
 ) {
     val borderColor = when {
-        item.isUrgentReorder -> Color(0xFFE57373)
+        item.isUrgentReorder -> StatusError
         item.isDeadStock -> SecondaryTeal
         item.velocityLevel == StockVelocityLevel.HIGH_VELOCITY -> StatusSuccess
         else -> DeepNavy.copy(alpha = 0.1f)
@@ -322,7 +329,7 @@ private fun ForecastItemCard(
             .fillMaxWidth()
             .border(1.dp, borderColor, RoundedCornerShape(10.dp)),
         shape = RoundedCornerShape(10.dp),
-        color = Color.White
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             // Title & SKU
@@ -349,13 +356,13 @@ private fun ForecastItemCard(
                 if (item.isUrgentReorder) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFFFEBEE)
+                        color = StatusErrorContainer
                     ) {
                         Text(
                             text = if (item.currentStock == 0) (if (isBangla) "স্টক শূন্য" else "Out of Stock")
                                    else if (item.daysUntilStockout != null) "${item.daysUntilStockout} দিন বাকি"
                                    else (if (isBangla) "কম স্টক" else "Low Stock"),
-                            color = Color(0xFFC53030),
+                            color = StatusError,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -364,7 +371,7 @@ private fun ForecastItemCard(
                 } else if (item.isDeadStock) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFE0F7FA)
+                        color = SecondaryTealContainer
                     ) {
                         Text(
                             text = if (isBangla) "অচল স্টক" else "Dead Stock",
@@ -377,7 +384,7 @@ private fun ForecastItemCard(
                 } else if (item.velocityLevel == StockVelocityLevel.HIGH_VELOCITY) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFE8F5E9)
+                        color = StatusSuccessContainer
                     ) {
                         Text(
                             text = if (isBangla) "⚡ হট সেলিং" else "⚡ Fast Moving",
@@ -422,8 +429,8 @@ private fun ForecastItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 color = when {
-                    item.isUrgentReorder -> Color(0xFFFFF3E0)
-                    item.isDeadStock -> Color(0xFFE0F2F1)
+                    item.isUrgentReorder -> StatusWarningContainer
+                    item.isDeadStock -> SecondaryTealContainer
                     else -> ERPBackground
                 }
             ) {
@@ -432,9 +439,9 @@ private fun ForecastItemCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.AutoAwesome,
+                        Icons.Outlined.AutoAwesome,
                         contentDescription = null,
-                        tint = if (item.isUrgentReorder) Color(0xFFE65100) else PrimaryPurple,
+                        tint = if (item.isUrgentReorder) StatusWarning else PrimaryPurple,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -442,7 +449,7 @@ private fun ForecastItemCard(
                         text = if (isBangla) item.recommendationBn else item.recommendationEn,
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 12.sp,
-                        color = DeepNavy,
+                        color = TextPrimary,
                         lineHeight = 16.sp
                     )
                 }

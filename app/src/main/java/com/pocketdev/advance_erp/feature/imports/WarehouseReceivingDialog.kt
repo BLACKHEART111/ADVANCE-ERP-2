@@ -1,5 +1,18 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
+import org.json.JSONObject
+import org.json.JSONArray
+import com.pocketdev.advance_erp.core.designsystem.ERPLeaveEditorDialog
+import com.pocketdev.advance_erp.core.util.EditorDraftStore
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.saveable.Saver
+import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,13 +34,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -76,19 +89,47 @@ import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
 import com.pocketdev.advance_erp.domain.repository.ReceiptItemDraft
 
-private data class ReceivingLineState(
+private class ReceivingLineState(
     val cartonId: String?,
     val cartonNumber: String,
     val productId: String,
     val variantId: String? = null,
     val productName: String,
     val expectedQty: Int,
-    var receivedQtyStr: String,
-    var goodQtyStr: String,
-    var damagedQtyStr: String = "0",
-    var missingQtyStr: String = "0",
-    var pendingQtyStr: String = "0",
-    var conditionNotes: String = "Good Condition"
+    receivedQtyStr: String,
+    goodQtyStr: String,
+    damagedQtyStr: String = "0",
+    missingQtyStr: String = "0",
+    pendingQtyStr: String = "0",
+    conditionNotes: String = "Good Condition"
+) {
+    var receivedQtyStr by mutableStateOf(receivedQtyStr)
+    var goodQtyStr by mutableStateOf(goodQtyStr)
+    var damagedQtyStr by mutableStateOf(damagedQtyStr)
+    var missingQtyStr by mutableStateOf(missingQtyStr)
+    var pendingQtyStr by mutableStateOf(pendingQtyStr)
+    var conditionNotes by mutableStateOf(conditionNotes)
+}
+
+private fun ReceivingLineState.toJson() = JSONObject().apply {
+    put("cartonId", cartonId ?: ""); put("cartonNumber", cartonNumber); put("productId", productId)
+    put("variantId", variantId ?: ""); put("productName", productName); put("expectedQty", expectedQty)
+    put("receivedQtyStr", receivedQtyStr)
+    put("goodQtyStr", goodQtyStr)
+    put("damagedQtyStr", damagedQtyStr)
+    put("missingQtyStr", missingQtyStr)
+    put("pendingQtyStr", pendingQtyStr)
+    put("conditionNotes", conditionNotes)
+}
+private fun receivingLineFromJson(j: JSONObject) = ReceivingLineState(
+    j.getString("cartonId").ifBlank { null }, j.getString("cartonNumber"), j.getString("productId"),
+    j.getString("variantId").ifBlank { null }, j.getString("productName"), j.getInt("expectedQty"),
+j.getString("receivedQtyStr"), j.getString("goodQtyStr"), j.getString("damagedQtyStr"), j.getString("missingQtyStr"), j.getString("pendingQtyStr"), j.getString("conditionNotes"))
+private val ReceivingLinesSaver = Saver<SnapshotStateList<ReceivingLineState>, String>(
+    save = { JSONArray().apply { it.forEach { line -> put(line.toJson()) } }.toString() },
+    restore = { raw -> JSONArray(raw).let { a -> mutableStateListOf<ReceivingLineState>().apply {
+        repeat(a.length()) { add(receivingLineFromJson(a.getJSONObject(it))) }
+    } } }
 )
 
 @Composable
@@ -100,22 +141,24 @@ fun WarehouseReceivingDialog(
     products: List<Product> = emptyList(),
     isCostFinalized: Boolean = order?.isActualCostFinalized ?: false,
     isBangla: Boolean = false,
+    isSaving: Boolean = false,
+    saveError: String? = null,
     onDismiss: () -> Unit,
     onSaveDraft: ((warehouseId: String, receivingMethod: String, items: List<ReceiptItemDraft>, notes: String?) -> Unit)? = null,
     onConfirmPost: ((warehouseId: String, items: List<ReceiptItemDraft>, notes: String?, allowDiscrepancy: Boolean) -> Unit)? = null
 ) {
-    var selectedMethod by remember { mutableStateOf(if (cartons.isNotEmpty()) "CARTON_WISE" else "PHYSICAL_COUNT") }
-    var destinationWarehouseId by remember { mutableStateOf("wh-dhk-01") }
-    var notes by remember { mutableStateOf("Warehouse receiving inspection completed.") }
-    var showBlockedCostDialog by remember { mutableStateOf(false) }
-    var showConfirmationDialog by remember { mutableStateOf(false) }
-    var isPostingAction by remember { mutableStateOf(false) }
+    var selectedMethod by rememberSaveable { mutableStateOf(if (cartons.isNotEmpty()) "CARTON_WISE" else "PHYSICAL_COUNT") }
+    var destinationWarehouseId by rememberSaveable { mutableStateOf("wh-dhk-01") }
+    var notes by rememberSaveable { mutableStateOf("Warehouse receiving inspection completed.") }
+    var showBlockedCostDialog by rememberSaveable { mutableStateOf(false) }
+    var showConfirmationDialog by rememberSaveable { mutableStateOf(false) }
+    var isPostingAction by rememberSaveable { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val productsMap = remember(products) { products.associateBy { it.id } }
 
     // Initialize lines based on selected method
-    val lines = remember(selectedMethod, cartons, poItems) {
+    val lines = rememberSaveable(selectedMethod, saver = ReceivingLinesSaver) {
         val list = mutableStateListOf<ReceivingLineState>()
         if (selectedMethod == "CARTON_WISE") {
             if (cartons.isNotEmpty()) {
@@ -200,21 +243,64 @@ fun WarehouseReceivingDialog(
         list
     }
 
+    val draftContext = LocalContext.current
+    val draftStore = remember(draftContext) { EditorDraftStore(draftContext) }
+    val draftKey = "receiving:" + (order?.id ?: shipment?.id ?: "new")
+    var showLeavePrompt by rememberSaveable { mutableStateOf(false) }
+    var draftLoaded by rememberSaveable(draftKey) { mutableStateOf(false) }
+    var initialSnapshot by rememberSaveable(draftKey) { mutableStateOf<String?>(null) }
+    fun snapshotEditor() = JSONObject().apply {
+        put("method", selectedMethod); put("warehouse", destinationWarehouseId); put("notes", notes)
+        put("lines", JSONArray().apply { lines.forEach { put(it.toJson()) } })
+    }
+    LaunchedEffect(draftKey, selectedMethod) {
+        if (!draftLoaded) {
+            val draft = draftStore.read(draftKey)
+            if (draft != null) {
+                val method = draft.optString("method", selectedMethod)
+                if (selectedMethod != method) { selectedMethod = method; return@LaunchedEffect }
+                destinationWarehouseId = draft.optString("warehouse", destinationWarehouseId)
+                notes = draft.optString("notes")
+                draft.optJSONArray("lines")?.let { a ->
+                    val saved = (0 until a.length()).map { receivingLineFromJson(a.getJSONObject(it)) }
+                    // Never replace newly received quantities with an obsolete editor snapshot.
+                    if (saved.map { Triple(it.productId, it.variantId, it.expectedQty) } == lines.map { Triple(it.productId, it.variantId, it.expectedQty) }) {
+                        lines.clear(); lines.addAll(saved)
+                    }
+                }
+            }
+            initialSnapshot = snapshotEditor().toString(); draftLoaded = true
+        }
+    }
+    val requestClose: () -> Unit = {
+        if (!isSaving) {
+            if (snapshotEditor().toString() == initialSnapshot) onDismiss() else showLeavePrompt = true
+        }
+    }
+    if (showLeavePrompt) ERPLeaveEditorDialog(isBangla,
+        onContinue = { showLeavePrompt = false },
+        onDiscard = { draftStore.remove(draftKey); onDismiss() },
+        onSaveDraft = {
+            try { draftStore.save(draftKey, snapshotEditor()); onDismiss() }
+            catch (e: Exception) { errorMessage = e.message; showLeavePrompt = false }
+        })
+
     fun validateAndBuildDrafts(): List<ReceiptItemDraft>? {
         errorMessage = null
+        if (lines.isEmpty()) { errorMessage = if (isBangla) "গ্রহণের জন্য কোনো পণ্য নেই" else "No items to receive"; return null }
         val drafts = mutableListOf<ReceiptItemDraft>()
         for ((idx, line) in lines.withIndex()) {
             val good = line.goodQtyStr.trim().toIntOrNull() ?: -1
-            val damaged = line.damagedQtyStr.trim().toIntOrNull() ?: 0
-            val missing = line.missingQtyStr.trim().toIntOrNull() ?: 0
-            val pending = line.pendingQtyStr.trim().toIntOrNull() ?: 0
+            val damaged = line.damagedQtyStr.trim().toIntOrNull() ?: -1
+            val missing = line.missingQtyStr.trim().toIntOrNull() ?: -1
+            val pending = line.pendingQtyStr.trim().toIntOrNull() ?: -1
             val received = good + damaged
 
             if (good < 0 || damaged < 0 || missing < 0 || pending < 0) {
                 errorMessage = "Row #${idx + 1} (${line.productName}): Quantities cannot be negative."
                 return null
             }
-            if (good + damaged + missing + pending != line.expectedQty) {
+            if (good.toLong() + damaged + missing + pending != line.expectedQty.toLong()) {
                 errorMessage = "Row #${idx + 1} (${line.productName}): Packed (${line.expectedQty}) must equal Good ($good) + Damaged ($damaged) + Missing ($missing) + Pending ($pending)."
                 return null
             }
@@ -238,15 +324,14 @@ fun WarehouseReceivingDialog(
         return drafts
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ERPFullScreenEditor(
+        onDismissRequest = onDismiss
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.92f)
-                .clip(RoundedCornerShape(20.dp)),
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(0.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(
@@ -265,7 +350,7 @@ fun WarehouseReceivingDialog(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Inventory2, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Outlined.Inventory2, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (isBangla) "ওয়্যারহাউস পণ্য গ্রহণ ও পরিদর্শন" else "Warehouse Receiving Inspection",
@@ -280,8 +365,8 @@ fun WarehouseReceivingDialog(
                             color = Color.White.copy(alpha = 0.7f)
                         )
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    IconButton(onClick = requestClose, enabled = !isSaving) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
                     }
                 }
 
@@ -291,21 +376,21 @@ fun WarehouseReceivingDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                        colors = CardDefaults.cardColors(containerColor = StatusWarningContainer),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.Lock, contentDescription = null, tint = StatusWarning, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
                                     text = if (isBangla) "প্রকৃত খরচ চূড়ান্তকরণ বাকি — স্টক পোস্টিং সাময়িক লক" else "Actual Landing Cost Pending — Stock Posting Locked",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF92400E)
+                                    color = StatusWarning
                                 )
                                 Text(
                                     text = if (isBangla)
@@ -313,7 +398,7 @@ fun WarehouseReceivingDialog(
                                     else
                                         "Draft inspections can be recorded, but stock posting to inventory is blocked until Actual Landing Cost is finalized.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFB45309)
+                                    color = StatusWarning
                                 )
                             }
                         }
@@ -323,20 +408,20 @@ fun WarehouseReceivingDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
+                        colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (isBangla) "প্রকৃত ল্যান্ডেড কস্ট চূড়ান্তকৃত! স্টক পোস্টিং অনুমোদিত।" else "Actual Landed Cost Finalized! Stock posting unlocked.",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF065F46)
+                                color = StatusSuccess
                             )
                         }
                     }
@@ -354,7 +439,7 @@ fun WarehouseReceivingDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (selectedMethod == "PHYSICAL_COUNT") PrimaryPurple else Color.White)
+                            .background(if (selectedMethod == "PHYSICAL_COUNT") PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (selectedMethod == "PHYSICAL_COUNT") PrimaryPurple else Color.LightGray, RoundedCornerShape(10.dp))
                             .clickable { selectedMethod = "PHYSICAL_COUNT" }
                             .padding(vertical = 10.dp, horizontal = 12.dp),
@@ -364,7 +449,7 @@ fun WarehouseReceivingDialog(
                             text = if (isBangla) "পদ্ধতি ক: সরাসরি গণনা (Physical Count)" else "Method A: Physical Count",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (selectedMethod == "PHYSICAL_COUNT") Color.White else TextPrimary
+                            color = if (selectedMethod == "PHYSICAL_COUNT") MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
 
@@ -373,7 +458,7 @@ fun WarehouseReceivingDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (selectedMethod == "CARTON_WISE") PrimaryPurple else Color.White)
+                            .background(if (selectedMethod == "CARTON_WISE") PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (selectedMethod == "CARTON_WISE") PrimaryPurple else Color.LightGray, RoundedCornerShape(10.dp))
                             .clickable { selectedMethod = "CARTON_WISE" }
                             .padding(vertical = 10.dp, horizontal = 12.dp),
@@ -383,15 +468,15 @@ fun WarehouseReceivingDialog(
                             text = if (isBangla) "পদ্ধতি খ: কার্টন-ভিত্তিক (Carton-wise)" else "Method B: Carton-wise",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (selectedMethod == "CARTON_WISE") Color.White else TextPrimary
+                            color = if (selectedMethod == "CARTON_WISE") MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
                 }
 
                 // Error message
-                if (errorMessage != null) {
+                if (errorMessage != null || saveError != null) {
                     Text(
-                        text = errorMessage!!,
+                        text = saveError ?: errorMessage.orEmpty(),
                         color = StatusError,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -410,7 +495,7 @@ fun WarehouseReceivingDialog(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFF1F5F9))
+                        .background(ERPSurfaceVariant)
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -453,7 +538,7 @@ fun WarehouseReceivingDialog(
                             val isMixed = cartonLines.size > 1
                             val cartonExpectedSum = cartonLines.sumOf { it.expectedQty }
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 shape = RoundedCornerShape(12.dp),
                                 elevation = CardDefaults.cardElevation(2.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -466,7 +551,7 @@ fun WarehouseReceivingDialog(
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
-                                                Icons.Default.ViewInAr,
+                                                Icons.Outlined.ViewInAr,
                                                 contentDescription = null,
                                                 tint = if (isMixed) SecondaryTeal else PrimaryPurple,
                                                 modifier = Modifier.size(18.dp)
@@ -476,7 +561,7 @@ fun WarehouseReceivingDialog(
                                                 text = cartonNo,
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.Bold,
-                                                color = DeepNavy
+                                                color = TextPrimary
                                             )
                                             if (isMixed) {
                                                 Spacer(modifier = Modifier.width(8.dp))
@@ -521,7 +606,7 @@ fun WarehouseReceivingDialog(
                                                 text = line.productName,
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                color = DeepNavy,
+                                                color = TextPrimary,
                                                 modifier = Modifier.weight(1f)
                                             )
                                             Text(
@@ -540,7 +625,7 @@ fun WarehouseReceivingDialog(
                     } else {
                         itemsIndexed(lines) { _, line ->
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 shape = RoundedCornerShape(12.dp),
                                 elevation = CardDefaults.cardElevation(2.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -555,7 +640,7 @@ fun WarehouseReceivingDialog(
                                             text = line.productName,
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy,
+                                            color = TextPrimary,
                                             modifier = Modifier.weight(1f)
                                         )
                                         Text(
@@ -575,7 +660,7 @@ fun WarehouseReceivingDialog(
 
                 // Bottom Action Footer
                 Surface(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 8.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -589,13 +674,12 @@ fun WarehouseReceivingDialog(
                         OutlinedButton(
                             onClick = {
                                 val drafts = validateAndBuildDrafts() ?: return@OutlinedButton
-                                onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
-                                onDismiss()
+                                if (!isSaving) onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(text = if (isBangla) "খসড়া সংরক্ষণ" else "Save Draft")
                         }
@@ -618,7 +702,7 @@ fun WarehouseReceivingDialog(
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(
-                                if (isCostFinalized) Icons.Default.CheckCircle else Icons.Default.Lock,
+                                if (isCostFinalized) Icons.Outlined.CheckCircle else Icons.Outlined.Lock,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -635,7 +719,7 @@ fun WarehouseReceivingDialog(
     if (showBlockedCostDialog) {
         AlertDialog(
             onDismissRequest = { showBlockedCostDialog = false },
-            icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFD97706)) },
+            icon = { Icon(Icons.Outlined.Lock, contentDescription = null, tint = StatusWarning) },
             title = {
                 Text(
                     text = if (isBangla) "প্রকৃত খরচ চূড়ান্তকরণ বাধ্যতামূলক" else "Actual Landing Cost Finalization Required",
@@ -662,7 +746,7 @@ fun WarehouseReceivingDialog(
     if (showConfirmationDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmationDialog = false },
-            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = SecondaryTeal) },
+            icon = { Icon(Icons.Outlined.Warning, contentDescription = null, tint = SecondaryTeal) },
             title = {
                 Text(
                     text = if (isBangla) "মজুদ পোস্টিং নিশ্চিতকরণ" else "Confirm Stock Posting",
@@ -685,9 +769,9 @@ fun WarehouseReceivingDialog(
                         if (onConfirmPost != null) {
                             onConfirmPost(destinationWarehouseId, drafts, notes, true)
                         } else {
-                            onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
+                            if (!isSaving) onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
                         }
-                        onDismiss()
+                        showConfirmationDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess)
                 ) {
@@ -754,7 +838,7 @@ private fun ReceivingLineInputs(
                 val m = newVal.trim().toIntOrNull() ?: 0
                 line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
             },
-            label = { Text("Missing", fontSize = 11.sp, color = Color(0xFFD97706)) },
+            label = { Text("Missing", fontSize = 11.sp, color = StatusWarning) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.weight(1f),
             singleLine = true

@@ -13,9 +13,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.NotificationsNone
-import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,24 +46,24 @@ fun ERPTopBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(DeepNavy)
+            .background(ERPSurface)
             .statusBarsPadding()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .height(56.dp)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = onOpenDrawer,
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Menu,
+                    imageVector = Icons.Outlined.Menu,
                     contentDescription = stringResource(R.string.menu_drawer_open),
-                    tint = Color.White
+                    tint = TextPrimary
                 )
             }
 
@@ -82,7 +82,7 @@ fun ERPTopBar(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
+                        color = TextPrimary,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -91,7 +91,7 @@ fun ERPTopBar(
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -103,21 +103,21 @@ fun ERPTopBar(
                 IconButton(
                     onClick = onToggleLanguage,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Translate,
+                            imageVector = Icons.Outlined.Translate,
                             contentDescription = "Language",
-                            tint = SecondaryTealLight,
+                            tint = PrimaryPurple,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = if (currentLanguage == AppLanguage.BANGLA) "EN" else "বাং",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
+                            color = TextPrimary,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -127,12 +127,12 @@ fun ERPTopBar(
             if (onNotificationsClick != null) {
                 IconButton(
                     onClick = onNotificationsClick,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.NotificationsNone,
+                        imageVector = Icons.Outlined.NotificationsNone,
                         contentDescription = "Notifications",
-                        tint = Color.White.copy(alpha = 0.9f),
+                        tint = TextPrimary.copy(alpha = 0.9f),
                         modifier = Modifier.size(22.dp)
                     )
                 }

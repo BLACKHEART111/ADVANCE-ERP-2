@@ -62,6 +62,8 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.util.UUID
@@ -106,6 +108,14 @@ data class ImportUiState(
     val language: AppLanguage = AppLanguage.BANGLA,
     val isLoading: Boolean = false,
     val isSavingPurchaseOrder: Boolean = false,
+    val isSavingCarton: Boolean = false,
+    val cartonSaveError: String? = null,
+    val isSavingReceipt: Boolean = false,
+    val receiptSaveError: String? = null,
+    val isCompletingPurchase: Boolean = false,
+    val completionError: String? = null,
+    val landingPreviewError: String? = null,
+    val isLoadingLandingPreview: Boolean = false,
     val purchaseOrderSaveError: String? = null,
     val userMessage: String? = null
 )
@@ -220,7 +230,7 @@ class ImportViewModel @Inject constructor(
     }
 
     fun selectShipment(shipmentId: String) {
-        _uiState.update { it.copy(selectedShipmentId = shipmentId) }
+        _uiState.update { it.copy(selectedShipmentId = shipmentId, selectedShipmentLandingPreview = null, landingPreviewError = null) }
         loadShipmentDetails(shipmentId)
     }
 
@@ -274,13 +284,25 @@ class ImportViewModel @Inject constructor(
         }
     }
 
+    private var landingPreviewJob: Job? = null
+
     fun refreshShipmentLandingPreview(shipmentId: String) {
-        viewModelScope.launch {
+        landingPreviewJob?.cancel()
+        _uiState.update { it.copy(selectedShipmentLandingPreview = null, landingPreviewError = null, isLoadingLandingPreview = true) }
+        landingPreviewJob = viewModelScope.launch {
             try {
                 val preview = importRepository.previewShipmentLandingCost(shipmentId)
-                _uiState.update { it.copy(selectedShipmentLandingPreview = preview) }
-            } catch (_: Exception) {
-                // Ignore if shipment has no cartons yet
+                if (_uiState.value.selectedShipmentId == shipmentId) {
+                    _uiState.update { it.copy(selectedShipmentLandingPreview = preview, isLoadingLandingPreview = false) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (_uiState.value.selectedShipmentId == shipmentId) {
+                    _uiState.update { it.copy(selectedShipmentLandingPreview = null, isLoadingLandingPreview = false,
+                        landingPreviewError = e.message ?: "Unable to calculate landing cost") }
+                }
             }
         }
     }
@@ -448,6 +470,7 @@ class ImportViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, userMessage = msg) }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, purchaseOrderSaveError = e.message, userMessage = "Error: ${e.message}") }
             }
         }
@@ -497,6 +520,7 @@ class ImportViewModel @Inject constructor(
                 onSaved()
                 _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, userMessage = "Purchase order updated successfully!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, isSavingPurchaseOrder = false, purchaseOrderSaveError = e.message, userMessage = "Error updating PO: ${e.message}") }
             }
         }
@@ -513,6 +537,7 @@ class ImportViewModel @Inject constructor(
                     isSavingPurchaseOrder = false, userMessage = "Purchase order details updated") }
                 onSaved()
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isSavingPurchaseOrder = false, purchaseOrderSaveError = e.message) }
             }
         }
@@ -529,6 +554,7 @@ class ImportViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(isLoading = false, userMessage = "Purchase Order confirmed successfully!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
             }
         }
@@ -545,6 +571,7 @@ class ImportViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(isLoading = false, userMessage = "Purchase Order cancelled.") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Cancel Error: ${e.message}") }
             }
         }
@@ -557,6 +584,7 @@ class ImportViewModel @Inject constructor(
                 val newId = importRepository.duplicatePurchaseOrder(orderId)
                 _uiState.update { it.copy(isLoading = false, userMessage = "Purchase Order duplicated successfully as Draft!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Duplicate Error: ${e.message}") }
             }
         }
@@ -587,6 +615,7 @@ class ImportViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(isLoading = false, userMessage = "Payment recorded and journal posted!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
             }
         }
@@ -633,6 +662,7 @@ class ImportViewModel @Inject constructor(
                 }
                 onSuccess?.invoke(shipmentId, shpNumber)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
                 onError?.invoke(e.message ?: "Failed to create shipment")
             }
@@ -656,6 +686,7 @@ class ImportViewModel @Inject constructor(
                 loadShipmentDetails(shipmentId)
                 _uiState.update { it.copy(isLoading = false, userMessage = "Shipment status updated to ${status.labelEn}!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Status Error: ${e.message}") }
             }
         }
@@ -665,15 +696,21 @@ class ImportViewModel @Inject constructor(
         updateShipmentStatus(shipmentId, ShipmentStatus.CANCELLED)
     }
 
-    fun addCartonToShipment(shipmentId: String, carton: ShipmentCartonDraft) {
+    fun addCartonToShipment(shipmentId: String, carton: ShipmentCartonDraft, onSaved: () -> Unit = {}) {
+        if (_uiState.value.isSavingCarton) return
+        _uiState.update { it.copy(isSavingCarton = true, cartonSaveError = null) }
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
                 importRepository.addCartonToShipment(shipmentId, carton)
                 loadShipmentDetails(shipmentId)
                 _uiState.update { it.copy(isLoading = false, userMessage = "Carton ${carton.cartonNumber} added to shipment!") }
+                onSaved()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, userMessage = "Carton Error: ${e.message}") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, cartonSaveError = e.message, userMessage = "Carton Error: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isSavingCarton = false, isLoading = false) }
             }
         }
     }
@@ -698,6 +735,7 @@ class ImportViewModel @Inject constructor(
                 )
                 _uiState.update { it.copy(isLoading = false, userMessage = "Expense recorded and capitalized to in-transit inventory!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
             }
         }
@@ -716,6 +754,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Allocation Error: ${e.message}") }
             }
         }
@@ -726,8 +765,11 @@ class ImportViewModel @Inject constructor(
         warehouseId: String,
         items: List<ReceiptItemDraft>,
         notes: String?,
-        allowDiscrepancy: Boolean = false
+        allowDiscrepancy: Boolean = false,
+        onSaved: () -> Unit = {}
     ) {
+        if (_uiState.value.isSavingReceipt) return
+        _uiState.update { it.copy(isSavingReceipt = true, receiptSaveError = null) }
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
@@ -739,8 +781,12 @@ class ImportViewModel @Inject constructor(
                         userMessage = "Warehouse receipt posted! Stock increased and cost layers created."
                     )
                 }
+                onSaved()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, userMessage = "Receiving Error: ${e.message}") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, receiptSaveError = e.message, userMessage = "Receiving Error: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isSavingReceipt = false, isLoading = false) }
             }
         }
     }
@@ -770,6 +816,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Purchase Order PDF")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -794,6 +841,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Supplier Payment Receipt")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -820,6 +868,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Packing List PDF")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -844,6 +893,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Landed Cost Report")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -868,6 +918,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Receiving Report")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -897,6 +948,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Adjustment Error: ${e.message}") }
             }
         }
@@ -927,6 +979,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Cost Variance Report")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -951,6 +1004,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Damage & Loss Report")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -973,6 +1027,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share Inventory Cost Layers")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -996,6 +1051,7 @@ class ImportViewModel @Inject constructor(
                 ImportPdfGenerator.launchShareChooser(context, pdfFile, "application/pdf", "Share CBM & Volume Report")
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "PDF Error: ${e.message}") }
             }
         }
@@ -1009,7 +1065,7 @@ class ImportViewModel @Inject constructor(
     // Minimal Import Management System Actions
     // ==========================================
 
-    fun addCartonToPurchase(orderId: String, carton: ShipmentCartonDraft) {
+    fun addCartonToPurchase(orderId: String, carton: ShipmentCartonDraft, onSaved: () -> Unit = {}) {
         addMixedCarton(
             orderId = orderId,
             cartonNumber = carton.cartonNumber,
@@ -1018,6 +1074,7 @@ class ImportViewModel @Inject constructor(
             heightCm = carton.heightCm,
             grossWeightKg = carton.grossWeightKg,
             netWeightKg = carton.netWeightKg,
+            onSaved = onSaved,
             lines = listOf(
                 MixedCartonLineDraft(
                     productId = carton.productId,
@@ -1036,8 +1093,9 @@ class ImportViewModel @Inject constructor(
         heightCm: BigDecimal,
         grossWeightKg: BigDecimal,
         netWeightKg: BigDecimal,
-        lines: List<MixedCartonLineDraft>
-    ) {
+        lines: List<MixedCartonLineDraft>, onSaved: () -> Unit = {}) {
+        if (_uiState.value.isSavingCarton) return
+        _uiState.update { it.copy(isSavingCarton = true, cartonSaveError = null) }
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
@@ -1059,8 +1117,12 @@ class ImportViewModel @Inject constructor(
                         userMessage = "Mixed carton $cartonNumber saved with quantity-based weight allocation!"
                     )
                 }
+                onSaved()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, userMessage = "Carton Error: ${e.message}") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, cartonSaveError = e.message, userMessage = "Carton Error: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isSavingCarton = false, isLoading = false) }
             }
         }
     }
@@ -1077,6 +1139,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Delete carton error: ${e.message}") }
             }
         }
@@ -1088,6 +1151,7 @@ class ImportViewModel @Inject constructor(
                 importRepository.deletePurchaseCostItem(costItemId)
                 _uiState.update { it.copy(userMessage = "Cost item removed") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Delete cost error: ${e.message}") }
             }
         }
@@ -1105,6 +1169,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Update packing error: ${e.message}") }
             }
         }
@@ -1122,6 +1187,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Update item error: ${e.message}") }
             }
         }
@@ -1139,6 +1205,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Delete item error: ${e.message}") }
             }
         }
@@ -1151,6 +1218,7 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(userMessage = "Category '${cat.nameEn}' created successfully!") }
                 onCreated?.invoke(cat)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Error creating category: ${e.message}") }
             }
         }
@@ -1190,6 +1258,7 @@ class ImportViewModel @Inject constructor(
                 val typeStr = if (isEstimated) "Estimated" else "Actual"
                 _uiState.update { it.copy(isLoading = false, userMessage = "$typeStr expense added successfully!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Cost Error: ${e.message}") }
             }
         }
@@ -1210,6 +1279,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Finalize Error: ${e.message}") }
             }
         }
@@ -1221,8 +1291,11 @@ class ImportViewModel @Inject constructor(
         receivingMethod: String,
         items: List<ReceiptItemDraft>,
         notes: String?,
-        postImmediately: Boolean = false
+        postImmediately: Boolean = false,
+        onSaved: () -> Unit = {}
     ) {
+        if (_uiState.value.isSavingReceipt) return
+        _uiState.update { it.copy(isSavingReceipt = true, receiptSaveError = null) }
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
@@ -1249,8 +1322,12 @@ class ImportViewModel @Inject constructor(
                         )
                     }
                 }
+                onSaved()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, userMessage = "Receiving Error: ${e.message}") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, receiptSaveError = e.message, userMessage = "Receiving Error: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isSavingReceipt = false, isLoading = false) }
             }
         }
     }
@@ -1262,6 +1339,7 @@ class ImportViewModel @Inject constructor(
                 importRepository.postPurchaseReceiving(receiptId, allowDiscrepancy)
                 _uiState.update { it.copy(isLoading = false, userMessage = "Stock received and posted to Inventory successfully with FIFO layers!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Posting Error: ${e.message}") }
             }
         }
@@ -1293,6 +1371,7 @@ class ImportViewModel @Inject constructor(
                 val treat = if (isCapitalizable) "Capitalized to Inventory" else "Posted to P&L Period Expense"
                 _uiState.update { it.copy(isLoading = false, userMessage = "Additional cost recorded ($treat)!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Cost Error: ${e.message}") }
             }
         }
@@ -1302,8 +1381,11 @@ class ImportViewModel @Inject constructor(
         orderId: String,
         disposition: String?,
         reason: String?,
-        notes: String? = null
+        notes: String? = null,
+        onCompleted: () -> Unit = {}
     ) {
+        if (_uiState.value.isCompletingPurchase) return
+        _uiState.update { it.copy(isCompletingPurchase = true, completionError = null) }
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
@@ -1316,8 +1398,14 @@ class ImportViewModel @Inject constructor(
                         userMessage = "Purchase Order completed successfully!"
                     )
                 }
+                onCompleted()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, userMessage = "Completion Error: ${e.message}") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, completionError = e.message, userMessage = "Completion Error: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isCompletingPurchase = false, isLoading = false) }
             }
         }
     }
@@ -1355,6 +1443,7 @@ class ImportViewModel @Inject constructor(
                 onCreated(newProd)
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product '${newProd.nameEn}' added to catalog!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Product Add Error: ${e.message}") }
             }
         }
@@ -1434,6 +1523,7 @@ class ImportViewModel @Inject constructor(
                 onCreated(product, varEntities)
                 _uiState.update { it.copy(userMessage = "Product '${product.nameEn}' added to inventory catalog (stock 0 until received)") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Product Add Error: ${e.message}") }
             }
         }
@@ -1475,6 +1565,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Supplier Add Error: ${e.message}") }
             }
         }
@@ -1511,6 +1602,7 @@ class ImportViewModel @Inject constructor(
                     it.copy(userMessage = "Variant '${listOfNotNull(newVar.color, newVar.size).joinToString(" / ").ifBlank { newVar.sku }}' added!")
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Variant Add Error: ${e.message}") }
             }
         }
@@ -1533,6 +1625,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "China Delivery Error: ${e.message}") }
             }
         }
@@ -1546,6 +1639,7 @@ class ImportViewModel @Inject constructor(
                 refreshShipmentLandingPreview(shipmentId)
                 _uiState.update { it.copy(isLoading = false, userMessage = "Purchase Order linked to Shipment!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Link PO Error: ${e.message}") }
             }
         }
@@ -1561,6 +1655,7 @@ class ImportViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(userMessage = "Default category freight rate saved (৳${ratePerKgBdtMinor / 100.0}/KG)!") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Freight Rate Error: ${e.message}") }
             }
         }
@@ -1582,6 +1677,7 @@ class ImportViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(userMessage = msg) }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(userMessage = "Override Error: ${e.message}") }
             }
         }
@@ -1626,6 +1722,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Expense Error: ${e.message}") }
             }
         }
@@ -1645,6 +1742,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Finalization Error: ${e.message}") }
             }
         }
@@ -1666,6 +1764,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Adjustment Error: ${e.message}") }
             }
         }
@@ -1695,6 +1794,7 @@ class ImportViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Rent Error: ${e.message}") }
             }
         }

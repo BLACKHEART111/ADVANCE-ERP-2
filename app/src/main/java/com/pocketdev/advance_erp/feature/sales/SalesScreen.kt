@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -24,24 +26,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.AssignmentTurnedIn
-import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.Block
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContactPage
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Payment
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Today
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Assessment
+import androidx.compose.material.icons.outlined.AssignmentTurnedIn
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContactPage
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Payment
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Receipt
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Replay
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Today
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -122,19 +124,19 @@ fun SalesScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedStatusFilter by remember { mutableStateOf("ALL") }
+    var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedStatusFilter by rememberSaveable { mutableStateOf("ALL") }
 
     // Dialog state
-    var showCreateInvoiceDialog by remember { mutableStateOf(false) }
-    var showPosDialog by remember { mutableStateOf(false) }
-    var showRecordPaymentDialog by remember { mutableStateOf(false) }
+    var showCreateInvoiceDialog by rememberSaveable { mutableStateOf(false) }
+    var showPosDialog by rememberSaveable { mutableStateOf(false) }
+    var showRecordPaymentDialog by rememberSaveable { mutableStateOf(false) }
     var collectDueCustomerId by remember { mutableStateOf<String?>(null) }
-    var showProcessReturnDialog by remember { mutableStateOf(false) }
-    var showDispatchDeliveryDialog by remember { mutableStateOf(false) }
-    var showDirectExchangeDialog by remember { mutableStateOf(false) }
-    var showCustomerLedgerDialog by remember { mutableStateOf(false) }
+    var showProcessReturnDialog by rememberSaveable { mutableStateOf(false) }
+    var showDispatchDeliveryDialog by rememberSaveable { mutableStateOf(false) }
+    var showDirectExchangeDialog by rememberSaveable { mutableStateOf(false) }
+    var showCustomerLedgerDialog by rememberSaveable { mutableStateOf(false) }
     var ledgerCustomer by remember { mutableStateOf<Customer?>(null) }
     var remainingDeliveryItems by remember { mutableStateOf<List<com.pocketdev.advance_erp.domain.repository.UndeliveredItemInfo>>(emptyList()) }
 
@@ -146,11 +148,11 @@ fun SalesScreen(
     }
 
     val tabs = listOf(
-        Pair(if (isBangla) "বিক্রয় চালান" else "Invoices", Icons.Default.ReceiptLong),
-        Pair(if (isBangla) "গ্রাহক ও লেজার" else "Customers", Icons.Default.ContactPage),
-        Pair(if (isBangla) "পেমেন্ট ও কালেকশন" else "Payments", Icons.Default.Payments),
-        Pair(if (isBangla) "বিক্রয় ফেরত" else "Returns", Icons.Default.Replay),
-        Pair(if (isBangla) "রিপোর্ট ও লাভ" else "Reports", Icons.Default.Assessment)
+        Pair(if (isBangla) "বিক্রয় চালান" else "Invoices", Icons.Outlined.ReceiptLong),
+        Pair(if (isBangla) "গ্রাহক ও লেজার" else "Customers", Icons.Outlined.ContactPage),
+        Pair(if (isBangla) "পেমেন্ট ও কালেকশন" else "Payments", Icons.Outlined.Payments),
+        Pair(if (isBangla) "বিক্রয় ফেরত" else "Returns", Icons.Outlined.Replay),
+        Pair(if (isBangla) "রিপোর্ট ও লাভ" else "Reports", Icons.Outlined.Assessment)
     )
 
     Scaffold(
@@ -216,10 +218,10 @@ fun SalesScreen(
                     FloatingActionButton(
                         onClick = { showCreateInvoiceDialog = true },
                         containerColor = StatusSuccess,
-                        contentColor = Color.White,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
                         shape = RoundedCornerShape(18.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = if (isBangla) "নতুন চালান তৈরি করুন" else "New Sale")
+                        Icon(Icons.Outlined.Add, contentDescription = if (isBangla) "নতুন চালান তৈরি করুন" else "New Sale")
                     }
                 }
             } else if (selectedTabIndex == 2) {
@@ -230,9 +232,9 @@ fun SalesScreen(
                         showRecordPaymentDialog = true
                     },
                     containerColor = PrimaryPurple,
-                    contentColor = Color.White
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
-                    Icon(Icons.Default.Payment, contentDescription = "Record Payment")
+                    Icon(Icons.Outlined.Payment, contentDescription = "Record Payment")
                 }
             }
         }
@@ -246,7 +248,7 @@ fun SalesScreen(
             ScrollableTabRow(
                 selectedTabIndex = selectedTabIndex,
                 containerColor = DeepNavy,
-                contentColor = Color.White,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 edgePadding = 12.dp,
                 indicator = { tabPositions ->
                     TabRowDefaults.Indicator(
@@ -586,7 +588,7 @@ private fun InvoicesTab(
                 value = searchQuery,
                 onValueChange = onSearchChange,
                 placeholder = { Text(if (isBangla) "চালান নং অথবা গ্রাহকের নামে খুঁজুন..." else "Search by Invoice # or Customer...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = TextMuted) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),
@@ -636,7 +638,7 @@ private fun InvoicesTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(48.dp), tint = TextMuted)
+                        Icon(Icons.Outlined.ReceiptLong, contentDescription = null, modifier = Modifier.size(48.dp), tint = TextMuted)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (isBangla) "কোন বিক্রয় চালান পাওয়া যায়নি" else "No Sales Invoices Found",
@@ -654,7 +656,7 @@ private fun InvoicesTab(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .clickable { onSelectInvoice(inv) },
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -672,7 +674,7 @@ private fun InvoicesTab(
                         val (badgeColor, statusLabel) = when (inv.status) {
                             "PAID" -> Pair(StatusSuccess, if (isBangla) "পরিশোধিত" else "Paid")
                             "POSTED" -> Pair(SecondaryTeal, if (isBangla) "অনুমোদিত (Posted)" else "Posted")
-                            "PARTIALLY_PAID" -> Pair(Color(0xFFF59E0B), if (isBangla) "আংশিক পরিশোধ" else "Partially Paid")
+                            "PARTIALLY_PAID" -> Pair(StatusWarning, if (isBangla) "আংশিক পরিশোধ" else "Partially Paid")
                             "DRAFT" -> Pair(Color.Gray, if (isBangla) "খসড়া" else "Draft")
                             else -> Pair(Color.Gray, inv.status)
                         }
@@ -712,7 +714,7 @@ private fun InvoicesTab(
                             Text(
                                 "৳" + Formatters.formatMinorUnit(inv.dueAmountMinor),
                                 fontWeight = FontWeight.Bold,
-                                color = if (inv.dueAmountMinor > 0) Color(0xFFC53030) else StatusSuccess
+                                color = if (inv.dueAmountMinor > 0) StatusError else StatusSuccess
                             )
                         }
                     }
@@ -741,7 +743,7 @@ private fun CustomersTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp)),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -828,7 +830,7 @@ private fun CustomersTab(
                             Text(
                                 "৳" + Formatters.formatMinorUnit(cust.outstandingBalanceMinor),
                                 fontWeight = FontWeight.Bold,
-                                color = if (cust.outstandingBalanceMinor > 0) Color(0xFFC53030) else StatusSuccess
+                                color = if (cust.outstandingBalanceMinor > 0) StatusError else StatusSuccess
                             )
                         }
                     }
@@ -865,15 +867,15 @@ private fun PaymentsTab(
     onVoidPayment: (paymentId: String, reason: String) -> Unit = { _, _ -> },
     onRecordPaymentClick: () -> Unit = {}
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedMethodFilter by remember { mutableStateOf("ALL") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedMethodFilter by rememberSaveable { mutableStateOf("ALL") }
     var selectedDateFilter by remember { mutableStateOf(PaymentDateFilter.ALL) }
     var selectedCustomDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    var showCalendarPicker by remember { mutableStateOf(false) }
+    var showCalendarPicker by rememberSaveable { mutableStateOf(false) }
 
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US)
     var paymentToVoid by remember { mutableStateOf<CustomerPayment?>(null) }
-    var voidReason by remember { mutableStateOf("") }
+    var voidReason by rememberSaveable { mutableStateOf("") }
 
     val customersMap = remember(customers) { customers.associateBy { it.id } }
     val accountsMap = remember(liquidAccounts) { liquidAccounts.associateBy { it.id } }
@@ -1035,17 +1037,17 @@ private fun PaymentsTab(
                         else "Search by Receipt #, Customer, Phone, or Date..."
                     )
                 },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = TextMuted) },
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextMuted)
+                                Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = TextMuted)
                             }
                         }
                         IconButton(onClick = { showCalendarPicker = !showCalendarPicker }) {
                             Icon(
-                                imageVector = Icons.Default.CalendarMonth,
+                                imageVector = Icons.Outlined.CalendarMonth,
                                 contentDescription = "Date Filter",
                                 tint = if (selectedDateFilter != PaymentDateFilter.ALL || showCalendarPicker) PrimaryPurple else TextMuted
                             )
@@ -1105,7 +1107,7 @@ private fun PaymentsTab(
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PrimaryPurple,
                             selectedLabelColor = Color.White,
-                            containerColor = Color.White,
+                            containerColor = MaterialTheme.colorScheme.surface,
                             labelColor = TextPrimary
                         ),
                         border = FilterChipDefaults.filterChipBorder(
@@ -1168,7 +1170,7 @@ private fun PaymentsTab(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.CalendarMonth,
+                                    imageVector = Icons.Outlined.CalendarMonth,
                                     contentDescription = null,
                                     tint = PrimaryPurple,
                                     modifier = Modifier.size(16.dp)
@@ -1232,7 +1234,7 @@ private fun PaymentsTab(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 2.dp
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
@@ -1243,7 +1245,7 @@ private fun PaymentsTab(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.CalendarMonth,
+                                    imageVector = Icons.Outlined.CalendarMonth,
                                     contentDescription = null,
                                     tint = PrimaryPurple,
                                     modifier = Modifier.size(18.dp)
@@ -1253,7 +1255,7 @@ private fun PaymentsTab(
                                     text = if (isBangla) "নির্দিষ্ট তারিখ নির্বাচন করুন" else "Select Specific Date",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                             }
                             IconButton(
@@ -1261,7 +1263,7 @@ private fun PaymentsTab(
                                 modifier = Modifier.size(26.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
+                                    imageVector = Icons.Outlined.Close,
                                     contentDescription = "Close Calendar",
                                     tint = TextMuted,
                                     modifier = Modifier.size(16.dp)
@@ -1307,7 +1309,7 @@ private fun PaymentsTab(
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PrimaryPurple,
                             selectedLabelColor = Color.White,
-                            containerColor = Color.White,
+                            containerColor = MaterialTheme.colorScheme.surface,
                             labelColor = TextPrimary
                         ),
                         border = FilterChipDefaults.filterChipBorder(
@@ -1355,7 +1357,7 @@ private fun PaymentsTab(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = Icons.Default.ReceiptLong,
+                            imageVector = Icons.Outlined.ReceiptLong,
                             contentDescription = null,
                             tint = TextMuted,
                             modifier = Modifier.size(48.dp)
@@ -1398,7 +1400,7 @@ private fun PaymentsTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp)),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Row(
@@ -1508,7 +1510,7 @@ private fun PaymentsTab(
                                 onClick = { onShareReceipt(pay) },
                                 modifier = Modifier.size(28.dp)
                             ) {
-                                Icon(Icons.Default.PictureAsPdf, contentDescription = "Receipt PDF", tint = PrimaryPurple)
+                                Icon(Icons.Outlined.PictureAsPdf, contentDescription = "Receipt PDF", tint = PrimaryPurple)
                             }
                             if (!pay.isVoided) {
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -1516,7 +1518,7 @@ private fun PaymentsTab(
                                     onClick = { paymentToVoid = pay; voidReason = "" },
                                     modifier = Modifier.size(28.dp)
                                 ) {
-                                    Icon(Icons.Default.Block, contentDescription = "Void Payment", tint = StatusError)
+                                    Icon(Icons.Outlined.Block, contentDescription = "Void Payment", tint = StatusError)
                                 }
                             }
                         }
@@ -1605,7 +1607,7 @@ private fun ReturnsTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp)),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -1620,7 +1622,7 @@ private fun ReturnsTab(
                         Text(
                             text = "৳" + Formatters.formatMinorUnit(ret.totalReturnAmountMinor),
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFC53030),
+                            color = StatusError,
                             style = MaterialTheme.typography.titleMedium
                         )
                     }
@@ -1675,7 +1677,7 @@ private fun ReportsTab(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.TrendingUp, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (isBangla) "গত ৩০ দিনের বিক্রয় ও লাভ বিশ্লেষণ" else "30-Day Sales & Profit Performance",
@@ -1727,7 +1729,7 @@ private fun ReportsTab(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 0.5.dp
             ) {
                 Row(
@@ -1769,7 +1771,7 @@ private fun ReportsTab(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 0.5.dp
             ) {
                 Row(
@@ -1788,7 +1790,7 @@ private fun ReportsTab(
                         Text(
                             text = "Due: ৳${Formatters.formatMinorUnit(cust.outstandingBalanceMinor)}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (cust.outstandingBalanceMinor > 0) Color(0xFFC53030) else StatusSuccess,
+                            color = if (cust.outstandingBalanceMinor > 0) StatusError else StatusSuccess,
                             fontWeight = FontWeight.Bold
                         )
                     }

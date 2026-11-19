@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.inventory.reconciliation
 
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,10 +20,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
@@ -68,7 +71,7 @@ fun InventoryReconciliationView(
     onRunReconciliation: () -> Unit,
     onExportPdf: () -> Unit
 ) {
-    var showOnlyMismatches by remember { mutableStateOf(false) }
+    var showOnlyMismatches by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // Top Action Bar: Run Audit & Export PDF
@@ -96,7 +99,7 @@ fun InventoryReconciliationView(
                     ERPActionButton(
                         text = "PDF",
                         onClick = onExportPdf,
-                        icon = Icons.Default.PictureAsPdf,
+                        icon = Icons.Outlined.PictureAsPdf,
                         variant = ERPButtonVariant.OUTLINED
                     )
                 }
@@ -104,7 +107,7 @@ fun InventoryReconciliationView(
                 ERPActionButton(
                     text = if (isReconciling) "Auditing..." else "Run Audit",
                     onClick = onRunReconciliation,
-                    icon = if (isReconciling) null else Icons.Default.Refresh,
+                    icon = if (isReconciling) null else Icons.Outlined.Refresh,
                     enabled = !isReconciling
                 )
             }
@@ -114,7 +117,7 @@ fun InventoryReconciliationView(
 
         if (reconciliation == null) {
             ERPEmptyState(
-                icon = Icons.Default.Refresh,
+                icon = Icons.Outlined.Refresh,
                 title = "No Reconciliation Audit Yet",
                 message = "Click 'Run Audit' to reconcile stock balances, movements ledger, FIFO layers, and Account 1210."
             )
@@ -139,7 +142,7 @@ fun InventoryReconciliationView(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (isMatched) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        imageVector = if (isMatched) Icons.Outlined.CheckCircle else Icons.Outlined.Warning,
                         contentDescription = null,
                         tint = if (isMatched) StatusSuccess else StatusError,
                         modifier = Modifier.size(28.dp)
@@ -152,7 +155,7 @@ fun InventoryReconciliationView(
                             text = if (isMatched) "ALL 5 BALANCES MATCHED PERFECTLY" else "DISCREPANCY DETECTED ACROSS BALANCES",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (isMatched) Color(0xFF065F46) else Color(0xFF991B1B)
+                            color = if (isMatched) StatusSuccess else StatusError
                         )
                         val auditDate = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.US).format(Date(reconciliation.createdAt))
                         Text(
@@ -167,7 +170,7 @@ fun InventoryReconciliationView(
             Spacer(modifier = Modifier.height(10.dp))
 
             // 5 Balances Grid
-            ERPCard(contentPadding = 12.dp, backgroundColor = Color(0xFFF8FAFC)) {
+            ERPCard(contentPadding = 12.dp, backgroundColor = ERPSurfaceVariant) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "5-Way Audit Comparison",
@@ -237,7 +240,7 @@ fun InventoryReconciliationView(
                                 Formatters.formatCurrency(reconciliation.account1210BalanceMinor, currency, language),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F766E)
+                                color = SecondaryTeal
                             )
                         }
 
@@ -274,7 +277,7 @@ fun InventoryReconciliationView(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (showOnlyMismatches) StatusError else Color(0xFFF1F5F9))
+                        .background(if (showOnlyMismatches) StatusError else ERPSurfaceVariant)
                         .clickable { showOnlyMismatches = !showOnlyMismatches }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
@@ -293,7 +296,7 @@ fun InventoryReconciliationView(
 
             if (displayList.isEmpty()) {
                 ERPEmptyState(
-                    icon = Icons.Default.CheckCircle,
+                    icon = Icons.Outlined.CheckCircle,
                     title = "No Discrepancies",
                     message = "Every audited product line has identical stock balance, movement net and FIFO layer counts."
                 )
@@ -305,7 +308,7 @@ fun InventoryReconciliationView(
                     items(displayList, key = { it.id }) { item ->
                         ERPCard(
                             contentPadding = 8.dp,
-                            backgroundColor = if (item.qtyMismatch) Color(0xFFFEF2F2) else Color.White,
+                            backgroundColor = if (item.qtyMismatch) StatusErrorContainer else Color.White,
                             modifier = Modifier.border(
                                 width = 1.dp,
                                 color = if (item.qtyMismatch) StatusError.copy(alpha = 0.5f) else ERPDivider,

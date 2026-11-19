@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.settings.components
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,11 +13,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockReset
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockReset
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -55,10 +56,10 @@ fun SetPinDialog(
 ) {
     val isBn = language == AppLanguage.BANGLA
 
-    var pin by remember { mutableStateOf("") }
-    var confirmPin by remember { mutableStateOf("") }
+    var pin by rememberSaveable { mutableStateOf("") }
+    var confirmPin by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showPin by remember { mutableStateOf(false) }
+    var showPin by rememberSaveable { mutableStateOf(false) }
 
     fun validateAndSubmit() {
         if (!PinSecurityHelper.isValidPin(pin)) {
@@ -99,7 +100,7 @@ fun SetPinDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Lock,
+                            imageVector = Icons.Outlined.Lock,
                             contentDescription = null,
                             tint = PrimaryPurple,
                             modifier = Modifier.size(22.dp)
@@ -112,7 +113,7 @@ fun SetPinDialog(
                         )
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
+                        Icon(imageVector = Icons.Outlined.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                     }
                 }
 
@@ -143,7 +144,7 @@ fun SetPinDialog(
                     trailingIcon = {
                         IconButton(onClick = { showPin = !showPin }) {
                             Icon(
-                                imageVector = if (showPin) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                imageVector = if (showPin) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                                 contentDescription = "Toggle PIN visibility",
                                 modifier = Modifier.size(20.dp)
                             )
@@ -221,11 +222,11 @@ fun ChangePinDialog(
 ) {
     val isBn = language == AppLanguage.BANGLA
 
-    var oldPin by remember { mutableStateOf("") }
-    var newPin by remember { mutableStateOf("") }
-    var confirmNewPin by remember { mutableStateOf("") }
+    var oldPin by rememberSaveable { mutableStateOf("") }
+    var newPin by rememberSaveable { mutableStateOf("") }
+    var confirmNewPin by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showPin by remember { mutableStateOf(false) }
+    var showPin by rememberSaveable { mutableStateOf(false) }
 
     fun validateAndChange() {
         if (!PinSecurityHelper.verifyPin(oldPin, storedHash, storedSalt)) {
@@ -270,7 +271,7 @@ fun ChangePinDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.LockReset,
+                            imageVector = Icons.Outlined.LockReset,
                             contentDescription = null,
                             tint = PrimaryPurple,
                             modifier = Modifier.size(22.dp)
@@ -283,7 +284,7 @@ fun ChangePinDialog(
                         )
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
+                        Icon(imageVector = Icons.Outlined.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                     }
                 }
 
@@ -324,7 +325,7 @@ fun ChangePinDialog(
                     trailingIcon = {
                         IconButton(onClick = { showPin = !showPin }) {
                             Icon(
-                                imageVector = if (showPin) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                imageVector = if (showPin) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                                 contentDescription = "Toggle PIN visibility",
                                 modifier = Modifier.size(20.dp)
                             )
@@ -402,7 +403,7 @@ fun DisablePinDialog(
 ) {
     val isBn = language == AppLanguage.BANGLA
 
-    var pin by remember { mutableStateOf("") }
+    var pin by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     fun verifyAndDisable() {

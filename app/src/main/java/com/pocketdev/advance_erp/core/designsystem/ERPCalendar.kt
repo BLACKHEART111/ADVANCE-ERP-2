@@ -91,7 +91,7 @@ fun ERPCalendar(
                     text = monthName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
 
                 Row {
@@ -102,7 +102,7 @@ fun ERPCalendar(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = "Previous Month",
-                            tint = DeepNavy,
+                            tint = TextPrimary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -113,7 +113,7 @@ fun ERPCalendar(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = "Next Month",
-                            tint = DeepNavy,
+                            tint = TextPrimary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -187,7 +187,7 @@ fun ERPCalendar(
                                         text = dayText,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) Color.White else TextPrimary
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary
                                     )
                                     if (hasActivity && !isSelected) {
                                         Box(

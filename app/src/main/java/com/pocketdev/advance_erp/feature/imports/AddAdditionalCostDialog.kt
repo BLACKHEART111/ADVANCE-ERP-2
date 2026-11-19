@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
@@ -19,8 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PriceCheck
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PriceCheck
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -80,11 +83,11 @@ fun AddAdditionalCostDialog(
     ) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf<AdditionalCostCategory>(AdditionalCostCategory.HANDLING) }
-    var description by remember { mutableStateOf("Local handling and warehousing carriage") }
-    var amountStr by remember { mutableStateOf("5000.00") }
-    var isCapitalizable by remember { mutableStateOf(true) }
-    var allocationMethod by remember { mutableStateOf("QUANTITY") }
-    var notes by remember { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("Local handling and warehousing carriage") }
+    var amountStr by rememberSaveable { mutableStateOf("5000.00") }
+    var isCapitalizable by rememberSaveable { mutableStateOf(true) }
+    var allocationMethod by rememberSaveable { mutableStateOf("QUANTITY") }
+    var notes by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Dialog(
@@ -120,7 +123,7 @@ fun AddAdditionalCostDialog(
                                 .background(PrimaryPurple.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.PriceCheck, contentDescription = null, tint = PrimaryPurple)
+                            Icon(Icons.Outlined.PriceCheck, contentDescription = null, tint = PrimaryPurple)
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
@@ -128,7 +131,7 @@ fun AddAdditionalCostDialog(
                                 text = if (isBangla) "অতিরিক্ত পরিচালন ব্যয়" else "Post-Arrival Additional Cost",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = DeepNavy
+                                color = TextPrimary
                             )
                             Text(
                                 text = if (isBangla) "মূলধনীকরণ বনাম সাময়িক খরচ ব্যবস্থাপনা" else "Capitalizable vs Period Expense Tracking",
@@ -138,7 +141,7 @@ fun AddAdditionalCostDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
@@ -149,7 +152,7 @@ fun AddAdditionalCostDialog(
                     text = if (isBangla) "ব্যয়ের ধরণ (Category)" else "Cost Category",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
@@ -168,7 +171,7 @@ fun AddAdditionalCostDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) PrimaryPurple else Color.White)
+                                .background(if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
                                 .clickable {
                                     selectedCategory = cat
                                     description = when (cat) {
@@ -187,7 +190,7 @@ fun AddAdditionalCostDialog(
                                 text = if (isBangla) cat.titleBn else cat.titleEn,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color.White else TextPrimary,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                 maxLines = 1,
                                 fontSize = 10.sp
                             )
@@ -224,7 +227,7 @@ fun AddAdditionalCostDialog(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isCapitalizable) Color(0xFFF0FDF4) else Color(0xFFFEF2F2)
+                        containerColor = if (isCapitalizable) StatusSuccessContainer else StatusErrorContainer
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {

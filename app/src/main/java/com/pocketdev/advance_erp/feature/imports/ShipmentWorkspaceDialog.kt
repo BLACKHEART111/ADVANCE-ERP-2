@@ -1,5 +1,11 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,16 +28,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -103,6 +109,9 @@ fun ShipmentWorkspaceDialog(
     freightRates: List<ShipmentFreightRate>,
     costItems: List<ImportCostItem>,
     landingPreview: LandingCostEngine.ShipmentLandingCostResult?,
+    previewError: String? = null,
+    previewLoading: Boolean = false,
+    onRetryPreview: () -> Unit = {},
     snapshots: List<LandedCostSnapshot>,
     costAdjustments: List<InventoryCostAdjustment>,
     products: List<Product>,
@@ -130,9 +139,9 @@ fun ShipmentWorkspaceDialog(
     onApplyPostFinalizeAdjustment: (reason: String) -> Unit,
     onRecordWarehouseRent: (warehouseId: String, rentMonth: String, amountMinor: Long, notes: String?) -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var showConfirmFinalize by remember { mutableStateOf(false) }
-    var postFinalizeReason by remember { mutableStateOf("Post-finalization Customs / Port / Transport bill") }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var showConfirmFinalize by rememberSaveable { mutableStateOf(false) }
+    var postFinalizeReason by rememberSaveable { mutableStateOf("Post-finalization Customs / Port / Transport bill") }
 
     val tabs = if (isBangla) {
         listOf(
@@ -155,18 +164,28 @@ fun ShipmentWorkspaceDialog(
     val isFinalized = snapshots.isNotEmpty() && snapshots.all { it.isFinal }
     val uncapitalizedPostCosts = costItems.filter { !it.isCapitalized }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ERPFullScreenEditor(
+        onDismissRequest = onDismiss
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.98f)
-                .fillMaxHeight(0.95f)
-                .clip(RoundedCornerShape(20.dp)),
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(0.dp)),
             color = ERPBackground
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                if (previewLoading) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (previewError != null) {
+                    androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.errorContainer) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text((if (isBangla) "ল্যান্ডিং কস্ট পাওয়া যায়নি: " else "Landing cost unavailable: ") + previewError,
+                                Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer)
+                            TextButton(onClick = onRetryPreview) { Text(if (isBangla) "আবার চেষ্টা" else "Retry") }
+                        }
+                    }
+                }
+
                 // Header
                 Row(
                     modifier = Modifier
@@ -178,7 +197,7 @@ fun ShipmentWorkspaceDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FlightTakeoff, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.FlightTakeoff, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${shipment.shipmentNumber} • ${if (isBangla) "শিপমেন্ট ও ল্যান্ডিং কস্ট ওয়ার্কস্পেস" else "Shipment & Landing Cost Workspace"}",
@@ -195,10 +214,10 @@ fun ShipmentWorkspaceDialog(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onShareReportPdf) {
-                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Share PDF", tint = SecondaryTeal)
+                            Icon(Icons.Outlined.PictureAsPdf, contentDescription = "Share PDF", tint = SecondaryTeal)
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
                         }
                     }
                 }
@@ -207,7 +226,7 @@ fun ShipmentWorkspaceDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White)
+                        .background(MaterialTheme.colorScheme.surface)
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -217,7 +236,7 @@ fun ShipmentWorkspaceDialog(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (active) PrimaryPurple else Color(0xFFF1F5F9))
+                                .background(if (active) PrimaryPurple else ERPSurfaceVariant)
                                 .clickable { selectedTab = idx }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
@@ -225,13 +244,13 @@ fun ShipmentWorkspaceDialog(
                                 text = title,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (active) Color.White else TextPrimary
+                                color = if (active) MaterialTheme.colorScheme.onPrimary else TextPrimary
                             )
                         }
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFE2E8F0))
+                HorizontalDivider(color = ERPDivider)
 
                 // Tab Content
                 Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(14.dp)) {
@@ -291,7 +310,7 @@ fun ShipmentWorkspaceDialog(
     if (showConfirmFinalize) {
         AlertDialog(
             onDismissRequest = { showConfirmFinalize = false },
-            icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusSuccess) },
+            icon = { Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = StatusSuccess) },
             title = {
                 Text(
                     text = if (isBangla) "ল্যান্ডিং কস্ট চূড়ান্তকরণ নিশ্চিত করুন" else "Confirm Landing Cost Finalization",
@@ -338,9 +357,9 @@ private fun SupplierAndChinaDeliveryTab(
     onLinkPoToShipment: (String) -> Unit
 ) {
     var selectedSupplierId by remember { mutableStateOf(suppliers.firstOrNull()?.id ?: shipment.supplierId) }
-    var currency by remember { mutableStateOf("CNY") }
-    var exchangeRateStr by remember { mutableStateOf("17.00") }
-    var chinaDeliveryStr by remember { mutableStateOf("300.00") }
+    var currency by rememberSaveable { mutableStateOf("CNY") }
+    var exchangeRateStr by rememberSaveable { mutableStateOf("17.00") }
+    var chinaDeliveryStr by rememberSaveable { mutableStateOf("300.00") }
     var allocationMethod by remember { mutableStateOf(AllocationMethod.PURCHASE_VALUE) }
 
     val supplierMap = remember(suppliers) { suppliers.associateBy { it.id } }
@@ -348,7 +367,7 @@ private fun SupplierAndChinaDeliveryTab(
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -356,7 +375,7 @@ private fun SupplierAndChinaDeliveryTab(
                         text = if (isBangla) "সরবরাহকারী-ভিত্তিক চায়না লোকাল ডেলিভারি (Phase 2A & 2B)" else "Supplier-Wise China Local Delivery (Phase 2A & 2B)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                     Text(
                         text = "Formula: Product Delivery Allocation = Supplier Delivery Charge × (Product Purchase Value / Supplier Total Purchase Value)",
@@ -374,14 +393,14 @@ private fun SupplierAndChinaDeliveryTab(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (active) PrimaryPurple else Color(0xFFF1F5F9))
+                                    .background(if (active) PrimaryPurple else ERPSurfaceVariant)
                                     .clickable { selectedSupplierId = sup.id }
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
                                     text = sup.companyName,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (active) Color.White else TextPrimary,
+                                    color = if (active) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -436,7 +455,7 @@ private fun SupplierAndChinaDeliveryTab(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(if (isBangla) "সরবরাহকারী ও চায়না ডেলিভারি সংরক্ষণ করুন" else "Save Supplier & China Delivery")
                     }
@@ -448,7 +467,7 @@ private fun SupplierAndChinaDeliveryTab(
         items(shipmentSuppliers) { ss ->
             val supName = supplierMap[ss.supplierId]?.companyName ?: ss.supplierId
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Row(
@@ -457,7 +476,7 @@ private fun SupplierAndChinaDeliveryTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(supName, fontWeight = FontWeight.Bold, color = DeepNavy)
+                        Text(supName, fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text(
                             "Currency: ${ss.currency} @ FX ${ss.exchangeRateToBdt} | Allocation: ${ss.chinaDeliveryAllocationMethod}",
                             style = MaterialTheme.typography.bodySmall,
@@ -483,7 +502,7 @@ private fun SupplierAndChinaDeliveryTab(
         // Link Additional Purchase Orders to this Shipment
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -491,7 +510,7 @@ private fun SupplierAndChinaDeliveryTab(
                         text = if (isBangla) "একাধিক ক্রয়াদেশ সংযুক্ত করুন (Multi-PO Shipment)" else "Linked Purchase Orders (${shipmentOrders.size})",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                     allPurchaseOrders.take(6).forEach { po ->
                         val isLinked = po.shipmentId == shipment.id || po.id == shipment.purchaseOrderId
@@ -537,7 +556,7 @@ private fun PackagingAndFreightTab(
         // Two-Level Category Freight Rate Management
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -545,7 +564,7 @@ private fun PackagingAndFreightTab(
                         text = if (isBangla) "২-স্তরের ক্যাটাগরি আন্তর্জাতিক ফ্রেইট রেট (Phase 2D)" else "Two-Level Category International Freight (Phase 2D)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                     Text(
                         text = "Category Freight = Total Category Gross Weight × Applicable Rate/KG (allocated to category products by Gross Weight)",
@@ -563,7 +582,7 @@ private fun PackagingAndFreightTab(
                         }
 
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -571,7 +590,7 @@ private fun PackagingAndFreightTab(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("${cat.nameEn} (${cat.nameBn})", fontWeight = FontWeight.Bold, color = DeepNavy)
+                                    Text("${cat.nameEn} (${cat.nameBn})", fontWeight = FontWeight.Bold, color = TextPrimary)
                                     if (shipmentRate != null) {
                                         Text(
                                             "Weight: ${shipmentRate.totalCategoryGrossWeightKg} KG → Freight: ৳${shipmentRate.totalCategoryFreightBdtMinor / 100.0}",
@@ -642,13 +661,13 @@ private fun PackagingAndFreightTab(
                     text = "Carton & Packaging List (${cartons.size} rows)",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
                 Button(
                     onClick = onAddCartonClick,
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                 ) {
-                    Icon(Icons.Default.ViewInAr, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.ViewInAr, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Add Carton")
                 }
@@ -658,7 +677,7 @@ private fun PackagingAndFreightTab(
         items(cartons) { c ->
             val prod = productMap[c.productId]
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Row(
@@ -667,7 +686,7 @@ private fun PackagingAndFreightTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("${c.cartonNumber} • ${prod?.nameEn ?: c.productId}", fontWeight = FontWeight.Bold, color = DeepNavy)
+                        Text("${c.cartonNumber} • ${prod?.nameEn ?: c.productId}", fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text(
                             "Category: ${c.categoryName ?: prod?.categoryId ?: "N/A"} | Qty: ${c.quantity} pcs",
                             style = MaterialTheme.typography.bodySmall,
@@ -702,12 +721,12 @@ private fun BdTransportAndExpensesTab(
     ) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf(CostCategory.BD_LOCAL_TRANSPORT) }
-    var description by remember { mutableStateOf("Bangladesh Port to Warehouse Local Transport") }
-    var amountStr by remember { mutableStateOf("5000.00") }
-    var currency by remember { mutableStateOf("BDT") }
-    var exchangeRateStr by remember { mutableStateOf("1.00") }
+    var description by rememberSaveable { mutableStateOf("Bangladesh Port to Warehouse Local Transport") }
+    var amountStr by rememberSaveable { mutableStateOf("5000.00") }
+    var currency by rememberSaveable { mutableStateOf("BDT") }
+    var exchangeRateStr by rememberSaveable { mutableStateOf("1.00") }
     var selectedMethod by remember { mutableStateOf(AllocationMethod.GROSS_WEIGHT) }
-    var docRef by remember { mutableStateOf("BD-TR-001") }
+    var docRef by rememberSaveable { mutableStateOf("BD-TR-001") }
     val manualInputs = remember { mutableStateMapOf<String, String>() }
     var validationError by remember { mutableStateOf<String?>(null) }
 
@@ -726,7 +745,7 @@ private fun BdTransportAndExpensesTab(
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -734,7 +753,7 @@ private fun BdTransportAndExpensesTab(
                         text = if (isBangla) "বাংলাদেশ পরিবহন ও অতিরিক্ত আমদানি ব্যয় (Phase 2E & 2F)" else "Bangladesh Transport & Additional Import Expenses (Phase 2E & 2F)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
 
                     // Category chips
@@ -754,7 +773,7 @@ private fun BdTransportAndExpensesTab(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (active) PrimaryPurple else Color(0xFFF1F5F9))
+                                    .background(if (active) PrimaryPurple else ERPSurfaceVariant)
                                     .clickable {
                                         selectedCategory = cat
                                         description = cat.titleEn
@@ -764,7 +783,7 @@ private fun BdTransportAndExpensesTab(
                                 Text(
                                     text = cat.titleEn,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (active) Color.White else TextPrimary,
+                                    color = if (active) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -776,7 +795,7 @@ private fun BdTransportAndExpensesTab(
                         text = "Select Expense Allocation Basis (6 Supported Methods):",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -787,14 +806,14 @@ private fun BdTransportAndExpensesTab(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (active) SecondaryTeal else Color(0xFFF1F5F9))
+                                    .background(if (active) SecondaryTeal else ERPSurfaceVariant)
                                     .clickable { selectedMethod = m }
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
                                     text = m.titleEn,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (active) Color.White else TextPrimary,
+                                    color = if (active) MaterialTheme.colorScheme.onPrimary else TextPrimary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -902,7 +921,7 @@ private fun BdTransportAndExpensesTab(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Add & Allocate Expense")
                     }
@@ -912,7 +931,7 @@ private fun BdTransportAndExpensesTab(
 
         items(costItems) { ci ->
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Row(
@@ -921,7 +940,7 @@ private fun BdTransportAndExpensesTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("${ci.description} (${ci.costCategory})", fontWeight = FontWeight.Bold, color = DeepNavy)
+                        Text("${ci.description} (${ci.costCategory})", fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text(
                             "Basis: ${ci.allocationMethod} | Ref: ${ci.documentReference ?: "N/A"} | ${if (ci.isPostFinalization) "Post-Finalize" else "Pre-Finalize"}",
                             style = MaterialTheme.typography.bodySmall,
@@ -933,7 +952,7 @@ private fun BdTransportAndExpensesTab(
                         Text(
                             if (ci.isCapitalized) "Allocated (${ci.costAdjustmentReference ?: "FINAL"})" else "Pending Allocation",
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (ci.isCapitalized) StatusSuccess else Color(0xFFD97706)
+                            color = if (ci.isCapitalized) StatusSuccess else StatusWarning
                         )
                     }
                 }
@@ -959,7 +978,7 @@ private fun LandingCostReviewAndFinalizeTab(
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -967,7 +986,7 @@ private fun LandingCostReviewAndFinalizeTab(
                         text = if (isBangla) "ল্যান্ডিং কস্ট সামারি ও পর্যালোচনা (Phase 4 & 5)" else "Landing Cost Summary & Review (Phase 4 & 5)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                     if (landingPreview != null) {
                         Text("1. Total Product Purchase Cost: ৳${landingPreview.totalPurchaseCostBdtMinor / 100.0}", style = MaterialTheme.typography.bodySmall)
@@ -994,12 +1013,12 @@ private fun LandingCostReviewAndFinalizeTab(
                             enabled = !isFinalized,
                             colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess)
                         ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (isFinalized) "Landing Cost Finalized" else "Finalize Landing Cost")
                         }
                         OutlinedButton(onClick = onReceiveClick) {
-                            Icon(Icons.Default.Inventory2, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Inventory2, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Warehouse Receiving")
                         }
@@ -1012,14 +1031,14 @@ private fun LandingCostReviewAndFinalizeTab(
         if (isFinalized && uncapitalizedPostCosts.isNotEmpty()) {
             item {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                    colors = CardDefaults.cardColors(containerColor = StatusWarningContainer),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             "Post-Finalize Additional Expenses Pending (${uncapitalizedPostCosts.size})",
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF92400E)
+                            color = StatusWarning
                         )
                         OutlinedTextField(
                             value = postFinalizeReason,
@@ -1032,7 +1051,7 @@ private fun LandingCostReviewAndFinalizeTab(
                             onClick = onApplyPostFinalizeAdjustment,
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                         ) {
-                            Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Calculate, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Generate Cost Adjustment & Update FIFO / COGS")
                         }
@@ -1045,7 +1064,7 @@ private fun LandingCostReviewAndFinalizeTab(
         val breakdowns = landingPreview?.productBreakdowns.orEmpty()
         items(breakdowns) { b ->
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1053,7 +1072,7 @@ private fun LandingCostReviewAndFinalizeTab(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("${b.productNameEn} (Packed: ${b.packedQuantity})", fontWeight = FontWeight.Bold, color = DeepNavy)
+                        Text("${b.productNameEn} (Packed: ${b.packedQuantity})", fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text(
                             "Unit Cost: ৳${b.unitImportCostBdtMinor / 100.0}",
                             fontWeight = FontWeight.Bold,
@@ -1078,23 +1097,23 @@ private fun LandingCostReviewAndFinalizeTab(
         if (costAdjustments.isNotEmpty()) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.History, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.History, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         "Post-Finalization Cost Adjustment History (${costAdjustments.size})",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                 }
             }
             items(costAdjustments) { adj ->
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("${adj.adjustmentNumber} • ${adj.reason}", fontWeight = FontWeight.Bold, color = DeepNavy)
+                        Text("${adj.adjustmentNumber} • ${adj.reason}", fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text(
                             "Unit Cost: ৳${adj.oldUnitCostBdtMinor / 100.0} → ৳${adj.newUnitCostBdtMinor / 100.0} (+৳${adj.unitVarianceBdtMinor / 100.0})",
                             style = MaterialTheme.typography.bodySmall,
@@ -1118,15 +1137,15 @@ private fun WarehouseRentTab(
     isBangla: Boolean,
     onRecordWarehouseRent: (warehouseId: String, rentMonth: String, amountMinor: Long, notes: String?) -> Unit
 ) {
-    var warehouseId by remember { mutableStateOf("wh-dhk-01") }
-    var rentMonth by remember { mutableStateOf("2026-11") }
-    var amountStr by remember { mutableStateOf("25000.00") }
-    var notes by remember { mutableStateOf("Monthly warehouse rent (Operating Expense)") }
+    var warehouseId by rememberSaveable { mutableStateOf("wh-dhk-01") }
+    var rentMonth by rememberSaveable { mutableStateOf("2026-11") }
+    var amountStr by rememberSaveable { mutableStateOf("25000.00") }
+    var notes by rememberSaveable { mutableStateOf("Monthly warehouse rent (Operating Expense)") }
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1134,7 +1153,7 @@ private fun WarehouseRentTab(
                         text = if (isBangla) "মাসিক গুদাম ভাড়া — পরিচালনা ব্যয় (Phase 2G)" else "Monthly Warehouse Rent — Operating Expense (Phase 2G)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                     Text(
                         text = "Recorded under Account 5110 (Operating Expense). Strictly excluded from Product Import Landing Cost.",
@@ -1192,7 +1211,7 @@ private fun WarehouseRentTab(
 
         items(warehouseRentHistory) { v ->
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Row(
@@ -1201,7 +1220,7 @@ private fun WarehouseRentTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("${v.voucherNumber} • ${v.descriptionEn}", fontWeight = FontWeight.Bold, color = DeepNavy)
+                        Text("${v.voucherNumber} • ${v.descriptionEn}", fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text("Warehouse: ${v.warehouseId ?: "N/A"} | Month: ${v.rentMonth ?: v.referenceNumber ?: "N/A"}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                     }
                     Text("৳${v.bdtAmountMinor / 100.0}", fontWeight = FontWeight.Bold, color = PrimaryPurple)

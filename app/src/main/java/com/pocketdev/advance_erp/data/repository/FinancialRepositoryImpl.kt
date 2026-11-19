@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.data.repository
 
+import androidx.room.withTransaction
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import com.pocketdev.advance_erp.data.dao.AccountingDao
 import com.pocketdev.advance_erp.data.dao.AuditLogDao
@@ -68,7 +69,7 @@ class FinancialRepositoryImpl @Inject constructor(
         voucherDate: Long,
         referenceNumber: String?,
         notes: String?
-    ): String {
+    ): String = database.withTransaction {
         require(amountMinor > 0L) { "Expense amount must be greater than zero: $amountMinor" }
 
         val bdtAmountMinor = if (currency.equals("BDT", ignoreCase = true)) {
@@ -141,10 +142,10 @@ class FinancialRepositoryImpl @Inject constructor(
             details = "Posted voucher $voucherNumber for $currency ${amountMinor / 100.0} (BDT ${bdtAmountMinor / 100.0})"
         )
 
-        return voucherId
+        voucherId
     }
 
-    override suspend fun reverseExpense(expenseId: String, reason: String): String {
+    override suspend fun reverseExpense(expenseId: String, reason: String): String = database.withTransaction {
         val voucher = expenseDao.getExpenseById(expenseId)
             ?: throw IllegalArgumentException("Expense voucher not found: $expenseId")
 
@@ -162,7 +163,7 @@ class FinancialRepositoryImpl @Inject constructor(
             details = "Reversed voucher ${voucher.voucherNumber}: $reason. Reversal JE: $reversalJeId"
         )
 
-        return reversalJeId
+        reversalJeId
     }
 
     override fun getAllTransfers(): Flow<List<AccountTransfer>> = cashBankDao.getAllTransfers()
@@ -174,7 +175,7 @@ class FinancialRepositoryImpl @Inject constructor(
         transferDate: Long,
         reference: String?,
         notes: String?
-    ): String {
+    ): String = database.withTransaction {
         require(sourceAccountId != destAccountId) { "Source and destination accounts cannot be the same" }
         require(amountMinor > 0L) { "Transfer amount must be greater than zero: $amountMinor" }
 
@@ -235,7 +236,7 @@ class FinancialRepositoryImpl @Inject constructor(
             details = "Transferred BDT ${amountMinor / 100.0} from ${sourceAccount.nameEn} to ${destAccount.nameEn} [$transferNumber]"
         )
 
-        return transferId
+        transferId
     }
 
     override suspend fun getCashBook(fromDate: Long, toDate: Long): List<CashBankBookEntry> {

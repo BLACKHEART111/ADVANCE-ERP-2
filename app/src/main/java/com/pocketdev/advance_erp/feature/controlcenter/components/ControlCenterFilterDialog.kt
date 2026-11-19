@@ -1,5 +1,9 @@
 package com.pocketdev.advance_erp.feature.controlcenter.components
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
 import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -19,14 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -78,7 +82,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val DialogChipSelectedColor = Color(0xFF6D28D9) // Vivid Deep Purple
+private val DialogChipSelectedColor: Color
+    @Composable get() = PrimaryPurple // Vivid Deep Purple
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -112,12 +117,12 @@ fun ControlCenterFilterDialog(
     var maxAmountText by remember { mutableStateOf(currentFilter.customMaxAmountMinor?.let { (it / 100).toString() } ?: "") }
     var sortBy by remember { mutableStateOf(currentFilter.sortBy) }
 
-    var showSavePresetField by remember { mutableStateOf(false) }
-    var presetName by remember { mutableStateOf("") }
+    var showSavePresetField by rememberSaveable { mutableStateOf(false) }
+    var presetName by rememberSaveable { mutableStateOf("") }
 
-    var customerDropdownExpanded by remember { mutableStateOf(false) }
-    var supplierDropdownExpanded by remember { mutableStateOf(false) }
-    var warehouseDropdownExpanded by remember { mutableStateOf(false) }
+    var customerDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+    var supplierDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+    var warehouseDropdownExpanded by rememberSaveable { mutableStateOf(false) }
 
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.US) }
     fun formatFilterDate(millis: Long?): String {
@@ -205,7 +210,7 @@ fun ControlCenterFilterDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.FilterList,
+                            imageVector = Icons.Outlined.FilterList,
                             contentDescription = null,
                             tint = DialogChipSelectedColor,
                             modifier = Modifier.size(22.dp)
@@ -218,7 +223,7 @@ fun ControlCenterFilterDialog(
                         )
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
+                        Icon(imageVector = Icons.Outlined.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                     }
                 }
 
@@ -275,7 +280,7 @@ fun ControlCenterFilterDialog(
                                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.CalendarMonth,
+                                        imageVector = Icons.Outlined.CalendarMonth,
                                         contentDescription = null,
                                         modifier = Modifier.size(12.dp),
                                         tint = PrimaryPurple
@@ -310,7 +315,7 @@ fun ControlCenterFilterDialog(
                                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Event,
+                                        imageVector = Icons.Outlined.Event,
                                         contentDescription = null,
                                         modifier = Modifier.size(12.dp),
                                         tint = SecondaryTeal
@@ -523,7 +528,7 @@ fun ControlCenterFilterDialog(
                             selected = deliveryReturn == option,
                             label = if (isBn) option.titleBn else option.titleEn,
                             onClick = { deliveryReturn = option },
-                            selectedColor = Color(0xFF0D9488) // Vivid Teal
+                            selectedColor = SecondaryTeal // Vivid Teal
                         )
                     }
                 }
@@ -548,7 +553,7 @@ fun ControlCenterFilterDialog(
                             selected = financialMetric == option,
                             label = if (isBn) option.titleBn else option.titleEn,
                             onClick = { financialMetric = option },
-                            selectedColor = Color(0xFF0284C7) // Sky Blue
+                            selectedColor = StatusInfo // Sky Blue
                         )
                     }
                 }
@@ -573,7 +578,7 @@ fun ControlCenterFilterDialog(
                             selected = amountFilter == option,
                             label = if (isBn) option.titleBn else option.titleEn,
                             onClick = { amountFilter = option },
-                            selectedColor = Color(0xFFD97706) // Amber
+                            selectedColor = StatusWarning // Amber
                         )
                     }
                 }
@@ -623,7 +628,7 @@ fun ControlCenterFilterDialog(
                             selected = sortBy == option,
                             label = if (isBn) option.titleBn else option.titleEn,
                             onClick = { sortBy = option },
-                            selectedColor = Color(0xFF475569) // Slate
+                            selectedColor = TextSecondary // Slate
                         )
                     }
                 }
@@ -658,7 +663,7 @@ fun ControlCenterFilterDialog(
                     TextButton(
                         onClick = { showSavePresetField = true }
                     ) {
-                        Icon(imageVector = Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Outlined.BookmarkBorder, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(if (isBn) "এই ফিল্টারটি প্রিসেট হিসেবে সেভ করুন" else "Save as Filter Preset", fontSize = 12.sp)
                     }
@@ -679,7 +684,7 @@ fun ControlCenterFilterDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Outlined.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(if (isBn) "রিসেট" else "Reset")
                     }
@@ -731,7 +736,7 @@ private fun FilterOptionChip(
         leadingIcon = if (selected) {
             {
                 Icon(
-                    imageVector = Icons.Default.Check,
+                    imageVector = Icons.Outlined.Check,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
                     tint = Color.White

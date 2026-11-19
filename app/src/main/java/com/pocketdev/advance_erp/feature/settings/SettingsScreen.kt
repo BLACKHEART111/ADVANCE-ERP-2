@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.settings
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,15 +20,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockReset
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.outlined.Business
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockReset
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.Divider
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,9 +41,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
-import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.runtime.rememberCoroutineScope
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -102,9 +103,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val isBn = state.language == AppLanguage.BANGLA
 
-    var showSetPinDialog by remember { mutableStateOf(false) }
-    var showChangePinDialog by remember { mutableStateOf(false) }
-    var showDisablePinDialog by remember { mutableStateOf(false) }
+    var showSetPinDialog by rememberSaveable { mutableStateOf(false) }
+    var showChangePinDialog by rememberSaveable { mutableStateOf(false) }
+    var showDisablePinDialog by rememberSaveable { mutableStateOf(false) }
 
     var companyName by remember(state.profile) { mutableStateOf(state.profile?.companyName ?: "") }
     var taxNumber by remember(state.profile) { mutableStateOf(state.profile?.taxNumber ?: "") }
@@ -145,48 +146,35 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // Official Brand Showcase Header
             item {
-                ERPCard(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp, horizontal = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        AdvanceErpLogo(
-                            variant = BrandConfig.LogoVariant.HORIZONTAL,
-                            modifier = Modifier
-                                .fillMaxWidth(0.85f)
-                                .height(52.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = BrandConfig.TAGLINE_EN,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextSecondary
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = BrandConfig.TAGLINE_BN,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = TextMuted
-                            )
-                        )
+                ERPSectionHeader(title = if (isBn) "চেহারা ও ভাষা" else "Appearance & language")
+            }
+            item {
+                ERPCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (isBn) "অ্যাপের থিম" else "App theme", style = MaterialTheme.typography.titleMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("system", "light", "dark").forEach { mode ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = state.themeMode == mode,
+                                    onClick = { viewModel.onThemeSelected(mode) },
+                                    label = { Text(when (mode) {
+                                        "light" -> if (isBn) "লাইট" else "Light"
+                                        "dark" -> if (isBn) "ডার্ক" else "Dark"
+                                        else -> if (isBn) "সিস্টেম" else "System"
+                                    }) }
+                                )
+                            }
+                        }
                     }
                 }
             }
-
             // Language Selection
             item {
                 Column {
                     ERPSectionHeader(
                         title = stringResource(R.string.language_selection),
-                        subtitle = "Select default application language"
+                        subtitle = if (isBn) "অ্যাপের ভাষা নির্বাচন করুন" else "Select default application language"
                     )
                     ERPCard {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -204,7 +192,7 @@ fun SettingsScreen(
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            imageVector = Icons.Default.Language,
+                                            imageVector = Icons.Outlined.Language,
                                             contentDescription = null,
                                             tint = if (isSelected) PrimaryPurple else TextSecondary,
                                             modifier = Modifier.size(20.dp)
@@ -220,7 +208,7 @@ fun SettingsScreen(
 
                                     if (isSelected) {
                                         Icon(
-                                            imageVector = Icons.Default.Check,
+                                            imageVector = Icons.Outlined.Check,
                                             contentDescription = "Selected",
                                             tint = PrimaryPurple,
                                             modifier = Modifier.size(20.dp)
@@ -267,7 +255,7 @@ fun SettingsScreen(
                                             Text(
                                                 text = curr.symbol,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) Color.White else TextPrimary
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary
                                             )
                                         }
                                         Spacer(modifier = Modifier.width(12.dp))
@@ -288,7 +276,7 @@ fun SettingsScreen(
 
                                     if (isSelected) {
                                         Icon(
-                                            imageVector = Icons.Default.Check,
+                                            imageVector = Icons.Outlined.Check,
                                             contentDescription = "Selected",
                                             tint = SecondaryTeal,
                                             modifier = Modifier.size(20.dp)
@@ -333,7 +321,7 @@ fun SettingsScreen(
                                     modifier = Modifier
                                         .size(68.dp)
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(Color.White)
+                                        .background(MaterialTheme.colorScheme.surface)
                                         .border(1.dp, PrimaryPurple.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -351,7 +339,7 @@ fun SettingsScreen(
                                     } else {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(
-                                                Icons.Default.Business,
+                                                Icons.Outlined.Business,
                                                 contentDescription = null,
                                                 tint = TextMuted,
                                                 modifier = Modifier.size(28.dp)
@@ -379,7 +367,7 @@ fun SettingsScreen(
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
                                             Icon(
-                                                Icons.Default.AddPhotoAlternate,
+                                                Icons.Outlined.AddPhotoAlternate,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(16.dp),
                                                 tint = PrimaryPurple
@@ -403,7 +391,7 @@ fun SettingsScreen(
                                                 shape = RoundedCornerShape(8.dp)
                                             ) {
                                                 Icon(
-                                                    Icons.Default.DeleteOutline,
+                                                    Icons.Outlined.DeleteOutline,
                                                     contentDescription = null,
                                                     modifier = Modifier.size(16.dp),
                                                     tint = Color.Red
@@ -496,7 +484,7 @@ fun SettingsScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Lock,
+                                        imageVector = Icons.Outlined.Lock,
                                         contentDescription = null,
                                         tint = if (state.isAppLockEnabled) PrimaryPurple else TextSecondary,
                                         modifier = Modifier.size(22.dp)
@@ -546,7 +534,7 @@ fun SettingsScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(imageVector = Icons.Default.LockReset, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryPurple)
+                                    Icon(imageVector = Icons.Outlined.LockReset, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryPurple)
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = if (isBn) "পিন কোড পরিবর্তন করুন" else "Change PIN Code",
@@ -569,7 +557,7 @@ fun SettingsScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Fingerprint,
+                                            imageVector = Icons.Outlined.Fingerprint,
                                             contentDescription = null,
                                             tint = if (state.isBiometricEnabled) SecondaryTeal else TextSecondary,
                                             modifier = Modifier.size(22.dp)
@@ -711,6 +699,6 @@ private fun SystemInfoRow(label: String, value: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = label, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-        Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = DeepNavy)
+        Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
     }
 }

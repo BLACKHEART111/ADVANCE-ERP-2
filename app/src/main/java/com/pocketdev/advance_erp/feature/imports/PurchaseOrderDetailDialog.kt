@@ -1,5 +1,10 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
@@ -24,26 +29,26 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Payment
-import androidx.compose.material.icons.filled.PriceCheck
-import androidx.compose.material.icons.filled.ReportProblem
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.TaskAlt
-import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material.icons.filled.Warehouse
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Payment
+import androidx.compose.material.icons.outlined.PriceCheck
+import androidx.compose.material.icons.outlined.ReportProblem
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.outlined.Warehouse
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -151,9 +156,9 @@ fun PurchaseOrderDetailDialog(
 ) {
     val isBangla = language == AppLanguage.BANGLA
     val productMap = remember(products) { products.associateBy { it.id } }
-    var showCancelConfirmDialog by remember { mutableStateOf(false) }
-    var cancelReason by remember { mutableStateOf("") }
-    var showEditPackingDialog by remember { mutableStateOf(false) }
+    var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var cancelReason by rememberSaveable { mutableStateOf("") }
+    var showEditPackingDialog by rememberSaveable { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<PurchaseOrderItem?>(null) }
     var deletingItemId by remember { mutableStateOf<String?>(null) }
     var deletingCartonNumber by remember { mutableStateOf<String?>(null) }
@@ -285,14 +290,14 @@ fun PurchaseOrderDetailDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { onSharePdf(order) }) {
                             Icon(
-                                imageVector = Icons.Default.Share,
+                                imageVector = Icons.Outlined.Share,
                                 contentDescription = "Share PO PDF",
                                 tint = SecondaryTeal
                             )
                         }
                         IconButton(onClick = onDismiss) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Outlined.Close,
                                 contentDescription = "Close",
                                 tint = Color.White
                             )
@@ -326,7 +331,7 @@ fun PurchaseOrderDetailDialog(
                     item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                                colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
                                 shape = RoundedCornerShape(12.dp),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, StatusSuccess.copy(alpha = 0.4f))
                             ) {
@@ -334,13 +339,13 @@ fun PurchaseOrderDetailDialog(
                                     modifier = Modifier.padding(14.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.TaskAlt, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(24.dp))
+                                    Icon(Icons.Outlined.TaskAlt, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(24.dp))
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text(
                                             text = if (isBangla) "ক্রয়াদেশ সম্পূর্ণ করা হয়েছে (Order Completed)" else "Purchase Order Completed",
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy,
+                                            color = TextPrimary,
                                             style = MaterialTheme.typography.titleSmall
                                         )
                                         if (completionRecord != null) {
@@ -371,7 +376,7 @@ fun PurchaseOrderDetailDialog(
                                     text = if (isBangla) "সরবরাহকারী ও বিনিময় হার" else "Supplier & Foreign Exchange",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -426,7 +431,7 @@ fun PurchaseOrderDetailDialog(
                                         text = if (isBangla) "সংযুক্ত ইনভয়েস / ডকুমেন্টস:" else "Attached Documents / Invoices:",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     val files = PoAttachmentStorage.parseAttachments(order.attachments)
@@ -452,7 +457,7 @@ fun PurchaseOrderDetailDialog(
                                         text = if (isBangla) "পেমেন্ট ও বকেয়া সারসংক্ষেপ" else "Payment & Balance Summary",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
                                     Text(
                                         text = "${(paymentProgress * 100).toInt()}% ${if (isBangla) "পরিশোধিত" else "Paid"}",
@@ -652,7 +657,7 @@ fun PurchaseOrderDetailDialog(
                                     text = if (isBangla) "পণ্য তালিকা (${items.size}):" else "Ordered Items (${items.size}):",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -709,7 +714,7 @@ fun PurchaseOrderDetailDialog(
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
                                                         Icon(
-                                                            imageVector = Icons.Default.Edit,
+                                                            imageVector = Icons.Outlined.Edit,
                                                             contentDescription = "Edit Item",
                                                             tint = PrimaryPurple,
                                                             modifier = Modifier.size(15.dp)
@@ -720,7 +725,7 @@ fun PurchaseOrderDetailDialog(
                                                         modifier = Modifier.size(24.dp)
                                                     ) {
                                                         Icon(
-                                                            imageVector = Icons.Default.Delete,
+                                                            imageVector = Icons.Outlined.Delete,
                                                             contentDescription = "Delete Item",
                                                             tint = StatusError,
                                                             modifier = Modifier.size(15.dp)
@@ -752,7 +757,7 @@ fun PurchaseOrderDetailDialog(
                                             text = if (isBangla) "কার্টন ও প্যাকিং ব্যবস্থাপনা" else "Carton & Packing Management",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                         Text(
                                             text = if (isBangla) "সিঙ্গেল ও মিক্সড কার্টন • স্বয়ংক্রিয় ওজন বিভাজন" else "Single & Mixed Cartons • Auto Weight Allocation",
@@ -773,7 +778,7 @@ fun PurchaseOrderDetailDialog(
                                                 shape = RoundedCornerShape(8.dp),
                                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                             ) {
-                                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = if (isBangla) "প্যাকিং এডিট" else "Edit Packing",
@@ -788,7 +793,7 @@ fun PurchaseOrderDetailDialog(
                                                 shape = RoundedCornerShape(8.dp),
                                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                                             ) {
-                                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = if (isBangla) "+ কার্টন" else "+ Carton",
@@ -806,7 +811,7 @@ fun PurchaseOrderDetailDialog(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(Color(0xFFF8FAFC), RoundedCornerShape(10.dp))
+                                        .background(ERPSurfaceVariant, RoundedCornerShape(10.dp))
                                         .padding(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
@@ -822,7 +827,7 @@ fun PurchaseOrderDetailDialog(
                                             } else if (recordedCartonsCount > 0) {
                                                 "$recordedCartonsCount Entered"
                                             } else "Planned Order Count",
-                                            color = DeepNavy,
+                                            color = TextPrimary,
                                             modifier = Modifier.weight(1f)
                                         )
                                         PackingMetricBox(
@@ -895,7 +900,7 @@ fun PurchaseOrderDetailDialog(
                                             text = if (isBangla) "ল্যান্ডেড কস্ট ও শিপিং ক্যালকুলেশন" else "Landed Cost & Shipping Calculation",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                         Text(
                                             text = if (isBangla) "গ্রস ওয়েট ভিত্তিক শিপিং • ক্যাটাগরিভিত্তিক ব্যয় বিভাজন" else "Gross Weight Shipping • Category Allocation",
@@ -913,7 +918,7 @@ fun PurchaseOrderDetailDialog(
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                                         ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isBangla) "+ খরচ যোগ" else "+ Add Cost",
@@ -932,7 +937,7 @@ fun PurchaseOrderDetailDialog(
                                 val calculatedShipping = poGrossWeightBd.multiply(shippingRate).setScale(2, RoundingMode.HALF_UP)
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                                    colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Row(
@@ -945,7 +950,7 @@ fun PurchaseOrderDetailDialog(
                                                 text = if (isBangla) "শিপিং খরচ হিসাব (গ্রস ওজন)" else "Shipping Cost Formula (Gross Weight)",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
-                                                color = DeepNavy
+                                                color = TextPrimary
                                             )
                                             Text(
                                                 text = "${displayGrossWeight} KG × ৳${shippingRate}/KG",
@@ -994,7 +999,7 @@ fun PurchaseOrderDetailDialog(
                                 if (isCostFinalized) {
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                                        colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
                                         shape = RoundedCornerShape(8.dp),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, StatusSuccess.copy(alpha = 0.4f))
                                     ) {
@@ -1002,7 +1007,7 @@ fun PurchaseOrderDetailDialog(
                                             modifier = Modifier.padding(12.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(22.dp))
+                                            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(22.dp))
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column {
                                                 Text(
@@ -1023,7 +1028,7 @@ fun PurchaseOrderDetailDialog(
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Card(
                                             modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                                            colors = CardDefaults.cardColors(containerColor = StatusErrorContainer),
                                             shape = RoundedCornerShape(8.dp),
                                             border = androidx.compose.foundation.BorderStroke(1.dp, StatusError.copy(alpha = 0.3f))
                                         ) {
@@ -1031,7 +1036,7 @@ fun PurchaseOrderDetailDialog(
                                                 modifier = Modifier.padding(10.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Icon(Icons.Default.Lock, contentDescription = null, tint = StatusError, modifier = Modifier.size(20.dp))
+                                                Icon(Icons.Outlined.Lock, contentDescription = null, tint = StatusError, modifier = Modifier.size(20.dp))
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
                                                     text = if (isBangla) "প্রকৃত ব্যয় ফাইনাল করার পূর্বে স্টক পোস্টিং ব্লক থাকবে।" else "Stock posting is strictly BLOCKED until Actual Landing Cost is finalized.",
@@ -1047,7 +1052,7 @@ fun PurchaseOrderDetailDialog(
                                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Outlined.Calculate, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = if (isBangla) "প্রকৃত ল্যান্ডেড কস্ট ফাইনাল করুন (Finalize Actual Cost)" else "Finalize Actual Landing Cost",
@@ -1074,7 +1079,7 @@ fun PurchaseOrderDetailDialog(
                                             text = if (isBangla) "ওয়্যারহাউস মালামাল গ্রহণ ও স্টক পোস্টিং" else "Warehouse Receiving & Stock Posting",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                         Text(
                                             text = if (isBangla) "মেথড এ (গণনা) ও বি (কার্টনভিত্তিক) • আংশিক গ্রহণ" else "Method A (Count) & B (Carton) • Partial Receiving",
@@ -1092,7 +1097,7 @@ fun PurchaseOrderDetailDialog(
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                                         ) {
-                                            Icon(Icons.Default.Warehouse, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Outlined.Warehouse, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isBangla) "+ পণ্য গ্রহণ" else "Receive Products",
@@ -1138,7 +1143,7 @@ fun PurchaseOrderDetailDialog(
                                     Text(
                                         text = if (isBangla) "⚠️ $draftReceiptsCount টি ড্রাফট চালান অপেক্ষমান (স্টক পোস্টিংয়ের জন্য ল্যান্ডেড কস্ট ফাইনাল আবশ্যক)" else "⚠️ $draftReceiptsCount draft receipt(s) pending final cost & stock posting",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFB45309),
+                                        color = StatusWarning,
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
@@ -1177,7 +1182,7 @@ fun PurchaseOrderDetailDialog(
                                         text = if (isBangla) "ক্ষতিগ্রস্ত ও ঘাটতি পণ্যের হিসাব (Write-off & Claims)" else "Damage & Shortage Discrepancy Accounting",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -1259,7 +1264,7 @@ fun PurchaseOrderDetailDialog(
                                             text = if (isBangla) "অতিরিক্ত পরিচালন ব্যয়" else "Post-Arrival Operational Costs",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = DeepNavy
+                                            color = TextPrimary
                                         )
                                         Text(
                                             text = if (isBangla) "মূলধনীকরণ (অ্যাসেট) বনাম সাময়িক খরচ (P&L)" else "Capitalized to Inventory vs Period Expense",
@@ -1277,7 +1282,7 @@ fun PurchaseOrderDetailDialog(
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                                         ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isBangla) "+ খরচ" else "+ Add Cost",
@@ -1294,9 +1299,9 @@ fun PurchaseOrderDetailDialog(
                                         additionalCosts.forEach { ac ->
                                             Card(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                                 shape = RoundedCornerShape(8.dp),
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
                                             ) {
                                                 Column(modifier = Modifier.padding(10.dp)) {
                                                     Row(
@@ -1307,14 +1312,14 @@ fun PurchaseOrderDetailDialog(
                                                         Text(
                                                             text = ac.category.replace("_", " "),
                                                             fontWeight = FontWeight.Bold,
-                                                            color = DeepNavy,
+                                                            color = TextPrimary,
                                                             style = MaterialTheme.typography.bodyMedium,
                                                             modifier = Modifier.weight(1f)
                                                         )
                                                         Box(
                                                             modifier = Modifier
                                                                 .background(
-                                                                    if (ac.isCapitalizable) Color(0xFFD1FAE5) else Color(0xFFFEF3C7),
+                                                                    if (ac.isCapitalizable) StatusSuccessContainer else StatusWarningContainer,
                                                                     RoundedCornerShape(4.dp)
                                                                 )
                                                                 .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -1323,7 +1328,7 @@ fun PurchaseOrderDetailDialog(
                                                                 text = if (ac.isCapitalizable) "CAPITALIZED" else "PERIOD EXPENSE",
                                                                 fontSize = 9.sp,
                                                                 fontWeight = FontWeight.Bold,
-                                                                color = if (ac.isCapitalizable) Color(0xFF047857) else Color(0xFFB45309)
+                                                                color = if (ac.isCapitalizable) StatusSuccess else StatusWarning
                                                             )
                                                         }
                                                     }
@@ -1332,7 +1337,7 @@ fun PurchaseOrderDetailDialog(
                                                         Text(ac.description, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                                                     }
                                                     Spacer(modifier = Modifier.height(6.dp))
-                                                    HorizontalDivider(color = Color(0xFFF1F5F9))
+                                                    HorizontalDivider(color = ERPSurfaceVariant)
                                                     Spacer(modifier = Modifier.height(6.dp))
                                                     Row(
                                                         modifier = Modifier.fillMaxWidth(),
@@ -1363,7 +1368,7 @@ fun PurchaseOrderDetailDialog(
 
                 // Bottom Action Bar - Responsive 2-Row Layout
                 Surface(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 8.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1392,7 +1397,7 @@ fun PurchaseOrderDetailDialog(
                                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = if (isBangla) "ক্রয়াদেশ নিশ্চিত করুন (Confirm PO)" else "Confirm Purchase Order",
@@ -1413,7 +1418,7 @@ fun PurchaseOrderDetailDialog(
                                             colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Outlined.Payment, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = if (isBangla) "পেমেন্ট পরিশোধ" else "Make Payment",
@@ -1433,7 +1438,7 @@ fun PurchaseOrderDetailDialog(
                                             colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Icon(Icons.Default.TaskAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Outlined.TaskAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = if (isBangla) "ক্রয়াদেশ সমাপ্ত" else "Complete PO",
@@ -1462,7 +1467,7 @@ fun PurchaseOrderDetailDialog(
                                 colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = if (isBangla) "শেয়ার PO" else "Share PO",
@@ -1486,7 +1491,7 @@ fun PurchaseOrderDetailDialog(
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryPurple),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (isBangla) "PO এডিট" else "Edit PO",
@@ -1509,7 +1514,7 @@ fun PurchaseOrderDetailDialog(
                                         .defaultMinSize(minHeight = 48.dp),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (isBangla) "কপি করুন" else "Duplicate",
@@ -1530,7 +1535,7 @@ fun PurchaseOrderDetailDialog(
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusError),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Cancel, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (isBangla) "বাতিল" else "Cancel",
@@ -1551,7 +1556,7 @@ fun PurchaseOrderDetailDialog(
                                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (isBangla) "বন্ধ করুন" else "Close",
@@ -1570,7 +1575,7 @@ fun PurchaseOrderDetailDialog(
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (isBangla) "বন্ধ করুন" else "Close",
@@ -1650,7 +1655,7 @@ fun PurchaseOrderDetailDialog(
                 Text(
                     text = if (isBangla) "প্যাকিং বিবরণ ও কার্টন সম্পাদনা" else "Edit Packing & Cartons",
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
             },
             text = {
@@ -1729,7 +1734,7 @@ fun PurchaseOrderDetailDialog(
                 Text(
                     text = if (isBangla) "পণ্য আইটেম পরিবর্তন: $prodName" else "Edit Item: $prodName",
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy
+                    color = TextPrimary
                 )
             },
             text = {
@@ -1917,8 +1922,8 @@ fun PurchaseOrderDetailDialog(
 fun PoStatusBadge(statusStr: String, isBangla: Boolean) {
     val (bgColor, textColor, label) = when (statusStr) {
         PurchaseOrderStatus.DRAFT.name -> Triple(
-            Color(0xFFE0E0E0),
-            Color(0xFF424242),
+            ERPDivider,
+            TextPrimary,
             if (isBangla) PurchaseOrderStatus.DRAFT.labelBn else PurchaseOrderStatus.DRAFT.labelEn
         )
         PurchaseOrderStatus.CONFIRMED.name -> Triple(
@@ -1928,7 +1933,7 @@ fun PoStatusBadge(statusStr: String, isBangla: Boolean) {
         )
         PurchaseOrderStatus.PARTIALLY_PAID.name -> Triple(
             StatusWarning.copy(alpha = 0.15f),
-            Color(0xFFD97706),
+            StatusWarning,
             if (isBangla) PurchaseOrderStatus.PARTIALLY_PAID.labelBn else PurchaseOrderStatus.PARTIALLY_PAID.labelEn
         )
         PurchaseOrderStatus.PAID.name -> Triple(
@@ -1985,7 +1990,7 @@ private fun PackingMetricBox(
     Box(
         modifier = modifier
             .background(Color.White, RoundedCornerShape(8.dp))
-            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+            .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Column {
@@ -2027,9 +2032,9 @@ private fun CostItemCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(8.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+        border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(
@@ -2041,7 +2046,7 @@ private fun CostItemCard(
                     text = cost.costCategory.replace("_", " "),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy,
+                    color = TextPrimary,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
@@ -2049,7 +2054,7 @@ private fun CostItemCard(
                     Box(
                         modifier = Modifier
                             .background(
-                                if (cost.isEstimated) Color(0xFFFEF3C7) else Color(0xFFD1FAE5),
+                                if (cost.isEstimated) StatusWarningContainer else StatusSuccessContainer,
                                 RoundedCornerShape(4.dp)
                             )
                             .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -2058,19 +2063,19 @@ private fun CostItemCard(
                             text = if (cost.isEstimated) "ESTIMATED" else "ACTUAL",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (cost.isEstimated) Color(0xFFB45309) else Color(0xFF047857)
+                            color = if (cost.isEstimated) StatusWarning else StatusSuccess
                         )
                     }
                     Box(
                         modifier = Modifier
-                            .background(Color(0xFFE2E8F0), RoundedCornerShape(4.dp))
+                            .background(ERPDivider, RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = cost.allocationMethod.replace("_", " "),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = DeepNavy
+                            color = TextPrimary
                         )
                     }
                     if (onDelete != null) {
@@ -2079,7 +2084,7 @@ private fun CostItemCard(
                             modifier = Modifier.size(24.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Delete,
+                                imageVector = Icons.Outlined.Delete,
                                 contentDescription = "Delete Cost Item",
                                 tint = StatusError,
                                 modifier = Modifier.size(15.dp)
@@ -2099,7 +2104,7 @@ private fun CostItemCard(
             }
 
             Spacer(modifier = Modifier.height(6.dp))
-            HorizontalDivider(color = Color(0xFFF1F5F9))
+            HorizontalDivider(color = ERPSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
 
             Row(
@@ -2139,9 +2144,9 @@ private fun CartonItemCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(8.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+        border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             Row(
@@ -2156,7 +2161,7 @@ private fun CartonItemCard(
                     Text(
                         text = carton.cartonNumber,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy,
+                        color = TextPrimary,
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -2181,7 +2186,7 @@ private fun CartonItemCard(
                         text = "${carton.quantity} units",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = DeepNavy
+                        color = TextPrimary
                     )
                     if (onDelete != null) {
                         Spacer(modifier = Modifier.width(4.dp))
@@ -2190,7 +2195,7 @@ private fun CartonItemCard(
                             modifier = Modifier.size(24.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Delete,
+                                imageVector = Icons.Outlined.Delete,
                                 contentDescription = "Delete Carton",
                                 tint = StatusError,
                                 modifier = Modifier.size(15.dp)
@@ -2208,7 +2213,7 @@ private fun CartonItemCard(
             )
 
             Spacer(modifier = Modifier.height(6.dp))
-            HorizontalDivider(color = Color(0xFFF1F5F9))
+            HorizontalDivider(color = ERPSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
 
             Row(
@@ -2244,9 +2249,9 @@ private fun WarehouseReceiptCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(10.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+        border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             // Header Row: Receipt Number on Left, Status Badge on Right
@@ -2258,14 +2263,14 @@ private fun WarehouseReceiptCard(
                 Text(
                     text = receipt.receiptNumber,
                     fontWeight = FontWeight.Bold,
-                    color = DeepNavy,
+                    color = TextPrimary,
                     style = MaterialTheme.typography.titleSmall
                 )
 
                 Box(
                     modifier = Modifier
                         .background(
-                            if (isPosted) Color(0xFFD1FAE5) else Color(0xFFFEF3C7),
+                            if (isPosted) StatusSuccessContainer else StatusWarningContainer,
                             RoundedCornerShape(6.dp)
                         )
                         .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -2275,9 +2280,9 @@ private fun WarehouseReceiptCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Icon(
-                            imageVector = if (isPosted) Icons.Default.CheckCircle else Icons.Default.Info,
+                            imageVector = if (isPosted) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
                             contentDescription = null,
-                            tint = if (isPosted) Color(0xFF047857) else Color(0xFFB45309),
+                            tint = if (isPosted) StatusSuccess else StatusWarning,
                             modifier = Modifier.size(13.dp)
                         )
                         Text(
@@ -2288,7 +2293,7 @@ private fun WarehouseReceiptCard(
                             },
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isPosted) Color(0xFF047857) else Color(0xFFB45309),
+                            color = if (isPosted) StatusSuccess else StatusWarning,
                             maxLines = 1,
                             softWrap = false
                         )
@@ -2306,7 +2311,7 @@ private fun WarehouseReceiptCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .background(Color(0xFFF1F5F9), RoundedCornerShape(4.dp))
+                        .background(ERPSurfaceVariant, RoundedCornerShape(4.dp))
                         .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
                     Text(
@@ -2317,7 +2322,7 @@ private fun WarehouseReceiptCard(
                         },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        color = DeepNavy,
+                        color = TextPrimary,
                         maxLines = 1,
                         softWrap = false
                     )
@@ -2349,12 +2354,12 @@ private fun WarehouseReceiptCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFFEF2F2), RoundedCornerShape(6.dp))
+                        .background(StatusErrorContainer, RoundedCornerShape(6.dp))
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Warning,
+                        imageVector = Icons.Outlined.Warning,
                         contentDescription = null,
                         tint = StatusError,
                         modifier = Modifier.size(14.dp)
@@ -2388,7 +2393,7 @@ private fun WarehouseReceiptCard(
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Icon(
-                        imageVector = if (isCostFinalized) Icons.Default.Inventory2 else Icons.Default.Lock,
+                        imageVector = if (isCostFinalized) Icons.Outlined.Inventory2 else Icons.Outlined.Lock,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )

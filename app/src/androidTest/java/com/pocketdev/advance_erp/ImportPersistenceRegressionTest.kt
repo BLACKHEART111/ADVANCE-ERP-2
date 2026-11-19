@@ -9,6 +9,7 @@ import com.pocketdev.advance_erp.data.repository.ImportRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.AccountingRepositoryImpl
 import com.pocketdev.advance_erp.domain.repository.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import org.junit.*
 import org.junit.Assert.*
@@ -201,5 +202,89 @@ class ImportPersistenceRegressionTest {
         assertEquals(locked,updated.copy(notes=locked.notes,attachments=locked.attachments,updatedAt=locked.updatedAt))
         assertEquals(items,repository.getItemsForOrderSync(id))
         assertEquals(shipments,repository.getShipmentsForOrderSync(id))
+    }
+
+    @Test fun completingWithDueIsIdempotentAndPreservesPayable() = runBlocking {
+        val id = save(status = PurchaseOrderStatus.CONFIRMED)
+        val payable = db.supplierDao().getSupplierById("s")!!.outstandingPayableMinor
+        val record = repository.completePurchase(id, "SUPPLIER_CLAIM", "Supplier cannot fulfill balance", null)
+        val repeated = repository.completePurchase(id, "SHORTAGE", "Repeated tap", null)
+        assertEquals(record.id, repeated.id)
+        assertEquals(135000L, record.paymentDueMinor)
+        assertEquals(payable, db.supplierDao().getSupplierById("s")!!.outstandingPayableMinor)
+        assertEquals("COMPLETED", repository.getPurchaseOrderById(id)!!.status)
+        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM purchase_completion_records").use {
+            assertTrue(it.moveToFirst()); assertEquals(1, it.getInt(0))
+        }
+    }
+
+    @Test fun failedCompletionStatusUpdateRollsBackRecord() = runBlocking {
+        val id = save(status = PurchaseOrderStatus.CONFIRMED)
+        db.openHelper.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_completion BEFORE UPDATE OF status ON purchase_orders
+            WHEN NEW.status = 'COMPLETED' BEGIN SELECT RAISE(ABORT, 'Injected failure'); END
+        """)
+        try { repository.completePurchase(id, "SHORTAGE", "Lost in transit", null); fail("Expected injected failure") }
+        catch (_: android.database.SQLException) { }
+        assertNull(db.minimalImportDao().getCompletionRecordForOrder(id))
+        assertEquals("CONFIRMED", repository.getPurchaseOrderById(id)!!.status)
+    }
+
+    @Test fun completionRejectsDraftAndUnexplainedShortage() = runBlocking {
+        val id = save()
+        try { repository.completePurchase(id, "SHORTAGE", "reason", null); fail("Draft cannot complete") }
+        catch (_: IllegalArgumentException) { }
+        save(id, status = PurchaseOrderStatus.CONFIRMED)
+        for ((disposition, reason) in listOf("SHORTAGE" to "", "unknown" to "reason")) {
+            try { repository.completePurchase(id, disposition, reason, null); fail("Invalid disposition") }
+            catch (_: IllegalArgumentException) { }
+        }
+        assertNull(db.minimalImportDao().getCompletionRecordForOrder(id))
+    }
+
+    @Test fun concurrentCompletionReturnsOneRecord() = runBlocking {
+        val id = save(status = PurchaseOrderStatus.CONFIRMED)
+        val results = kotlinx.coroutines.coroutineScope {
+            (1..8).map { async(kotlinx.coroutines.Dispatchers.IO) {
+                repository.completePurchase(id, "SHORTAGE", "Agreed balance", null).id
+            } }.map { it.await() }
+        }
+        assertEquals(1, results.distinct().size)
+    }
+
+    @Test fun historicalCompletionDuplicatesArePreservedAndLatestIsReturned() = runBlocking {
+        val id = save(status = PurchaseOrderStatus.CONFIRMED)
+        val original = repository.completePurchase(id, "SHORTAGE", "History", null)
+        val later = original.copy(id = "historical-later", completedAt = original.completedAt + 1)
+        db.minimalImportDao().insertCompletionRecord(later)
+        assertEquals(later, repository.completePurchase(id, null, null, null))
+        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM purchase_completion_records").use {
+            assertTrue(it.moveToFirst()); assertEquals(2, it.getInt(0))
+        }
+    }
+
+    @Test fun expenseDocumentFailureRollsBackJournalAndBalances() = runBlocking {
+        db.accountingDao().insertAccounts(listOf(
+            ChartOfAccount("cash", "1010", "Cash", "নগদ", AccountType.ASSET.name, NormalBalance.DEBIT.name),
+            ChartOfAccount("expense", "5190", "Expense", "ব্যয়", AccountType.EXPENSE.name, NormalBalance.DEBIT.name)
+        ))
+        val finance = com.pocketdev.advance_erp.data.repository.FinancialRepositoryImpl(
+            db, db.accountingDao(), db.expenseDao(), db.cashBankDao(), db.auditLogDao(), db.salesDao(),
+            db.customerPaymentDao(), db.supplierPaymentDao(), db.purchaseOrderDao(), db.customerDao(), db.supplierDao(),
+            AccountingRepositoryImpl(db, db.accountingDao())
+        )
+        db.openHelper.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_expense BEFORE INSERT ON expense_vouchers
+            BEGIN SELECT RAISE(ABORT, 'Injected voucher failure'); END
+        """)
+        try {
+            finance.recordExpense("GENERAL_ADMIN", "Test", "পরীক্ষা", 10000L, "BDT", "1", "cash", "expense", 1L, null, null)
+            fail("Expected injected voucher failure")
+        } catch (_: android.database.SQLException) { }
+        for (table in listOf("journal_entries", "journal_lines", "expense_vouchers")) {
+            db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM $table").use {
+                assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0))
+            }
+        }
     }
 }

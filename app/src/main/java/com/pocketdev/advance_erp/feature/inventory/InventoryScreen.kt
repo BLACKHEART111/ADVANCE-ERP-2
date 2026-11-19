@@ -1,9 +1,11 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import com.pocketdev.advance_erp.core.security.BiometricCostGuard
 import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -27,24 +29,24 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FloatingActionButton
@@ -58,6 +60,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -112,15 +115,23 @@ import com.pocketdev.advance_erp.feature.product.ProductDetailDialog
 @Composable
 fun InventoryScreen(
     viewModel: InventoryViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialAction: String = ""
 ) {
     val state by viewModel.uiState.collectAsState()
+    var actionHandled by rememberSaveable(initialAction) { mutableStateOf(false) }
+    LaunchedEffect(initialAction) {
+        if (!actionHandled && initialAction == "adjust") {
+            viewModel.setAdjustDialogVisible(true)
+            actionHandled = true
+        }
+    }
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var showFilterDialog by remember { mutableStateOf(false) }
-    var showQuickActionDialog by remember { mutableStateOf(false) }
-    var isSummaryExpanded by remember { mutableStateOf(false) }
+    var showFilterDialog by rememberSaveable { mutableStateOf(false) }
+    var showQuickActionDialog by rememberSaveable { mutableStateOf(false) }
+    var isSummaryExpanded by rememberSaveable { mutableStateOf(false) }
     var labelProductAndVariants by remember { mutableStateOf<Pair<ProductWithDetails, List<ProductVariant>>?>(null) }
 
     LaunchedEffect(state.userMessage) {
@@ -139,12 +150,12 @@ fun InventoryScreen(
             FloatingActionButton(
                 onClick = { showQuickActionDialog = true },
                 containerColor = PrimaryPurple,
-                contentColor = Color.White,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape,
                 modifier = Modifier.size(52.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Add,
+                    imageVector = Icons.Outlined.Add,
                     contentDescription = stringResource(R.string.quick_actions),
                     modifier = Modifier.size(26.dp)
                 )
@@ -184,7 +195,7 @@ fun InventoryScreen(
                     },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Default.Search,
+                            imageVector = Icons.Outlined.Search,
                             contentDescription = stringResource(R.string.search),
                             tint = TextSecondary,
                             modifier = Modifier.size(18.dp)
@@ -197,7 +208,7 @@ fun InventoryScreen(
                                 modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Clear,
+                                    imageVector = Icons.Outlined.Clear,
                                     contentDescription = stringResource(R.string.clear),
                                     tint = TextSecondary,
                                     modifier = Modifier.size(16.dp)
@@ -230,7 +241,7 @@ fun InventoryScreen(
                         .background(PrimaryPurple.copy(alpha = 0.1f))
                 ) {
                     Icon(
-                        imageVector = Icons.Default.QrCodeScanner,
+                        imageVector = Icons.Outlined.QrCodeScanner,
                         contentDescription = stringResource(R.string.action_barcode_scanner),
                         tint = PrimaryPurple,
                         modifier = Modifier.size(20.dp)
@@ -248,7 +259,7 @@ fun InventoryScreen(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (isFilterActive) PrimaryPurple.copy(alpha = 0.15f) else Color.White)
+                        .background(if (isFilterActive) PrimaryPurple.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
                         .border(
                             1.dp,
                             if (isFilterActive) PrimaryPurple else ERPDivider,
@@ -258,7 +269,7 @@ fun InventoryScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.FilterList,
+                        imageVector = Icons.Outlined.FilterList,
                         contentDescription = stringResource(R.string.filter_and_sort),
                         tint = if (isFilterActive) PrimaryPurple else TextSecondary,
                         modifier = Modifier.size(20.dp)
@@ -286,19 +297,19 @@ fun InventoryScreen(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (hasAlerts) Color(0xFFFFEBEE) else PrimaryPurple.copy(alpha = 0.1f))
+                        .background(if (hasAlerts) StatusErrorContainer else PrimaryPurple.copy(alpha = 0.1f))
                         .border(
                             1.dp,
-                            if (hasAlerts) Color(0xFFE57373) else PrimaryPurple.copy(alpha = 0.2f),
+                            if (hasAlerts) StatusError else PrimaryPurple.copy(alpha = 0.2f),
                             RoundedCornerShape(10.dp)
                         )
                         .clickable { viewModel.openStockForecastDialog() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AutoAwesome,
+                        imageVector = Icons.Outlined.AutoAwesome,
                         contentDescription = "AI Stock Forecast",
-                        tint = if (hasAlerts) Color(0xFFC53030) else PrimaryPurple,
+                        tint = if (hasAlerts) StatusError else PrimaryPurple,
                         modifier = Modifier.size(20.dp)
                     )
                     if (hasAlerts) {
@@ -308,7 +319,7 @@ fun InventoryScreen(
                                 .padding(3.dp)
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFC53030))
+                                .background(StatusError)
                         )
                     }
                 }
@@ -416,7 +427,7 @@ fun InventoryScreen(
                 InventoryTab.STOCK_OVERVIEW -> {
                     if (state.stockItems.isEmpty()) {
                         ERPEmptyState(
-                            icon = Icons.Default.Inventory2,
+                            icon = Icons.Outlined.Inventory2,
                             title = stringResource(R.string.no_stock_data),
                             message = if (state.language == AppLanguage.BANGLA)
                                 "কোনো পণ্য বা স্টক রেকর্ড খুঁজে পাওয়া যায়নি।"
@@ -444,7 +455,7 @@ fun InventoryScreen(
                 InventoryTab.LOW_STOCK -> {
                     if (state.lowStockItems.isEmpty()) {
                         ERPEmptyState(
-                            icon = Icons.Default.Inventory2,
+                            icon = Icons.Outlined.Inventory2,
                             title = if (state.language == AppLanguage.BANGLA)
                                 "সকল পণ্যের পর্যাপ্ত মজুদ আছে"
                             else
@@ -488,7 +499,7 @@ fun InventoryScreen(
                                 ERPActionButton(
                                     text = "Export PDF",
                                     onClick = { viewModel.exportMovementLedgerPdf(context) },
-                                    icon = Icons.Default.PictureAsPdf,
+                                    icon = Icons.Outlined.PictureAsPdf,
                                     variant = ERPButtonVariant.OUTLINED
                                 )
                             }
@@ -498,7 +509,7 @@ fun InventoryScreen(
 
                         if (state.movements.isEmpty()) {
                             ERPEmptyState(
-                                icon = Icons.Default.History,
+                                icon = Icons.Outlined.History,
                                 title = stringResource(R.string.no_movements_data),
                                 message = "Stock movements like receipts, dispatches and transfers will appear here."
                             )
@@ -541,7 +552,7 @@ fun InventoryScreen(
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
-                                                    imageVector = if (isIncrease) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                                                    imageVector = if (isIncrease) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward,
                                                     contentDescription = null,
                                                     tint = if (isIncrease) StatusSuccess else PrimaryPurple,
                                                     modifier = Modifier.size(16.dp)
@@ -642,7 +653,7 @@ fun InventoryScreen(
                 InventoryTab.TRANSFERS -> {
                     if (state.transfers.isEmpty()) {
                         ERPEmptyState(
-                            icon = Icons.Default.LocalShipping,
+                            icon = Icons.Outlined.LocalShipping,
                             title = stringResource(R.string.stock_transfers),
                             message = if (state.language == AppLanguage.BANGLA)
                                 "ওয়্যারহাউসগুলোর মধ্যে কোনো স্থানান্তর নেই। স্থানান্তর তৈরি করতে + চাপুন।"
@@ -663,7 +674,7 @@ fun InventoryScreen(
 
                                 val statusColor = when (status) {
                                     StockTransferStatus.DRAFT -> TextMuted
-                                    StockTransferStatus.IN_TRANSIT -> Color(0xFFF59E0B)
+                                    StockTransferStatus.IN_TRANSIT -> StatusWarning
                                     StockTransferStatus.RECEIVED -> StatusSuccess
                                     StockTransferStatus.CANCELLED -> StatusError
                                 }
@@ -1026,7 +1037,7 @@ private fun CompactInventorySummary(
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
-                        imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                         contentDescription = if (isExpanded) "Collapse summary" else "Expand summary",
                         tint = TextSecondary,
                         modifier = Modifier.size(20.dp)
@@ -1113,7 +1124,7 @@ private fun CompactStockProductCard(
     val costVisible = costVisibility.isVisible
     val stockColor = when {
         item.totalQuantity == 0 -> StatusError
-        item.isLowStock -> Color(0xFFF59E0B) // Amber
+        item.isLowStock -> StatusWarning // Amber
         else -> StatusSuccess
     }
 
@@ -1159,7 +1170,7 @@ private fun CompactStockProductCard(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Default.Inventory2,
+                            imageVector = Icons.Outlined.Inventory2,
                             contentDescription = null,
                             tint = PrimaryPurple.copy(alpha = 0.5f),
                             modifier = Modifier.size(22.dp)
@@ -1232,7 +1243,7 @@ private fun CompactStockProductCard(
                         )
                     }
                     Icon(
-                        imageVector = Icons.Default.ChevronRight,
+                        imageVector = Icons.Outlined.ChevronRight,
                         contentDescription = "Details",
                         tint = TextMuted,
                         modifier = Modifier.size(16.dp)
@@ -1296,11 +1307,11 @@ private fun CompactStockProductCard(
                         text = if (costVisible) costText else "••••",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = DeepNavy,
+                        color = TextPrimary,
                         modifier = Modifier.weight(1f).padding(start = 8.dp)
                     )
                     IconButton(onClick = costVisibility.toggle, modifier = Modifier.size(48.dp)) {
-                        Icon(if (costVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        Icon(if (costVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                             contentDescription = if (language == AppLanguage.BANGLA) {
                                 if (costVisible) "ল্যান্ডেড খরচ লুকান" else "ল্যান্ডেড খরচ দেখুন"
                             } else if (costVisible) "Hide landed cost" else "Show landed cost",
@@ -1344,7 +1355,7 @@ private fun CategoryFilterChip(
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = if (isSelected) PrimaryPurple else Color.White,
+        color = if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface,
         border = if (isSelected) null else BorderStroke(1.dp, ERPDivider),
         modifier = Modifier.clickable { onClick() }
     ) {
@@ -1390,7 +1401,7 @@ private fun InventoryFilterDialog(
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        imageVector = Icons.Outlined.Close,
                         contentDescription = stringResource(R.string.close),
                         tint = TextSecondary,
                         modifier = Modifier.size(18.dp)
@@ -1600,7 +1611,7 @@ private fun InventoryQuickActionDialog(
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        imageVector = Icons.Outlined.Close,
                         contentDescription = stringResource(R.string.close),
                         tint = TextSecondary,
                         modifier = Modifier.size(18.dp)
@@ -1614,7 +1625,7 @@ private fun InventoryQuickActionDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 QuickActionItem(
-                    icon = Icons.Default.SwapHoriz,
+                    icon = Icons.Outlined.SwapHoriz,
                     title = stringResource(R.string.action_stock_adjustment),
                     tint = SecondaryTeal,
                     onClick = {
@@ -1623,7 +1634,7 @@ private fun InventoryQuickActionDialog(
                     }
                 )
                 QuickActionItem(
-                    icon = Icons.Default.LocalShipping,
+                    icon = Icons.Outlined.LocalShipping,
                     title = stringResource(R.string.action_stock_transfer),
                     tint = PrimaryPurple,
                     onClick = {
@@ -1632,7 +1643,7 @@ private fun InventoryQuickActionDialog(
                     }
                 )
                 QuickActionItem(
-                    icon = Icons.Default.QrCodeScanner,
+                    icon = Icons.Outlined.QrCodeScanner,
                     title = stringResource(R.string.action_barcode_scanner),
                     tint = PrimaryPurple,
                     onClick = {
@@ -1641,16 +1652,16 @@ private fun InventoryQuickActionDialog(
                     }
                 )
                 QuickActionItem(
-                    icon = Icons.Default.Tune,
+                    icon = Icons.Outlined.Tune,
                     title = stringResource(R.string.action_reconciliation),
-                    tint = Color(0xFFF59E0B),
+                    tint = StatusWarning,
                     onClick = {
                         onDismiss()
                         onReconciliation()
                     }
                 )
                 QuickActionItem(
-                    icon = Icons.Default.PictureAsPdf,
+                    icon = Icons.Outlined.PictureAsPdf,
                     title = stringResource(R.string.action_export_ledger),
                     tint = TextSecondary,
                     onClick = {

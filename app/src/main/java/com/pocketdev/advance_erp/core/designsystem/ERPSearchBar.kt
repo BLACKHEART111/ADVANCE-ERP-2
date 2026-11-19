@@ -14,9 +14,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +55,7 @@ fun ERPSearchBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Default.Search,
+                    imageVector = Icons.Outlined.Search,
                     contentDescription = null,
                     tint = TextSecondary,
                     modifier = Modifier.size(20.dp)
@@ -88,7 +88,7 @@ fun ERPSearchBar(
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Clear,
+                            imageVector = Icons.Outlined.Clear,
                             contentDescription = "Clear",
                             tint = TextSecondary,
                             modifier = Modifier.size(16.dp)
@@ -108,7 +108,7 @@ fun ERPSearchBar(
                     .background(PrimaryPurple.copy(alpha = 0.1f))
             ) {
                 Icon(
-                    imageVector = Icons.Default.FilterList,
+                    imageVector = Icons.Outlined.FilterList,
                     contentDescription = "Filter",
                     tint = PrimaryPurple,
                     modifier = Modifier.size(20.dp)

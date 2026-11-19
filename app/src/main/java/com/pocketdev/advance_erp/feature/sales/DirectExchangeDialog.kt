@@ -1,5 +1,10 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,8 +12,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,13 +44,13 @@ fun DirectExchangeDialog(
     onExchangeConfirmed: (DirectExchangeDraft) -> Unit
 ) {
     var selectedReturnItem by remember { mutableStateOf(invoiceItems.firstOrNull()) }
-    var returnQtyText by remember { mutableStateOf("1") }
-    var isDamagedReturn by remember { mutableStateOf(false) }
+    var returnQtyText by rememberSaveable { mutableStateOf("1") }
+    var isDamagedReturn by rememberSaveable { mutableStateOf(false) }
 
     var selectedReplacementProduct by remember { mutableStateOf(allProducts.firstOrNull()) }
     var selectedReplacementVariant by remember { mutableStateOf<ProductVariant?>(null) }
-    var replacementQtyText by remember { mutableStateOf("1") }
-    var notes by remember { mutableStateOf("") }
+    var replacementQtyText by rememberSaveable { mutableStateOf("1") }
+    var notes by rememberSaveable { mutableStateOf("") }
 
     val returnQty = returnQtyText.toIntOrNull()?.coerceAtLeast(1) ?: 1
     val replacementQty = replacementQtyText.toIntOrNull()?.coerceAtLeast(1) ?: 1
@@ -74,7 +79,7 @@ fun DirectExchangeDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Outlined.SwapHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
@@ -90,7 +95,7 @@ fun DirectExchangeDialog(
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Outlined.Close, contentDescription = "Close")
                     }
                 }
 
@@ -220,7 +225,7 @@ fun DirectExchangeDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            if (priceDiffMinor >= 0) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
+                            if (priceDiffMinor >= 0) StatusSuccessContainer else StatusWarningContainer,
                             RoundedCornerShape(8.dp)
                         )
                         .padding(12.dp)
@@ -243,7 +248,7 @@ fun DirectExchangeDialog(
                             "৳${Formatters.formatMinorUnit(kotlin.math.abs(priceDiffMinor))}",
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleLarge,
-                            color = if (priceDiffMinor >= 0) Color(0xFF2E7D32) else Color(0xFFE65100)
+                            color = if (priceDiffMinor >= 0) StatusSuccess else StatusWarning
                         )
                     }
                 }

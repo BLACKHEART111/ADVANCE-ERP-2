@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,13 +22,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Send
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -86,7 +88,7 @@ fun DueReminderDialog(
     var captionText by remember(isBangla) {
         mutableStateOf(DueReminderHelper.generatePoliteReminderCaption(data, isBangla))
     }
-    var showPdfPreviewDialog by remember { mutableStateOf(false) }
+    var showPdfPreviewDialog by rememberSaveable { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -126,7 +128,7 @@ fun DueReminderDialog(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Send,
+                                    imageVector = Icons.Outlined.Send,
                                     contentDescription = "WhatsApp",
                                     tint = Color.White,
                                     modifier = Modifier.size(24.dp)
@@ -149,7 +151,7 @@ fun DueReminderDialog(
                             }
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
                         }
                     }
                 }
@@ -248,7 +250,7 @@ fun DueReminderDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.PictureAsPdf,
+                                    imageVector = Icons.Outlined.PictureAsPdf,
                                     contentDescription = "PDF",
                                     tint = PrimaryPurple,
                                     modifier = Modifier.size(28.dp)
@@ -281,7 +283,7 @@ fun DueReminderDialog(
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Visibility,
+                                        imageVector = Icons.Outlined.Visibility,
                                         contentDescription = "Preview",
                                         modifier = Modifier.size(16.dp),
                                         tint = PrimaryPurple
@@ -368,7 +370,7 @@ fun DueReminderDialog(
                             shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = WhatsAppGreen,
-                                unfocusedBorderColor = Color(0xFFCBD5E1),
+                                unfocusedBorderColor = ERPDivider,
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface
                             ),
@@ -376,7 +378,7 @@ fun DueReminderDialog(
                         )
                     }
 
-                    HorizontalDivider(color = Color(0xFFE2E8F0))
+                    HorizontalDivider(color = ERPDivider)
 
                     // Primary WhatsApp Action Button
                     Button(
@@ -396,7 +398,7 @@ fun DueReminderDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = WhatsAppGreen)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Send,
+                            imageVector = Icons.Outlined.Send,
                             contentDescription = "WhatsApp",
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
@@ -425,7 +427,7 @@ fun DueReminderDialog(
                             shape = RoundedCornerShape(8.dp),
                             enabled = data.pdfFile != null
                         ) {
-                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(14.dp), tint = PrimaryPurple)
+                            Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(14.dp), tint = PrimaryPurple)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBangla) "শুধুমাত্র PDF" else "PDF Only", fontSize = 11.sp, color = PrimaryPurple)
                         }
@@ -437,7 +439,7 @@ fun DueReminderDialog(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.TextFields, contentDescription = null, modifier = Modifier.size(14.dp), tint = SecondaryTeal)
+                            Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(14.dp), tint = SecondaryTeal)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBangla) "শুধুমাত্র টেক্সট" else "Text Only", fontSize = 11.sp, color = SecondaryTeal)
                         }
@@ -449,9 +451,9 @@ fun DueReminderDialog(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = DeepNavy)
+                            Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = TextPrimary)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (isBangla) "কপি টেক্সট" else "Copy Text", fontSize = 11.sp, color = DeepNavy)
+                            Text(if (isBangla) "কপি টেক্সট" else "Copy Text", fontSize = 11.sp, color = TextPrimary)
                         }
                     }
 
@@ -463,7 +465,7 @@ fun DueReminderDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(if (isBangla) "অন্যান্য অ্যাপে শেয়ার করুন" else "Share via Other Apps", fontSize = 12.sp)
                     }

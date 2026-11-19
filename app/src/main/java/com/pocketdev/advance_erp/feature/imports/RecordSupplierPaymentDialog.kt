@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -88,8 +91,8 @@ fun RecordSupplierPaymentDialog(
     var selectedCurrency by remember { mutableStateOf(initialOrder?.currency ?: suppliers.find { it.id==initialSupplierId }?.currency ?: "CNY") }
     var exchangeRateStr by remember { mutableStateOf(initialOrder?.exchangeRateToBdt ?: if (selectedCurrency == "BDT") "1" else "") }
     var selectedMethod by remember { mutableStateOf(PaymentMethod.BANK_TT) }
-    var paymentAccount by remember { mutableStateOf("City Bank Corporate (Import LC)") }
-    var referenceNumber by remember { mutableStateOf("") }
+    var paymentAccount by rememberSaveable { mutableStateOf("City Bank Corporate (Import LC)") }
+    var referenceNumber by rememberSaveable { mutableStateOf("") }
     var notes by remember { mutableStateOf(if (initialOrder != null) "Payment for ${initialOrder.poNumber}" else "") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -115,7 +118,7 @@ fun RecordSupplierPaymentDialog(
                             text = "Supplier Advance / Payment",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = DeepNavy
+                            color = TextPrimary
                         )
                         Text(
                             text = "Posts to General Ledger (Dr Accounts Payable, Cr Bank)",
@@ -124,7 +127,7 @@ fun RecordSupplierPaymentDialog(
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Outlined.Close, contentDescription = "Close")
                     }
                 }
 
@@ -146,7 +149,7 @@ fun RecordSupplierPaymentDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
+                                        .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
                                     .clickable {
                                         selectedSupplierId = sup.id
                                         selectedOrderId = null
@@ -170,7 +173,7 @@ fun RecordSupplierPaymentDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selectedOrderId == null) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
+                                    .background(if (selectedOrderId == null) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
                                     .clickable { selectedOrderId = null }
                                     .padding(8.dp)
                             ) {
@@ -183,7 +186,7 @@ fun RecordSupplierPaymentDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isPoSel) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
+                                        .background(if (isPoSel) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
                                         .clickable {
                                             selectedOrderId = po.id
                                             selectedCurrency = po.currency
@@ -232,11 +235,11 @@ fun RecordSupplierPaymentDialog(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSel) PrimaryPurple else Color(0xFFE2E8F0))
+                                        .background(if (isSel) PrimaryPurple else ERPDivider)
                                         .clickable { selectedMethod = pm }
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
-                                    Text(pm.labelEn.substringBefore(" "), color = if (isSel) Color.White else TextPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    Text(pm.labelEn.substringBefore(" "), color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

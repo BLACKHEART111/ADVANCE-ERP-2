@@ -1,5 +1,16 @@
 package com.pocketdev.advance_erp.feature.imports
 
+import org.json.JSONObject
+import org.json.JSONArray
+import com.pocketdev.advance_erp.core.designsystem.ERPLeaveEditorDialog
+import com.pocketdev.advance_erp.core.util.EditorDraftStore
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.saveable.Saver
+import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,11 +33,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.ViewInAr
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -81,6 +92,17 @@ private class MixedLineDraftState(productId: String, quantityStr: String = "20")
     var quantityStr by mutableStateOf(quantityStr)
 }
 
+private val MixedLinesSaver = Saver<SnapshotStateList<MixedLineDraftState>, String>(
+    save = { JSONArray().apply { it.forEach { line -> put(JSONObject().apply {
+        put("product", line.productId); put("variant", line.variantId ?: ""); put("quantity", line.quantityStr)
+    }) } }.toString() },
+    restore = { raw -> JSONArray(raw).let { a -> mutableStateListOf<MixedLineDraftState>().apply {
+        repeat(a.length()) { i -> val j = a.getJSONObject(i)
+            add(MixedLineDraftState(j.getString("product"), j.getString("quantity")).also { it.variantId = j.optString("variant").ifBlank { null } })
+        }
+    } } }
+)
+
 @Composable
 fun AddCartonDialog(
     shipment: ImportShipment? = null,
@@ -89,27 +111,29 @@ fun AddCartonDialog(
     variants: List<com.pocketdev.advance_erp.data.entity.ProductVariant> = emptyList(),
     language: AppLanguage = AppLanguage.BANGLA,
     onDismiss: () -> Unit,
+    isSaving: Boolean = false,
+    saveError: String? = null,
     onConfirm: (carton: ShipmentCartonDraft) -> Unit,
     onConfirmMixed: ((cartonNumber: String, length: BigDecimal, width: BigDecimal, height: BigDecimal, grossWeight: BigDecimal, netWeight: BigDecimal, lines: List<MixedCartonLineDraft>) -> Unit)? = null
 ) {
     val isBangla = language == AppLanguage.BANGLA
-    var isMixedTab by remember { mutableStateOf(false) }
+    var isMixedTab by rememberSaveable { mutableStateOf(false) }
 
-    var cartonNumber by remember { mutableStateOf("CTN-%03d".format((shipment?.totalCartons ?: 0) + 1)) }
-    var singleProductId by remember { mutableStateOf(products.firstOrNull()?.id ?: "") }
-    var singleVariantId by remember { mutableStateOf<String?>(null) }
-    var singleQuantityStr by remember { mutableStateOf("50") }
+    var cartonNumber by rememberSaveable { mutableStateOf("CTN-%03d".format((shipment?.totalCartons ?: 0) + 1)) }
+    var singleProductId by rememberSaveable { mutableStateOf(products.firstOrNull()?.id ?: "") }
+    var singleVariantId by rememberSaveable { mutableStateOf<String?>(null) }
+    var singleQuantityStr by rememberSaveable { mutableStateOf("50") }
 
-    var lengthStr by remember { mutableStateOf("50") }
-    var widthStr by remember { mutableStateOf("40") }
-    var heightStr by remember { mutableStateOf("30") }
-    var grossWeightStr by remember { mutableStateOf("15.0") }
-    var netWeightStr by remember { mutableStateOf("14.0") }
+    var lengthStr by rememberSaveable { mutableStateOf("50") }
+    var widthStr by rememberSaveable { mutableStateOf("40") }
+    var heightStr by rememberSaveable { mutableStateOf("30") }
+    var grossWeightStr by rememberSaveable { mutableStateOf("15.0") }
+    var netWeightStr by rememberSaveable { mutableStateOf("14.0") }
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Multi-product lines for Mixed Carton
-    val mixedLines = remember {
+    val mixedLines = rememberSaveable(saver = MixedLinesSaver) {
         val list = mutableStateListOf<MixedLineDraftState>()
         if (products.isNotEmpty()) {
             list.add(MixedLineDraftState(products[0].id, "20"))
@@ -119,6 +143,59 @@ fun AddCartonDialog(
         }
         list
     }
+
+    val draftContext = LocalContext.current
+    val draftStore = remember(draftContext) { EditorDraftStore(draftContext) }
+    val draftKey = "packing:" + (orderId ?: shipment?.id ?: "new")
+    var draftLoaded by rememberSaveable(draftKey) { mutableStateOf(false) }
+    var showLeavePrompt by rememberSaveable { mutableStateOf(false) }
+    var initialSnapshot by rememberSaveable(draftKey) { mutableStateOf<String?>(null) }
+    fun snapshotEditor() = JSONObject().apply {
+        put("cartonNumber", cartonNumber)
+        put("singleProductId", singleProductId)
+        put("singleQuantityStr", singleQuantityStr)
+        put("lengthStr", lengthStr)
+        put("widthStr", widthStr)
+        put("heightStr", heightStr)
+        put("grossWeightStr", grossWeightStr)
+        put("netWeightStr", netWeightStr)
+
+        put("mixed", isMixedTab); put("variant", singleVariantId ?: "")
+        put("lines", JSONArray().apply { mixedLines.forEach { line -> put(JSONObject().apply {
+            put("product", line.productId); put("variant", line.variantId ?: ""); put("quantity", line.quantityStr)
+        }) } })
+    }
+    LaunchedEffect(draftKey) {
+        if (!draftLoaded) {
+            draftStore.read(draftKey)?.let { draft ->
+                cartonNumber = draft.optString("cartonNumber", cartonNumber)
+                singleProductId = draft.optString("singleProductId", singleProductId)
+                singleQuantityStr = draft.optString("singleQuantityStr", singleQuantityStr)
+                lengthStr = draft.optString("lengthStr", lengthStr)
+                widthStr = draft.optString("widthStr", widthStr)
+                heightStr = draft.optString("heightStr", heightStr)
+                grossWeightStr = draft.optString("grossWeightStr", grossWeightStr)
+                netWeightStr = draft.optString("netWeightStr", netWeightStr)
+
+                isMixedTab = draft.optBoolean("mixed"); singleVariantId = draft.optString("variant").ifBlank { null }
+                draft.optJSONArray("lines")?.let { a -> mixedLines.clear(); repeat(a.length()) { i ->
+                    val j = a.getJSONObject(i)
+                    mixedLines.add(MixedLineDraftState(j.getString("product"), j.getString("quantity")).also {
+                        it.variantId = j.optString("variant").ifBlank { null }
+                    })
+                } }
+            }
+            initialSnapshot = snapshotEditor().toString(); draftLoaded = true
+        }
+    }
+    val requestClose: () -> Unit = {
+        if (!isSaving) { if (snapshotEditor().toString() == initialSnapshot) onDismiss() else showLeavePrompt = true }
+    }
+    if (showLeavePrompt) ERPLeaveEditorDialog(isBangla,
+        onContinue = { showLeavePrompt = false },
+        onDiscard = { draftStore.remove(draftKey); onDismiss() },
+        onSaveDraft = { try { draftStore.save(draftKey, snapshotEditor()); onDismiss() }
+            catch (e: Exception) { errorMessage = e.message; showLeavePrompt = false } })
 
     val calculatedCbm = try {
         val l = BigDecimal(lengthStr.ifBlank { "0" })
@@ -157,15 +234,14 @@ fun AddCartonDialog(
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ERPFullScreenEditor(
+        onDismissRequest = requestClose
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.92f)
-                .clip(RoundedCornerShape(20.dp)),
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(0.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(
@@ -184,7 +260,7 @@ fun AddCartonDialog(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ViewInAr, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Outlined.ViewInAr, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (isBangla) "কার্টন ও প্যাকিং যুক্ত করুন" else "Add Carton & Packing",
@@ -199,8 +275,8 @@ fun AddCartonDialog(
                             color = Color.White.copy(alpha = 0.7f)
                         )
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    IconButton(onClick = requestClose, enabled = !isSaving) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
                     }
                 }
 
@@ -215,7 +291,7 @@ fun AddCartonDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (!isMixedTab) PrimaryPurple else Color.White)
+                            .background(if (!isMixedTab) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (!isMixedTab) PrimaryPurple else Color.LightGray, RoundedCornerShape(10.dp))
                             .clickable { isMixedTab = false }
                             .padding(vertical = 10.dp),
@@ -225,7 +301,7 @@ fun AddCartonDialog(
                             text = if (isBangla) "A. একক পণ্য কার্টন" else "A. Single Product Carton",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (!isMixedTab) Color.White else TextPrimary
+                            color = if (!isMixedTab) MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
 
@@ -233,7 +309,7 @@ fun AddCartonDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (isMixedTab) PrimaryPurple else Color.White)
+                            .background(if (isMixedTab) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (isMixedTab) PrimaryPurple else Color.LightGray, RoundedCornerShape(10.dp))
                             .clickable { isMixedTab = true }
                             .padding(vertical = 10.dp),
@@ -243,14 +319,14 @@ fun AddCartonDialog(
                             text = if (isBangla) "B. মিশ্র কার্টন (Mixed)" else "B. Mixed Product Carton",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (isMixedTab) Color.White else TextPrimary
+                            color = if (isMixedTab) MaterialTheme.colorScheme.onPrimary else TextPrimary
                         )
                     }
                 }
 
-                if (errorMessage != null) {
+                if (errorMessage != null || saveError != null) {
                     Text(
-                        text = errorMessage!!,
+                        text = saveError ?: errorMessage.orEmpty(),
                         color = StatusError,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -277,7 +353,7 @@ fun AddCartonDialog(
                     // Dimensions & Gross / Net Weight
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -285,7 +361,7 @@ fun AddCartonDialog(
                                     text = if (isBangla) "কার্টনের মাপ ও মোট ওজন" else "Dimensions & Weights",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -352,7 +428,7 @@ fun AddCartonDialog(
                     if (!isMixedTab) {
                         item {
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -360,7 +436,7 @@ fun AddCartonDialog(
                                         text = if (isBangla) "পণ্য নির্বাচন করুন:" else "Select Product:",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepNavy
+                                        color = TextPrimary
                                     )
 
                                     products.forEach { prod ->
@@ -370,8 +446,8 @@ fun AddCartonDialog(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF8F9FA))
-                                                .border(1.dp, if (isSelected) PrimaryPurple else Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
+                                                .border(1.dp, if (isSelected) PrimaryPurple else ERPDivider, RoundedCornerShape(8.dp))
                                                 .clickable { singleProductId = prod.id; singleVariantId = null }
                                                 .padding(10.dp)
                                         ) {
@@ -408,7 +484,7 @@ fun AddCartonDialog(
                                     text = if (isBangla) "কার্টনের পণ্যসমূহ ও স্বয়ংক্রিয় ওজন বণ্টন:" else "Carton Items & Automatic Weight Allocation:",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = DeepNavy
+                                    color = TextPrimary
                                 )
                                 TextButton(
                                     onClick = {
@@ -417,7 +493,7 @@ fun AddCartonDialog(
                                         }
                                     }
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(text = if (isBangla) "পণ্য যোগ" else "Add Line")
                                 }
@@ -426,7 +502,7 @@ fun AddCartonDialog(
 
                         itemsIndexed(mixedLines) { index, line ->
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -444,7 +520,7 @@ fun AddCartonDialog(
                                         )
                                         if (mixedLines.size > 1) {
                                             IconButton(onClick = { mixedLines.removeAt(index) }, modifier = Modifier.size(24.dp)) {
-                                                Icon(Icons.Default.Delete, contentDescription = "Remove", tint = StatusError, modifier = Modifier.size(18.dp))
+                                                Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = StatusError, modifier = Modifier.size(18.dp))
                                             }
                                         }
                                     }
@@ -459,7 +535,7 @@ fun AddCartonDialog(
                                                     .fillMaxWidth()
                                                     .padding(vertical = 2.dp)
                                                     .clip(RoundedCornerShape(6.dp))
-                                                    .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else Color(0xFFF1F5F9))
+                                                    .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
                                                     .clickable { line.productId = p.id; line.variantId = null }
                                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                                             ) {
@@ -511,7 +587,7 @@ fun AddCartonDialog(
 
                 // Bottom Action Button
                 Surface(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 8.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -522,13 +598,14 @@ fun AddCartonDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = onDismiss,
+                            onClick = requestClose,
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(text = if (isBangla) "বাতিল" else "Cancel")
                         }
 
                         Button(
+                            enabled = !isSaving,
                             onClick = {
                                 try {
                                     val l = BigDecimal(lengthStr.trim().ifEmpty { "50" })
@@ -588,7 +665,6 @@ fun AddCartonDialog(
                                             )
                                         }
                                     }
-                                    onDismiss()
                                 } catch (e: Exception) {
                                     errorMessage = e.message ?: "Validation error"
                                 }

@@ -1,12 +1,17 @@
 package com.pocketdev.advance_erp.feature.product
 
+import com.pocketdev.advance_erp.core.designsystem.DeepNavy
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -37,9 +42,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -131,7 +136,7 @@ fun VariantPhotoSliderDialog(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0F172A)) // Rich deep dark navy/slate
+                .background(TextPrimary) // Rich deep dark navy/slate
                 .safeDrawingPadding()
         ) {
             // Top Header Bar
@@ -168,7 +173,7 @@ fun VariantPhotoSliderDialog(
                     // Slide indicator (e.g., 2 / 5)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color.White.copy(alpha = 0.15f)
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.15f)
                     ) {
                         Text(
                             text = "${Formatters.formatNumber((pagerState.currentPage + 1).toLong(), language)} / ${Formatters.formatNumber(slides.size.toLong(), language)}",
@@ -188,7 +193,7 @@ fun VariantPhotoSliderDialog(
                         .size(36.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        imageVector = Icons.Outlined.Close,
                         contentDescription = "Close",
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
@@ -232,7 +237,7 @@ fun VariantPhotoSliderDialog(
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Image,
+                                    imageVector = Icons.Outlined.Image,
                                     contentDescription = null,
                                     tint = Color.White.copy(alpha = 0.35f),
                                     modifier = Modifier.size(64.dp)
@@ -300,8 +305,8 @@ fun VariantPhotoSliderDialog(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFF0F172A).copy(alpha = 0.85f),
-                                Color(0xFF0F172A)
+                                TextPrimary.copy(alpha = 0.85f),
+                                TextPrimary
                             )
                         )
                     )
@@ -310,7 +315,7 @@ fun VariantPhotoSliderDialog(
                 // Info Card with Live Price & Stock
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF1E293B).copy(alpha = 0.95f),
+                    color = DeepNavy.copy(alpha = 0.95f),
                     modifier = Modifier
                         .fillMaxWidth()
                         .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
@@ -346,8 +351,8 @@ fun VariantPhotoSliderDialog(
                             val stock = currentSlide.stockQuantity
                             val (stockBg, stockText) = when {
                                 stock <= 0 -> Pair(StatusError.copy(alpha = 0.2f), StatusError)
-                                stock <= 5 -> Pair(Color(0xFFF59E0B).copy(alpha = 0.2f), Color(0xFFFBBF24))
-                                else -> Pair(StatusSuccess.copy(alpha = 0.2f), Color(0xFF34D399))
+                                stock <= 5 -> Pair(StatusWarning.copy(alpha = 0.2f), StatusWarning)
+                                else -> Pair(StatusSuccess.copy(alpha = 0.2f), StatusSuccess)
                             }
 
                             Surface(
@@ -361,7 +366,7 @@ fun VariantPhotoSliderDialog(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Inventory2,
+                                        imageVector = Icons.Outlined.Inventory2,
                                         contentDescription = null,
                                         tint = stockText,
                                         modifier = Modifier.size(14.dp)
@@ -397,7 +402,7 @@ fun VariantPhotoSliderDialog(
                                     maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF38BDF8) // Bright Cyan
+                                    color = StatusInfo // Bright Cyan
                                 )
                             }
 
@@ -412,11 +417,11 @@ fun VariantPhotoSliderDialog(
                                         textAlign = TextAlign.End
                                     )
                                     IconButton(onClick = costVisibility.toggle, modifier = Modifier.size(48.dp)) {
-                                        Icon(if (costVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        Icon(if (costVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                                             contentDescription = if (language == AppLanguage.BANGLA) {
                                                 if (costVisible) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
                                             } else if (costVisible) "Hide buy cost" else "Show buy cost",
-                                            tint = Color(0xFFA7F3D0))
+                                            tint = StatusSuccessContainer)
                                     }
                                 }
                                 Text(
@@ -424,7 +429,7 @@ fun VariantPhotoSliderDialog(
                                     maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFA7F3D0)
+                                    color = StatusSuccessContainer
                                 )
                             }
 
@@ -447,10 +452,10 @@ fun VariantPhotoSliderDialog(
                                 modifier = Modifier
                                     .size(52.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF1E293B))
+                                    .background(TextPrimary)
                                     .border(
                                         width = if (isSelected) 2.5.dp else 1.dp,
-                                        color = if (isSelected) Color(0xFF38BDF8) else Color.White.copy(alpha = 0.2f),
+                                        color = if (isSelected) StatusInfo else Color.White.copy(alpha = 0.2f),
                                         shape = RoundedCornerShape(8.dp)
                                     )
                                     .clickable {
@@ -471,7 +476,7 @@ fun VariantPhotoSliderDialog(
                                     )
                                 } else {
                                     Icon(
-                                        imageVector = Icons.Default.Image,
+                                        imageVector = Icons.Outlined.Image,
                                         contentDescription = null,
                                         tint = Color.White.copy(alpha = 0.4f),
                                         modifier = Modifier

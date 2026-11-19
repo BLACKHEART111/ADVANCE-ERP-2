@@ -15,10 +15,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -87,7 +87,7 @@ fun CustomerSummaryCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AccountCircle,
+                            imageVector = Icons.Outlined.AccountCircle,
                             contentDescription = "Customer",
                             tint = PrimaryPurple,
                             modifier = Modifier.size(28.dp)
@@ -105,7 +105,7 @@ fun CustomerSummaryCard(
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.Phone,
+                                imageVector = Icons.Outlined.Phone,
                                 contentDescription = "Phone",
                                 tint = TextSecondary,
                                 modifier = Modifier.size(13.dp)
@@ -127,7 +127,7 @@ fun CustomerSummaryCard(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Edit,
+                        imageVector = Icons.Outlined.Edit,
                         contentDescription = "Change",
                         modifier = Modifier.size(14.dp)
                     )
@@ -144,7 +144,7 @@ fun CustomerSummaryCard(
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.LocationOn,
+                        imageVector = Icons.Outlined.LocationOn,
                         contentDescription = "Address",
                         tint = TextMuted,
                         modifier = Modifier.size(13.dp)

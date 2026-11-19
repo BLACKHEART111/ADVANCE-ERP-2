@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,14 +21,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AssignmentTurnedIn
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.AssignmentTurnedIn
+import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Replay
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -91,8 +93,8 @@ fun InvoiceDetailDialog(
 ) {
     val context = LocalContext.current
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US)
-    var showCancelConfirmDialog by remember { mutableStateOf(false) }
-    var cancelReason by remember { mutableStateOf("") }
+    var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var cancelReason by rememberSaveable { mutableStateOf("") }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -129,7 +131,7 @@ fun InvoiceDetailDialog(
                             val (badgeColor, statusLabel) = when (invoice.status) {
                                 "PAID" -> Pair(StatusSuccess, if (isBangla) "পরিশোধিত" else "Paid")
                                 "POSTED" -> Pair(SecondaryTeal, if (isBangla) "অনুমোদিত (Posted)" else "Posted")
-                                "PARTIALLY_PAID" -> Pair(Color(0xFFF59E0B), if (isBangla) "আংশিক পরিশোধ" else "Partially Paid")
+                                "PARTIALLY_PAID" -> Pair(StatusWarning, if (isBangla) "আংশিক পরিশোধ" else "Partially Paid")
                                 "DRAFT" -> Pair(Color.Gray, if (isBangla) "খসড়া" else "Draft")
                                 else -> Pair(Color.Gray, invoice.status)
                             }
@@ -156,14 +158,14 @@ fun InvoiceDetailDialog(
                         if (invoice.status != "CANCELLED") {
                             IconButton(onClick = { showCancelConfirmDialog = true }) {
                                 Icon(
-                                    imageVector = if (!invoice.isPosted) Icons.Default.DeleteOutline else Icons.Default.Cancel,
+                                    imageVector = if (!invoice.isPosted) Icons.Outlined.DeleteOutline else Icons.Outlined.Cancel,
                                     contentDescription = if (!invoice.isPosted) "Delete Draft" else "Cancel Invoice",
                                     tint = StatusError
                                 )
                             }
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                            Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                         }
                     }
                 }
@@ -206,7 +208,7 @@ fun InvoiceDetailDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.surface,
                             shadowElevation = 1.dp
                         ) {
                             Row(
@@ -260,7 +262,7 @@ fun InvoiceDetailDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.surface,
                             shadowElevation = 0.5.dp
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -286,7 +288,7 @@ fun InvoiceDetailDialog(
                                             Text(
                                                 text = "Disc: -৳${Formatters.formatMinorUnit(item.discountMinor)}",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFFE53E3E)
+                                                color = StatusError
                                             )
                                         }
                                     }
@@ -342,8 +344,8 @@ fun InvoiceDetailDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Invoice Discount:", color = Color(0xFFFF8A80))
-                                        Text("-৳" + Formatters.formatMinorUnit(invoice.discountMinor), color = Color(0xFFFF8A80))
+                                        Text("Invoice Discount:", color = StatusError)
+                                        Text("-৳" + Formatters.formatMinorUnit(invoice.discountMinor), color = StatusError)
                                     }
                                 }
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.2f))
@@ -367,8 +369,8 @@ fun InvoiceDetailDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Balance Due:", color = Color(0xFFFF8A80), fontWeight = FontWeight.Bold)
-                                    Text("৳" + Formatters.formatMinorUnit(invoice.dueAmountMinor), color = Color(0xFFFF8A80), fontWeight = FontWeight.Bold)
+                                    Text("Balance Due:", color = StatusError, fontWeight = FontWeight.Bold)
+                                    Text("৳" + Formatters.formatMinorUnit(invoice.dueAmountMinor), color = StatusError, fontWeight = FontWeight.Bold)
                                 }
                                 if (invoice.isPosted && invoice.totalCogsMinor > 0) {
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.15f))
@@ -398,7 +400,7 @@ fun InvoiceDetailDialog(
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.surface
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -473,7 +475,7 @@ fun InvoiceDetailDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(if (isBangla) "PDF" else "PDF")
                     }
@@ -484,7 +486,7 @@ fun InvoiceDetailDialog(
                         modifier = Modifier.weight(1.1f),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(if (isBangla) "রশিদ (Thermal)" else "Receipt")
                     }
@@ -497,7 +499,7 @@ fun InvoiceDetailDialog(
                             colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.AssignmentTurnedIn, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.AssignmentTurnedIn, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBangla) "পোস্ট করুন" else "Post Invoice")
                         }
@@ -509,7 +511,7 @@ fun InvoiceDetailDialog(
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Outlined.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(if (isBangla) "পেমেন্ট" else "Pay")
                             }
@@ -519,7 +521,7 @@ fun InvoiceDetailDialog(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Icon(Icons.Default.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (isBangla) "ফেরত" else "Return")
                         }

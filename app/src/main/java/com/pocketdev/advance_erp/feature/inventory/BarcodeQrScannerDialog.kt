@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.inventory
 
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
@@ -38,10 +41,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FlashOn
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -100,11 +103,11 @@ fun BarcodeQrScannerDialog(
     onDismiss: () -> Unit,
     onCodeScanned: (code: String) -> Unit
 ) {
-    var manualCodeInput by remember { mutableStateOf("") }
-    var isFlashOn by remember { mutableStateOf(false) }
+    var manualCodeInput by rememberSaveable { mutableStateOf("") }
+    var isFlashOn by rememberSaveable { mutableStateOf(false) }
     var zoomLevel by remember { mutableFloatStateOf(1.0f) }
-    var isScanningPaused by remember { mutableStateOf(false) }
-    var isSuccessHighlight by remember { mutableStateOf(false) }
+    var isScanningPaused by rememberSaveable { mutableStateOf(false) }
+    var isSuccessHighlight by rememberSaveable { mutableStateOf(false) }
     var lastScannedCode by remember { mutableStateOf<String?>(null) }
     var tapFocusPoint by remember { mutableStateOf<Offset?>(null) }
 
@@ -121,7 +124,7 @@ fun BarcodeQrScannerDialog(
                 PackageManager.PERMISSION_GRANTED
         )
     }
-    var permissionDenied by remember { mutableStateOf(false) }
+    var permissionDenied by rememberSaveable { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -320,9 +323,10 @@ fun BarcodeQrScannerDialog(
 
             // Tap Focus Indicator Overlay
             tapFocusPoint?.let { pos ->
+                val focusColor = SecondaryTeal
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     drawCircle(
-                        color = SecondaryTeal,
+                        color = focusColor,
                         radius = 36f,
                         center = pos,
                         style = Stroke(width = 3f)
@@ -357,7 +361,7 @@ fun BarcodeQrScannerDialog(
                                 .size(42.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.FlashOn,
+                                imageVector = Icons.Outlined.FlashOn,
                                 contentDescription = "Flashlight",
                                 tint = if (isFlashOn) Color.Black else Color.White
                             )
@@ -402,7 +406,7 @@ fun BarcodeQrScannerDialog(
                             .size(42.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
+                            imageVector = Icons.Outlined.Close,
                             contentDescription = "Close",
                             tint = Color.White
                         )
@@ -418,12 +422,13 @@ fun BarcodeQrScannerDialog(
                             .background(Color.Black.copy(alpha = 0.35f)),
                         contentAlignment = Alignment.Center
                     ) {
+                        val cornerColor = if (isSuccessHighlight) StatusSuccess else Color(0xFF299DB2)
+                        val laserColor = if (isSuccessHighlight) StatusSuccess else StatusError
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val w = size.width
                             val h = size.height
                             val cornerLength = 40f
                             val strokeW = 7f
-                            val cornerColor = if (isSuccessHighlight) StatusSuccess else Color(0xFF299DB2)
 
                             // Top-Left Corner
                             drawLine(cornerColor, Offset(0f, 0f), Offset(cornerLength, 0f), strokeW, StrokeCap.Round)
@@ -444,7 +449,7 @@ fun BarcodeQrScannerDialog(
                             // Animated Laser Line
                             val laserY = h * laserFraction
                             drawLine(
-                                color = if (isSuccessHighlight) StatusSuccess else Color(0xFFE91E63),
+                                color = laserColor,
                                 start = Offset(14f, laserY),
                                 end = Offset(w - 14f, laserY),
                                 strokeWidth = if (isSuccessHighlight) 5f else 3f,
@@ -478,7 +483,7 @@ fun BarcodeQrScannerDialog(
                                 isSuccessHighlight = false
                             }
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.Refresh, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (isBangla) "পুনরায় স্ক্যান করতে ট্যাপ করুন" else "Tap to scan again",
@@ -495,7 +500,7 @@ fun BarcodeQrScannerDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp)),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 4.dp
                 ) {
                     Column(
@@ -539,7 +544,7 @@ fun BarcodeQrScannerDialog(
                                 ),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = PrimaryPurple,
-                                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                                    unfocusedBorderColor = ERPDivider
                                 )
                             )
 
