@@ -233,7 +233,9 @@ interface ImportRepository {
         shipmentId: String,
         warehouseId: String,
         items: List<ReceiptItemDraft>,
-        notes: String?
+        notes: String?,
+        postImmediately: Boolean = false,
+        allowDiscrepancy: Boolean = false
     ): String
     suspend fun postWarehouseReceipt(receiptId: String, allowDiscrepancy: Boolean = false)
     fun getAllCostLayers(): Flow<List<InventoryCostLayer>>
@@ -302,7 +304,8 @@ interface ImportRepository {
         warehouseId: String,
         receivingMethod: String, // PHYSICAL_COUNT or CARTON_WISE
         items: List<ReceiptItemDraft>,
-        notes: String?
+        notes: String?,
+        postImmediately: Boolean = false
     ): String
 
     suspend fun postPurchaseReceiving(receiptId: String, allowDiscrepancy: Boolean = false)

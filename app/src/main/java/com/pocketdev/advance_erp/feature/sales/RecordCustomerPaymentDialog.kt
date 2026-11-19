@@ -430,7 +430,7 @@ fun RecordCustomerPaymentDialog(
                                                     }
                                                 },
                                             shape = RoundedCornerShape(10.dp),
-                                            color = if (isSel) accent.copy(alpha = 0.09f) else Color.White,
+                                            color = if (isSel) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
                                             border = BorderStroke(
                                                 width = if (isSel) 1.5.dp else 1.dp,
                                                 color = if (isSel) accent else ERPDivider

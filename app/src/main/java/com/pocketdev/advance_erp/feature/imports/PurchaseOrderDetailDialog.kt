@@ -1163,6 +1163,8 @@ fun PurchaseOrderDetailDialog(
                                             WarehouseReceiptCard(
                                                 receipt = rec,
                                                 isCostFinalized = isCostFinalized,
+                                                isPurchaseClosed = order.status == PurchaseOrderStatus.COMPLETED.name ||
+                                                    order.status == PurchaseOrderStatus.CANCELLED.name,
                                                 isBangla = isBangla,
                                                 onPostReceiving = onPostReceiving
                                             )
@@ -2242,9 +2244,11 @@ private fun CartonItemCard(
 private fun WarehouseReceiptCard(
     receipt: WarehouseReceipt,
     isCostFinalized: Boolean,
+    isPurchaseClosed: Boolean,
     isBangla: Boolean,
     onPostReceiving: (String) -> Unit
 ) {
+    val canPost = isCostFinalized && !isPurchaseClosed
     val isPosted = receipt.status == "POSTED"
 
     Card(
@@ -2383,26 +2387,26 @@ private fun WarehouseReceiptCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
                     onClick = { onPostReceiving(receipt.id) },
-                    enabled = isCostFinalized,
+                    enabled = canPost,
                     modifier = Modifier
                         .fillMaxWidth()
                         .defaultMinSize(minHeight = 42.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isCostFinalized) PrimaryPurple else Color.LightGray
+                        containerColor = PrimaryPurple
                     ),
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Icon(
-                        imageVector = if (isCostFinalized) Icons.Outlined.Inventory2 else Icons.Outlined.Lock,
+                        imageVector = if (canPost) Icons.Outlined.Inventory2 else Icons.Outlined.Lock,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isCostFinalized) {
-                            if (isBangla) "স্টক ইনভেন্টরিতে পোস্ট করুন" else "Post Receipt to Inventory Stock"
-                        } else {
-                            if (isBangla) "পোস্টিং লক করা (প্রথমে ল্যান্ডেড কস্ট ফাইনাল করুন)" else "Posting Locked (Finalize Landed Cost First)"
+                        text = when {
+                            canPost -> if (isBangla) "স্টক ইনভেন্টরিতে পোস্ট করুন" else "Post Receipt to Inventory Stock"
+                            isPurchaseClosed -> if (isBangla) "ক্রয়াদেশ বন্ধ হয়েছে" else "Purchase Order Closed"
+                            else -> if (isBangla) "পোস্টিং লক করা (প্রথমে ল্যান্ডেড কস্ট ফাইনাল করুন)" else "Posting Locked (Finalize Landed Cost First)"
                         },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold

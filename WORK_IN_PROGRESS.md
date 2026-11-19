@@ -1,5 +1,7 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+> ২০ নভেম্বরের আপডেট ও যাচাইয়ের ফল [পরবর্তী অডিটে](docs/ui-refinement/2026-11-19/premium/resume-audit.md) আছে। নিচের অংশটি ১৯ নভেম্বরের চেকপয়েন্ট।
+
 **Saved at the user's request on 2026-11-19 (Asia/Dhaka), before uninstall/reinstall of their development/chat app.**
 
 ## Resume instruction / এখান থেকে শুরু করুন

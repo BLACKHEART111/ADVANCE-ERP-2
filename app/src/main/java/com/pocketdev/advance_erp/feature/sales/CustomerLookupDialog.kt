@@ -202,8 +202,8 @@ fun CustomerLookupDialog(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = PrimaryPurple,
                             unfocusedBorderColor = DeepNavy.copy(alpha = 0.2f),
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
                         ),
                         singleLine = true
                     )

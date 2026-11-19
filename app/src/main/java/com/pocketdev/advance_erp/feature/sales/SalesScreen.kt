@@ -595,9 +595,9 @@ private fun InvoicesTab(
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryPurple,
-                    unfocusedBorderColor = DeepNavy.copy(alpha = 0.2f),
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -622,7 +622,7 @@ private fun InvoicesTab(
                         label = { Text(stLabel) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PrimaryPurple,
-                            selectedLabelColor = Color.White
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                         )
                     )
                 }
@@ -1060,9 +1060,9 @@ private fun PaymentsTab(
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryPurple,
-                    unfocusedBorderColor = DeepNavy.copy(alpha = 0.2f),
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 singleLine = true
             )
@@ -1106,7 +1106,7 @@ private fun PaymentsTab(
                         label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PrimaryPurple,
-                            selectedLabelColor = Color.White,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
                             containerColor = MaterialTheme.colorScheme.surface,
                             labelColor = TextPrimary
                         ),
@@ -1308,7 +1308,7 @@ private fun PaymentsTab(
                         label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PrimaryPurple,
-                            selectedLabelColor = Color.White,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
                             containerColor = MaterialTheme.colorScheme.surface,
                             labelColor = TextPrimary
                         ),

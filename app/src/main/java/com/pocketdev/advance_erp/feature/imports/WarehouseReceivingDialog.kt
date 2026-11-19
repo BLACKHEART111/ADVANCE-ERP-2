@@ -8,6 +8,11 @@ import com.pocketdev.advance_erp.core.designsystem.ERPLeaveEditorDialog
 import com.pocketdev.advance_erp.core.util.EditorDraftStore
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.saveable.Saver
 import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
@@ -76,6 +81,7 @@ import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.SecondaryTealLight
 import com.pocketdev.advance_erp.core.designsystem.StatusError
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
@@ -145,22 +151,20 @@ fun WarehouseReceivingDialog(
     saveError: String? = null,
     onDismiss: () -> Unit,
     onSaveDraft: ((warehouseId: String, receivingMethod: String, items: List<ReceiptItemDraft>, notes: String?) -> Unit)? = null,
-    onConfirmPost: ((warehouseId: String, items: List<ReceiptItemDraft>, notes: String?, allowDiscrepancy: Boolean) -> Unit)? = null
+    onConfirmPost: ((warehouseId: String, receivingMethod: String, items: List<ReceiptItemDraft>, notes: String?, allowDiscrepancy: Boolean) -> Unit)? = null
 ) {
     var selectedMethod by rememberSaveable { mutableStateOf(if (cartons.isNotEmpty()) "CARTON_WISE" else "PHYSICAL_COUNT") }
     var destinationWarehouseId by rememberSaveable { mutableStateOf("wh-dhk-01") }
     var notes by rememberSaveable { mutableStateOf("Warehouse receiving inspection completed.") }
     var showBlockedCostDialog by rememberSaveable { mutableStateOf(false) }
     var showConfirmationDialog by rememberSaveable { mutableStateOf(false) }
-    var isPostingAction by rememberSaveable { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val productsMap = remember(products) { products.associateBy { it.id } }
 
-    // Initialize lines based on selected method
-    val lines = rememberSaveable(selectedMethod, saver = ReceivingLinesSaver) {
+    fun defaultLines(method: String): SnapshotStateList<ReceivingLineState> {
         val list = mutableStateListOf<ReceivingLineState>()
-        if (selectedMethod == "CARTON_WISE") {
+        if (method == "CARTON_WISE") {
             if (cartons.isNotEmpty()) {
                 cartons.forEach { c ->
                     val prod = productsMap[c.productId]
@@ -223,7 +227,8 @@ fun WarehouseReceivingDialog(
             poItems.forEach { item ->
                 val prod = productsMap[item.productId]
                 val name = if (isBangla && !prod?.nameBn.isNullOrBlank()) prod?.nameBn!! else prod?.nameEn ?: item.productId
-                val remaining = (item.quantity - item.receivedQuantity).coerceAtLeast(0)
+                val remaining = item.quantity - item.receivedQuantity
+                if (remaining <= 0) return@forEach
                 list.add(
                     ReceivingLineState(
                         cartonId = null,
@@ -240,54 +245,108 @@ fun WarehouseReceivingDialog(
                 )
             }
         }
-        list
+        return list
     }
+
+    val expectedPhysicalLines = remember(poItems, productsMap, isBangla) { defaultLines("PHYSICAL_COUNT") }
+    val expectedCartonLines = remember(cartons, poItems, order?.totalCartons, productsMap, isBangla) {
+        defaultLines("CARTON_WISE")
+    }
+    val physicalLines = rememberSaveable(saver = ReceivingLinesSaver) {
+        mutableStateListOf<ReceivingLineState>().apply { addAll(defaultLines("PHYSICAL_COUNT")) }
+    }
+    val cartonLines = rememberSaveable(saver = ReceivingLinesSaver) {
+        mutableStateListOf<ReceivingLineState>().apply { addAll(defaultLines("CARTON_WISE")) }
+    }
+    val lines = if (selectedMethod == "CARTON_WISE") cartonLines else physicalLines
+    val expectedLines = if (selectedMethod == "CARTON_WISE") expectedCartonLines else expectedPhysicalLines
 
     val draftContext = LocalContext.current
     val draftStore = remember(draftContext) { EditorDraftStore(draftContext) }
     val draftKey = "receiving:" + (order?.id ?: shipment?.id ?: "new")
+    val draftScope = rememberCoroutineScope()
+    var savingBuffer by remember { mutableStateOf(false) }
     var showLeavePrompt by rememberSaveable { mutableStateOf(false) }
     var draftLoaded by rememberSaveable(draftKey) { mutableStateOf(false) }
     var initialSnapshot by rememberSaveable(draftKey) { mutableStateOf<String?>(null) }
-    fun snapshotEditor() = JSONObject().apply {
-        put("method", selectedMethod); put("warehouse", destinationWarehouseId); put("notes", notes)
-        put("lines", JSONArray().apply { lines.forEach { put(it.toJson()) } })
+    fun List<ReceivingLineState>.toJsonArray() = JSONArray().apply {
+        forEach { put(it.toJson()) }
     }
-    LaunchedEffect(draftKey, selectedMethod) {
+    fun snapshotEditor() = JSONObject().apply {
+        put("method", selectedMethod)
+        put("warehouse", destinationWarehouseId)
+        put("notes", notes)
+        put("physicalLines", physicalLines.toJsonArray())
+        put("cartonLines", cartonLines.toJsonArray())
+    }
+    LaunchedEffect(draftKey) {
         if (!draftLoaded) {
-            val draft = draftStore.read(draftKey)
-            if (draft != null) {
-                val method = draft.optString("method", selectedMethod)
-                if (selectedMethod != method) { selectedMethod = method; return@LaunchedEffect }
+            draftStore.read(draftKey)?.let { draft ->
+                selectedMethod = draft.optString("method", selectedMethod)
                 destinationWarehouseId = draft.optString("warehouse", destinationWarehouseId)
                 notes = draft.optString("notes")
-                draft.optJSONArray("lines")?.let { a ->
-                    val saved = (0 until a.length()).map { receivingLineFromJson(a.getJSONObject(it)) }
-                    // Never replace newly received quantities with an obsolete editor snapshot.
-                    if (saved.map { Triple(it.productId, it.variantId, it.expectedQty) } == lines.map { Triple(it.productId, it.variantId, it.expectedQty) }) {
-                        lines.clear(); lines.addAll(saved)
-                    }
+                val legacyLines = draft.optJSONArray("lines")
+                val savedPhysical = draft.optJSONArray("physicalLines")
+                    ?: legacyLines.takeIf { selectedMethod == "PHYSICAL_COUNT" }
+                val savedCartons = draft.optJSONArray("cartonLines")
+                    ?: legacyLines.takeIf { selectedMethod == "CARTON_WISE" }
+                savedPhysical?.let { saved ->
+                    physicalLines.clear()
+                    repeat(saved.length()) { physicalLines.add(receivingLineFromJson(saved.getJSONObject(it))) }
+                }
+                savedCartons?.let { saved ->
+                    cartonLines.clear()
+                    repeat(saved.length()) { cartonLines.add(receivingLineFromJson(saved.getJSONObject(it))) }
                 }
             }
-            initialSnapshot = snapshotEditor().toString(); draftLoaded = true
+            initialSnapshot = snapshotEditor().toString()
+            draftLoaded = true
         }
     }
+    fun ReceivingLineState.expectedIdentity() =
+        listOf(cartonId, cartonNumber, productId, variantId, expectedQty)
+    val hasStaleLines = lines.map { it.expectedIdentity() } != expectedLines.map { it.expectedIdentity() }
     val requestClose: () -> Unit = {
-        if (!isSaving) {
-            if (snapshotEditor().toString() == initialSnapshot) onDismiss() else showLeavePrompt = true
+        if (!isSaving && !savingBuffer) {
+            if (snapshotEditor().toString() == initialSnapshot && !hasStaleLines) onDismiss()
+            else showLeavePrompt = true
         }
     }
-    if (showLeavePrompt) ERPLeaveEditorDialog(isBangla,
+    if (showLeavePrompt) ERPLeaveEditorDialog(
+        isBangla = isBangla,
+        isSaving = savingBuffer,
         onContinue = { showLeavePrompt = false },
         onDiscard = { draftStore.remove(draftKey); onDismiss() },
         onSaveDraft = {
-            try { draftStore.save(draftKey, snapshotEditor()); onDismiss() }
-            catch (e: Exception) { errorMessage = e.message; showLeavePrompt = false }
-        })
+            val snapshot = snapshotEditor()
+            savingBuffer = true
+            draftScope.launch {
+                try {
+                    withContext(Dispatchers.IO) { draftStore.save(draftKey, snapshot) }
+                    onDismiss()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    errorMessage = e.message
+                    showLeavePrompt = false
+                } finally {
+                    savingBuffer = false
+                }
+            }
+        }
+    )
 
     fun validateAndBuildDrafts(): List<ReceiptItemDraft>? {
         errorMessage = null
         if (lines.isEmpty()) { errorMessage = if (isBangla) "গ্রহণের জন্য কোনো পণ্য নেই" else "No items to receive"; return null }
+        if (hasStaleLines) {
+            errorMessage = if (isBangla) {
+                "প্রত্যাশিত পরিমাণ বদলেছে। বর্তমান পরিমাণ লোড করতে খসড়াটি বাদ দিয়ে রিসিভিং আবার খুলুন।"
+            } else {
+                "Expected quantities changed. Discard this draft and reopen receiving to load the current quantities."
+            }
+            return null
+        }
         val drafts = mutableListOf<ReceiptItemDraft>()
         for ((idx, line) in lines.withIndex()) {
             val good = line.goodQtyStr.trim().toIntOrNull() ?: -1
@@ -325,7 +384,7 @@ fun WarehouseReceivingDialog(
     }
 
     ERPFullScreenEditor(
-        onDismissRequest = onDismiss
+        onDismissRequest = requestClose
     ) {
         Surface(
             modifier = Modifier
@@ -350,7 +409,7 @@ fun WarehouseReceivingDialog(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.Inventory2, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Outlined.Inventory2, contentDescription = null, tint = SecondaryTealLight, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (isBangla) "ওয়্যারহাউস পণ্য গ্রহণ ও পরিদর্শন" else "Warehouse Receiving Inspection",
@@ -672,9 +731,10 @@ fun WarehouseReceivingDialog(
                     ) {
                         // Button 1: Save Draft (always available)
                         OutlinedButton(
+                            enabled = !isSaving && onSaveDraft != null,
                             onClick = {
                                 val drafts = validateAndBuildDrafts() ?: return@OutlinedButton
-                                if (!isSaving) onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
+                                onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)
@@ -686,13 +746,13 @@ fun WarehouseReceivingDialog(
 
                         // Button 2: Post to Stock (Inventory Capitalization)
                         Button(
+                            enabled = !isSaving,
                             onClick = {
                                 if (!isCostFinalized) {
                                     showBlockedCostDialog = true
                                     return@Button
                                 }
-                                val drafts = validateAndBuildDrafts() ?: return@Button
-                                isPostingAction = true
+                                validateAndBuildDrafts() ?: return@Button
                                 showConfirmationDialog = true
                             },
                             modifier = Modifier.weight(1.2f),
@@ -707,7 +767,14 @@ fun WarehouseReceivingDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = if (isBangla) "স্টকে পোস্টিং করুন" else "Post to Stock")
+                            Text(
+                                text = when {
+                                    isSaving && isBangla -> "সংরক্ষণ হচ্ছে…"
+                                    isSaving -> "Saving…"
+                                    isBangla -> "স্টকে পোস্টিং করুন"
+                                    else -> "Post to Stock"
+                                }
+                            )
                         }
                     }
                 }
@@ -763,15 +830,15 @@ fun WarehouseReceivingDialog(
             },
             confirmButton = {
                 Button(
+                    enabled = !isSaving,
                     onClick = {
                         showConfirmationDialog = false
                         val drafts = validateAndBuildDrafts() ?: return@Button
                         if (onConfirmPost != null) {
-                            onConfirmPost(destinationWarehouseId, drafts, notes, true)
+                            onConfirmPost(destinationWarehouseId, selectedMethod, drafts, notes, true)
                         } else {
-                            if (!isSaving) onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
+                            onSaveDraft?.invoke(destinationWarehouseId, selectedMethod, drafts, notes)
                         }
-                        showConfirmationDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess)
                 ) {

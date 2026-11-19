@@ -995,8 +995,10 @@ class ImportRepositoryImpl @Inject constructor(
         shipmentId: String,
         warehouseId: String,
         items: List<ReceiptItemDraft>,
-        notes: String?
-    ): String {
+        notes: String?,
+        postImmediately: Boolean,
+        allowDiscrepancy: Boolean
+    ): String = database.withTransaction {
         require(items.isNotEmpty()) { "Receipt must contain at least 1 item" }
 
         val receiptCount = warehouseReceiptDao.getReceiptCount()
@@ -1076,7 +1078,8 @@ class ImportRepositoryImpl @Inject constructor(
         )
 
         warehouseReceiptDao.saveReceiptWithItems(receipt, itemEntities)
-        return receiptId
+        if (postImmediately) postWarehouseReceipt(receiptId, allowDiscrepancy)
+        receiptId
     }
 
     override suspend fun postWarehouseReceipt(receiptId: String, allowDiscrepancy: Boolean): Unit = database.withTransaction {
@@ -1100,9 +1103,15 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         val shipment = importShipmentDao.getShipmentById(receipt.shipmentId)
+        check(shipment?.status != ShipmentStatus.COMPLETED.name && shipment?.status != ShipmentStatus.CANCELLED.name) {
+            "Cannot post a receipt for a closed shipment"
+        }
         val linkedPoId = receipt.purchaseOrderId ?: shipment?.purchaseOrderId
         val linkedPo = if (linkedPoId != null) {
             purchaseOrderDao.getOrderById(linkedPoId)?.also { po ->
+                check(po.status != PurchaseOrderStatus.COMPLETED.name && po.status != PurchaseOrderStatus.CANCELLED.name) {
+                    "Cannot post a receipt for a closed purchase order"
+                }
                 if (!po.isActualCostFinalized) {
                     throw IllegalStateException("Cannot post stock receiving: Actual Landing Cost must be finalized before posting stock into inventory!")
                 }
@@ -1816,8 +1825,9 @@ class ImportRepositoryImpl @Inject constructor(
         warehouseId: String,
         receivingMethod: String,
         items: List<ReceiptItemDraft>,
-        notes: String?
-    ): String {
+        notes: String?,
+        postImmediately: Boolean
+    ): String = database.withTransaction {
         require(items.isNotEmpty()) { "Receiving must contain at least 1 item" }
         val po = purchaseOrderDao.getOrderById(orderId)
             ?: throw IllegalArgumentException("Purchase order not found: $orderId")
@@ -1902,47 +1912,43 @@ class ImportRepositoryImpl @Inject constructor(
         )
 
         warehouseReceiptDao.saveReceiptWithItems(receipt, itemEntities)
-        return receiptId
+        if (postImmediately) postPurchaseReceiving(receiptId, allowDiscrepancy = true)
+        receiptId
     }
 
     override suspend fun postPurchaseReceiving(receiptId: String, allowDiscrepancy: Boolean) {
-        val receipt = warehouseReceiptDao.getReceiptById(receiptId)
-            ?: throw IllegalArgumentException("Warehouse receipt not found: $receiptId")
-
-        check(receipt.status != ReceiptStatus.POSTED.name) {
-            "Duplicate posting prevented: Warehouse receipt ${receipt.receiptNumber} is already posted!"
-        }
-
-        val orderId = receipt.purchaseOrderId
-            ?: importShipmentDao.getShipmentById(receipt.shipmentId)?.purchaseOrderId
-            ?: throw IllegalStateException("Receipt is not associated with a Purchase Order: $receiptId")
-
-        val po = purchaseOrderDao.getOrderById(orderId)
-            ?: throw IllegalArgumentException("Purchase order not found: $orderId")
-
-        // CRITICAL BUSINESS RULE: Posting stock is strictly blocked until Actual Landing Cost is finalized!
-        check(po.isActualCostFinalized) {
-            "Cannot post stock receiving: Actual Landing Cost must be finalized before posting stock into inventory!"
-        }
-
-        val items = warehouseReceiptDao.getItemsForReceiptSync(receiptId)
-        require(items.isNotEmpty()) { "Cannot post empty warehouse receipt" }
-
-        val batchShipment = importShipmentDao.getShipmentById(receipt.shipmentId)
-        val snapshots = importCostDao.getSnapshotsForShipmentSync(receipt.shipmentId).associateBy {
-            if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
-        }
-        val poItems = purchaseOrderDao.getItemsForOrderSync(orderId).associateBy {
-            if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
-        }
-
         database.withTransaction {
-            check(warehouseReceiptDao.getReceiptById(receiptId)?.status != ReceiptStatus.POSTED.name) { "Receipt is already posted" }
+            val receipt = warehouseReceiptDao.getReceiptById(receiptId)
+                ?: throw IllegalArgumentException("Warehouse receipt not found: $receiptId")
+            check(receipt.status != ReceiptStatus.POSTED.name) {
+                "Duplicate posting prevented: Warehouse receipt ${receipt.receiptNumber} is already posted!"
+            }
+            val orderId = receipt.purchaseOrderId
+                ?: importShipmentDao.getShipmentById(receipt.shipmentId)?.purchaseOrderId
+                ?: throw IllegalStateException("Receipt is not associated with a Purchase Order: $receiptId")
+            val po = purchaseOrderDao.getOrderById(orderId)
+                ?: throw IllegalArgumentException("Purchase order not found: $orderId")
+            check(po.status != PurchaseOrderStatus.COMPLETED.name && po.status != PurchaseOrderStatus.CANCELLED.name) {
+                "Cannot post a receipt for a closed purchase order"
+            }
+            check(po.isActualCostFinalized) {
+                "Cannot post stock receiving: Actual Landing Cost must be finalized before posting stock into inventory!"
+            }
+
+            val items = warehouseReceiptDao.getItemsForReceiptSync(receiptId)
+            require(items.isNotEmpty()) { "Cannot post empty warehouse receipt" }
+            val batchShipment = importShipmentDao.getShipmentById(receipt.shipmentId)
+            val snapshots = importCostDao.getSnapshotsForShipmentSync(receipt.shipmentId).associateBy {
+                if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
+            }
             val currentItems = purchaseOrderDao.getItemsForOrderSync(orderId)
+            val poItems = currentItems.associateBy {
+                if (it.variantId != null) "${it.productId}:${it.variantId}" else it.productId
+            }
             items.groupBy { it.productId to it.variantId }.forEach { (key, lines) ->
                 val ordered = currentItems.firstOrNull { it.productId == key.first && it.variantId == key.second }
                     ?: error("Received variant is not in the PO")
-                require(lines.sumOf { it.receivedQuantity } <= ordered.quantity - ordered.receivedQuantity) {
+                require(lines.sumOf { it.receivedQuantity.toLong() } <= ordered.quantity.toLong() - ordered.receivedQuantity) {
                     "Received quantity exceeds the remaining PO quantity"
                 }
             }

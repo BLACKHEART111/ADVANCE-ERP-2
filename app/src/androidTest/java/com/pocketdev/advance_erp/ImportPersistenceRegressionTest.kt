@@ -115,6 +115,64 @@ class ImportPersistenceRegressionTest {
         assertEquals(16,db.stockBalanceDao().getVariantBalance("wh","p","s")!!.quantity)
     }
 
+    @Test fun startupSeedingKeepsBusinessRowsWithoutLegacyCleanupFlag() = runBlocking {
+        val orderId = save()
+        db.warehouseDao().insertWarehouse(Warehouse("wh", "Test", "WH", "Test"))
+
+        AdvanceErpDatabase.seedIfEmpty(db.openHelper.writableDatabase)
+
+        assertNotNull(repository.getPurchaseOrderById(orderId))
+        assertEquals(2, repository.getItemsForOrderSync(orderId).size)
+        assertNotNull(db.productDao().getProductById("p"))
+        assertNotNull(db.supplierDao().getSupplierById("s"))
+        assertNotNull(db.warehouseDao().getWarehouseById("wh"))
+    }
+
+    @Test fun immediateReceivingRollsBackDraftWhenPostingFails() = runBlocking {
+        val orderId = save(status = PurchaseOrderStatus.CONFIRMED)
+        db.warehouseDao().insertWarehouse(Warehouse("wh", "Test", "WH", "Test"))
+        val item = ReceiptItemDraft(
+            productId = "p", variantId = "s", expectedQuantity = 20, receivedQuantity = 20,
+            goodQuantity = 20, damagedQuantity = 0, missingQuantity = 0, pendingQuantity = 0
+        )
+
+        try {
+            repository.createPurchaseReceiving(
+                orderId, "wh", "PHYSICAL_COUNT", listOf(item), null, postImmediately = true
+            )
+            fail("Posting before cost finalization must fail")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message.orEmpty().contains("Actual Landing Cost"))
+        }
+
+        assertTrue(repository.getReceiptsForOrder(orderId).first().isEmpty())
+        assertNull(db.stockBalanceDao().getVariantBalance("wh", "p", "s"))
+    }
+
+    @Test fun existingReceiptCannotPostAfterPurchaseCompletion() = runBlocking {
+        val orderId = save(status = PurchaseOrderStatus.CONFIRMED)
+        val order = repository.getPurchaseOrderById(orderId)!!
+        db.purchaseOrderDao().updateOrder(order.copy(isActualCostFinalized = true))
+        db.warehouseDao().insertWarehouse(Warehouse("wh", "Test", "WH", "Test"))
+        val item = ReceiptItemDraft(
+            productId = "p", variantId = "s", expectedQuantity = 20, receivedQuantity = 20,
+            goodQuantity = 20, damagedQuantity = 0, missingQuantity = 0, pendingQuantity = 0
+        )
+        val receiptId = repository.createPurchaseReceiving(orderId, "wh", "PHYSICAL_COUNT", listOf(item), null)
+        repository.completePurchase(orderId, "SHORTAGE", "Supplier agreed to close the balance", null)
+
+        try {
+            repository.postPurchaseReceiving(receiptId)
+            fail("A closed purchase must reject posting an earlier receipt")
+        } catch (e: IllegalStateException) {
+            assertTrue(e.message.orEmpty().contains("closed purchase order"))
+        }
+
+        assertEquals(PurchaseOrderStatus.COMPLETED.name, repository.getPurchaseOrderById(orderId)?.status)
+        assertEquals(ReceiptStatus.DRAFT.name, db.warehouseReceiptDao().getReceiptById(receiptId)?.status)
+        assertNull(db.stockBalanceDao().getVariantBalance("wh", "p", "s"))
+    }
+
     @Test fun duplicateCreatesIndependentDraftAndBatchWithoutFinalizedFlags() = runBlocking {
         val id=save(status=PurchaseOrderStatus.CONFIRMED)
         val oldBatch=repository.getShipmentsForOrderSync(id).single()

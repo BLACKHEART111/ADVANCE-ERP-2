@@ -66,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -166,14 +167,14 @@ fun ERPDrawer(
             ) {
                 AdvanceErpLogo(
                     variant = BrandConfig.LogoVariant.COMPACT,
-                    isDarkBackground = true,
+                    isDarkBackground = MaterialTheme.colorScheme.surface.luminance() < 0.5f,
                     modifier = Modifier.height(26.dp)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "v${BrandConfig.BRAND_VERSION} • ${BrandConfig.TAGLINE_EN}",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                    color = Color.White.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

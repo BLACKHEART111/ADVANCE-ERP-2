@@ -315,6 +315,10 @@ class ImportViewModel @Inject constructor(
         return importRepository.getCartonsForOrder(orderId)
     }
 
+    fun getCartonsForShipment(shipmentId: String) = importRepository.getCartonsForShipment(shipmentId)
+
+    fun getLandedCostSnapshots(shipmentId: String) = importRepository.getLandedCostSnapshots(shipmentId)
+
     suspend fun resolveShareImagesForItems(items: List<PurchaseOrderItem>): Map<String, String> {
         if (items.isEmpty()) return emptyMap()
         val variantCache = mutableMapOf<String, String?>()
@@ -349,6 +353,8 @@ class ImportViewModel @Inject constructor(
     fun getCostItemsForOrder(orderId: String): kotlinx.coroutines.flow.Flow<List<ImportCostItem>> {
         return importRepository.getCostItemsForOrder(orderId)
     }
+
+    fun getReceiptsForOrder(orderId: String) = importRepository.getReceiptsForOrder(orderId)
 
     fun selectPurchaseOrder(order: PurchaseOrder?) {
         poDetailsJob?.cancel()
@@ -773,8 +779,10 @@ class ImportViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
-                val receiptId = importRepository.createWarehouseReceipt(shipmentId, warehouseId, items, notes)
-                importRepository.postWarehouseReceipt(receiptId, allowDiscrepancy)
+                importRepository.createWarehouseReceipt(
+                    shipmentId, warehouseId, items, notes,
+                    postImmediately = true, allowDiscrepancy = allowDiscrepancy
+                )
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -1299,15 +1307,15 @@ class ImportViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
-                val receiptId = importRepository.createPurchaseReceiving(
+                importRepository.createPurchaseReceiving(
                     orderId = orderId,
                     warehouseId = warehouseId,
                     receivingMethod = receivingMethod,
                     items = items,
-                    notes = notes
+                    notes = notes,
+                    postImmediately = postImmediately
                 )
                 if (postImmediately) {
-                    importRepository.postPurchaseReceiving(receiptId, allowDiscrepancy = true)
                     _uiState.update {
                         it.copy(
                             isLoading = false,

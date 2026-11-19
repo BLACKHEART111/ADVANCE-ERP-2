@@ -233,13 +233,11 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                         seedIfEmpty(db)
                     }
                 })
-                .fallbackToDestructiveMigrationOnDowngrade()
                 .build()
         }
 
         fun seedIfEmpty(db: SupportSQLiteDatabase) {
             removeLegacyDemoData(db)
-            resetBusinessDataOnce(db)
             // Check if business profile exists
             val profileCursor = db.query("SELECT COUNT(*) FROM business_profiles")
             var profileCount = 0
@@ -311,49 +309,6 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()
-            }
-        }
-
-        private const val CLEANUP_FLAG = "clean_start_v1"
-
-        /**
-         * One-time clean start: earlier builds shipped example/test records. Clears all transactional and
-         * master data once (keeps chart of accounts, settings, business profile and one default warehouse).
-         */
-        fun resetBusinessDataOnce(db: SupportSQLiteDatabase) {
-            try {
-                db.execSQL("CREATE TABLE IF NOT EXISTS app_cleanup_flags (flag TEXT NOT NULL PRIMARY KEY)")
-                val c = db.query("SELECT COUNT(*) FROM app_cleanup_flags WHERE flag = '$CLEANUP_FLAG'")
-                val done = c.moveToFirst() && c.getInt(0) > 0
-                c.close()
-                if (done) return
-
-                val keep = setOf(
-                    "chart_of_accounts", "app_settings", "business_profiles", "warehouses",
-                    "app_cleanup_flags", "room_master_table", "android_metadata", "sqlite_sequence"
-                )
-                val tables = mutableListOf<String>()
-                val tc = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-                while (tc.moveToNext()) tables.add(tc.getString(0))
-                tc.close()
-
-                db.execSQL("PRAGMA foreign_keys=OFF")
-                db.beginTransaction()
-                try {
-                    for (t in tables) {
-                        if (t in keep) continue
-                        db.execSQL("DELETE FROM `$t`")
-                    }
-                    db.execSQL("DELETE FROM warehouses WHERE id != 'wh-dhk-01' AND isDefault = 0")
-                    db.execSQL("UPDATE warehouses SET isDefault = 1 WHERE id = 'wh-dhk-01'")
-                    db.execSQL("INSERT OR REPLACE INTO app_cleanup_flags (flag) VALUES ('$CLEANUP_FLAG')")
-                    db.setTransactionSuccessful()
-                } finally {
-                    db.endTransaction()
-                    db.execSQL("PRAGMA foreign_keys=ON")
-                }
-            } catch (_: Exception) {
-                // Leave data untouched if anything unexpected happens.
             }
         }
 

@@ -275,8 +275,8 @@ object LandingCostEngine {
         require(damagedQuantity >= 0) { "Damaged quantity cannot be negative: $damagedQuantity" }
         require(missingQuantity >= 0) { "Missing quantity cannot be negative: $missingQuantity" }
         require(pendingQuantity >= 0) { "Pending quantity cannot be negative: $pendingQuantity" }
-        val sum = goodQuantity + damagedQuantity + missingQuantity + pendingQuantity
-        require(sum == packedQuantity) {
+        val sum = goodQuantity.toLong() + damagedQuantity + missingQuantity + pendingQuantity
+        require(sum == packedQuantity.toLong()) {
             "Receiving reconciliation mismatch: Packed ($packedQuantity) != Good ($goodQuantity) + Damaged ($damagedQuantity) + Missing ($missingQuantity) + Pending ($pendingQuantity) [Sum=$sum]"
         }
     }

@@ -95,6 +95,7 @@ import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.entity.ImportShipment
+import com.pocketdev.advance_erp.core.util.EditorDraftStore
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.WarehouseReceipt
@@ -123,20 +124,14 @@ fun ImportManagementScreen(
     var showRecordPaymentDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateShipmentDialog by rememberSaveable { mutableStateOf(false) }
     var showAddCostDialog by rememberSaveable { mutableStateOf(false) }
-    var showReceivingDialog by rememberSaveable { mutableStateOf(false) }
-    var showAddCartonDialog by rememberSaveable { mutableStateOf(false) }
+    var receivingOrderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var receivingShipmentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var packingOrderId by rememberSaveable { mutableStateOf<String?>(null) }
+    var packingShipmentId by rememberSaveable { mutableStateOf<String?>(null) }
     var showAddAdditionalCostDialog by rememberSaveable { mutableStateOf(false) }
     var showCompletionDialog by rememberSaveable { mutableStateOf(false) }
     var showShipmentWorkspaceDialog by rememberSaveable { mutableStateOf(false) }
     var editingPoId by rememberSaveable { mutableStateOf<String?>(null) }
-    var editingPo by remember { mutableStateOf<PurchaseOrder?>(null) }
-    LaunchedEffect(editingPoId, uiState.purchaseOrders) {
-        if (editingPo == null && editingPoId != null) editingPo = uiState.purchaseOrders.find { it.id == editingPoId }
-    }
-    LaunchedEffect(editingPo) { editingPoId = editingPo?.id }
-    var editingPoItemsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.PurchaseOrderItem>>(emptyList()) }
-    var editingPoCartonsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.ShipmentCarton>>(emptyList()) }
-    var editingPoCostsSnapshot by remember { mutableStateOf<List<com.pocketdev.advance_erp.data.entity.ImportCostItem>>(emptyList()) }
     var poToShare by remember { mutableStateOf<PurchaseOrder?>(null) }
 
     // Preselected entities for dialogs
@@ -208,18 +203,7 @@ fun ImportManagementScreen(
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .background(SecondaryTeal.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = if (isBangla) "সক্রিয়" else "Active",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = SecondaryTeal,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+
                 }
             }
 
@@ -320,7 +304,7 @@ fun ImportManagementScreen(
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(vertical = 8.dp)
                                     ) {
-                                        Text(text = if (isBangla) "+ ক্রয়াদেশ" else "+ New PO", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(text = if (isBangla) "ক্রয়াদেশ" else "New PO", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                     Button(
                                         onClick = {
@@ -520,7 +504,7 @@ fun ImportManagementScreen(
                                     Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = if (isBangla) "+ নতুন PO" else "+ New PO",
+                                        text = if (isBangla) "নতুন PO" else "New PO",
                                         fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -818,82 +802,82 @@ fun ImportManagementScreen(
                     categoryFreightRatesBdtMinor = catRatesMinor,
                     handlingCostMinor = handlingMinor,
                     sampleCostMinor = sampleMinor,
-                    onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("purchase:new"); showCreatePoDialog = false },
+                    onSaved = { EditorDraftStore(context).remove("purchase:new"); showCreatePoDialog = false },
                     attachments = attachments
                 )
             }
         )
     }
 
-    val currentEditingPo = editingPo
+    val currentEditingPo = uiState.purchaseOrders.find { it.id == editingPoId }
     if (currentEditingPo != null) {
-        val liveEditItems by viewModel.getItemsForOrder(currentEditingPo.id)
-            .collectAsState(initial = editingPoItemsSnapshot)
-        val liveEditCartons by viewModel.getCartonsForOrder(currentEditingPo.id)
-            .collectAsState(initial = editingPoCartonsSnapshot)
-        val liveEditCosts by viewModel.getCostItemsForOrder(currentEditingPo.id)
-            .collectAsState(initial = editingPoCostsSnapshot)
+        val orderId = currentEditingPo.id
+        val editItems = remember(orderId) { viewModel.getItemsForOrder(orderId) }.collectAsState(initial = null).value
+        val editCartons = remember(orderId) { viewModel.getCartonsForOrder(orderId) }.collectAsState(initial = null).value
+        val editCosts = remember(orderId) { viewModel.getCostItemsForOrder(orderId) }.collectAsState(initial = null).value
+        val editReceipts = remember(orderId) { viewModel.getReceiptsForOrder(orderId) }.collectAsState(initial = null).value
+        val editFreightRates = remember(orderId) { viewModel.getFreightRatesForOrder(orderId) }.collectAsState(initial = null).value
 
-        val editFreightRates by remember(currentEditingPo.id) { viewModel.getFreightRatesForOrder(currentEditingPo.id) }
-            .collectAsState(initial = emptyList())
-        val resolvedEditItems = liveEditItems.ifEmpty { editingPoItemsSnapshot }
-        val resolvedEditCartons = liveEditCartons.ifEmpty { editingPoCartonsSnapshot }
-        val resolvedEditCosts = liveEditCosts.ifEmpty { editingPoCostsSnapshot }
-
-        CreatePurchaseOrderDialog(
-            suppliers = uiState.suppliers,
-            products = uiState.products,
-            variants = uiState.productVariants,
-            categories = uiState.categories,
-            isBangla = isBangla,
-            editingOrder = currentEditingPo,
-            metadataOnly = currentEditingPo.isActualCostFinalized || currentEditingPo.paidAmountMinor > 0 ||
-                currentEditingPo.status == PurchaseOrderStatus.COMPLETED.name || resolvedEditItems.any { it.receivedQuantity > 0 } ||
-                uiState.selectedPoReceipts.any { it.purchaseOrderId == currentEditingPo.id },
-            onUpdateMetadata = { notes, attachments ->
-                viewModel.updatePurchaseOrderMetadata(currentEditingPo.id, notes, attachments, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).apply { remove("purchase:${currentEditingPo.id}"); remove("purchase:${currentEditingPo.id}:metadata") }; editingPo = null })
-            },
-            isSaving = uiState.isSavingPurchaseOrder,
-            saveError = uiState.purchaseOrderSaveError,
-            initialEditingItems = resolvedEditItems,
-            initialEditingCartons = resolvedEditCartons,
-            initialEditingCosts = resolvedEditCosts,
-            initialEditingFreightRates = editFreightRates.associate { it.categoryId to it.appliedRatePerKgBdtMinor },
-            onDismiss = {
-                editingPo = null
-                editingPoItemsSnapshot = emptyList()
-                editingPoCartonsSnapshot = emptyList()
-                editingPoCostsSnapshot = emptyList()
-            },
-            onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
-            onCreateFullProduct = viewModel::createFullProductFromPurchase,
-            onGenerateSku = viewModel::generateBaseSku,
-            onGenerateVariantSku = viewModel::generateVariantSku,
-            onGenerateBarcode = viewModel::generateBarcode,
-            onValidateSku = viewModel::isBaseSkuAvailable,
-            onValidateBarcode = viewModel::isBarcodeAvailable,
-            onAddNewVariant = viewModel::addNewVariantFromPurchase,
-            onAddNewCategory = viewModel::addNewCategory,
-            onUpdatePo = { ordId, supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments ->
-                viewModel.updatePurchaseOrder(
-                    orderId = ordId,
-                    supplierId = supId,
-                    currency = cur,
-                    exchangeRate = rate,
-                    items = items,
-                    notes = notes,
-                    status = status,
-                    cartons = cartons,
-                    chinaDeliveryChargeMinor = chinaDeliveryMinor,
-                    categoryFreightRatesBdtMinor = catRatesMinor,
-                    handlingCostMinor = handlingMinor,
-                    sampleCostMinor = sampleMinor,
-                    onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).apply { remove("purchase:${currentEditingPo.id}"); remove("purchase:${currentEditingPo.id}:metadata") }; editingPo = null },
-                    attachments = attachments
-                )
-            },
-            onSavePo = { _, _, _, _, _, _, _, _, _, _, _, _ -> }
-        )
+        if (editItems != null && editCartons != null && editCosts != null &&
+            editReceipts != null && editFreightRates != null
+        ) {
+            val onOrderSaved = {
+                EditorDraftStore(context).apply {
+                    remove("purchase:$orderId")
+                    remove("purchase:$orderId:metadata")
+                }
+                editingPoId = null
+            }
+            CreatePurchaseOrderDialog(
+                suppliers = uiState.suppliers,
+                products = uiState.products,
+                variants = uiState.productVariants,
+                categories = uiState.categories,
+                isBangla = isBangla,
+                editingOrder = currentEditingPo,
+                metadataOnly = currentEditingPo.isActualCostFinalized || currentEditingPo.paidAmountMinor > 0 ||
+                    currentEditingPo.status == PurchaseOrderStatus.COMPLETED.name || editItems.any { it.receivedQuantity > 0 } ||
+                    editReceipts.isNotEmpty(),
+                onUpdateMetadata = { notes, attachments ->
+                    viewModel.updatePurchaseOrderMetadata(orderId, notes, attachments, onSaved = onOrderSaved)
+                },
+                isSaving = uiState.isSavingPurchaseOrder,
+                saveError = uiState.purchaseOrderSaveError,
+                initialEditingItems = editItems,
+                initialEditingCartons = editCartons,
+                initialEditingCosts = editCosts,
+                initialEditingFreightRates = editFreightRates.associate { it.categoryId to it.appliedRatePerKgBdtMinor },
+                onDismiss = { editingPoId = null },
+                onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
+                onCreateFullProduct = viewModel::createFullProductFromPurchase,
+                onGenerateSku = viewModel::generateBaseSku,
+                onGenerateVariantSku = viewModel::generateVariantSku,
+                onGenerateBarcode = viewModel::generateBarcode,
+                onValidateSku = viewModel::isBaseSkuAvailable,
+                onValidateBarcode = viewModel::isBarcodeAvailable,
+                onAddNewVariant = viewModel::addNewVariantFromPurchase,
+                onAddNewCategory = viewModel::addNewCategory,
+                onUpdatePo = { ordId, supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments ->
+                    viewModel.updatePurchaseOrder(
+                        orderId = ordId,
+                        supplierId = supId,
+                        currency = cur,
+                        exchangeRate = rate,
+                        items = items,
+                        notes = notes,
+                        status = status,
+                        cartons = cartons,
+                        chinaDeliveryChargeMinor = chinaDeliveryMinor,
+                        categoryFreightRatesBdtMinor = catRatesMinor,
+                        handlingCostMinor = handlingMinor,
+                        sampleCostMinor = sampleMinor,
+                        onSaved = onOrderSaved,
+                        attachments = attachments
+                    )
+                },
+                onSavePo = { _, _, _, _, _, _, _, _, _, _, _, _ -> }
+            )
+        }
     }
 
     if (showRecordPaymentDialog) {
@@ -946,32 +930,38 @@ fun ImportManagementScreen(
         )
     }
 
-    if (showAddCartonDialog) {
-        val activeOrderId = uiState.selectedPo?.id
-        val activeShipment = selectedShipment
-        val cartonSaved: () -> Unit = {
-            com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("packing:${activeOrderId ?: activeShipment?.id}")
-            showAddCartonDialog = false
+    val packingOrder = uiState.purchaseOrders.find { it.id == packingOrderId }
+    val packingShipment = uiState.shipments.find { it.id == packingShipmentId }
+    val packingTargetId = packingOrder?.id ?: packingShipment?.id
+    if (packingTargetId != null) {
+        val closePacking = {
+            packingOrderId = null
+            packingShipmentId = null
+        }
+        val cartonSaved = {
+            EditorDraftStore(context).remove("packing:$packingTargetId")
+            closePacking()
         }
         AddCartonDialog(
-            shipment = activeShipment,
-            orderId = activeOrderId,
+            shipment = packingShipment,
+            orderId = packingOrder?.id,
+            packedCartonCount = packingOrder?.totalCartons ?: packingShipment?.totalCartons ?: 0,
             products = uiState.products,
             variants = uiState.productVariants,
             language = uiState.language,
             isSaving = uiState.isSavingCarton,
             saveError = uiState.cartonSaveError,
-            onDismiss = { showAddCartonDialog = false },
+            onDismiss = closePacking,
             onConfirm = { carton ->
-                if (activeOrderId != null) {
-                    viewModel.addCartonToPurchase(activeOrderId, carton, onSaved = cartonSaved)
-                } else if (activeShipment != null) {
-                    viewModel.addCartonToShipment(activeShipment.id, carton, onSaved = cartonSaved)
+                if (packingOrder != null) {
+                    viewModel.addCartonToPurchase(packingOrder.id, carton, onSaved = cartonSaved)
+                } else if (packingShipment != null) {
+                    viewModel.addCartonToShipment(packingShipment.id, carton, onSaved = cartonSaved)
                 }
             },
-            onConfirmMixed = { cartonNumber, l, w, h, gw, nw, lines ->
-                if (activeOrderId != null) {
-                    viewModel.addMixedCarton(activeOrderId, cartonNumber, l, w, h, gw, nw, lines, onSaved = cartonSaved)
+            onConfirmMixed = packingOrder?.let { order ->
+                { cartonNumber, length, width, height, gross, net, lines ->
+                    viewModel.addMixedCarton(order.id, cartonNumber, length, width, height, gross, net, lines, onSaved = cartonSaved)
                 }
             }
         )
@@ -1019,33 +1009,67 @@ fun ImportManagementScreen(
         )
     }
 
-    if (showReceivingDialog) {
-        val activePo = uiState.selectedPo
-        val activeShipment = selectedShipment
-        WarehouseReceivingDialog(
-            shipment = activeShipment,
-            order = activePo,
-            poItems = uiState.selectedPoItems,
-            cartons = if (activePo != null) uiState.selectedPoCartons else uiState.selectedShipmentCartons,
-            products = uiState.products,
-            isCostFinalized = activePo?.isActualCostFinalized ?: false,
-            isBangla = isBangla,
-            isSaving = uiState.isSavingReceipt,
-            saveError = uiState.receiptSaveError,
-            onDismiss = { showReceivingDialog = false },
-            onSaveDraft = { whId, meth, items, notes ->
-                if (activePo != null) {
-                    viewModel.createPurchaseReceiving(activePo.id, whId, meth, items, notes, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("receiving:${activePo?.id ?: activeShipment?.id}"); showReceivingDialog = false })
-                }
-            },
-            onConfirmPost = { whId, items, notes, allowDiscrepancy ->
-                if (activePo != null) {
-                    viewModel.createPurchaseReceiving(activePo.id, whId, "PHYSICAL_COUNT", items, notes, postImmediately = true, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("receiving:${activePo?.id ?: activeShipment?.id}"); showReceivingDialog = false })
-                } else if (activeShipment != null) {
-                    viewModel.createAndPostWarehouseReceipt(activeShipment.id, whId, items, notes, allowDiscrepancy, onSaved = { com.pocketdev.advance_erp.core.util.EditorDraftStore(context).remove("receiving:${activePo?.id ?: activeShipment?.id}"); showReceivingDialog = false })
-                }
+    val receivingOrder = uiState.purchaseOrders.find { it.id == receivingOrderId }
+    val receivingShipment = uiState.shipments.find { it.id == receivingShipmentId }
+    val receivingTargetId = receivingOrder?.id ?: receivingShipment?.id
+    if (receivingTargetId != null) {
+        val receivingItems = if (receivingOrder != null) {
+            remember(receivingTargetId) { viewModel.getItemsForOrder(receivingTargetId) }
+                .collectAsState(initial = null).value
+        } else {
+            emptyList()
+        }
+        val receivingCartons = remember(receivingTargetId, receivingOrder != null) {
+            if (receivingOrder != null) viewModel.getCartonsForOrder(receivingTargetId)
+            else viewModel.getCartonsForShipment(receivingTargetId)
+        }.collectAsState(initial = null).value
+        if (receivingItems != null && receivingCartons != null) {
+            val closeReceiving = {
+                receivingOrderId = null
+                receivingShipmentId = null
             }
-        )
+            val onReceiptSaved = {
+                EditorDraftStore(context).remove("receiving:$receivingTargetId")
+                closeReceiving()
+            }
+            val shipmentLinkedOrder = uiState.purchaseOrders.find { it.id == receivingShipment?.purchaseOrderId }
+            val shipmentSnapshots = if (receivingShipment != null) {
+                remember(receivingShipment.id) { viewModel.getLandedCostSnapshots(receivingShipment.id) }
+                    .collectAsState(initial = emptyList()).value
+            } else {
+                emptyList()
+            }
+            val costFinalized = (receivingOrder ?: shipmentLinkedOrder)?.isActualCostFinalized
+                ?: (shipmentSnapshots.isNotEmpty() && shipmentSnapshots.all { it.isFinal })
+            WarehouseReceivingDialog(
+                shipment = receivingShipment,
+                order = receivingOrder,
+                poItems = receivingItems,
+                cartons = receivingCartons,
+                products = uiState.products,
+                isCostFinalized = costFinalized,
+                isBangla = isBangla,
+                isSaving = uiState.isSavingReceipt,
+                saveError = uiState.receiptSaveError,
+                onDismiss = closeReceiving,
+                onSaveDraft = receivingOrder?.let { po ->
+                    { warehouse, method, items, notes ->
+                        viewModel.createPurchaseReceiving(po.id, warehouse, method, items, notes, onSaved = onReceiptSaved)
+                    }
+                },
+                onConfirmPost = { warehouse, method, items, notes, allowDiscrepancy ->
+                    if (receivingOrder != null) {
+                        viewModel.createPurchaseReceiving(
+                            receivingOrder.id, warehouse, method, items, notes, postImmediately = true, onSaved = onReceiptSaved
+                        )
+                    } else if (receivingShipment != null) {
+                        viewModel.createAndPostWarehouseReceipt(
+                            receivingShipment.id, warehouse, items, notes, allowDiscrepancy, onSaved = onReceiptSaved
+                        )
+                    }
+                }
+            )
+        }
     }
 
     if (showShipmentWorkspaceDialog && selectedShipment != null) {
@@ -1069,8 +1093,8 @@ fun ImportManagementScreen(
             warehouseRentHistory = uiState.warehouseRentHistory,
             isBangla = isBangla,
             onDismiss = { showShipmentWorkspaceDialog = false },
-            onAddCartonClick = { showAddCartonDialog = true },
-            onReceiveClick = { showReceivingDialog = true },
+            onAddCartonClick = { packingShipmentId = selectedShipment.id },
+            onReceiveClick = { receivingShipmentId = selectedShipment.id },
             onShareReportPdf = { viewModel.shareLandedCostPdf(context, selectedShipment) },
             onSaveSupplierChinaDelivery = { draft -> viewModel.saveShipmentSupplierAndChinaDelivery(draft) },
             onLinkPoToShipment = { poId -> viewModel.linkPoToShipment(poId, selectedShipment.id) },
@@ -1177,23 +1201,18 @@ fun ImportManagementScreen(
                 preselectedOrderIdForShipment = po.id
                 showCreateShipmentDialog = true
             },
-            onAddCarton = { showAddCartonDialog = true },
+            onAddCarton = { packingOrderId = it.id },
             onAddCostItem = { showAddCostDialog = true },
             onFinalizeActualCost = { orderId ->
                 viewModel.finalizePurchaseActualCost(orderId)
             },
-            onReceiveProducts = { showReceivingDialog = true },
+            onReceiveProducts = { receivingOrderId = it.id },
             onPostReceiving = { receiptId ->
                 viewModel.postPurchaseReceiving(receiptId)
             },
             onAddAdditionalCost = { showAddAdditionalCostDialog = true },
             onCompletePo = { showCompletionDialog = true },
-            onEditFullPo = { po ->
-                editingPoItemsSnapshot = uiState.selectedPoItems
-                editingPoCartonsSnapshot = uiState.selectedPoCartons
-                editingPoCostsSnapshot = uiState.selectedPoCostItems
-                editingPo = po
-            },
+            onEditFullPo = { po -> editingPoId = po.id },
             onSharePdf = { po -> poToShare = po },
             onCancelPo = { orderId, reason ->
                 viewModel.cancelPurchaseOrder(orderId, reason)

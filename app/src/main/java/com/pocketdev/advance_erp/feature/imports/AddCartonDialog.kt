@@ -6,6 +6,11 @@ import com.pocketdev.advance_erp.core.designsystem.ERPLeaveEditorDialog
 import com.pocketdev.advance_erp.core.util.EditorDraftStore
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.saveable.Saver
 import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
@@ -72,6 +77,7 @@ import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.SecondaryTealLight
 import com.pocketdev.advance_erp.core.designsystem.StatusError
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
@@ -107,6 +113,7 @@ private val MixedLinesSaver = Saver<SnapshotStateList<MixedLineDraftState>, Stri
 fun AddCartonDialog(
     shipment: ImportShipment? = null,
     orderId: String? = null,
+    packedCartonCount: Int = shipment?.totalCartons ?: 0,
     products: List<Product>,
     variants: List<com.pocketdev.advance_erp.data.entity.ProductVariant> = emptyList(),
     language: AppLanguage = AppLanguage.BANGLA,
@@ -119,7 +126,7 @@ fun AddCartonDialog(
     val isBangla = language == AppLanguage.BANGLA
     var isMixedTab by rememberSaveable { mutableStateOf(false) }
 
-    var cartonNumber by rememberSaveable { mutableStateOf("CTN-%03d".format((shipment?.totalCartons ?: 0) + 1)) }
+    var cartonNumber by rememberSaveable { mutableStateOf("CTN-%03d".format(packedCartonCount + 1)) }
     var singleProductId by rememberSaveable { mutableStateOf(products.firstOrNull()?.id ?: "") }
     var singleVariantId by rememberSaveable { mutableStateOf<String?>(null) }
     var singleQuantityStr by rememberSaveable { mutableStateOf("50") }
@@ -148,6 +155,8 @@ fun AddCartonDialog(
     val draftStore = remember(draftContext) { EditorDraftStore(draftContext) }
     val draftKey = "packing:" + (orderId ?: shipment?.id ?: "new")
     var draftLoaded by rememberSaveable(draftKey) { mutableStateOf(false) }
+    val draftScope = rememberCoroutineScope()
+    var savingBuffer by remember { mutableStateOf(false) }
     var showLeavePrompt by rememberSaveable { mutableStateOf(false) }
     var initialSnapshot by rememberSaveable(draftKey) { mutableStateOf<String?>(null) }
     fun snapshotEditor() = JSONObject().apply {
@@ -189,13 +198,31 @@ fun AddCartonDialog(
         }
     }
     val requestClose: () -> Unit = {
-        if (!isSaving) { if (snapshotEditor().toString() == initialSnapshot) onDismiss() else showLeavePrompt = true }
+        if (!isSaving && !savingBuffer) { if (snapshotEditor().toString() == initialSnapshot) onDismiss() else showLeavePrompt = true }
     }
-    if (showLeavePrompt) ERPLeaveEditorDialog(isBangla,
+    if (showLeavePrompt) ERPLeaveEditorDialog(
+        isBangla = isBangla,
+        isSaving = savingBuffer,
         onContinue = { showLeavePrompt = false },
         onDiscard = { draftStore.remove(draftKey); onDismiss() },
-        onSaveDraft = { try { draftStore.save(draftKey, snapshotEditor()); onDismiss() }
-            catch (e: Exception) { errorMessage = e.message; showLeavePrompt = false } })
+        onSaveDraft = {
+            val snapshot = snapshotEditor()
+            savingBuffer = true
+            draftScope.launch {
+                try {
+                    withContext(Dispatchers.IO) { draftStore.save(draftKey, snapshot) }
+                    onDismiss()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    errorMessage = e.message
+                    showLeavePrompt = false
+                } finally {
+                    savingBuffer = false
+                }
+            }
+        }
+    )
 
     val calculatedCbm = try {
         val l = BigDecimal(lengthStr.ifBlank { "0" })
@@ -260,7 +287,7 @@ fun AddCartonDialog(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.ViewInAr, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Outlined.ViewInAr, contentDescription = null, tint = SecondaryTealLight, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (isBangla) "কার্টন ও প্যাকিং যুক্ত করুন" else "Add Carton & Packing",
@@ -311,7 +338,7 @@ fun AddCartonDialog(
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (isMixedTab) PrimaryPurple else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (isMixedTab) PrimaryPurple else Color.LightGray, RoundedCornerShape(10.dp))
-                            .clickable { isMixedTab = true }
+                            .clickable(enabled = onConfirmMixed != null) { isMixedTab = true }
                             .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -599,6 +626,7 @@ fun AddCartonDialog(
                     ) {
                         OutlinedButton(
                             onClick = requestClose,
+                            enabled = !isSaving,
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(text = if (isBangla) "বাতিল" else "Cancel")
@@ -646,24 +674,11 @@ fun AddCartonDialog(
                                                 quantity = q
                                             )
                                         }
-                                        if (onConfirmMixed != null) {
-                                            onConfirmMixed(cartonNumber, l, w, h, gw, nw, lineDrafts)
-                                        } else {
-                                            // Fallback to first line
-                                            onConfirm(
-                                                ShipmentCartonDraft(
-                                                    cartonNumber = cartonNumber,
-                                                    productId = lineDrafts.first().productId,
-                                                    variantId = lineDrafts.first().variantId,
-                                                    quantity = lineDrafts.sumOf { it.quantity },
-                                                    lengthCm = l,
-                                                    widthCm = w,
-                                                    heightCm = h,
-                                                    grossWeightKg = gw,
-                                                    netWeightKg = nw
-                                                )
-                                            )
+                                        val saveMixed = requireNotNull(onConfirmMixed) {
+                                            if (isBangla) "মিশ্র কার্টন ক্রয় অর্ডার থেকে সংরক্ষণ করুন।"
+                                            else "Save mixed cartons from the purchase order."
                                         }
+                                        saveMixed(cartonNumber, l, w, h, gw, nw, lineDrafts)
                                     }
                                 } catch (e: Exception) {
                                     errorMessage = e.message ?: "Validation error"
@@ -672,7 +687,12 @@ fun AddCartonDialog(
                             modifier = Modifier.weight(1.5f),
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                         ) {
-                            Text(text = if (isBangla) "কার্টন সংরক্ষণ করুন" else "Save Carton")
+                            Text(when {
+                                isSaving && isBangla -> "সংরক্ষণ হচ্ছে…"
+                                isSaving -> "Saving…"
+                                isBangla -> "কার্টন সংরক্ষণ করুন"
+                                else -> "Save Carton"
+                            })
                         }
                     }
                 }

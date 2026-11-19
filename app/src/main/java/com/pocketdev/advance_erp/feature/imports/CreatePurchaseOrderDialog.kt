@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -505,14 +504,15 @@ fun CreatePurchaseOrderDialog(
     var restoredDraft by rememberSaveable(draftKey) { mutableStateOf(false) }
     var showLeavePrompt by rememberSaveable { mutableStateOf(false) }
     var savingBuffer by remember { mutableStateOf(false) }
-    fun snapshotEditor() = JSONObject().apply {
+    fun snapshotEditor(includeStep: Boolean = true) = JSONObject().apply {
         put("supplier", selectedSupplierId); put("currency", selectedCurrency); put("local", isLocalPurchase)
         put("rate", exchangeRateStr); put("delivery", chinaLocalDeliveryStr); put("handling", handlingCostStr)
         put("sample", sampleCostStr); put("forwarder", forwarderAddressStr); put("notes", notes)
         put("paymentTerm", selectedPaymentTerm.name); put("attachments", JSONArray(attachmentsList))
         put("items", JSONArray().apply { itemsList.forEach { put(it.toJson()) } })
         put("cartons", JSONArray().apply { cartonBoxes.forEach { put(it.toJson()) } })
-        put("freight", JSONObject(categoryRateStrings.toMap())); put("step", currentStep)
+        put("freight", JSONObject(categoryRateStrings.toMap()))
+        if (includeStep) put("step", currentStep)
     }
     var initialSnapshot by rememberSaveable(draftKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(draftKey) {
@@ -534,16 +534,17 @@ fun CreatePurchaseOrderDialog(
                 restoredDraft = true
             }
             draftLoaded = true
-            initialSnapshot = snapshotEditor().toString()
+            initialSnapshot = snapshotEditor(includeStep = false).toString()
         }
     }
     val requestClose: () -> Unit = {
         if (!isSaving && !savingBuffer) {
-            if (snapshotEditor().toString() != initialSnapshot) showLeavePrompt = true else onDismiss()
+            if (snapshotEditor(includeStep = false).toString() != initialSnapshot) showLeavePrompt = true else onDismiss()
         }
     }
     if (showLeavePrompt) ERPLeaveEditorDialog(
         isBangla = isBangla,
+        isSaving = savingBuffer,
         onContinue = { showLeavePrompt = false },
         onDiscard = { draftStore.remove(draftKey); showLeavePrompt = false; onDismiss() },
         onSaveDraft = {
@@ -795,7 +796,6 @@ fun CreatePurchaseOrderDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .imePadding()
                     .padding(16.dp)
             ) {
                 // Header Bar
@@ -1661,15 +1661,14 @@ fun CreatePurchaseOrderDialog(
                                                     )
                                                 )
                                             },
-                                            colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
+                                            colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal, contentColor = MaterialTheme.colorScheme.onSecondary),
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                         ) {
-                                            Icon(Icons.Outlined.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isBangla) "+ কার্টন যোগ" else "+ Add Carton",
-                                                color = Color.White,
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 11.sp
                                             )

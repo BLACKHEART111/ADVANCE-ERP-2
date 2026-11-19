@@ -73,6 +73,7 @@ import com.pocketdev.advance_erp.core.designsystem.DeepNavy
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.SecondaryTealLight
 import com.pocketdev.advance_erp.core.designsystem.StatusError
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
@@ -197,7 +198,7 @@ fun ShipmentWorkspaceDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.FlightTakeoff, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.FlightTakeoff, contentDescription = null, tint = SecondaryTealLight, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${shipment.shipmentNumber} • ${if (isBangla) "শিপমেন্ট ও ল্যান্ডিং কস্ট ওয়ার্কস্পেস" else "Shipment & Landing Cost Workspace"}",

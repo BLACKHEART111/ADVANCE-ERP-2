@@ -38,7 +38,17 @@ class PurchaseOrderVisualTest {
     @Test fun banglaLargeFontFlow() = verify(true,1.3f)
     @Test fun localPurchaseDoesNotApplyInternationalFreight() = verify(true,1f,"BDT")
     @Test fun paidOrderRetainsMetadataEditing() = verify(true,1f,metadataOnly=true)
-    private fun verify(bn: Boolean, fontScale: Float, currency: String = "CNY", metadataOnly: Boolean = false) {
+    @Test fun darkEnglishMixedCartonFlow() = verify(false, 1f, darkMode = true)
+    @Test fun narrowBanglaMixedCartonFlow() = verify(true, 1.15f, densityScale = 1.2f)
+
+    private fun verify(
+        bn: Boolean,
+        fontScale: Float,
+        currency: String = "CNY",
+        metadataOnly: Boolean = false,
+        darkMode: Boolean = false,
+        densityScale: Float = 1f
+    ) {
         val product=Product("p","c","Doctor Insole","ডক্টর ইনসোল","DOC",purchasePriceMinor=4500,sellingPriceMinor=9000)
         val supplier=Supplier("s","S","UI TEST SUPPLIER",phone="",address="China")
         val variants=listOf("S","M").map { ProductVariant(it,"p","DOC-$it",size=it,variantPriceMinor=9000,variantCostMinor=4500) }
@@ -51,8 +61,8 @@ class PurchaseOrderVisualTest {
         var savedCartons: List<PoMixedCartonDraft>? = null
         compose.setContent {
             val density=LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density,fontScale)) {
-                AdvanceErpTheme(darkTheme=false) {
+            CompositionLocalProvider(LocalDensity provides Density(density.density * densityScale, fontScale)) {
+                AdvanceErpTheme(darkTheme = darkMode) {
                     CreatePurchaseOrderDialog(listOf(supplier),listOf(product),variants,
                         categories=listOf(ProductCategory("c","Accessories","অ্যাকসেসরিজ","ACC",defaultFreightRatePerKgBdtMinor=12000)),
                         isBangla=bn,onDismiss={},metadataOnly=metadataOnly,
@@ -71,39 +81,71 @@ class PurchaseOrderVisualTest {
         }
         val title=if(bn) "ক্রয়াদেশ সম্পাদনা" else "Edit purchase order"
         val labels=if(bn) listOf("1. তথ্য","2. পণ্য","3. প্যাকিং","4. হিসাব") else listOf("1. Details","2. Items","3. Packing","4. Review")
-        val prefix=(if(bn) "bn" else "en")+"-"+fontScale+"-"+currency
+        val prefix = buildString {
+            append(if (bn) "bn" else "en")
+            append("-$fontScale-$currency")
+            if (darkMode) append("-dark")
+            if (densityScale != 1f) append("-narrow")
+        }
         fun capture(name: String) {
             compose.runOnIdle {
                 val activity=compose.activity
                 activity.getSystemService(ActivityManager::class.java).appTasks
                     .firstOrNull { it.taskInfo.taskId==activity.taskId }?.moveToFront()
             }
-            compose.waitForIdle()
-            SystemClock.sleep(350)
-            var dialogWindow: Window? = null
-            val size=IntArray(2)
-            compose.runOnIdle {
-                fun findWindow(view: View): Window? {
-                    if(view is DialogWindowProvider) return view.window
-                    if(view is ViewGroup) for(index in 0 until view.childCount) {
+            fun findWindow(view: View): Window? {
+                if (view is DialogWindowProvider) return view.window
+                if (view is ViewGroup) {
+                    for (index in 0 until view.childCount) {
                         findWindow(view.getChildAt(index))?.let { return it }
                     }
-                    return null
                 }
-                dialogWindow=WindowInspector.getGlobalWindowViews().mapNotNull { findWindow(it) }.lastOrNull()
-                dialogWindow?.decorView?.let { size[0]=it.width; size[1]=it.height }
+                return null
             }
-            val window=requireNotNull(dialogWindow) { "Production dialog window was not found" }
-            val bitmap=Bitmap.createBitmap(size[0],size[1],Bitmap.Config.ARGB_8888)
-            val ready=CountDownLatch(1)
-            var copyResult=-1
-            PixelCopy.request(window,bitmap,{ result -> copyResult=result; ready.countDown() },Handler(Looper.getMainLooper()))
-            assertTrue("Dialog PixelCopy timed out",ready.await(5,TimeUnit.SECONDS))
-            assertEquals("Dialog PixelCopy must succeed",PixelCopy.SUCCESS,copyResult)
+
+            fun copyVisibleDialog(): Bitmap? {
+                val ready = CountDownLatch(1)
+                var bitmap: Bitmap? = null
+                var copyResult = PixelCopy.ERROR_SOURCE_NO_DATA
+                compose.runOnIdle {
+                    val window = WindowInspector.getGlobalWindowViews()
+                        .mapNotNull { findWindow(it) }
+                        .lastOrNull {
+                            val decor = it.decorView
+                            decor.isAttachedToWindow && decor.isShown && decor.width > 0 && decor.height > 0
+                        }
+                    if (window == null) {
+                        ready.countDown()
+                        return@runOnIdle
+                    }
+                    val decor = window.decorView
+                    val image = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+                    bitmap = image
+                    try {
+                        PixelCopy.request(window, image, { result ->
+                            copyResult = result
+                            ready.countDown()
+                        }, Handler(Looper.getMainLooper()))
+                    } catch (_: IllegalArgumentException) {
+                        // The dialog's backing surface can detach between frames.
+                        ready.countDown()
+                    }
+                }
+                assertTrue("Dialog PixelCopy timed out", ready.await(5, TimeUnit.SECONDS))
+                if (copyResult == PixelCopy.SUCCESS) return bitmap
+                bitmap?.recycle()
+                return null
+            }
+
+            val bitmap = requireNotNull((1..8).firstNotNullOfOrNull {
+                SystemClock.sleep(180)
+                copyVisibleDialog()
+            }) { "Production dialog had no copyable backing surface" }
             val colors=mutableSetOf<Int>()
             for (y in 0 until bitmap.height step 16) for (x in 0 until bitmap.width step 16) colors.add(bitmap.getPixel(x,y))
             val dir=File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,"import-ui-verification").apply { mkdirs() }
             File(dir,"$prefix-$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+            bitmap.recycle()
             assertTrue("Screenshot must contain rendered UI, not a blank inactive window",colors.size > 8)
         }
         labels.forEachIndexed { index,label ->

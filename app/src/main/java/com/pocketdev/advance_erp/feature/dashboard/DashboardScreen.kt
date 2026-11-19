@@ -257,15 +257,15 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(dateMetrics?.totalSales?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.PointOfSale,
                         accentColor = PrimaryPurple,
-                        badgeText = "Day Sales",
+                        badgeText = if (isBangla) "বিক্রয়" else "Day Sales",
                         modifier = Modifier.weight(1f)
                     )
                     ERPStatCard(
                         title = if (isBangla) "দিনের ক্রয় মূল্য" else "Date Purchases (PO)",
                         value = Formatters.formatMoney(dateMetrics?.totalPurchases?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.ShoppingCart,
-                        accentColor = DeepNavy,
-                        badgeText = "Procurement",
+                        accentColor = StatusInfo,
+                        badgeText = if (isBangla) "ক্রয়" else "Procurement",
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -280,7 +280,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(dateMetrics?.totalCollections?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.ArrowDownward,
                         accentColor = StatusSuccess,
-                        badgeText = "Cash In",
+                        badgeText = if (isBangla) "নগদ প্রবাহ" else "Cash In",
                         modifier = Modifier.weight(1f)
                     )
                     ERPStatCard(
@@ -288,7 +288,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(dateMetrics?.totalPayments?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.ArrowUpward,
                         accentColor = StatusError,
-                        badgeText = "Cash Out",
+                        badgeText = if (isBangla) "নগদ বহিঃপ্রবাহ" else "Cash Out",
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -303,7 +303,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(dateMetrics?.totalExpenses?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.ReceiptLong,
                         accentColor = StatusWarning,
-                        badgeText = "Operating",
+                        badgeText = if (isBangla) "পরিচালন ব্যয়" else "Operating",
                         modifier = Modifier.weight(1f)
                     )
                     ERPStatCard(
@@ -311,7 +311,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(dateMetrics?.totalReturns?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.SwapHoriz,
                         accentColor = PrimaryPurple,
-                        badgeText = "Returns",
+                        badgeText = if (isBangla) "ফেরত" else "Returns",
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -327,7 +327,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(netCashMinor, state.currency, language),
                         icon = Icons.Outlined.ReceiptLong,
                         accentColor = if (netCashMinor >= 0) StatusSuccess else StatusError,
-                        badgeText = "In - Out",
+                        badgeText = if (isBangla) "আদায় − পরিশোধ" else "In - Out",
                         modifier = Modifier.weight(1f)
                     )
                     if (state.canViewProfit) {
@@ -337,7 +337,7 @@ fun DashboardScreen(
                             value = Formatters.formatMoney(dailyProfitMinor, state.currency, language),
                             icon = Icons.Outlined.CheckCircle,
                             accentColor = if (dailyProfitMinor >= 0) SecondaryTeal else StatusError,
-                            badgeText = "Sales - COGS",
+                            badgeText = if (isBangla) "বিক্রয় − বিক্রীত পণ্যের ব্যয়" else "Sales - COGS",
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -345,8 +345,8 @@ fun DashboardScreen(
                             title = if (isBangla) "দৈনিক লেনদেন সংখ্যা" else "Daily Transactions",
                             value = "${dateMetrics?.transactionCount ?: 0} events",
                             icon = Icons.Outlined.Assessment,
-                            accentColor = DeepNavy,
-                            badgeText = "Activity",
+                            accentColor = StatusInfo,
+                            badgeText = if (isBangla) "লেনদেন" else "Activity",
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -510,7 +510,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(closingBalances?.closingCashBank?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.ReceiptLong,
                         accentColor = StatusInfo,
-                        badgeText = "Liquid Funds",
+                        badgeText = if (isBangla) "তরল তহবিল" else "Liquid Funds",
                         modifier = Modifier.weight(1f)
                     )
                     ERPStatCard(
@@ -518,7 +518,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(closingBalances?.customerOutstanding?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.ArrowDownward,
                         accentColor = StatusSuccess,
-                        badgeText = "AR Due",
+                        badgeText = if (isBangla) "আদায়যোগ্য" else "AR Due",
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -532,7 +532,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(closingBalances?.supplierOutstanding?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.ArrowUpward,
                         accentColor = StatusError,
-                        badgeText = "AP Due",
+                        badgeText = if (isBangla) "পরিশোধযোগ্য" else "AP Due",
                         modifier = Modifier.weight(1f)
                     )
                     ERPStatCard(
@@ -540,7 +540,7 @@ fun DashboardScreen(
                         value = Formatters.formatMoney(closingBalances?.inventoryValuation?.minorUnits ?: 0L, state.currency, language),
                         icon = Icons.Outlined.Inventory2,
                         accentColor = SecondaryTeal,
-                        badgeText = "FIFO Asset",
+                        badgeText = if (isBangla) "FIFO সম্পদ" else "FIFO Asset",
                         modifier = Modifier.weight(1f)
                     )
                 }
