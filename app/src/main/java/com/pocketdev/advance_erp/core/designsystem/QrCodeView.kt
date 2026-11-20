@@ -1,10 +1,5 @@
 package com.pocketdev.advance_erp.core.designsystem
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
-import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,10 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.QrCode
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,9 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pocketdev.advance_erp.core.util.QrCodeGenerator
 
@@ -45,13 +36,45 @@ fun QrCodeView(
     payload: String,
     modifier: Modifier = Modifier,
     qrSizeDp: Int = 180,
-    showActions: Boolean = true
+    showActions: Boolean = true,
+    collapsible: Boolean = false,
+    title: String? = null,
+    initiallyExpanded: Boolean = true
 ) {
-    val context = LocalContext.current
     val sanitized = payload.trim().ifBlank { "ADV-ERP" }
 
     val matrix = remember(sanitized) {
         QrCodeGenerator.generateQrMatrix(sanitized)
+    }
+
+    if (collapsible) {
+        CollapsibleCodeContainer(
+            title = title,
+            codePreview = sanitized,
+            leadingIcon = Icons.Outlined.QrCode,
+            copyLabel = "QR Code",
+            copyText = sanitized,
+            copyToastMessage = "QR Code data copied",
+            shareChooserTitle = "Share QR Code",
+            copyContentDescription = "Copy QR Data",
+            shareContentDescription = "Share QR Code",
+            expandContentDescription = "Expand QR Code",
+            collapseContentDescription = "Collapse QR Code",
+            showActions = showActions,
+            initiallyExpanded = initiallyExpanded,
+            modifier = modifier
+        ) {
+            Box(
+                modifier = Modifier
+                    .size((qrSizeDp + 12).dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.White),
+                contentAlignment = Alignment.Center
+            ) {
+                QrMatrixCanvas(matrix = matrix, qrSizeDp = qrSizeDp)
+            }
+        }
+        return
     }
 
     Column(
@@ -63,87 +86,74 @@ fun QrCodeView(
             .padding(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // QR Code Canvas with 4 module quiet zone
-        val matrixSize = matrix.size
-        val quietZone = 3
-        val totalModules = matrixSize + quietZone * 2
-
         Box(
             modifier = Modifier
                 .size(qrSizeDp.dp)
                 .background(Color.White),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(qrSizeDp.dp)) {
-                val moduleSize = size.width / totalModules.toFloat()
-
-                for (r in 0 until matrixSize) {
-                    for (c in 0 until matrixSize) {
-                        if (matrix[r][c]) {
-                            drawRect(
-                                color = Color.Black,
-                                topLeft = Offset((c + quietZone) * moduleSize, (r + quietZone) * moduleSize),
-                                size = Size(moduleSize + 0.3f, moduleSize + 0.3f)
-                            )
-                        }
-                    }
-                }
-            }
+            QrMatrixCanvas(matrix = matrix, qrSizeDp = qrSizeDp)
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Truncated payload text
-        Text(
-            text = sanitized,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = TextMuted,
-            maxLines = 1
-        )
-
-        // Actions: Copy & Share
         if (showActions) {
-            Spacer(modifier = Modifier.height(4.dp))
             Row(
-                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("QR Code", sanitized)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "QR Code data copied", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "Copy QR Data",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                Text(
+                    text = sanitized,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                IconButton(
-                    onClick = {
-                        val sendIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, sanitized)
-                            type = "text/plain"
-                        }
-                        val shareIntent = Intent.createChooser(sendIntent, "Share QR Code")
-                        context.startActivity(shareIntent)
-                    },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Share QR Code",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(18.dp)
+                CodeCopyShareActions(
+                    copyLabel = "QR Code",
+                    textToCopy = sanitized,
+                    toastMessage = "QR Code data copied",
+                    shareChooserTitle = "Share QR Code",
+                    copyContentDescription = "Copy QR Data",
+                    shareContentDescription = "Share QR Code"
+                )
+            }
+        } else {
+            Text(
+                text = sanitized,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun QrMatrixCanvas(
+    matrix: Array<BooleanArray>,
+    qrSizeDp: Int
+) {
+    val matrixSize = matrix.size
+    val quietZone = 3
+    val totalModules = matrixSize + quietZone * 2
+
+    Canvas(modifier = Modifier.size(qrSizeDp.dp)) {
+        val moduleSize = size.width / totalModules.toFloat()
+
+        for (r in 0 until matrixSize) {
+            for (c in 0 until matrixSize) {
+                if (matrix[r][c]) {
+                    drawRect(
+                        color = Color.Black,
+                        topLeft = Offset((c + quietZone) * moduleSize, (r + quietZone) * moduleSize),
+                        size = Size(moduleSize + 0.3f, moduleSize + 0.3f)
                     )
                 }
             }

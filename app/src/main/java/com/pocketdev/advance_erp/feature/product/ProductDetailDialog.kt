@@ -19,12 +19,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -73,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -258,18 +262,22 @@ fun ProductDetailDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val primaryName = if (language == AppLanguage.BANGLA) product.nameBn else product.nameEn
+                    val secondaryName = if (language == AppLanguage.BANGLA) product.nameEn else product.nameBn
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (language == AppLanguage.BANGLA) product.nameBn else product.nameEn,
+                            text = primaryName,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
-                        Text(
-                            text = if (language == AppLanguage.BANGLA) product.nameEn else product.nameBn,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
+                        if (secondaryName.isNotBlank() && !secondaryName.trim().equals(primaryName.trim(), ignoreCase = true)) {
+                            Text(
+                                text = secondaryName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
+                            )
+                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -397,30 +405,29 @@ fun ProductDetailDialog(
                         }
                     }
                 } else {
-                    // Placeholder when product has no images
-                    Box(
+                    // Compact placeholder when product has no images
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(110.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(ERPSurfaceVariant)
-                            .border(1.dp, ERPDivider, RoundedCornerShape(14.dp)),
-                        contentAlignment = Alignment.Center
+                            .border(1.dp, ERPDivider, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Outlined.Image,
-                                contentDescription = null,
-                                tint = TextMuted,
-                                modifier = Modifier.size(32.dp)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "No photos added",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Outlined.Image,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = if (language == AppLanguage.BANGLA) "কোনো ছবি যোগ করা হয়নি" else "No photos added",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
                     }
                 }
 
@@ -643,7 +650,9 @@ fun ProductDetailDialog(
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (canViewCost) DetailCard(
@@ -652,13 +661,19 @@ fun ProductDetailDialog(
                         color = SecondaryTeal,
                         revealable = true,
                         isBangla = language == AppLanguage.BANGLA,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .testTag("product_detail_buy_card")
                     )
                     DetailCard(
-                        title = stringResource(R.string.selling_price),
+                        title = if (language == AppLanguage.BANGLA) "বিক্রয় মূল্য" else stringResource(R.string.selling_price),
                         value = effectiveSellingDisplay,
                         color = PrimaryPurple,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .testTag("product_detail_sell_card")
                     )
                 }
 
@@ -690,7 +705,7 @@ fun ProductDetailDialog(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = stringResource(R.string.in_stock),
+                                text = if (language == AppLanguage.BANGLA) "বর্তমান স্টক" else stringResource(R.string.in_stock),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
@@ -705,7 +720,7 @@ fun ProductDetailDialog(
 
                     if (isLowStock) {
                         Text(
-                            text = stringResource(R.string.low_stock_warning),
+                            text = if (language == AppLanguage.BANGLA) "স্বল্প মজুদের পণ্য" else stringResource(R.string.low_stock_warning),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = StatusError
@@ -745,7 +760,7 @@ fun ProductDetailDialog(
                                         color = TextPrimary
                                     )
                                     Text(
-                                        text = "View batch landed costs, remaining layers & adjustments",
+                                        text = if (language == AppLanguage.BANGLA) "ব্যাচ ল্যান্ডেড খরচ, অবশিষ্ট লেয়ার ও সমন্বয় দেখুন" else "View batch landed costs, remaining layers & adjustments",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = TextSecondary
                                     )
@@ -763,36 +778,35 @@ fun ProductDetailDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Barcode Section
+                // Barcode Section (Collapsible, minimized by default)
                 val barcodeValue = product.barcode?.ifBlank { null } ?: product.baseSku
-                Text(
-                    text = stringResource(R.string.barcode),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                BarcodeView(
+                    code = barcodeValue,
+                    collapsible = true,
+                    title = if (language == AppLanguage.BANGLA) "বারকোড" else stringResource(R.string.barcode),
+                    initiallyExpanded = false,
+                    modifier = Modifier.testTag("product_detail_barcode_view")
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                BarcodeView(code = barcodeValue)
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // QR Code Section
+                // QR Code Section (Collapsible, minimized by default)
                 val qrPayload = product.qrCode?.ifBlank { null }
                     ?: QrCodeGenerator.createProductQrPayload(product.id, product.baseSku)
-                Text(
-                    text = "QR Code",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                QrCodeView(
+                    payload = qrPayload,
+                    qrSizeDp = 150,
+                    collapsible = true,
+                    title = if (language == AppLanguage.BANGLA) "কিউআর কোড (QR Code)" else "QR Code",
+                    initiallyExpanded = false,
+                    modifier = Modifier.testTag("product_detail_qr_view")
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                QrCodeView(payload = qrPayload, qrSizeDp = 150)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Variants Section
                 Text(
-                    text = "${stringResource(R.string.variants)} (${variants.size})",
+                    text = "${if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্টসমূহ" else stringResource(R.string.variants)} (${variants.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -802,7 +816,7 @@ fun ProductDetailDialog(
 
                 if (variants.isEmpty()) {
                     Text(
-                        text = stringResource(R.string.no_variants),
+                        text = if (language == AppLanguage.BANGLA) "কোনো ভ্যারিয়েন্ট নেই" else stringResource(R.string.no_variants),
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )
@@ -971,26 +985,34 @@ fun ProductDetailDialog(
             Divider(color = ERPDivider)
 
             // Fixed Bottom Action Bar
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 12.dp)
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (onPrintLabels != null) {
-                    ERPActionButton(
-                        text = if (language == AppLanguage.BANGLA) "বারকোড ও স্টিকার লেবেল প্রিন্ট করুন" else "Print Barcode & Sticker Labels",
-                        onClick = { onPrintLabels(product, variants) },
-                        variant = ERPButtonVariant.PRIMARY,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                    )
-                }
-
                 ERPActionButton(
-                    text = stringResource(R.string.close),
+                    text = if (language == AppLanguage.BANGLA) "বন্ধ করুন" else stringResource(R.string.close),
                     onClick = onDismiss,
                     variant = ERPButtonVariant.OUTLINED,
-                    modifier = Modifier.fillMaxWidth()
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .weight(if (onPrintLabels != null) 0.38f else 1f)
+                        .testTag("product_detail_close_button")
                 )
+
+                if (onPrintLabels != null) {
+                    ERPActionButton(
+                        text = if (language == AppLanguage.BANGLA) "বারকোড ও স্টিকার প্রিন্ট" else "Print Barcode & Labels",
+                        onClick = { onPrintLabels(product, variants) },
+                        variant = ERPButtonVariant.PRIMARY,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .weight(0.62f)
+                            .testTag("product_detail_print_button")
+                    )
+                }
             }
             }
         }
@@ -1096,18 +1118,45 @@ private fun DetailCard(
     Column(
         modifier = modifier
             .background(color.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-            .padding(12.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = title, style = MaterialTheme.typography.labelSmall, color = TextSecondary, modifier = Modifier.weight(1f))
-            if (revealable) IconButton(onClick = costVisibility.toggle, modifier = Modifier.size(48.dp)) {
-                Icon(if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                    contentDescription = if (isBangla) {
-                        if (revealed) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
-                    } else if (revealed) "Hide buy cost" else "Show buy cost", tint = color)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 28.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (revealable) {
+                IconButton(
+                    onClick = costVisibility.toggle,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = if (isBangla) {
+                            if (revealed) "ক্রয় মূল্য লুকান" else "ক্রয় মূল্য দেখুন"
+                        } else if (revealed) "Hide buy cost" else "Show buy cost",
+                        tint = color,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(text = if (!revealable || revealed) value else "••••", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = if (!revealable || revealed) value else "••••",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
     }
 }

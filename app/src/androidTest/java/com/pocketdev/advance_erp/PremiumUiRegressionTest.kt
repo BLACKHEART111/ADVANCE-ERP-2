@@ -1,7 +1,16 @@
 package com.pocketdev.advance_erp
 
+import android.app.ActivityManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.PixelCopy
+import android.view.View
+import android.view.ViewGroup
+import android.view.Window
+import android.view.inspector.WindowInspector
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -15,12 +24,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pocketdev.advance_erp.core.designsystem.*
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.model.Money
 import com.pocketdev.advance_erp.core.util.EditorDraftStore
+import com.pocketdev.advance_erp.data.dao.ProductWithDetails
 import com.pocketdev.advance_erp.data.entity.*
 import com.pocketdev.advance_erp.domain.repository.DashboardSummary
 import com.pocketdev.advance_erp.domain.repository.DateWiseMetrics
@@ -28,10 +39,14 @@ import com.pocketdev.advance_erp.domain.repository.HistoricalClosingBalances
 import com.pocketdev.advance_erp.feature.dashboard.DashboardContent
 import com.pocketdev.advance_erp.feature.dashboard.DashboardUiState
 import com.pocketdev.advance_erp.feature.imports.CreatePurchaseOrderDialog
+import com.pocketdev.advance_erp.feature.product.ProductDetailDialog
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 class PremiumUiRegressionTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -332,5 +347,189 @@ class PremiumUiRegressionTest {
         val enDailyMetricsBounds = compose.onNodeWithTag("dashboard_daily_metrics").fetchSemanticsNode().boundsInRoot
         assertTrue("English Business Overview must sit below Date Selector", enDateBounds.bottom <= enOverviewBounds.top)
         assertTrue("English Daily Metrics must sit below Business Overview", enOverviewBounds.bottom <= enDailyMetricsBounds.top)
+    }
+
+    @Test fun productDetailDialogEqualPriceBoxHeightsAndCollapsibleCodes() {
+        val product = ProductWithDetails(
+            id = "prod-doc-1",
+            categoryId = "cat-1",
+            categoryNameEn = "SHOES ACCESSORIES",
+            categoryNameBn = "SHOES ACCESSORIES",
+            nameEn = "DOCTOR INSOLE",
+            nameBn = "DOCTOR INSOLE",
+            baseSku = "SAB-DOC-001",
+            barcode = "200389661276",
+            qrCode = "ADV-ERP|PRODUCT|prod-doc-1|SAB-DOC-001",
+            description = null,
+            unit = "PCS",
+            purchasePriceMinor = 0L,
+            sellingPriceMinor = 0L,
+            minStockAlert = 5,
+            isActive = true,
+            createdAt = 0L,
+            totalStock = 0,
+            variantCount = 2
+        )
+        val variants = listOf("S", "M").map { size ->
+            ProductVariant(
+                id = "var-$size",
+                productId = "prod-doc-1",
+                sku = "SAB-DOC-001-$size",
+                color = "MASTER",
+                size = size,
+                variantPriceMinor = 0L,
+                variantCostMinor = 0L
+            )
+        }
+
+        compose.setContent {
+            val baseConfig = LocalConfiguration.current
+            val baseContext = LocalContext.current
+            val localizedConfig = remember(baseConfig) {
+                Configuration(baseConfig).apply { setLocale(AppLanguage.BANGLA.locale) }
+            }
+            val localizedContext = remember(baseContext, localizedConfig) {
+                baseContext.createConfigurationContext(localizedConfig)
+            }
+            CompositionLocalProvider(
+                LocalConfiguration provides localizedConfig,
+                LocalContext provides localizedContext
+            ) {
+                AdvanceErpTheme(darkTheme = false) {
+                    ProductDetailDialog(
+                        product = product,
+                        variants = variants,
+                        language = AppLanguage.BANGLA,
+                        currency = CurrencyCode.BDT,
+                        canViewCost = true,
+                        onViewCostHistory = {},
+                        onPrintLabels = { _, _ -> },
+                        onEditProduct = {},
+                        onDeleteProduct = {},
+                        onDismiss = {}
+                    )
+                }
+            }
+        }
+
+        fun captureDialog(fileName: String) {
+            compose.waitForIdle()
+            compose.runOnIdle {
+                val activity = compose.activity
+                activity.getSystemService(ActivityManager::class.java).appTasks
+                    .firstOrNull { it.taskInfo.taskId == activity.taskId }?.moveToFront()
+            }
+            fun findWindow(view: View): Window? {
+                if (view is DialogWindowProvider) return view.window
+                if (view is ViewGroup) {
+                    for (index in 0 until view.childCount) {
+                        findWindow(view.getChildAt(index))?.let { return it }
+                    }
+                }
+                return null
+            }
+            fun copyVisibleDialog(): Bitmap? {
+                val ready = CountDownLatch(1)
+                var bitmap: Bitmap? = null
+                var copyResult = PixelCopy.ERROR_SOURCE_NO_DATA
+                compose.runOnIdle {
+                    val window = WindowInspector.getGlobalWindowViews()
+                        .mapNotNull { findWindow(it) }
+                        .lastOrNull {
+                            val decor = it.decorView
+                            decor.isAttachedToWindow && decor.isShown && decor.width > 0 && decor.height > 0
+                        }
+                    if (window == null) {
+                        ready.countDown()
+                        return@runOnIdle
+                    }
+                    val decor = window.decorView
+                    val image = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+                    bitmap = image
+                    try {
+                        PixelCopy.request(window, image, { result ->
+                            copyResult = result
+                            ready.countDown()
+                        }, Handler(Looper.getMainLooper()))
+                    } catch (_: IllegalArgumentException) {
+                        ready.countDown()
+                    }
+                }
+                assertTrue("Dialog PixelCopy timed out", ready.await(5, TimeUnit.SECONDS))
+                if (copyResult == PixelCopy.SUCCESS) return bitmap
+                bitmap?.recycle()
+                return null
+            }
+            val bitmap = requireNotNull((1..8).firstNotNullOfOrNull {
+                SystemClock.sleep(150)
+                copyVisibleDialog()
+            }) { "ProductDetailDialog had no copyable backing surface" }
+            val dir = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+            File(dir, fileName).outputStream().use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+            bitmap.recycle()
+        }
+
+        // 1. Header deduplication & compact empty image placeholder
+        compose.onAllNodesWithText("DOCTOR INSOLE").assertCountEquals(1)
+        compose.onNodeWithText("কোনো ছবি যোগ করা হয়নি").assertExists()
+
+        // 2. Equal height Buying and Selling price cards
+        val buyBounds = compose.onNodeWithTag("product_detail_buy_card").fetchSemanticsNode().boundsInRoot
+        val sellBounds = compose.onNodeWithTag("product_detail_sell_card").fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "Buying and Selling price cards must have equal height (buy=${buyBounds.height}, sell=${sellBounds.height})",
+            abs(buyBounds.height - sellBounds.height) <= 2f
+        )
+
+        // 3. Localized cost history subtitle & side-by-side bottom action buttons
+        compose.onNodeWithText("ব্যাচ ল্যান্ডেড খরচ, অবশিষ্ট লেয়ার ও সমন্বয় দেখুন").assertExists()
+        val closeBounds = compose.onNodeWithText("বন্ধ করুন").fetchSemanticsNode().boundsInRoot
+        val printBounds = compose.onNodeWithText("বারকোড ও স্টিকার প্রিন্ট").fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "Bottom buttons must be side-by-side",
+            abs(closeBounds.top - printBounds.top) <= 6f && closeBounds.right <= printBounds.left
+        )
+
+        captureDialog("product_detail_top.png")
+
+        // 4. Barcode & QR Code minimized by default with right-aligned Copy & Share
+        compose.onNodeWithTag("product_detail_barcode_view").performScrollTo()
+        compose.onNodeWithTag("product_detail_qr_view").performScrollTo()
+        compose.onNodeWithContentDescription("Expand Barcode").assertExists()
+        compose.onNodeWithContentDescription("Collapse Barcode").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Expand QR Code").assertExists()
+        compose.onNodeWithContentDescription("Collapse QR Code").assertDoesNotExist()
+
+        val barcodeCodeBounds = compose.onNodeWithText("200389661276", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val barcodeCopyBounds = compose.onNodeWithContentDescription("Copy Barcode").fetchSemanticsNode().boundsInRoot
+        val barcodeShareBounds = compose.onNodeWithContentDescription("Share Barcode").fetchSemanticsNode().boundsInRoot
+        assertTrue("Copy icon must sit to the right of barcode text", barcodeCopyBounds.left >= barcodeCodeBounds.right)
+        assertTrue("Share icon must sit to the right of copy icon", barcodeShareBounds.left >= barcodeCopyBounds.right)
+
+        val qrTextBounds = compose.onNodeWithText("ADV-ERP|PRODUCT|prod-doc-1|SAB-DOC-001", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val qrCopyBounds = compose.onNodeWithContentDescription("Copy QR Data").fetchSemanticsNode().boundsInRoot
+        val qrShareBounds = compose.onNodeWithContentDescription("Share QR Code").fetchSemanticsNode().boundsInRoot
+        assertTrue("Copy icon must sit to the right of QR payload", qrCopyBounds.left >= qrTextBounds.right)
+        assertTrue("Share icon must sit to the right of QR copy icon", qrShareBounds.left >= qrCopyBounds.right)
+
+        captureDialog("product_detail_codes_collapsed.png")
+
+        // 5. Expand both Barcode and QR Code on tap, then collapse back on tap
+        compose.onNodeWithTag("product_detail_barcode_view").performScrollTo()
+        compose.onNodeWithContentDescription("Expand Barcode").performClick()
+        compose.onNodeWithContentDescription("Collapse Barcode").assertExists()
+        compose.onNodeWithTag("product_detail_qr_view").performScrollTo()
+        compose.onNodeWithContentDescription("Expand QR Code").performClick()
+        compose.onNodeWithContentDescription("Collapse QR Code").assertExists()
+        compose.onNodeWithTag("product_detail_qr_view").performScrollTo()
+        captureDialog("product_detail_codes_expanded.png")
+
+        compose.onNodeWithContentDescription("Collapse QR Code").performClick()
+        compose.onNodeWithContentDescription("Expand QR Code").assertExists()
+        compose.onNodeWithTag("product_detail_barcode_view").performScrollTo()
+        compose.onNodeWithContentDescription("Collapse Barcode").performClick()
+        compose.onNodeWithContentDescription("Expand Barcode").assertExists()
     }
 }
