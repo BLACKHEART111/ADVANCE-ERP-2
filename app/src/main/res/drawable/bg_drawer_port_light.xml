@@ -1,0 +1,125 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="148dp"
+    android:viewportWidth="320"
+    android:viewportHeight="148">
+
+    <!-- Soft atmospheric sky glow -->
+    <path android:pathData="M0,0 L320,0 L320,170 L0,170 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endColor="#88CDECF3"
+                android:endX="320"
+                android:endY="110"
+                android:startColor="#00FFFFFF"
+                android:startX="25"
+                android:startY="60"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+
+    <!-- Distant industrial warehouse & port skyline -->
+    <path
+        android:fillColor="#2A2B7A8E"
+        android:pathData="M115,122 L115,104 L145,104 L145,112 L162,112 L162,98 L195,98 L195,122 Z" />
+
+    <!-- Quay / pier concrete deck -->
+    <path
+        android:fillColor="#662E6882"
+        android:pathData="M90,124 L320,124 L320,132 L90,132 Z" />
+
+    <!-- Harbor teal water reflection -->
+    <path android:pathData="M75,132 L320,132 L320,170 L75,170 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endColor="#CC158399"
+                android:endX="320"
+                android:endY="165"
+                android:startColor="#004DBFD4"
+                android:startX="85"
+                android:startY="134"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#44FFFFFF"
+        android:pathData="M150,141 L295,141 L295,143 L150,143 Z M175,149 L310,149 L310,151 L175,151 Z M130,156 L260,156 L260,158 L130,158 Z" />
+
+    <!-- Ship-to-shore Gantry Crane (back support & trusses) -->
+    <path
+        android:pathData="M214,124 L236,34 L256,34 L268,124 M236,34 L268,124 M256,34 L214,124"
+        android:strokeColor="#991B6E7D"
+        android:strokeWidth="2.2" />
+    <path
+        android:pathData="M222,82 L262,82 M228,58 L259,58 M245,18 L245,34 M192,48 L245,18 L302,48 M182,48 L314,48 M182,53 L314,53"
+        android:strokeColor="#CC166677"
+        android:strokeWidth="2.3" />
+    <!-- Crane trolley + spreader cables -->
+    <path
+        android:fillColor="#DD196A7B"
+        android:pathData="M204,53 L218,53 L218,59 L204,59 Z" />
+    <path
+        android:pathData="M208,59 L208,82 M214,59 L214,82"
+        android:strokeColor="#BB2B4C66"
+        android:strokeWidth="1.1" />
+    <path
+        android:fillColor="#DD792B87"
+        android:pathData="M201,82 L221,82 L221,88 L201,88 Z" />
+
+    <!-- Stacked Import Containers — Purple & Magenta Left Stack -->
+    <path
+        android:fillColor="#BB7B3294"
+        android:pathData="M116,108 L152,108 L152,124 L116,124 Z" />
+    <path
+        android:fillColor="#CC9E41B5"
+        android:pathData="M118,92 L152,92 L152,107 L118,107 Z" />
+    <path
+        android:fillColor="#BB2B6A94"
+        android:pathData="M154,108 L194,108 L194,124 L154,124 Z" />
+    <path
+        android:fillColor="#D98B2D9E"
+        android:pathData="M154,92 L194,92 L194,107 L154,107 Z" />
+    <path
+        android:fillColor="#CC1B8094"
+        android:pathData="M158,76 L194,76 L194,91 L158,91 Z" />
+    <!-- Container vertical corrugation highlights -->
+    <path
+        android:pathData="M124,93 L124,123 M132,93 L132,123 M140,93 L140,123 M162,77 L162,123 M171,77 L171,123 M180,77 L180,123 M188,77 L188,123"
+        android:strokeColor="#33FFFFFF"
+        android:strokeWidth="1" />
+
+    <!-- Docked Container Ship Silhouette & Stacks (Right Side) -->
+    <path
+        android:fillColor="#CC1F4E68"
+        android:pathData="M200,115 L320,115 L320,129 L208,129 C203,129 199,122 200,115 Z" />
+    <path
+        android:fillColor="#DDDFEDF2"
+        android:pathData="M286,90 L316,90 L316,115 L286,115 Z M292,81 L312,81 L312,90 L292,90 Z" />
+    <path
+        android:fillColor="#D920899D"
+        android:pathData="M206,102 L242,102 L242,115 L206,115 Z" />
+    <path
+        android:fillColor="#D97E2A94"
+        android:pathData="M244,102 L282,102 L282,115 L244,115 Z" />
+    <path
+        android:fillColor="#D99B3AB0"
+        android:pathData="M244,88 L280,88 L280,101 L244,101 Z" />
+    <path
+        android:fillColor="#D92C95AA"
+        android:pathData="M210,88 L242,88 L242,101 L210,101 Z" />
+
+    <!-- Soft left gradient fade mask so port merges smoothly behind clock -->
+    <path android:pathData="M70,0 L165,0 L165,170 L70,170 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endColor="#00F6F2FC"
+                android:endX="162"
+                android:endY="85"
+                android:startColor="#F5F5EDFC"
+                android:startX="75"
+                android:startY="85"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+</vector>

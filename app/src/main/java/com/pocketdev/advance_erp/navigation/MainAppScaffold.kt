@@ -1,6 +1,7 @@
 package com.pocketdev.advance_erp.navigation
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -46,18 +48,22 @@ import com.pocketdev.advance_erp.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CancellationException
 
 @Composable
 fun MainAppScaffold(
     preferencesRepository: UserPreferencesRepository,
     settingsRepository: SettingsRepository? = null,
-    backupRepository: BackupRepository? = null
+    @Suppress("UNUSED_PARAMETER") backupRepository: BackupRepository? = null,
+    isAppLockConfigured: Boolean = false,
+    onLockApp: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    val drawerViewModel: MainDrawerViewModel = hiltViewModel()
+    val drawerMetrics by drawerViewModel.state.collectAsState()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route?.substringBefore('?') ?: Destinations.DASHBOARD
@@ -67,7 +73,9 @@ fun MainAppScaffold(
     val customUserName by preferencesRepository.userName.collectAsState(initial = null)
     val businessProfile by (settingsRepository?.getBusinessProfile() ?: flowOf(null)).collectAsState(initial = null)
 
-    val currentUserName = customUserName ?: businessProfile?.companyName?.ifBlank { null } ?: "Santanu Ganguly"
+    val currentUserName = customUserName?.ifBlank { null }
+        ?: businessProfile?.companyName?.ifBlank { null }
+        ?: if (currentLanguage == AppLanguage.BANGLA) "ব্যবসায়ী প্রোফাইল" else "Business Owner"
 
     var showSyncLogoutDialog by remember { mutableStateOf(false) }
 
@@ -119,7 +127,8 @@ fun MainAppScaffold(
                     coroutineScope.launch {
                         preferencesRepository.setUserName(newName)
                         settingsRepository?.let { repo ->
-                            val current = repo.getBusinessProfile().firstOrNull() ?: BusinessProfile(companyName = newName, phone = "", address = "")
+                            val current = repo.getBusinessProfile().firstOrNull()
+                                ?: BusinessProfile(companyName = newName, phone = "", address = "")
                             repo.updateBusinessProfile(current.copy(companyName = newName))
                         }
                     }
@@ -127,12 +136,49 @@ fun MainAppScaffold(
                 onSyncLogout = {
                     showSyncLogoutDialog = true
                 },
+                onSyncClick = {
+                    drawerViewModel.triggerSync(
+                        onSuccess = {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.drawer_sync_success),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        onFailure = { errorDetail ->
+                            Toast.makeText(
+                                context,
+                                "${context.getString(R.string.drawer_sync_failed)}: $errorDetail",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    )
+                },
+                onLogoutClick = {
+                    showSyncLogoutDialog = true
+                },
                 onEditProfile = {
                     coroutineScope.launch {
                         drawerState.close()
-                        navController.navigate(Destinations.SETTINGS)
+                        if (currentRoute != Destinations.SETTINGS) {
+                            navController.navigate(Destinations.SETTINGS) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
                     }
-                }
+                },
+                language = currentLanguage,
+                userRole = drawerMetrics.userRole,
+                activeWarehouseName = drawerMetrics.activeWarehouseName,
+                hasActiveWarehouse = drawerMetrics.hasActiveWarehouse,
+                productCount = drawerMetrics.productCount,
+                customerCount = drawerMetrics.customerCount,
+                supplierCount = drawerMetrics.supplierCount,
+                isSyncing = drawerMetrics.isSyncing
             )
         }
     ) {
@@ -180,48 +226,76 @@ fun MainAppScaffold(
         }
     }
 
+    if (drawerState.isOpen) {
+        BackHandler {
+            coroutineScope.launch { drawerState.close() }
+        }
+    }
+
     if (showSyncLogoutDialog) {
+        val isBn = currentLanguage == AppLanguage.BANGLA
         AlertDialog(
             onDismissRequest = { showSyncLogoutDialog = false },
             title = {
                 Text(
-                    text = stringResource(R.string.drawer_sync_title),
+                    text = if (isAppLockConfigured) {
+                        if (isBn) "নিরাপদ লগআউট ও লক" else "Secure Logout & Lock"
+                    } else {
+                        stringResource(R.string.drawer_sync_title)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
-                Text(stringResource(R.string.drawer_sync_message))
+                Text(
+                    text = if (isAppLockConfigured) {
+                        if (isBn) {
+                            "সেশন লক/লগআউট করার আগে লোকাল ডাটাবেজ ব্যাকআপ সিংক করতে পারেন অথবা সরাসরি লক করতে পারেন।"
+                        } else {
+                            "Sync a local database backup before locking your session, or lock immediately."
+                        }
+                    } else {
+                        stringResource(R.string.drawer_sync_message)
+                    }
+                )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        coroutineScope.launch {
-                            try {
-                                requireNotNull(backupRepository) { "Backup service is unavailable" }
-                                    .createBackup(isAutomatic = false, notes = "Drawer manual backup")
+                        showSyncLogoutDialog = false
+                        drawerViewModel.triggerSync(
+                            onSuccess = {
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.drawer_sync_success),
                                     Toast.LENGTH_SHORT
                                 ).show()
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (_: Exception) {
+                                coroutineScope.launch {
+                                    drawerState.close()
+                                    if (isAppLockConfigured) {
+                                        onLockApp()
+                                    }
+                                }
+                            },
+                            onFailure = {
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.drawer_sync_failed),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
-                            showSyncLogoutDialog = false
-                            drawerState.close()
-                            navController.navigate(Destinations.SETTINGS)
-                        }
+                        )
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
                 ) {
-                    Text(stringResource(R.string.drawer_sync_now))
+                    Text(
+                        if (isAppLockConfigured) {
+                            if (isBn) "সিংক ও লক" else "Sync & Lock"
+                        } else {
+                            stringResource(R.string.drawer_sync_now)
+                        }
+                    )
                 }
             },
             dismissButton = {
@@ -231,11 +305,23 @@ fun MainAppScaffold(
                             showSyncLogoutDialog = false
                             coroutineScope.launch {
                                 drawerState.close()
-                                navController.navigate(Destinations.SETTINGS)
+                                if (isAppLockConfigured) {
+                                    onLockApp()
+                                } else if (currentRoute != Destinations.SETTINGS) {
+                                    navController.navigate(Destinations.SETTINGS) {
+                                        launchSingleTop = true
+                                    }
+                                }
                             }
                         }
                     ) {
-                        Text(stringResource(R.string.drawer_logout_now))
+                        Text(
+                            if (isAppLockConfigured) {
+                                if (isBn) "লগআউট / লক" else "Logout / Lock"
+                            } else {
+                                if (isBn) "নিরাপত্তা সেটিংস" else "Security Settings"
+                            }
+                        )
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                     TextButton(onClick = { showSyncLogoutDialog = false }) {

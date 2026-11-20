@@ -8,8 +8,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
@@ -46,8 +47,9 @@ class MainActivity : FragmentActivity() {
             val storedPinHash by preferencesRepository.pinCodeHash.collectAsState(initial = null)
             val storedPinSalt by preferencesRepository.pinSalt.collectAsState(initial = null)
             val isBiometricEnabled by preferencesRepository.isBiometricEnabled.collectAsState(initial = false)
+            val isAppLockConfigured = isAppLockEnabled && !storedPinHash.isNullOrBlank()
 
-            var isAppUnlocked by remember { mutableStateOf(false) }
+            var isAppUnlocked by rememberSaveable { mutableStateOf(false) }
 
             val currentConfig = LocalConfiguration.current
             val localizedConfig = remember(language, currentConfig) {
@@ -66,7 +68,7 @@ class MainActivity : FragmentActivity() {
                 LocalConfiguration provides localizedConfig
             ) {
                 AdvanceErpTheme(darkTheme = useDarkTheme) {
-                    if (isAppLockEnabled && !isAppUnlocked && !storedPinHash.isNullOrBlank()) {
+                    if (isAppLockConfigured && !isAppUnlocked) {
                         AppLockScreen(
                             storedPinHash = storedPinHash,
                             storedPinSalt = storedPinSalt,
@@ -78,7 +80,9 @@ class MainActivity : FragmentActivity() {
                         MainAppScaffold(
                             preferencesRepository = preferencesRepository,
                             settingsRepository = settingsRepository,
-                            backupRepository = backupRepository
+                            backupRepository = backupRepository,
+                            isAppLockConfigured = isAppLockConfigured,
+                            onLockApp = { isAppUnlocked = false }
                         )
                     }
                 }

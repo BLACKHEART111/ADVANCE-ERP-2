@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -53,5 +54,11 @@ fun AdvanceErpTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Compos
             }
         }
     }
-    MaterialTheme(colorScheme = colors, typography = ERPTypography, shapes = ERPShapes, content = content)
+    val drawerTokens = if (darkTheme) DarkDrawerTokens else LightDrawerTokens
+    CompositionLocalProvider(
+        LocalIsDarkTheme provides darkTheme,
+        LocalDrawerTokens provides drawerTokens
+    ) {
+        MaterialTheme(colorScheme = colors, typography = ERPTypography, shapes = ERPShapes, content = content)
+    }
 }
