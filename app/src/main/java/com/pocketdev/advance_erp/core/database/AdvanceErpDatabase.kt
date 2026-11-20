@@ -199,6 +199,7 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "advance_erp.db"
+        const val DATABASE_VERSION = 13
 
         fun buildDatabase(context: Context): AdvanceErpDatabase {
             return Room.databaseBuilder(

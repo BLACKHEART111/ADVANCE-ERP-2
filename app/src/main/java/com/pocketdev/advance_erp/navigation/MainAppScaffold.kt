@@ -93,7 +93,8 @@ fun MainAppScaffold(
         Destinations.SUPPLIERS -> stringResource(R.string.nav_suppliers)
         Destinations.LEDGER, Destinations.REPORTS ->
             if (currentLanguage == AppLanguage.BANGLA) "কেন্দ্রীয় লেজার" else "Central Ledger"
-        Destinations.SETTINGS -> stringResource(R.string.nav_settings)
+        Destinations.SETTINGS ->
+            if (currentLanguage == AppLanguage.BANGLA) "সেটিংস" else "Settings"
         else -> stringResource(R.string.app_name)
     }
 

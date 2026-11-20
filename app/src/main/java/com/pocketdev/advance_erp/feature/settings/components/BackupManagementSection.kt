@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pocketdev.advance_erp.core.designsystem.ERPCard
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import com.pocketdev.advance_erp.core.designsystem.LocalSettingsTokens
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
@@ -92,9 +93,11 @@ fun BackupManagementSection(
     onDeleteBackup: (recordId: String) -> Unit,
     onToggleFridayAutoBackup: (enabled: Boolean) -> Unit,
     onSelectBackupFolder: ((uri: Uri?) -> Unit)? = null,
-    onSetBackupPassphrase: ((String?) -> Unit)? = null
+    onSetBackupPassphrase: ((String?) -> Unit)? = null,
+    embeddedInAccordion: Boolean = false
 ) {
     val context = LocalContext.current
+    val tokens = LocalSettingsTokens.current
     val isBn = language == AppLanguage.BANGLA
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US) }
 
@@ -131,33 +134,25 @@ fun BackupManagementSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Main Actions Card: Instant Backup + File Restore + Friday Auto Backup
-        ERPCard {
-            Column(modifier = Modifier.padding(4.dp)) {
-                // Instant Backup Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (isBn) "তাত্ক্ষণিক সম্পূর্ণ ব্যাকআপ (.zip)" else "Instant Full Backup (.zip)",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (isBn) "সকল পণ্যের ছবি, প্রোফাইল ও ডাটাবেজ date/mm/yy ফরম্যাটে সেভ হবে"
-                            else "Bundles all photos, SQLite database & audit logs in date/mm/yy format",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
+        // Main Actions Panel: Instant Backup + File Restore + Friday Auto Backup + Location + Encryption
+        val mainContent: @Composable () -> Unit = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Instant Backup Block (full-width readable button below description)
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = if (isBn) "তাত্ক্ষণিক সম্পূর্ণ ব্যাকআপ (.zip)" else "Instant Full Backup (.zip)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = if (isBn) "সকল পণ্যের ছবি, প্রোফাইল ও ডাটাবেজ নিরাপদ জিপ ফাইলে সেভ হবে"
+                        else "Bundles all photos, profile & SQLite database into a verified ZIP archive",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = {
                             isCreatingBackup = true
@@ -171,15 +166,18 @@ fun BackupManagementSection(
                             }
                         },
                         enabled = !isCreatingBackup,
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
                         if (isCreatingBackup) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isBn) "ব্যাকআপ তৈরি হচ্ছে..." else "Creating Backup...", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         } else {
-                            Icon(imageVector = Icons.Outlined.Archive, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (isBn) "ব্যাকআপ নিন" else "Create Backup", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Icon(imageVector = Icons.Outlined.Archive, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isBn) "এখনই ব্যাকআপ নিন" else "Backup Now", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -404,8 +402,8 @@ fun BackupManagementSection(
 
                     OutlinedButton(
                         onClick = {
-                            newPassphrase = backupPassphrase ?: ""
-                            confirmNewPassphrase = backupPassphrase ?: ""
+                            newPassphrase = ""
+                            confirmNewPassphrase = ""
                             showPasswordDialog = true
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -433,9 +431,28 @@ fun BackupManagementSection(
             }
         }
 
+        if (embeddedInAccordion) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = tokens.innerPanelBg,
+                border = androidx.compose.foundation.BorderStroke(1.dp, tokens.innerPanelBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(modifier = Modifier.padding(12.dp)) {
+                    mainContent()
+                }
+            }
+        } else {
+            ERPCard {
+                Box(modifier = Modifier.padding(4.dp)) {
+                    mainContent()
+                }
+            }
+        }
+
         // Previous Backups History List
         if (backupRecords.isNotEmpty()) {
-            ERPCard {
+            val historyContent: @Composable () -> Unit = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -465,123 +482,149 @@ fun BackupManagementSection(
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.Outlined.FolderZip,
                                         contentDescription = null,
                                         tint = PrimaryPurple,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = bak.fileName,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimary,
-                                            maxLines = 1
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    Text(
+                                        text = bak.fileName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (bak.isAutomatic) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .background(StatusSuccess.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
                                             Text(
-                                                text = displayDate,
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                color = TextMuted
+                                                text = if (isBn) "স্বয়ংক্রিয়" else "Auto",
+                                                fontSize = 9.5.sp,
+                                                color = StatusSuccess,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
                                             )
-                                            Text(
-                                                text = "•",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                color = TextMuted
-                                            )
-                                            Text(
-                                                text = sizeStr,
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = PrimaryPurple
-                                            )
-                                            if (bak.isAutomatic) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .background(StatusSuccess.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                ) {
-                                                    Text(
-                                                        text = if (isBn) "স্বয়ংক্রিয়" else "Auto",
-                                                        fontSize = 9.sp,
-                                                        color = StatusSuccess,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
                                         }
                                     }
                                 }
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // Share button
-                                    IconButton(
-                                        onClick = {
-                                            if (file.exists()) {
-                                                backupToShare = bak
-                                            } else {
-                                                Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        modifier = Modifier.size(32.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Share,
-                                            contentDescription = "Share",
-                                            tint = PrimaryPurple,
-                                            modifier = Modifier.size(18.dp)
+                                        Text(
+                                            text = sizeStr,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = PrimaryPurple,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Text(
+                                            text = "•",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            color = TextMuted
+                                        )
+                                        Text(
+                                            text = displayDate,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            color = TextMuted,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
                                         )
                                     }
 
-                                    // Restore button
-                                    IconButton(
-                                        onClick = {
-                                            backupToRestore = bak
-                                            restoreHistoryPassphrase = backupPassphrase ?: ""
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Restore,
-                                            contentDescription = "Restore",
-                                            tint = SecondaryTeal,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = {
+                                                if (file.exists()) {
+                                                    backupToShare = bak
+                                                } else {
+                                                    Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Share,
+                                                contentDescription = "Share",
+                                                tint = PrimaryPurple,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
 
-                                    // Delete button
-                                    IconButton(
-                                        onClick = { backupToDelete = bak },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.DeleteOutline,
-                                            contentDescription = "Delete",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                        IconButton(
+                                            onClick = {
+                                                backupToRestore = bak
+                                                restoreHistoryPassphrase = backupPassphrase ?: ""
+                                            },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Restore,
+                                                contentDescription = "Restore",
+                                                tint = SecondaryTeal,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { backupToDelete = bak },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.DeleteOutline,
+                                                contentDescription = "Delete",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
+            }
+            if (embeddedInAccordion) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = tokens.innerPanelBg,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, tokens.innerPanelBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(modifier = Modifier.padding(12.dp)) {
+                        historyContent()
+                    }
+                }
+            } else {
+                ERPCard {
+                    historyContent()
                 }
             }
         }
