@@ -174,7 +174,9 @@ interface ImportRepository {
         method: PaymentMethod,
         paymentAccount: String,
         reference: String?,
-        notes: String?
+        notes: String?,
+        paymentDate: Long = System.currentTimeMillis(),
+        paymentAccountId: String? = null
     ): String
 
     // Shipments & Cartons

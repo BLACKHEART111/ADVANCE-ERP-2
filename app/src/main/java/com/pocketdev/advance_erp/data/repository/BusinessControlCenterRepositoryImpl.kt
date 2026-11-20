@@ -30,6 +30,7 @@ import com.pocketdev.advance_erp.data.dao.SupplierPaymentDao
 import com.pocketdev.advance_erp.data.dao.WarehouseDao
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
 import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.data.entity.Warehouse
@@ -41,11 +42,14 @@ import com.pocketdev.advance_erp.domain.model.DeliveryReturnFilter
 import com.pocketdev.advance_erp.domain.model.FinancialMetricFilter
 import com.pocketdev.advance_erp.domain.model.LineItemDetail
 import com.pocketdev.advance_erp.domain.model.PartyLedgerStatement
+import com.pocketdev.advance_erp.domain.model.PaymentMethodFilter
 import com.pocketdev.advance_erp.domain.model.PaymentStatusFilter
 import com.pocketdev.advance_erp.domain.model.ReportCategory
+import com.pocketdev.advance_erp.domain.model.SaleChannelFilter
 import com.pocketdev.advance_erp.domain.model.SavedFilterPreset
 import com.pocketdev.advance_erp.domain.model.SortOption
 import com.pocketdev.advance_erp.domain.model.TransactionDetailRecord
+import com.pocketdev.advance_erp.domain.model.TransactionDirectionFilter
 import com.pocketdev.advance_erp.domain.model.UnifiedTransactionItem
 import com.pocketdev.advance_erp.domain.repository.BusinessControlCenterRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -93,6 +97,8 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
 
     override fun getAllCategories(): Flow<List<ProductCategory>> = productCategoryDao.getAllCategories()
 
+    override fun getAllProducts(): Flow<List<Product>> = productDao.getAllActiveProducts()
+
     override fun getBusinessProfile(): Flow<BusinessProfile?> = businessProfileDao.getProfile()
 
     override fun getSavedPresets(): Flow<List<SavedFilterPreset>> = presetsFlow.asStateFlow()
@@ -133,13 +139,18 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                     selectedCustomerId = if (filterObj.has("selectedCustomerId")) filterObj.getString("selectedCustomerId") else null,
                     selectedSupplierId = if (filterObj.has("selectedSupplierId")) filterObj.getString("selectedSupplierId") else null,
                     selectedWarehouseId = if (filterObj.has("selectedWarehouseId")) filterObj.getString("selectedWarehouseId") else null,
+                    selectedCategoryId = if (filterObj.has("selectedCategoryId")) filterObj.getString("selectedCategoryId") else null,
+                    selectedProductId = if (filterObj.has("selectedProductId")) filterObj.getString("selectedProductId") else null,
+                    paymentMethodFilter = runCatching { PaymentMethodFilter.valueOf(filterObj.optString("paymentMethodFilter", PaymentMethodFilter.ALL.name)) }.getOrDefault(PaymentMethodFilter.ALL),
                     paymentStatus = PaymentStatusFilter.valueOf(filterObj.optString("paymentStatus", PaymentStatusFilter.ALL.name)),
                     deliveryReturn = DeliveryReturnFilter.valueOf(filterObj.optString("deliveryReturn", DeliveryReturnFilter.ALL.name)),
                     financialMetric = FinancialMetricFilter.valueOf(filterObj.optString("financialMetric", FinancialMetricFilter.ALL.name)),
                     amountFilter = AmountRangeFilter.valueOf(filterObj.optString("amountFilter", AmountRangeFilter.ALL.name)),
                     customMinAmountMinor = if (filterObj.has("customMinAmountMinor")) filterObj.getLong("customMinAmountMinor") else null,
                     customMaxAmountMinor = if (filterObj.has("customMaxAmountMinor")) filterObj.getLong("customMaxAmountMinor") else null,
-                    sortBy = SortOption.valueOf(filterObj.optString("sortBy", SortOption.NEWEST_FIRST.name))
+                    sortBy = runCatching { SortOption.valueOf(filterObj.optString("sortBy", SortOption.NEWEST_FIRST.name)) }.getOrDefault(SortOption.NEWEST_FIRST),
+                    transactionDirection = runCatching { TransactionDirectionFilter.valueOf(filterObj.optString("transactionDirection", TransactionDirectionFilter.ALL.name)) }.getOrDefault(TransactionDirectionFilter.ALL),
+                    saleChannel = runCatching { SaleChannelFilter.valueOf(filterObj.optString("saleChannel", SaleChannelFilter.ALL.name)) }.getOrDefault(SaleChannelFilter.ALL)
                 )
                 list.add(
                     SavedFilterPreset(
@@ -170,6 +181,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
             p.filterState.selectedCustomerId?.let { fObj.put("selectedCustomerId", it) }
             p.filterState.selectedSupplierId?.let { fObj.put("selectedSupplierId", it) }
             p.filterState.selectedWarehouseId?.let { fObj.put("selectedWarehouseId", it) }
+            p.filterState.selectedCategoryId?.let { fObj.put("selectedCategoryId", it) }
+            p.filterState.selectedProductId?.let { fObj.put("selectedProductId", it) }
+            fObj.put("paymentMethodFilter", p.filterState.paymentMethodFilter.name)
             fObj.put("paymentStatus", p.filterState.paymentStatus.name)
             fObj.put("deliveryReturn", p.filterState.deliveryReturn.name)
             fObj.put("financialMetric", p.filterState.financialMetric.name)
@@ -177,6 +191,8 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
             p.filterState.customMinAmountMinor?.let { fObj.put("customMinAmountMinor", it) }
             p.filterState.customMaxAmountMinor?.let { fObj.put("customMaxAmountMinor", it) }
             fObj.put("sortBy", p.filterState.sortBy.name)
+            fObj.put("transactionDirection", p.filterState.transactionDirection.name)
+            fObj.put("saleChannel", p.filterState.saleChannel.name)
             obj.put("filterState", fObj)
             arr.put(obj)
         }
@@ -188,13 +204,16 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
         val toMillis = Long.MAX_VALUE
 
         val suppliers = supplierDao.getAllSuppliersIncludingInactiveSync().associateBy { it.id }
+        val productCategoryByProductId = productDao.getAllProductsSync().associate { it.id to it.categoryId }
+        val invoiceItemsByInvoiceId = salesDao.getAllInvoiceItemsSync().groupBy { it.invoiceId }
+        val poItemsByOrderId = purchaseOrderDao.getAllOrderItemsSync().groupBy { it.purchaseOrderId }
+        val returnItemsByReturnId = salesReturnDao.getAllReturnItemsSync().groupBy { it.returnId }
         val allList = mutableListOf<UnifiedTransactionItem>()
 
         // 1. Sales Invoices
         val invoices = when { filterState.selectedSupplierId != null -> emptyList(); filterState.selectedCustomerId != null -> salesDao.getInvoicesForCustomerSync(filterState.selectedCustomerId); else -> salesDao.getAllInvoicesSync() }
         for (inv in invoices) {
             if (inv.invoiceDate in fromMillis..toMillis) {
-                val isCancelled = inv.status == "CANCELLED"
                 val statusColor = when (inv.status) {
                     "PAID" -> 0xFF10B981L
                     "PARTIALLY_PAID" -> 0xFFF59E0BL
@@ -203,6 +222,13 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                     "PARTIALLY_DELIVERED" -> 0xFF0284C7L
                     else -> 0xFF6366F1L
                 }
+                val itemRows = invoiceItemsByInvoiceId[inv.id].orEmpty()
+                val invProductIds = itemRows.map { it.productId }.toSet()
+                val invCategoryIds = itemRows.mapNotNull { productCategoryByProductId[it.productId] }.toSet()
+                val retail = inv.customerName.equals("Walk-in Customer", ignoreCase = true) ||
+                    inv.notes?.contains("Retail", ignoreCase = true) == true ||
+                    inv.notes?.contains("POS", ignoreCase = true) == true ||
+                    (inv.paidAmountMinor >= inv.totalAmountMinor && inv.dueDate == null && inv.totalAmountMinor <= 500_000L)
                 allList.add(
                     UnifiedTransactionItem(
                         id = inv.id,
@@ -226,7 +252,10 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         rawType = "INVOICE",
                         notes = inv.notes,
                         createdAt = inv.createdAt, accountingPosted = inv.isPosted, warehouseId = inv.warehouseId,
-                        dueDate = inv.dueDate, cogsMinor = inv.totalCogsMinor, profitMinor = inv.totalAmountMinor - inv.taxMinor - inv.totalCogsMinor, discountMinor = inv.discountMinor, taxMinor = inv.taxMinor
+                        dueDate = inv.dueDate, cogsMinor = inv.totalCogsMinor, profitMinor = inv.totalAmountMinor - inv.taxMinor - inv.totalCogsMinor, discountMinor = inv.discountMinor, taxMinor = inv.taxMinor,
+                        productIds = invProductIds,
+                        categoryIds = invCategoryIds,
+                        isRetailSale = retail
                     )
                 )
             }
@@ -263,6 +292,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
         val salesReturns = when { filterState.selectedSupplierId != null -> emptyList(); filterState.selectedCustomerId != null -> salesReturnDao.getReturnsForCustomerSync(filterState.selectedCustomerId); else -> salesReturnDao.getAllReturnsSync() }
         for (ret in salesReturns) {
             if (ret.returnDate in fromMillis..toMillis) {
+                val retItems = returnItemsByReturnId[ret.id].orEmpty()
+                val retProductIds = retItems.map { it.productId }.toSet()
+                val retCategoryIds = retItems.mapNotNull { productCategoryByProductId[it.productId] }.toSet()
                 allList.add(
                     UnifiedTransactionItem(
                         id = ret.id,
@@ -281,7 +313,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         rawType = "RETURN",
                         notes = ret.reason,
                         createdAt = ret.createdAt, accountingPosted = ret.isPosted, warehouseId = ret.warehouseId,
-                        cogsMinor = ret.totalCogsReversalMinor, profitMinor = -ret.totalReturnAmountMinor + ret.totalCogsReversalMinor
+                        cogsMinor = ret.totalCogsReversalMinor, profitMinor = -ret.totalReturnAmountMinor + ret.totalCogsReversalMinor,
+                        productIds = retProductIds,
+                        categoryIds = retCategoryIds
                     )
                 )
             }
@@ -299,6 +333,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                     "CANCELLED" -> 0xFFEF4444L
                     else -> 0xFF8B5CF6L
                 }
+                val poItems = poItemsByOrderId[po.id].orEmpty()
+                val poProductIds = poItems.map { it.productId }.toSet()
+                val poCategoryIds = poItems.mapNotNull { productCategoryByProductId[it.productId] }.toSet()
                 allList.add(
                     UnifiedTransactionItem(
                         id = po.id,
@@ -317,7 +354,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         rawType = "PURCHASE",
                         notes = po.notes,
                         createdAt = po.createdAt, accountingPosted = po.status !in setOf("DRAFT", "CANCELLED"),
-                        originalCurrency = po.currency, originalAmountMinor = po.totalAmountMinor, exchangeRate = po.exchangeRateToBdt
+                        originalCurrency = po.currency, originalAmountMinor = po.totalAmountMinor, exchangeRate = po.exchangeRateToBdt,
+                        productIds = poProductIds,
+                        categoryIds = poCategoryIds
                     )
                 )
             }
@@ -407,7 +446,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         rawType = "STOCK_MOVEMENT",
                         notes = mv.notes,
                         createdBy = mv.operatorName,
-                        createdAt = mv.createdAt, warehouseId = mv.warehouseId
+                        createdAt = mv.createdAt, warehouseId = mv.warehouseId,
+                        productIds = setOf(mv.productId),
+                        categoryIds = setOfNotNull(productCategoryByProductId[mv.productId])
                     )
                 )
             }
@@ -433,7 +474,9 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                         warehouseName = trf.destinationWarehouseName,
                         rawType = "STOCK_TRANSFER",
                         notes = trf.notes,
-                        createdAt = trf.createdAt, warehouseId = trf.destinationWarehouseId
+                        createdAt = trf.createdAt, warehouseId = trf.destinationWarehouseId,
+                        productIds = setOf(trf.productId),
+                        categoryIds = setOfNotNull(productCategoryByProductId[trf.productId])
                     )
                 )
             }

@@ -13,12 +13,10 @@ enum class DateRangeOption(val titleEn: String, val titleBn: String) {
     LAST_MONTH("Last Month", "গত মাস"),
     THIS_YEAR("This Year", "চলতি বছর"),
     LAST_YEAR("Last Year", "গত বছর"),
+    INCEPTION_TO_DATE("Business Start to Selected Date", "ব্যবসা শুরু থেকে নির্বাচিত তারিখ"),
     CUSTOM("Custom Range", "কাস্টম সময়সীমা");
 
     fun getBoundsMillis(customStart: Long? = null, customEnd: Long? = null): Pair<Long, Long> {
-        val cal = Calendar.getInstance()
-        val now = cal.timeInMillis
-
         fun startOfDay(c: Calendar) {
             c.set(Calendar.HOUR_OF_DAY, 0)
             c.set(Calendar.MINUTE, 0)
@@ -116,6 +114,15 @@ enum class DateRangeOption(val titleEn: String, val titleBn: String) {
                     endOfDay(this)
                 }.timeInMillis
                 start to end
+            }
+            INCEPTION_TO_DATE -> {
+                val end = customEnd?.let {
+                    Calendar.getInstance().apply {
+                        timeInMillis = it
+                        endOfDay(this)
+                    }.timeInMillis
+                } ?: Calendar.getInstance().apply { endOfDay(this) }.timeInMillis
+                0L to end
             }
             CUSTOM -> {
                 val rawS = customStart?.let {
@@ -216,8 +223,30 @@ enum class SortOption(val titleEn: String, val titleBn: String) {
     OLDEST_FIRST("Oldest First", "পুরোনো লেনদেন আগে"),
     HIGHEST_AMOUNT("Highest Amount", "সর্বোচ্চ টাকার পরিমাণ আগে"),
     LOWEST_AMOUNT("Lowest Amount", "সর্বনিম্ন টাকার পরিমাণ আগে"),
+    TRANSACTION_TYPE("Transaction Type", "লেনদেনের ধরন অনুযায়ী"),
     NAME_ASC("Name (A–Z)", "নাম অনুযায়ী সাজানো (A–Z)"),
     NAME_DESC("Name (Z–A)", "বিপরীত ক্রমে সাজানো (Z–A)")
+}
+
+enum class PaymentMethodFilter(val titleEn: String, val titleBn: String) {
+    ALL("All Methods", "সকল মাধ্যম"),
+    CASH("Cash", "নগদ"),
+    BANK("Bank", "ব্যাংক"),
+    MOBILE_BANKING("Mobile Banking", "মোবাইল ব্যাংকিং"),
+    LC("LC", "এলসি"),
+    TT("TT", "টিটি")
+}
+
+enum class TransactionDirectionFilter(val titleEn: String, val titleBn: String) {
+    ALL("All Types", "সকল ধরন"),
+    INFLOW("Inflow / Debit (+)", "জমা / ইনফ্লো (+)"),
+    OUTFLOW("Outflow / Credit (-)", "খরচ / আউটফ্লো (-)")
+}
+
+enum class SaleChannelFilter(val titleEn: String, val titleBn: String) {
+    ALL("All (Wholesale & Retail)", "সকল (পাইকারি ও খুচরা)"),
+    WHOLESALE("Wholesale", "পাইকারি"),
+    RETAIL("Retail / POS", "খুচরা / POS")
 }
 
 data class ControlCenterFilterState(
@@ -237,7 +266,11 @@ data class ControlCenterFilterState(
     val amountFilter: AmountRangeFilter = AmountRangeFilter.ALL,
     val customMinAmountMinor: Long? = null,
     val customMaxAmountMinor: Long? = null,
-    val sortBy: SortOption = SortOption.NEWEST_FIRST
+    val sortBy: SortOption = SortOption.NEWEST_FIRST,
+    val selectedProductId: String? = null,
+    val paymentMethodFilter: PaymentMethodFilter = PaymentMethodFilter.ALL,
+    val transactionDirection: TransactionDirectionFilter = TransactionDirectionFilter.ALL,
+    val saleChannel: SaleChannelFilter = SaleChannelFilter.ALL
 ) {
     val activeFilterCount: Int
         get() {
@@ -249,8 +282,12 @@ data class ControlCenterFilterState(
             if (selectedSupplierId != null) count++
             if (selectedWarehouseId != null) count++
             if (selectedCategoryId != null) count++
+            if (selectedProductId != null) count++
             if (selectedBrand != null) count++
+            if (paymentMethodFilter != PaymentMethodFilter.ALL) count++
             if (paymentStatus != PaymentStatusFilter.ALL) count++
+            if (transactionDirection != TransactionDirectionFilter.ALL) count++
+            if (saleChannel != SaleChannelFilter.ALL) count++
             if (deliveryReturn != DeliveryReturnFilter.ALL) count++
             if (financialMetric != FinancialMetricFilter.ALL) count++
             if (amountFilter != AmountRangeFilter.ALL) count++
@@ -310,7 +347,10 @@ data class UnifiedTransactionItem(
     val originalAmountMinor: Long? = null,
     val exchangeRate: String? = null,
     val ledgerDebitMinor: Long? = null,
-    val ledgerCreditMinor: Long? = null
+    val ledgerCreditMinor: Long? = null,
+    val productIds: Set<String> = emptySet(),
+    val categoryIds: Set<String> = emptySet(),
+    val isRetailSale: Boolean = false
 )
 
 data class LineItemDetail(

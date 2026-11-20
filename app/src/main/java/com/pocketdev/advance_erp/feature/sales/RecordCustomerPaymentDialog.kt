@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import android.app.DatePickerDialog
 import com.pocketdev.advance_erp.core.designsystem.StatusError
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.BorderStroke
@@ -29,10 +30,20 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.ui.platform.LocalContext
+import com.pocketdev.advance_erp.core.model.AppLanguage
+import com.pocketdev.advance_erp.core.model.CurrencyCode
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -121,7 +132,36 @@ fun RecordCustomerPaymentDialog(
     var selectedCustomerId by remember {
         mutableStateOf(preselectedInvoice?.customerId ?: preselectedCustomerId ?: customers.firstOrNull()?.id ?: "")
     }
+    var customerSearchQuery by rememberSaveable { mutableStateOf("") }
     var customerExpanded by rememberSaveable { mutableStateOf(false) }
+    var selectedPaymentDateMillis by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
+    val context = LocalContext.current
+    val lang = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH
+    val paymentDateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.US) }
+
+    fun openPaymentDatePicker() {
+        val cal = Calendar.getInstance().apply { timeInMillis = selectedPaymentDateMillis }
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val chosen = Calendar.getInstance().apply {
+                    set(year, month, dayOfMonth, 12, 0, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                selectedPaymentDateMillis = chosen.timeInMillis
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    val filteredCustomers = remember(customers, customerSearchQuery) {
+        val q = customerSearchQuery.trim()
+        if (q.isBlank()) customers else customers.filter {
+            it.name.contains(q, true) || it.customerCode.contains(q, true) || it.phone.contains(q, true)
+        }
+    }
 
     var amountStr by remember {
         mutableStateOf(
@@ -272,7 +312,7 @@ fun RecordCustomerPaymentDialog(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Customer Selector
+                    // Customer Selector & Search
                     item {
                         Text(
                             text = if (isBangla) "গ্রাহক / CUSTOMER *" else "CUSTOMER *",
@@ -281,12 +321,31 @@ fun RecordCustomerPaymentDialog(
                             color = TextSecondary
                         )
                         Spacer(modifier = Modifier.height(4.dp))
+                        if (customers.size > 1) {
+                            OutlinedTextField(
+                                value = customerSearchQuery,
+                                onValueChange = { customerSearchQuery = it },
+                                placeholder = { Text(if (isBangla) "নাম, কোড বা ফোন দিয়ে গ্রাহক খুঁজুন..." else "Search customer by name, code, phone...", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                trailingIcon = {
+                                    if (customerSearchQuery.isNotBlank()) {
+                                        IconButton(onClick = { customerSearchQuery = "" }, modifier = Modifier.size(28.dp)) {
+                                            Icon(Icons.Outlined.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
                         ExposedDropdownMenuBox(
                             expanded = customerExpanded,
                             onExpandedChange = { customerExpanded = it }
                         ) {
                             OutlinedTextField(
-                                value = selectedCustomer?.let { "${it.name} (${it.phone})" } ?: "Select Customer",
+                                value = selectedCustomer?.let { "${it.name} (${it.phone})" } ?: if (isBangla) "গ্রাহক নির্বাচন করুন" else "Select Customer",
                                 onValueChange = {},
                                 readOnly = true,
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = customerExpanded) },
@@ -299,25 +358,61 @@ fun RecordCustomerPaymentDialog(
                                 expanded = customerExpanded,
                                 onDismissRequest = { customerExpanded = false }
                             ) {
-                                customers.forEach { cust ->
+                                if (filteredCustomers.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = { Text("${cust.name} (Due: ৳${Formatters.formatMinorUnit(cust.outstandingBalanceMinor)})") },
-                                        onClick = {
-                                            selectedCustomerId = cust.id
-                                            customerExpanded = false
-                                            if (!amountManuallyEdited && preselectedInvoice == null) {
-                                                amountStr = if (cust.outstandingBalanceMinor > 0L) {
-                                                    (cust.outstandingBalanceMinor / 100.0).toString()
-                                                } else "0.00"
+                                        text = { Text(if (isBangla) "কোনো গ্রাহক পাওয়া যায়নি" else "No matching customers") },
+                                        onClick = { customerExpanded = false }
+                                    )
+                                } else {
+                                    filteredCustomers.forEach { cust ->
+                                        DropdownMenuItem(
+                                            text = { Text("${cust.name} (${cust.customerCode}) • Due: ৳${Formatters.formatMinorUnit(cust.outstandingBalanceMinor)}") },
+                                            onClick = {
+                                                selectedCustomerId = cust.id
+                                                customerExpanded = false
+                                                if (!amountManuallyEdited && preselectedInvoice == null) {
+                                                    amountStr = if (cust.outstandingBalanceMinor > 0L) {
+                                                        (cust.outstandingBalanceMinor / 100.0).toString()
+                                                    } else "0.00"
+                                                }
                                             }
-                                        }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        selectedCustomer?.let { cust ->
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (cust.outstandingBalanceMinor > 0L) StatusError.copy(alpha = 0.08f) else StatusSuccess.copy(alpha = 0.08f),
+                                border = BorderStroke(1.dp, (if (cust.outstandingBalanceMinor > 0L) StatusError else StatusSuccess).copy(alpha = 0.28f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (isBangla) "বর্তমান বকেয়া (Outstanding Due):" else "Current Outstanding Due:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextSecondary
+                                    )
+                                    Text(
+                                        text = Formatters.formatMoney(cust.outstandingBalanceMinor, CurrencyCode.BDT, lang),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (cust.outstandingBalanceMinor > 0L) StatusError else StatusSuccess
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Amount
+                    // Amount & Payment Date
                     item {
                         OutlinedTextField(
                             value = amountStr,
@@ -330,6 +425,38 @@ fun RecordCustomerPaymentDialog(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp)
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { openPaymentDatePicker() },
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, ERPDivider)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.CalendarMonth, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isBangla) "পেমেন্টের তারিখ" else "Payment Date",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = TextSecondary
+                                    )
+                                }
+                                Text(
+                                    text = if (isBangla) Formatters.toBanglaDigits(paymentDateFormat.format(Date(selectedPaymentDateMillis))) else paymentDateFormat.format(Date(selectedPaymentDateMillis)),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                            }
+                        }
                     }
 
                     // Receiving Channel & Account Picker
@@ -651,7 +778,7 @@ fun RecordCustomerPaymentDialog(
                                     amountMinor = amount,
                                     paymentMethod = selectedPaymentMethod,
                                     accountId = selectedAccount.id,
-                                    paymentDate = System.currentTimeMillis(),
+                                    paymentDate = selectedPaymentDateMillis,
                                     referenceNote = referenceNote.ifBlank { null },
                                     allocations = allocations
                                 )

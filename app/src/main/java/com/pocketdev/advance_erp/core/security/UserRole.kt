@@ -35,4 +35,24 @@ object SecurityManager {
     fun canPerformSensitiveOperation(role: UserRole): Boolean {
         return role == UserRole.OWNER_ADMIN || role == UserRole.MANAGER
     }
+
+    fun canMakePayment(role: UserRole): Boolean {
+        return role in setOf(UserRole.OWNER_ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT, UserRole.PURCHASE_OPERATOR)
+    }
+
+    fun canReceivePayment(role: UserRole): Boolean {
+        return role in setOf(UserRole.OWNER_ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT, UserRole.SALES_OPERATOR)
+    }
+
+    fun canRecordExpense(role: UserRole): Boolean {
+        return role in setOf(UserRole.OWNER_ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT)
+    }
+
+    fun canPostJournal(role: UserRole): Boolean {
+        return role in setOf(UserRole.OWNER_ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT)
+    }
+
+    fun canExportReport(role: UserRole): Boolean {
+        return role != UserRole.INVENTORY_OPERATOR
+    }
 }

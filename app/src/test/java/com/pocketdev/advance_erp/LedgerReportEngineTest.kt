@@ -126,4 +126,38 @@ class LedgerReportEngineTest {
         assertEquals(1000L,report.summary.totalSalesMinor)
         assertEquals(0L,report.summary.totalReceivedMinor)
     }
+
+    @Test fun extendedFiltersFilterByProductCategoryPaymentMethodDirectionAndChannel() {
+        val wholesaleInv = row("inv-w", "INVOICE", 150000).copy(
+            productIds = setOf("prod-1"),
+            categoryIds = setOf("cat-1"),
+            isRetailSale = false
+        )
+        val retailInv = row("inv-r", "INVOICE", 50000).copy(
+            productIds = setOf("prod-2"),
+            categoryIds = setOf("cat-2"),
+            isRetailSale = true
+        )
+        val cashPay = row("pay-c", "PAYMENT", 40000, day(8)).copy(
+            paymentMethod = "CASH"
+        )
+        val bankPay = row("pay-b", "SUPPLIER_PAYMENT", 30000, day(8)).copy(
+            paymentMethod = "BANK_TT",
+            isInflow = false
+        )
+        val allRows = listOf(wholesaleInv, retailInv, cashPay, bankPay)
+        val base = ControlCenterFilterState(dateRangeOption = DateRangeOption.ALL_TIME)
+
+        assertEquals(listOf("inv-w"), LedgerReportEngine.build(allRows, base.copy(selectedProductId = "prod-1"), null, day(19)).transactions.map { it.id })
+        assertEquals(listOf("inv-r"), LedgerReportEngine.build(allRows, base.copy(selectedCategoryId = "cat-2"), null, day(19)).transactions.map { it.id })
+        assertEquals(listOf("pay-c"), LedgerReportEngine.build(allRows, base.copy(paymentMethodFilter = PaymentMethodFilter.CASH), null, day(19)).transactions.map { it.id })
+        assertEquals(listOf("pay-b"), LedgerReportEngine.build(allRows, base.copy(paymentMethodFilter = PaymentMethodFilter.BANK), null, day(19)).transactions.map { it.id })
+        assertEquals(listOf("pay-b"), LedgerReportEngine.build(allRows, base.copy(transactionDirection = TransactionDirectionFilter.OUTFLOW), null, day(19)).transactions.map { it.id })
+        assertEquals(listOf("inv-w"), LedgerReportEngine.build(allRows, base.copy(saleChannel = SaleChannelFilter.WHOLESALE), null, day(19)).transactions.map { it.id })
+        assertEquals(listOf("inv-r"), LedgerReportEngine.build(allRows, base.copy(saleChannel = SaleChannelFilter.RETAIL), null, day(19)).transactions.map { it.id })
+
+        val sortedByType = LedgerReportEngine.build(allRows, base.copy(sortBy = SortOption.TRANSACTION_TYPE), null, day(19)).transactions
+        assertEquals(4, sortedByType.size)
+        assertEquals(ReportCategory.SALES, sortedByType.first().category)
+    }
 }

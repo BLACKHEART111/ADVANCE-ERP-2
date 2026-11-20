@@ -1,23 +1,20 @@
 package com.pocketdev.advance_erp.feature.controlcenter
 
-import com.pocketdev.advance_erp.core.designsystem.StatusWarning
-import com.pocketdev.advance_erp.core.designsystem.StatusInfo
-import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
-import com.pocketdev.advance_erp.core.designsystem.StatusError
-import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
-import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerPanel
-import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerRow
-import com.pocketdev.advance_erp.feature.sales.RecordCustomerPaymentDialog
-import com.pocketdev.advance_erp.feature.imports.RecordSupplierPaymentDialog
-import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
-import com.pocketdev.advance_erp.core.model.CurrencyCode
-import com.pocketdev.advance_erp.domain.model.FinancialMetricFilter
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.saveable.rememberSaveable
-import android.app.DatePickerDialog
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,29 +24,46 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Clear
-import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.EditCalendar
-import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.MoneyOff
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Print
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -60,53 +74,114 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.ERPEmptyState
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
+import com.pocketdev.advance_erp.core.designsystem.PrimaryPurpleContainer
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusInfoContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
 import com.pocketdev.advance_erp.core.model.AppLanguage
+import com.pocketdev.advance_erp.core.model.CurrencyCode
+import com.pocketdev.advance_erp.core.pdf.PdfViewerDialog
 import com.pocketdev.advance_erp.core.security.SecurityManager
+import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import com.pocketdev.advance_erp.core.util.Formatters
-import com.pocketdev.advance_erp.domain.model.ControlCenterFilterState
-import com.pocketdev.advance_erp.domain.model.DateRangeOption
+import com.pocketdev.advance_erp.domain.model.FinancialMetricFilter
 import com.pocketdev.advance_erp.domain.model.ReportCategory
+import com.pocketdev.advance_erp.domain.model.SortOption
 import com.pocketdev.advance_erp.domain.model.UnifiedTransactionItem
-import com.pocketdev.advance_erp.feature.controlcenter.components.ControlCenterFilterDialog
+import com.pocketdev.advance_erp.feature.controlcenter.components.ControlCenterFilterDrawer
 import com.pocketdev.advance_erp.feature.controlcenter.components.ControlCenterSummaryCards
 import com.pocketdev.advance_erp.feature.controlcenter.components.ControlCenterTransactionDetailDialog
-import com.pocketdev.advance_erp.feature.controlcenter.components.CustomDateRangeDialog
+import com.pocketdev.advance_erp.feature.controlcenter.components.LedgerExpenseEntryDialog
+import com.pocketdev.advance_erp.feature.controlcenter.components.LedgerJournalEntryDialog
+import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerPanel
+import com.pocketdev.advance_erp.feature.controlcenter.components.PartyLedgerRow
+import com.pocketdev.advance_erp.feature.imports.RecordSupplierPaymentDialog
+import com.pocketdev.advance_erp.feature.inventory.BarcodeQrScannerDialog
+import com.pocketdev.advance_erp.feature.sales.RecordCustomerPaymentDialog
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+enum class CentralLedgerTab(val titleEn: String, val titleBn: String) {
+    SUMMARY("Summary", "সারসংক্ষেপ"),
+    TRANSACTIONS("Transactions", "লেনদেন"),
+    OUTSTANDING_DUE("Outstanding Due", "বকেয়া"),
+    STATEMENTS("Statements", "স্টেটমেন্ট")
+}
+
+private enum class DueTabFilter(val titleEn: String, val titleBn: String) {
+    ALL("All Dues", "সকল বকেয়া"),
+    RECEIVABLE("Receivable", "পাওনা"),
+    PAYABLE("Payable", "দেনা")
+}
+
+private data class LedgerFabAction(
+    val label: String,
+    val icon: ImageVector,
+    val iconTint: Color,
+    val containerColor: Color,
+    val testTag: String,
+    val onClick: () -> Unit
+)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun BusinessControlCenterScreen(
     modifier: Modifier = Modifier,
@@ -116,188 +191,440 @@ fun BusinessControlCenterScreen(
     val context = LocalContext.current
     val filterState by viewModel.filterState.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
+    val actionMessage by viewModel.actionMessage.collectAsState()
     val detailLoading by viewModel.detailLoading.collectAsState()
     val report by viewModel.report.collectAsState()
     val ready = !report.isLoading && report.error == null && report.filter == filterState
     val transactions = if (ready) report.transactions else emptyList()
     val summary = report.summary
+
     val paymentInvoices by viewModel.paymentInvoices.collectAsState()
     val paymentOrders by viewModel.paymentOrders.collectAsState()
     val paymentSaving by viewModel.paymentSaving.collectAsState()
     val paymentError by viewModel.paymentError.collectAsState()
-    var showPayment by rememberSaveable { mutableStateOf(false) }
-    var visibleCount by remember(filterState) { mutableStateOf(100) }
-    val ledgerMode = filterState.category in setOf(ReportCategory.CUSTOMER_LEDGER, ReportCategory.SUPPLIER_LEDGER)
     val customers by viewModel.customers.collectAsState()
     val suppliers by viewModel.suppliers.collectAsState()
     val warehouses by viewModel.warehouses.collectAsState()
+    val categories by viewModel.categories.collectAsState()
+    val products by viewModel.products.collectAsState()
+    val accounts by viewModel.accounts.collectAsState()
+    val liquidAccounts by viewModel.liquidAccounts.collectAsState()
     val savedPresets by viewModel.savedPresets.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
     val language by viewModel.appLanguage.collectAsState()
     val currencyCode = CurrencyCode.BDT
     val selectedDetail by viewModel.selectedTransactionDetail.collectAsState()
     val isExporting by viewModel.isExporting.collectAsState()
+    val nextCustomerPaymentNumber by viewModel.nextCustomerPaymentNumber.collectAsState()
+    val nextSupplierPaymentNumber by viewModel.nextSupplierPaymentNumber.collectAsState()
+    val previewPdfFile by viewModel.previewPdfFile.collectAsState()
 
     val isBn = language == AppLanguage.BANGLA
-    val profitVisibility = rememberBiometricCostVisibility("ledger-profit", SecurityManager.canViewProfit(userRole), isBn)
-    val canViewProfit = SecurityManager.canViewProfit(userRole) && profitVisibility.isVisible
+    val isOwnerAdmin = SecurityManager.canViewProfit(userRole)
+    val profitVisibility = rememberBiometricCostVisibility("ledger-profit", isOwnerAdmin, isBn)
+    val canViewProfit = isOwnerAdmin && profitVisibility.isVisible
     val stockVisibility = rememberBiometricCostVisibility("ledger-stock", SecurityManager.canViewCost(userRole), isBn)
     val exportVisibility = rememberBiometricCostVisibility("ledger-export", SecurityManager.canViewCost(userRole), isBn)
     val profitFilterLocked = filterState.financialMetric in setOf(FinancialMetricFilter.PROFIT, FinancialMetricFilter.LOSS) && !canViewProfit
 
-    var showFilterDialog by rememberSaveable { mutableStateOf(false) }
-    var showCustomDateRangeDialog by rememberSaveable { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableStateOf(CentralLedgerTab.SUMMARY) }
+    var visibleCount by remember(filterState) { mutableIntStateOf(100) }
+
+    var showFilterDrawer by rememberSaveable { mutableStateOf(false) }
     var showExportSheet by rememberSaveable { mutableStateOf(false) }
     var showPresetsMenu by rememberSaveable { mutableStateOf(false) }
+    var showSortMenu by rememberSaveable { mutableStateOf(false) }
+    var showSearchField by rememberSaveable { mutableStateOf(false) }
+    var showScannerDialog by rememberSaveable { mutableStateOf(false) }
+    var isFabExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // Collapsible summary states
+    var isSummaryMetricsExpanded by rememberSaveable { mutableStateOf(false) }
+    var isSummaryAutoCollapsed by remember { mutableStateOf(false) }
+
+    // Workflow Dialogs
+    var showMakePaymentDialog by rememberSaveable { mutableStateOf(false) }
+    var preselectedSupplierForPayment by rememberSaveable { mutableStateOf<String?>(null) }
+    var showReceivePaymentDialog by rememberSaveable { mutableStateOf(false) }
+    var preselectedCustomerForPayment by rememberSaveable { mutableStateOf<String?>(null) }
+    var showExpenseDialog by rememberSaveable { mutableStateOf(false) }
+    var showJournalDialog by rememberSaveable { mutableStateOf(false) }
+    var dueTabFilter by rememberSaveable { mutableStateOf(DueTabFilter.ALL) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val listState = rememberLazyListState()
+    val isScrolledDown by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 80 }
+    }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < -18f) {
+                    isSummaryMetricsExpanded = false
+                    if (isScrolledDown) {
+                        isSummaryAutoCollapsed = true
+                    }
+                } else if (available.y > 18f && !isScrolledDown) {
+                    isSummaryAutoCollapsed = false
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(isScrolledDown) {
+        if (!isScrolledDown) {
+            isSummaryAutoCollapsed = false
+        }
+    }
 
     LaunchedEffect(initialCategory) {
-        if (initialCategory != null) viewModel.selectCategory(initialCategory)
+        if (initialCategory != null) {
+            viewModel.selectCategory(initialCategory)
+            if (initialCategory in setOf(ReportCategory.CUSTOMER_LEDGER, ReportCategory.SUPPLIER_LEDGER)) {
+                selectedTab = CentralLedgerTab.STATEMENTS
+            }
+        }
+    }
+
+    LaunchedEffect(actionMessage) {
+        actionMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearActionMessage()
+        }
+    }
+
+    BackHandler(enabled = isFabExpanded) {
+        isFabExpanded = false
     }
 
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.US) }
 
-    fun formatCustomDate(millis: Long?): String {
-        if (millis == null) return if (isBn) "নির্বাচন" else "Select"
-        val formatted = dateFormat.format(Date(millis))
-        return if (isBn) Formatters.toBanglaDigits(formatted) else formatted
-    }
-
-    // Helper for Custom Date Picker - End Date
-    fun openEndDatePicker(startDateMillis: Long?) {
-        val cal = Calendar.getInstance()
-        val currentEnd = filterState.customEndDate ?: System.currentTimeMillis()
-        val initialEnd = if (startDateMillis != null && currentEnd < startDateMillis) startDateMillis else currentEnd
-        cal.timeInMillis = initialEnd
-
-        val datePicker = DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val endCal = Calendar.getInstance().apply {
-                    set(year, month, dayOfMonth, 23, 59, 59)
-                    set(Calendar.MILLISECOND, 999)
-                }
-                val start = startDateMillis ?: filterState.customStartDate ?: (endCal.timeInMillis - 7L * 86400000L)
-                viewModel.setCustomDateRange(start, endCal.timeInMillis)
-            },
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH),
-            cal.get(Calendar.DAY_OF_MONTH)
-        )
-        datePicker.setTitle(if (isBn) "শেষের তারিখ নির্বাচন করুন (End Date)" else "Select End Date")
-        if (startDateMillis != null) {
-            datePicker.datePicker.minDate = startDateMillis
+    val fabActions = buildList {
+        if (SecurityManager.canExportReport(userRole)) {
+            add(
+                LedgerFabAction(
+                    label = if (isBn) "রিপোর্ট / এক্সপোর্ট" else "Export Report",
+                    icon = Icons.Outlined.PictureAsPdf,
+                    iconTint = PrimaryPurple,
+                    containerColor = PrimaryPurpleContainer,
+                    testTag = "ledger_fab_export",
+                    onClick = { if (ready && !profitFilterLocked) showExportSheet = true }
+                )
+            )
         }
-        datePicker.show()
-    }
-
-    // Helper for Custom Date Picker - Start Date
-    fun openCustomDatePicker(isStart: Boolean, chainToEnd: Boolean = false) {
-        if (!isStart) {
-            openEndDatePicker(filterState.customStartDate)
-            return
+        if (SecurityManager.canMakePayment(userRole)) {
+            add(
+                LedgerFabAction(
+                    label = if (isBn) "পেমেন্ট করুন" else "Make Payment",
+                    icon = Icons.Outlined.Payments,
+                    iconTint = SecondaryTeal,
+                    containerColor = StatusInfoContainer,
+                    testTag = "ledger_fab_make_payment",
+                    onClick = {
+                        viewModel.clearPaymentError()
+                        viewModel.refreshNextPaymentNumbers()
+                        preselectedSupplierForPayment = filterState.selectedSupplierId
+                        showMakePaymentDialog = true
+                    }
+                )
+            )
         }
-        val cal = Calendar.getInstance()
-        val currentMillis = filterState.customStartDate ?: (System.currentTimeMillis() - 7L * 86400000L)
-        cal.timeInMillis = currentMillis
-
-        val datePicker = DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                val selectedCal = Calendar.getInstance().apply {
-                    set(year, month, dayOfMonth, 0, 0, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
-                val selectedStart = selectedCal.timeInMillis
-                if (chainToEnd) {
-                    openEndDatePicker(selectedStart)
-                } else {
-                    viewModel.setCustomStartDate(selectedStart)
-                }
-            },
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH),
-            cal.get(Calendar.DAY_OF_MONTH)
-        )
-        datePicker.setTitle(if (isBn) "শুরুর তারিখ নির্বাচন করুন (Start Date)" else "Select Start Date")
-        datePicker.show()
+        if (SecurityManager.canReceivePayment(userRole)) {
+            add(
+                LedgerFabAction(
+                    label = if (isBn) "টাকা গ্রহণ" else "Receive Payment",
+                    icon = Icons.Outlined.AccountBalanceWallet,
+                    iconTint = StatusSuccess,
+                    containerColor = StatusSuccessContainer,
+                    testTag = "ledger_fab_receive_payment",
+                    onClick = {
+                        viewModel.clearPaymentError()
+                        viewModel.refreshNextPaymentNumbers()
+                        preselectedCustomerForPayment = filterState.selectedCustomerId
+                        showReceivePaymentDialog = true
+                    }
+                )
+            )
+        }
+        if (SecurityManager.canRecordExpense(userRole)) {
+            add(
+                LedgerFabAction(
+                    label = if (isBn) "ব্যয় এন্ট্রি" else "Expense Entry",
+                    icon = Icons.Outlined.MoneyOff,
+                    iconTint = StatusWarning,
+                    containerColor = StatusWarningContainer,
+                    testTag = "ledger_fab_expense",
+                    onClick = {
+                        viewModel.clearPaymentError()
+                        showExpenseDialog = true
+                    }
+                )
+            )
+        }
+        if (SecurityManager.canPostJournal(userRole)) {
+            add(
+                LedgerFabAction(
+                    label = if (isBn) "জার্নাল এন্ট্রি" else "Journal Entry",
+                    icon = Icons.Outlined.EditNote,
+                    iconTint = PrimaryPurple,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    testTag = "ledger_fab_journal",
+                    onClick = {
+                        viewModel.clearPaymentError()
+                        showJournalDialog = true
+                    }
+                )
+            )
+        }
     }
 
-    Column(
+    var swipeDragX by remember { mutableFloatStateOf(0f) }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(ERPBackground)
-    ) {
-        // Compact Top Action Strip (Replaces tall duplicate title block)
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Subtitle / Scope indicator
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = PrimaryPurple.copy(alpha = 0.12f),
-                            modifier = Modifier.size(26.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Assessment,
-                                contentDescription = null,
-                                tint = PrimaryPurple,
-                                modifier = Modifier
-                                    .padding(4.dp)
-                                    .size(16.dp)
-                            )
+            .pointerInput(showFilterDrawer) {
+                detectHorizontalDragGestures(
+                    onDragStart = { swipeDragX = 0f },
+                    onDragCancel = { swipeDragX = 0f },
+                    onDragEnd = {
+                        if (swipeDragX < -90f && !showFilterDrawer) {
+                            showFilterDrawer = true
                         }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text(
-                                text = if (isBn) "কেন্দ্রীয় লেজার ও স্টেটমেন্ট" else "Central Ledger & Reports",
-                                style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.5.sp),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1
-                            )
-                            Text(
-                                text = if (isBn) "রিয়েলটাইম ফিল্টারিং ও এক্সপোর্ট" else "Real-time filters & export",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1
-                            )
+                        swipeDragX = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        swipeDragX += dragAmount
+                    }
+                )
+            }
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 1. Segmented 4-Tab Navigation Strip
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = ERPBackground,
+                        border = BorderStroke(1.dp, ERPDivider.copy(alpha = 0.7f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("ledger_segmented_tabs")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            CentralLedgerTab.entries.forEach { tab ->
+                                val isSel = selectedTab == tab
+                                val tabWeight = if (isBn) 1f else when (tab) {
+                                    CentralLedgerTab.SUMMARY -> 0.88f
+                                    CentralLedgerTab.TRANSACTIONS -> 1.12f
+                                    CentralLedgerTab.OUTSTANDING_DUE -> 1.38f
+                                    CentralLedgerTab.STATEMENTS -> 1.02f
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(tabWeight)
+                                        .clip(RoundedCornerShape(11.dp))
+                                        .background(if (isSel) PrimaryPurple else Color.Transparent)
+                                        .clickable {
+                                            selectedTab = tab
+                                            if (tab == CentralLedgerTab.STATEMENTS &&
+                                                filterState.category !in setOf(ReportCategory.CUSTOMER_LEDGER, ReportCategory.SUPPLIER_LEDGER)
+                                            ) {
+                                                viewModel.selectCategory(ReportCategory.CUSTOMER_LEDGER)
+                                            } else if (tab != CentralLedgerTab.STATEMENTS &&
+                                                filterState.category in setOf(ReportCategory.CUSTOMER_LEDGER, ReportCategory.SUPPLIER_LEDGER) &&
+                                                filterState.selectedCustomerId == null && filterState.selectedSupplierId == null
+                                            ) {
+                                                viewModel.selectCategory(ReportCategory.ALL_TRANSACTIONS)
+                                            }
+                                        }
+                                        .padding(vertical = 8.dp, horizontal = if (isBn) 4.dp else 2.dp)
+                                        .testTag("ledger_tab_${tab.name}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (isBn) tab.titleBn else tab.titleEn,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = if (isBn) 11.5.sp else 10.5.sp
+                                        ),
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.SemiBold,
+                                        color = if (isSel) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    // Top Action buttons: Presets Menu + Export Button (Fixed height, no vertical stretch)
+                    // 2. Compact Action & Active-Filter Control Row (replaces large chip strips)
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (isExporting) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(2.dp))
+                        // Date Range Selector Pill (opens Filter Drawer)
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { showFilterDrawer = true }
+                                .testTag("ledger_date_pill"),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, ERPDivider)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.CalendarMonth,
+                                        contentDescription = null,
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isBn) filterState.dateRangeOption.titleBn else filterState.dateRangeOption.titleEn,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        // Search toggle
+                        Surface(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { showSearchField = !showSearchField }
+                                .testTag("ledger_search_toggle"),
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (showSearchField || filterState.searchQuery.isNotBlank()) PrimaryPurple.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, if (showSearchField || filterState.searchQuery.isNotBlank()) PrimaryPurple else ERPDivider)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Search,
+                                    contentDescription = "Search",
+                                    tint = if (showSearchField || filterState.searchQuery.isNotBlank()) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // QR / Barcode Scanner shortcut
+                        Surface(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { showScannerDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, ERPDivider)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Outlined.QrCodeScanner,
+                                    contentDescription = "QR / Barcode Search",
+                                    tint = SecondaryTeal,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // Filter Drawer Icon Button with Active Count Badge
+                        BadgedBox(
+                            badge = {
+                                if (filterState.activeFilterCount > 0) {
+                                    Badge(
+                                        containerColor = StatusError,
+                                        contentColor = Color.White
+                                    ) {
+                                        Text(
+                                            text = filterState.activeFilterCount.toString(),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { showFilterDrawer = true }
+                                    .testTag("ledger_filter_button"),
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (filterState.activeFilterCount > 0) PrimaryPurple.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (filterState.activeFilterCount > 0) PrimaryPurple else ERPDivider
+                                )
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.FilterList,
+                                        contentDescription = "Open Filter Drawer",
+                                        tint = if (filterState.activeFilterCount > 0) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
 
                         // Presets Menu Button
                         Box {
-                            IconButton(
-                                onClick = { showPresetsMenu = true },
-                                modifier = Modifier.size(32.dp)
+                            Surface(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { showPresetsMenu = true },
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, ERPDivider)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Bookmark,
-                                    contentDescription = "Saved Presets",
-                                    tint = if (savedPresets.isNotEmpty()) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.MoreVert,
+                                        contentDescription = "Saved Presets",
+                                        tint = if (savedPresets.isNotEmpty()) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                             DropdownMenu(
                                 expanded = showPresetsMenu,
@@ -311,10 +638,14 @@ fun BusinessControlCenterScreen(
                                 } else {
                                     savedPresets.forEach { preset ->
                                         DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Outlined.Bookmark, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp)) },
                                             text = {
                                                 Column {
                                                     Text(preset.name, fontWeight = FontWeight.Bold)
-                                                    Text(preset.filterState.category.titleEn, style = MaterialTheme.typography.labelSmall)
+                                                    Text(
+                                                        text = if (isBn) preset.filterState.category.titleBn else preset.filterState.category.titleEn,
+                                                        style = MaterialTheme.typography.labelSmall
+                                                    )
                                                 }
                                             },
                                             onClick = {
@@ -326,489 +657,913 @@ fun BusinessControlCenterScreen(
                                 }
                             }
                         }
-
-                        // Export & Share Button (Compact & Sturdy)
-                        Button(
-                            onClick = { if (ready) showExportSheet = true },
-                            enabled = ready && !isExporting && !profitFilterLocked,
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                            modifier = Modifier.height(32.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = MaterialTheme.colorScheme.onPrimary)
-                        ) {
-                            Icon(imageVector = Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (isBn) "এক্সপোর্ট" else "Export", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
-                }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 5.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
-
-                // Date Range Horizontal Selector
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (isBn) "তারিখ (Date Range):" else "Date Range:",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (filterState.dateRangeOption == DateRangeOption.CUSTOM) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            // Start Date Pill (Clickable directly for Start Date)
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = PrimaryPurple.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.6f)),
-                                modifier = Modifier.clickable { openCustomDatePicker(isStart = true, chainToEnd = false) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.CalendarMonth,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(11.dp),
-                                        tint = PrimaryPurple
-                                    )
-                                    Text(
-                                        text = "${if (isBn) "শুরু:" else "Start:"} ${formatCustomDate(filterState.customStartDate)}",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                        color = PrimaryPurple,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            Text(
-                                text = "→",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            // End Date Pill (Clickable directly for End Date)
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = SecondaryTeal.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.6f)),
-                                modifier = Modifier.clickable { openCustomDatePicker(isStart = false, chainToEnd = false) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Event,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(11.dp),
-                                        tint = SecondaryTeal
-                                    )
-                                    Text(
-                                        text = "${if (isBn) "শেষ:" else "End:"} ${formatCustomDate(filterState.customEndDate)}",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                                        color = SecondaryTeal,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            // Edit Icon Button to open CustomDateRangeDialog
-                            IconButton(
-                                onClick = { showCustomDateRangeDialog = true },
-                                modifier = Modifier.size(20.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.EditCalendar,
-                                    contentDescription = "Edit Date Range",
-                                    modifier = Modifier.size(13.dp),
-                                    tint = PrimaryPurple
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    contentPadding = PaddingValues(end = 8.dp)
-                ) {
-                    items(DateRangeOption.entries.toTypedArray()) { option ->
-                        val isSelected = filterState.dateRangeOption == option
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                if (option == DateRangeOption.CUSTOM) {
-                                    showCustomDateRangeDialog = true
-                                } else {
-                                    viewModel.selectDateRange(option)
-                                }
-                            },
-                            leadingIcon = if (isSelected) {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp),
-                                        tint = Color.White
-                                    )
-                                }
-                            } else if (option == DateRangeOption.CUSTOM) {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Outlined.CalendarMonth,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp),
-                                        tint = PrimaryPurple
-                                    )
-                                }
-                            } else null,
-                            label = {
-                                Text(
-                                    text = if (isBn) option.titleBn else option.titleEn,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 11.5.sp
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                labelColor = MaterialTheme.colorScheme.onSurface,
-                                selectedContainerColor = PrimaryPurple,
-                                selectedLabelColor = Color.White
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = isSelected,
-                                borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                selectedBorderColor = PrimaryPurple,
-                                borderWidth = 1.dp,
-                                selectedBorderWidth = 1.5.dp
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(3.dp))
-
-                // Category Filter Horizontal Row
-                Text(
-                    text = if (isBn) "ক্যাটাগরি (Report Category):" else "Report Category:",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    contentPadding = PaddingValues(end = 8.dp)
-                ) {
-                    items(ReportCategory.entries.toTypedArray()) { cat ->
-                        val isSelected = filterState.category == cat
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.selectCategory(cat) },
-                            leadingIcon = if (isSelected) {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp),
-                                        tint = Color.White
-                                    )
-                                }
-                            } else null,
-                            label = {
-                                Text(
-                                    text = if (isBn) cat.titleBn else cat.titleEn,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 11.5.sp
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                labelColor = MaterialTheme.colorScheme.onSurface,
-                                selectedContainerColor = SecondaryTeal,
-                                selectedLabelColor = Color.White
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = isSelected,
-                                borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                selectedBorderColor = SecondaryTeal,
-                                borderWidth = 1.dp,
-                                selectedBorderWidth = 1.5.dp
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Main Scrollable Content (Compact Spacing & High Information Density)
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(top = 6.dp, bottom = 80.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // 1. Business Summary Dashboard Cards (Collapsible / Expandable)
-            if (ledgerMode) item {
-                PartyLedgerPanel(report, filterState, customers, suppliers, language, ready && !profitFilterLocked,
-                    onParty = viewModel::selectParty,
-                    onPayment = { viewModel.clearPaymentError(); showPayment = true },
-                    onShare = { viewModel.shareReminder(context, profitVisibility.isVisible) })
-            }
-            if (!ledgerMode && ready && !profitFilterLocked) {
-                item {
-                    ControlCenterSummaryCards(
-                        summary = summary,
-                        canViewProfit = canViewProfit,
-                        language = language,
-                        currencyCode = currencyCode,
-                        onCategoryClick = { viewModel.selectCategory(it) }
-                    )
-                }
-            }
-            if (SecurityManager.canViewProfit(userRole)) item {
-                androidx.compose.material3.TextButton(onClick = profitVisibility.toggle) {
-                    Text(if (isBn) { if(canViewProfit) "লাভের তথ্য লুকান" else "লাভ দেখতে fingerprint যাচাই" } else if(canViewProfit) "Hide profit" else "Verify biometric to view profit")
-                }
-            }
-            if (!ready) item {
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    if (report.error != null) {
-                        Text(report.error ?: "Ledger error", color = MaterialTheme.colorScheme.error)
-                        androidx.compose.material3.TextButton(onClick=viewModel::retry) { Text(if(isBn) "আবার চেষ্টা" else "Retry") }
-                    } else { CircularProgressIndicator(); Text(if(isBn) "হিসাব লোড হচ্ছে…" else "Loading ledger…") }
-                }
-            }
-            if (profitFilterLocked) item {
-                Text(if(isBn) "এই filter-এর ফল দেখতে লাভের biometric যাচাই করুন।" else "Authenticate profit access to view this filter.")
-            }
-
-            // 2. Compact Search & Filter Bar
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    OutlinedTextField(
-                        value = filterState.searchQuery,
-                        onValueChange = { viewModel.setSearchQuery(it) },
-                        placeholder = { Text(if (isBn) "ইনভয়েস, পিও, পার্টি বা পণ্য খুঁজুন..." else "Search ref, party, items...", fontSize = 12.sp) },
-                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        trailingIcon = {
-                            if (filterState.searchQuery.isNotBlank()) {
-                                IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.size(28.dp)) {
-                                    Icon(Icons.Outlined.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                            focusedContainerColor = MaterialTheme.colorScheme.surface
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp)
-                    )
-
-                    if (showPayment && report.statement != null) {
-        val statement = report.statement!!
-        if (statement.partyType == "CUSTOMER") RecordCustomerPaymentDialog(
-            customers=customers.filter { it.id==statement.partyId },
-            invoices=paymentInvoices.filter { it.customerId==statement.partyId && it.isPosted && it.status!="CANCELLED" },
-            preselectedCustomerId=statement.partyId, isBangla=isBn, isSaving=paymentSaving, saveError=paymentError,
-            onDismiss={if(!viewModel.paymentSaving.value) showPayment=false},
-            onSubmit={draft -> viewModel.collectPayment(draft){showPayment=false}}
-        ) else RecordSupplierPaymentDialog(
-            suppliers=suppliers.filter { it.id==statement.partyId },
-            orders=paymentOrders.filter { it.supplierId==statement.partyId && it.status !in setOf("DRAFT","CANCELLED") },
-            preselectedSupplierId=statement.partyId, dismissOnSubmit=false, isSaving=paymentSaving, saveError=paymentError,
-            onDismiss={if(!viewModel.paymentSaving.value) showPayment=false},
-            onConfirm={supplierId,orderId,amount,currency,rate,method,account,reference,notes ->
-                viewModel.paySupplier(supplierId,orderId,amount,currency,rate,method,account,reference,notes){showPayment=false}
-            }
-        )
-    }
-
-    // Filter Dialog Trigger Button with Active Count Badge
-                    BadgedBox(
-                        badge = {
-                            if (filterState.activeFilterCount > 0) {
-                                Badge(
-                                    containerColor = StatusError,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ) {
-                                    Text(filterState.activeFilterCount.toString(), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (filterState.activeFilterCount > 0) PrimaryPurple.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (filterState.activeFilterCount > 0) PrimaryPurple else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                            ),
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clickable { showFilterDialog = true }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Outlined.FilterList,
-                                    contentDescription = "Filters",
-                                    tint = if (filterState.activeFilterCount > 0) PrimaryPurple else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
                     }
 
-                    // Reset Filters Button (if active)
+                    // Active Filter Indicator Strip
                     if (filterState.activeFilterCount > 0) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = StatusErrorContainer,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, StatusError),
+                        Row(
                             modifier = Modifier
-                                .size(46.dp)
-                                .clickable { viewModel.resetFilters() }
+                                .fillMaxWidth()
+                                .testTag("ledger_active_filter_indicator"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(imageVector = Icons.Outlined.RestartAlt, contentDescription = "Reset", tint = StatusError, modifier = Modifier.size(20.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = PrimaryPurple.copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.3f)),
+                                modifier = Modifier.clickable { showFilterDrawer = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Outlined.FilterList, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    val countText = Formatters.formatNumber(filterState.activeFilterCount.toLong(), language)
+                                    val catText = if (isBn) filterState.category.titleBn else filterState.category.titleEn
+                                    Text(
+                                        text = if (isBn) "$countText টি ফিল্টার সক্রিয় • $catText" else "$countText active • $catText",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = PrimaryPurple,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            TextButton(
+                                onClick = { viewModel.resetFilters() },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                modifier = Modifier.height(26.dp)
+                            ) {
+                                Icon(Icons.Outlined.RestartAlt, contentDescription = null, tint = StatusError, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = if (isBn) "রিসেট" else "Reset",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = StatusError,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
                 }
             }
 
-            if(detailLoading) item { androidx.compose.material3.LinearProgressIndicator(modifier=Modifier.fillMaxWidth()) }
-            actionError?.let { message -> item {
-                Text(message,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-                androidx.compose.material3.TextButton(onClick=viewModel::dismissActionError) { Text(if(isBn) "বন্ধ করুন" else "Dismiss") }
-            } }
-            // 3. Transactions Count & Active Filter Indicator
-            if (!profitFilterLocked) item {
-                Column(
+            if (isExporting || detailLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
+            actionError?.let { message ->
+                Surface(
+                    color = StatusErrorContainer,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 2.dp, vertical = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(
-                        text = if (isBn) "লেনদেন তালিকা (${transactions.size} টি রেকর্ড)" else "Ledger Entries (${transactions.size} Records)",
-                        style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    val totalAmt = if (stockVisibility.isVisible) transactions.sumOf { it.amountMinor } else transactions.filterNot { it.rawType in setOf("STOCK_MOVEMENT", "STOCK_TRANSFER") }.sumOf { it.amountMinor }
-                    Text(
-                        text = "${if (isBn) "নির্বাচিত লেনদেনের অঙ্ক: " else "Selected amounts: "} ${Formatters.formatMoney(totalAmt, currencyCode, language)}",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryPurple
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(message, color = StatusError, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        TextButton(onClick = viewModel::dismissActionError) {
+                            Text(if (isBn) "বন্ধ" else "Dismiss")
+                        }
+                    }
                 }
             }
 
-            // 4. Empty State
-            if (ready && !profitFilterLocked && transactions.isEmpty()) {
-                item {
-                    ERPEmptyState(
-                        icon = Icons.Outlined.FilterList,
-                        title = if (isBn) "কোনো তথ্য পাওয়া যায়নি" else "No Records Found",
-                        message = if (isBn) "নির্বাচিত তারিখ ও ফিল্টার অনুযায়ী কোনো লেনদেন নেই।" else "Try adjusting the date range or clear some filters.",
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
-                }
-            } else {
-                // 5. Transaction Cards (Compact & Readable)
-                if (!profitFilterLocked) items(transactions.take(visibleCount), key = { it.rawType + ":" + it.id }) { item ->
-                    if (report.statement != null) PartyLedgerRow(item, language) {
-                        viewModel.openTransactionDetail(item.rawType, item.sourceId)
-                    } else if (item.rawType in setOf("STOCK_MOVEMENT", "STOCK_TRANSFER") && !stockVisibility.isVisible) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                            Text(item.referenceNumber, fontWeight=FontWeight.SemiBold)
-                            androidx.compose.material3.TextButton(onClick=stockVisibility.toggle, enabled=SecurityManager.canViewCost(userRole)) {
-                                Text(if(isBn) "খরচ দেখতে fingerprint যাচাই" else "Verify biometric to view cost")
+            // 3. Main Tab Content Area
+            when (selectedTab) {
+                CentralLedgerTab.SUMMARY,
+                CentralLedgerTab.TRANSACTIONS -> {
+                    val showSummaryCards = selectedTab == CentralLedgerTab.SUMMARY
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(nestedScrollConnection)
+                            .padding(horizontal = 12.dp)
+                            .testTag("ledger_transaction_list"),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Collapsible Summary Cards (Summary tab only)
+                        if (showSummaryCards && ready && !profitFilterLocked) {
+                            item(key = "summary_cards") {
+                                AnimatedVisibility(
+                                    visible = !isSummaryAutoCollapsed,
+                                    enter = expandVertically() + fadeIn(),
+                                    exit = shrinkVertically() + fadeOut()
+                                ) {
+                                    ControlCenterSummaryCards(
+                                        summary = summary,
+                                        canViewProfit = canViewProfit,
+                                        isOwnerAdmin = isOwnerAdmin,
+                                        isExpanded = isSummaryMetricsExpanded,
+                                        onToggleExpand = { isSummaryMetricsExpanded = !isSummaryMetricsExpanded },
+                                        onUnlockProfit = profitVisibility.toggle,
+                                        language = language,
+                                        currencyCode = currencyCode,
+                                        onCategoryClick = { cat ->
+                                            viewModel.selectCategory(cat)
+                                            selectedTab = CentralLedgerTab.TRANSACTIONS
+                                        },
+                                        modifier = Modifier.testTag("ledger_summary_cards")
+                                    )
+                                }
                             }
                         }
-                    } else UnifiedTransactionCard(item, language, currencyCode, dateFormat,
-                        onClick = { viewModel.openTransactionDetail(item.rawType, item.sourceId) })
+
+                        // Sticky Search + Transactions Count & Sort Header
+                        stickyHeader(key = "sticky_search_and_header") {
+                            Surface(
+                                color = ERPBackground,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    if (showSearchField || selectedTab == CentralLedgerTab.TRANSACTIONS || filterState.searchQuery.isNotBlank()) {
+                                        OutlinedTextField(
+                                            value = filterState.searchQuery,
+                                            onValueChange = { viewModel.setSearchQuery(it) },
+                                            placeholder = {
+                                                Text(
+                                                    text = if (isBn) "ইনভয়েস, পেমেন্ট নং, গ্রাহক বা রেফারেন্স খুঁজুন..." else "Search invoice, payment #, party, ref...",
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            },
+                                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                            trailingIcon = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (filterState.searchQuery.isNotBlank()) {
+                                                        IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.size(28.dp)) {
+                                                            Icon(Icons.Outlined.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                                        }
+                                                    }
+                                                    IconButton(onClick = { showScannerDialog = true }, modifier = Modifier.size(30.dp)) {
+                                                        Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan", tint = SecondaryTeal, modifier = Modifier.size(17.dp))
+                                                    }
+                                                }
+                                            },
+                                            singleLine = true,
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                                unfocusedBorderColor = ERPDivider
+                                            ),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(48.dp)
+                                                .testTag("ledger_sticky_search")
+                                        )
+                                    }
+
+                                    if (!profitFilterLocked) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val countFormatted = Formatters.formatNumber(transactions.size.toLong(), language)
+                                            Text(
+                                                text = if (isBn) "সকল লেনদেন ($countFormatted টি)" else "All Transactions ($countFormatted)",
+                                                style = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp),
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+
+                                            Box {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .clickable { showSortMenu = true }
+                                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    val shortSort = when (filterState.sortBy) {
+                                                        SortOption.NEWEST_FIRST -> if (isBn) "সর্বশেষ" else "Newest"
+                                                        SortOption.OLDEST_FIRST -> if (isBn) "পুরোনো" else "Oldest"
+                                                        SortOption.HIGHEST_AMOUNT -> if (isBn) "সর্বোচ্চ" else "Highest"
+                                                        SortOption.LOWEST_AMOUNT -> if (isBn) "সর্বনিম্ন" else "Lowest"
+                                                        SortOption.TRANSACTION_TYPE -> if (isBn) "ধরন" else "Type"
+                                                        SortOption.NAME_ASC -> "A–Z"
+                                                        SortOption.NAME_DESC -> "Z–A"
+                                                    }
+                                                    Text(
+                                                        text = "$shortSort ↓",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = PrimaryPurple
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = showSortMenu,
+                                                    onDismissRequest = { showSortMenu = false }
+                                                ) {
+                                                    SortOption.entries.forEach { opt ->
+                                                        DropdownMenuItem(
+                                                            text = {
+                                                                Text(
+                                                                    text = if (isBn) opt.titleBn else opt.titleEn,
+                                                                    fontWeight = if (filterState.sortBy == opt) FontWeight.Bold else FontWeight.Normal,
+                                                                    color = if (filterState.sortBy == opt) PrimaryPurple else MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                            },
+                                                            onClick = {
+                                                                viewModel.updateFilter(filterState.copy(sortBy = opt))
+                                                                showSortMenu = false
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!ready) {
+                            item(key = "loading_or_error") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (report.error != null) {
+                                        Text(report.error ?: "Ledger error", color = StatusError)
+                                        OutlinedButton(onClick = viewModel::retry) {
+                                            Text(if (isBn) "আবার চেষ্টা" else "Retry")
+                                        }
+                                    } else {
+                                        CircularProgressIndicator(color = PrimaryPurple)
+                                        Text(if (isBn) "হিসাব লোড হচ্ছে…" else "Loading ledger…")
+                                    }
+                                }
+                            }
+                        } else if (profitFilterLocked) {
+                            item(key = "profit_locked_notice") {
+                                Card(
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isBn) "এই ফিল্টারের ফল দেখতে লাভের বায়োমেট্রিক যাচাই করুন।" else "Authenticate profit access to view this filter.",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        if (isOwnerAdmin) {
+                                            Button(onClick = profitVisibility.toggle) {
+                                                Text(if (isBn) "ফিঙ্গারপ্রিন্ট যাচাই করুন" else "Verify Biometric")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (transactions.isEmpty()) {
+                            item(key = "empty_transactions") {
+                                ERPEmptyState(
+                                    icon = Icons.Outlined.FilterList,
+                                    title = if (isBn) "কোনো লেনদেন পাওয়া যায়নি" else "No Transactions Found",
+                                    message = if (isBn) "নির্বাচিত তারিখ ও ফিল্টার অনুযায়ী কোনো লেনদেন নেই।" else "Try adjusting the date range or resetting filters.",
+                                    modifier = Modifier.padding(top = 16.dp)
+                                )
+                            }
+                        } else {
+                            items(transactions.take(visibleCount), key = { it.rawType + ":" + it.id }) { item ->
+                                if (item.rawType in setOf("STOCK_MOVEMENT", "STOCK_TRANSFER") && !stockVisibility.isVisible) {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(item.primaryEntityName, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                                Text(item.referenceNumber, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            TextButton(
+                                                onClick = stockVisibility.toggle,
+                                                enabled = SecurityManager.canViewCost(userRole)
+                                            ) {
+                                                Text(if (isBn) "খরচ দেখতে যাচাই করুন" else "Verify to view cost", fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    UnifiedTransactionCard(
+                                        item = item,
+                                        language = language,
+                                        currencyCode = currencyCode,
+                                        dateFormat = dateFormat,
+                                        onClick = { viewModel.openTransactionDetail(item.rawType, item.sourceId) }
+                                    )
+                                }
+                            }
+
+                            if (transactions.size > visibleCount) {
+                                item(key = "load_more") {
+                                    OutlinedButton(
+                                        onClick = { visibleCount += 100 },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isBn) "আরও দেখুন ($visibleCount/${transactions.size})" else "Load more ($visibleCount/${transactions.size})"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                if (!profitFilterLocked && transactions.size > visibleCount) item {
-                    androidx.compose.material3.OutlinedButton(onClick={visibleCount+=100},modifier=Modifier.fillMaxWidth()) {
-                        Text(if(isBn) "আরও দেখুন ($visibleCount/${transactions.size})" else "Load more ($visibleCount/${transactions.size})")
+
+                CentralLedgerTab.OUTSTANDING_DUE -> {
+                    val dueCustomers = remember(customers, filterState.searchQuery) {
+                        val q = filterState.searchQuery.trim()
+                        customers.filter {
+                            it.outstandingBalanceMinor > 0L && (q.isEmpty() || it.name.contains(q, true) || it.customerCode.contains(q, true) || it.phone.contains(q, true))
+                        }
+                    }
+                    val dueSuppliers = remember(suppliers, filterState.searchQuery) {
+                        val q = filterState.searchQuery.trim()
+                        suppliers.filter {
+                            it.outstandingPayableMinor > 0L && (q.isEmpty() || it.companyName.contains(q, true) || it.supplierCode.contains(q, true) || it.phone.contains(q, true))
+                        }
+                    }
+                    val totalCustomerDue = dueCustomers.sumOf { it.outstandingBalanceMinor }
+                    val totalSupplierDue = dueSuppliers.sumOf { it.outstandingPayableMinor }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp)
+                            .testTag("ledger_due_list"),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Card(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = if (isBn) "গ্রাহক বকেয়া (পাওনা)" else "Receivable Due",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = Formatters.formatMoney(totalCustomerDue, currencyCode, language),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = StatusSuccess,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Card(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = if (isBn) "সাপ্লায়ার বকেয়া (দেনা)" else "Payable Due",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = Formatters.formatMoney(totalSupplierDue, currencyCode, language),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = StatusError,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                DueTabFilter.entries.forEach { opt ->
+                                    val isSel = dueTabFilter == opt
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { dueTabFilter = opt },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSel) PrimaryPurple else MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(1.dp, if (isSel) PrimaryPurple else ERPDivider)
+                                    ) {
+                                        Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = if (isBn) opt.titleBn else opt.titleEn,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (isSel) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (report.aging.isNotEmpty()) {
+                            item {
+                                Card(
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isBn) "মেয়াদভিত্তিক খোলা বিলের বকেয়া (Aging)" else "Open-Document Due Aging",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        val order = listOf("NOT_DUE", "1_30", "31_60", "61_90", "90_PLUS", "NO_DUE_DATE")
+                                        report.aging.sortedBy { order.indexOf(it.key) }.forEach { bucket ->
+                                            val label = when (bucket.key) {
+                                                "NOT_DUE" -> if (isBn) "মেয়াদ হয়নি" else "Not due"
+                                                "NO_DUE_DATE" -> if (isBn) "নির্দিষ্ট তারিখ নেই" else "No due date"
+                                                "90_PLUS" -> if (isBn) "৯০+ দিন" else "Over 90 days"
+                                                else -> bucket.key.replace('_', '–') + (if (isBn) " দিন" else " days")
+                                            }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("$label (${bucket.documents})", style = MaterialTheme.typography.bodySmall)
+                                                Text(
+                                                    Formatters.formatMoney(bucket.amountMinor, currencyCode, language),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (dueTabFilter != DueTabFilter.PAYABLE) {
+                            if (dueCustomers.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = if (isBn) "বকেয়া গ্রাহক তালিকা (${dueCustomers.size})" else "Customers with Due (${dueCustomers.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                items(dueCustomers, key = { "due-c-${it.id}" }) { cust ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.selectParty(cust.id, supplier = false)
+                                                selectedTab = CentralLedgerTab.STATEMENTS
+                                            },
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(cust.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                Text("${cust.customerCode} • ${cust.phone}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text(
+                                                    text = Formatters.formatMoney(cust.outstandingBalanceMinor, currencyCode, language),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = StatusSuccess,
+                                                    style = MaterialTheme.typography.titleSmall
+                                                )
+                                                if (SecurityManager.canReceivePayment(userRole)) {
+                                                    TextButton(
+                                                        onClick = {
+                                                            viewModel.clearPaymentError()
+                                                            viewModel.refreshNextPaymentNumbers()
+                                                            preselectedCustomerForPayment = cust.id
+                                                            showReceivePaymentDialog = true
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                        modifier = Modifier.height(26.dp)
+                                                    ) {
+                                                        Text(if (isBn) "আদায় করুন" else "Collect", fontSize = 11.sp)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (dueTabFilter != DueTabFilter.RECEIVABLE) {
+                            if (dueSuppliers.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = if (isBn) "বকেয়া সাপ্লায়ার তালিকা (${dueSuppliers.size})" else "Suppliers Payable (${dueSuppliers.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                items(dueSuppliers, key = { "due-s-${it.id}" }) { sup ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.selectParty(sup.id, supplier = true)
+                                                selectedTab = CentralLedgerTab.STATEMENTS
+                                            },
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(sup.companyName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                                Text("${sup.supplierCode} • ${sup.phone}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text(
+                                                    text = Formatters.formatMoney(sup.outstandingPayableMinor, currencyCode, language),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = StatusError,
+                                                    style = MaterialTheme.typography.titleSmall
+                                                )
+                                                if (SecurityManager.canMakePayment(userRole)) {
+                                                    TextButton(
+                                                        onClick = {
+                                                            viewModel.clearPaymentError()
+                                                            viewModel.refreshNextPaymentNumbers()
+                                                            preselectedSupplierForPayment = sup.id
+                                                            showMakePaymentDialog = true
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                        modifier = Modifier.height(26.dp)
+                                                    ) {
+                                                        Text(if (isBn) "পরিশোধ" else "Pay", fontSize = 11.sp)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (dueCustomers.isEmpty() && dueSuppliers.isEmpty()) {
+                            item {
+                                ERPEmptyState(
+                                    icon = Icons.Outlined.AccountBalanceWallet,
+                                    title = if (isBn) "কোনো বকেয়া পাওয়া যায়নি" else "No Outstanding Dues",
+                                    message = if (isBn) "সব গ্রাহক ও সরবরাহকারীর হিসাব পরিশোধিত রয়েছে।" else "All customer and supplier balances are settled."
+                                )
+                            }
+                        }
+                    }
+                }
+
+                CentralLedgerTab.STATEMENTS -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp)
+                            .testTag("ledger_statements_list"),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            PartyLedgerPanel(
+                                report = report,
+                                filter = filterState,
+                                customers = customers,
+                                suppliers = suppliers,
+                                language = language,
+                                ready = ready && !profitFilterLocked,
+                                onParty = viewModel::selectParty,
+                                onPayment = {
+                                    viewModel.clearPaymentError()
+                                    viewModel.refreshNextPaymentNumbers()
+                                    val stmt = report.statement
+                                    if (stmt?.partyType == "SUPPLIER") {
+                                        preselectedSupplierForPayment = stmt.partyId
+                                        showMakePaymentDialog = true
+                                    } else {
+                                        preselectedCustomerForPayment = stmt?.partyId
+                                        showReceivePaymentDialog = true
+                                    }
+                                },
+                                onShare = { viewModel.shareReminder(context, isOwnerAdmin && profitVisibility.isVisible) }
+                            )
+                        }
+
+                        if (report.statement != null && ready && !profitFilterLocked) {
+                            items(transactions.take(visibleCount), key = { "stmt-" + it.rawType + ":" + it.id }) { item ->
+                                PartyLedgerRow(item, language) {
+                                    viewModel.openTransactionDetail(item.rawType, item.sourceId)
+                                }
+                            }
+                            if (transactions.size > visibleCount) {
+                                item {
+                                    OutlinedButton(
+                                        onClick = { visibleCount += 100 },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(if (isBn) "আরও দেখুন ($visibleCount/${transactions.size})" else "Load more ($visibleCount/${transactions.size})")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+
+        // Scrim overlay when FAB menu is expanded
+        if (isFabExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.28f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { isFabExpanded = false }
+                    .testTag("ledger_fab_scrim")
+            )
+        }
+
+        // Snackbar Host above FAB
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 84.dp)
+        )
+
+        // Expandable Purple Circular FAB at Bottom-Right (above Bottom Navigation)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 16.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            AnimatedVisibility(
+                visible = isFabExpanded,
+                enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom) + slideInVertically { it / 2 },
+                exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom) + slideOutVertically { it / 2 }
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.testTag("ledger_fab_menu")
+                ) {
+                    fabActions.forEach { action ->
+                        LedgerFabActionPill(
+                            action = action,
+                            onClick = {
+                                isFabExpanded = false
+                                action.onClick()
+                            }
+                        )
+                    }
+                }
+            }
+
+            val rotation by animateFloatAsState(
+                targetValue = if (isFabExpanded) 45f else 0f,
+                label = "fab_rotation"
+            )
+            FloatingActionButton(
+                onClick = { isFabExpanded = !isFabExpanded },
+                shape = CircleShape,
+                containerColor = PrimaryPurple,
+                contentColor = Color.White,
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .size(56.dp)
+                    .testTag("ledger_fab_main")
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = if (isFabExpanded) "Close Quick Actions" else "Open Quick Actions",
+                    modifier = Modifier
+                        .size(26.dp)
+                        .rotate(rotation)
+                )
+            }
+        }
     }
 
-    // Filter Dialog
-    if (showFilterDialog) {
-        ControlCenterFilterDialog(
+    // 1. Right-to-Left Swipe Filter Drawer
+    if (showFilterDrawer) {
+        ControlCenterFilterDrawer(
             currentFilter = filterState,
             canViewProfit = canViewProfit,
             customers = customers,
             suppliers = suppliers,
             warehouses = warehouses,
+            categories = categories,
+            products = products,
             language = language,
             onApply = { viewModel.updateFilter(it) },
             onReset = { viewModel.resetFilters() },
             onSavePreset = { viewModel.savePreset(it) },
-            onDismiss = { showFilterDialog = false }
+            onDismiss = { showFilterDrawer = false }
         )
     }
 
-    // Custom Date Range Dialog
-    if (showCustomDateRangeDialog) {
-        CustomDateRangeDialog(
-            initialStartDate = filterState.customStartDate,
-            initialEndDate = filterState.customEndDate,
-            language = language,
-            onApply = { start, end ->
-                viewModel.setCustomDateRange(start, end)
+    // 2. Make Payment (Supplier Payment / Other Outgoing Payment)
+    if (showMakePaymentDialog) {
+        RecordSupplierPaymentDialog(
+            suppliers = suppliers,
+            orders = paymentOrders.filter { it.status !in setOf("DRAFT", "CANCELLED") },
+            preselectedSupplierId = preselectedSupplierForPayment,
+            isSaving = paymentSaving,
+            dismissOnSubmit = false,
+            saveError = paymentError,
+            liquidAccounts = liquidAccounts,
+            nextPaymentNumber = nextSupplierPaymentNumber,
+            isBangla = isBn,
+            onSwitchToOtherPayment = if (SecurityManager.canRecordExpense(userRole)) {
+                {
+                    showMakePaymentDialog = false
+                    viewModel.clearPaymentError()
+                    showExpenseDialog = true
+                }
+            } else null,
+            onConfirmWithDetails = { supplierId, orderId, amount, currency, rate, method, accountName, accountId, paymentDate, reference, notes ->
+                viewModel.paySupplier(
+                    supplierId = supplierId,
+                    orderId = orderId,
+                    amount = amount,
+                    currency = currency,
+                    rate = rate,
+                    method = method,
+                    account = accountName,
+                    reference = reference,
+                    notes = notes,
+                    paymentDate = paymentDate,
+                    paymentAccountId = accountId
+                ) {
+                    showMakePaymentDialog = false
+                }
             },
-            onDismiss = { showCustomDateRangeDialog = false }
+            onDismiss = { if (!paymentSaving) showMakePaymentDialog = false },
+            onConfirm = { supplierId, orderId, amount, currency, rate, method, account, reference, notes ->
+                viewModel.paySupplier(supplierId, orderId, amount, currency, rate, method, account, reference, notes) {
+                    showMakePaymentDialog = false
+                }
+            }
         )
     }
 
-    // Detail Dialog
+    // 3. Receive Payment (Customer Collection)
+    if (showReceivePaymentDialog) {
+        RecordCustomerPaymentDialog(
+            customers = customers,
+            invoices = paymentInvoices.filter { it.isPosted && it.status != "CANCELLED" },
+            liquidAccounts = liquidAccounts,
+            preselectedCustomerId = preselectedCustomerForPayment,
+            nextPaymentNumber = nextCustomerPaymentNumber,
+            isBangla = isBn,
+            isSaving = paymentSaving,
+            saveError = paymentError,
+            onDismiss = { if (!paymentSaving) showReceivePaymentDialog = false },
+            onSubmit = { draft ->
+                viewModel.collectPayment(draft) { showReceivePaymentDialog = false }
+            }
+        )
+    }
+
+    // 4. Expense Entry Dialog
+    if (showExpenseDialog) {
+        LedgerExpenseEntryDialog(
+            accounts = accounts,
+            isBangla = isBn,
+            isSaving = paymentSaving,
+            saveError = paymentError,
+            onDismiss = { if (!paymentSaving) showExpenseDialog = false },
+            onConfirm = { cat, descEn, descBn, amtMinor, curr, rate, payAccId, expAccId, date, ref, notes ->
+                viewModel.recordExpense(cat, descEn, descBn, amtMinor, curr, rate, payAccId, expAccId, date, ref, notes) {
+                    showExpenseDialog = false
+                }
+            }
+        )
+    }
+
+    // 5. Journal Entry Dialog
+    if (showJournalDialog) {
+        LedgerJournalEntryDialog(
+            accounts = accounts,
+            isBangla = isBn,
+            isSaving = paymentSaving,
+            saveError = paymentError,
+            onDismiss = { if (!paymentSaving) showJournalDialog = false },
+            onConfirm = { entryDate, descEn, descBn, lines ->
+                viewModel.postManualJournalEntry(entryDate, descEn, descBn, lines) {
+                    showJournalDialog = false
+                }
+            }
+        )
+    }
+
+    // 6. QR / Barcode Search Dialog
+    if (showScannerDialog) {
+        BarcodeQrScannerDialog(
+            language = language,
+            onDismiss = { showScannerDialog = false },
+            onCodeScanned = { code ->
+                showScannerDialog = false
+                showSearchField = true
+                viewModel.setSearchQuery(code)
+            }
+        )
+    }
+
+    // 7. Transaction Detail Dialog
     selectedDetail?.let { detail ->
         ControlCenterTransactionDetailDialog(
             record = detail,
             language = language,
             currencyCode = currencyCode,
-            onLinkedDocument = { type, id -> viewModel.openTransactionDetail(type,id) },
+            onLinkedDocument = { type, id -> viewModel.openTransactionDetail(type, id) },
             onDismiss = { viewModel.dismissTransactionDetail() }
         )
     }
 
-    // Export Options Modal Bottom Sheet
+    // 8. PDF Preview Dialog
+    previewPdfFile?.let { (file, title) ->
+        PdfViewerDialog(
+            pdfFile = file,
+            reportTitle = title,
+            isBangla = isBn,
+            onDismiss = { viewModel.clearPreviewPdf() }
+        )
+    }
+
+    // 9. Export Options Modal Bottom Sheet
     if (showExportSheet) {
+        val exportSensitive = if (isOwnerAdmin) profitVisibility.isVisible else exportVisibility.isVisible
         ModalBottomSheet(
             onDismissRequest = { showExportSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -819,86 +1574,153 @@ fun BusinessControlCenterScreen(
                     .padding(20.dp)
             ) {
                 Text(
-                    text = if (isBn) "রিপোর্ট এক্সপোর্ট ও শেয়ারিং অপশন" else "Export & Share Business Report",
+                    text = if (isBn) "রিপোর্ট প্রিভিউ, এক্সপোর্ট ও শেয়ার" else "Preview, Export & Share Report",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = if (isBn) "পিডিএফ, এক্সেল বা সিএসভি ফরম্যাটে ডাউনলোড ও শেয়ার করুন" else "Generate professional PDF & XLSX workbooks directly",
+                    text = if (isBn) "নির্বাচিত ফিল্টার ও তারিখ অনুযায়ী PDF ও XLSX তৈরি করুন" else "Generate formatted PDF & XLSX for active filters",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
 
-                if (SecurityManager.canViewCost(userRole)) {
-                    androidx.compose.material3.TextButton(onClick=exportVisibility.toggle) {
-                        Text(if(isBn) { if(exportVisibility.isVisible) "Cost/profit export বন্ধ করুন" else "Cost/profit সহ export: fingerprint যাচাই" }
-                            else if(exportVisibility.isVisible) "Exclude cost/profit" else "Authenticate to include cost/profit")
+                if (isOwnerAdmin) {
+                    TextButton(onClick = profitVisibility.toggle) {
+                        Text(
+                            text = if (isBn) {
+                                if (profitVisibility.isVisible) "লাভ ও খরচের তথ্য এক্সপোর্ট থেকে লুকান" else "লাভসহ এক্সপোর্ট করতে ফিঙ্গারপ্রিন্ট যাচাই"
+                            } else {
+                                if (profitVisibility.isVisible) "Exclude profit/cost from export" else "Authenticate to include profit in export"
+                            }
+                        )
+                    }
+                } else if (SecurityManager.canViewCost(userRole)) {
+                    TextButton(onClick = exportVisibility.toggle) {
+                        Text(
+                            text = if (isBn) {
+                                if (exportVisibility.isVisible) "খরচ এক্সপোর্ট বন্ধ করুন" else "খরচসহ এক্সপোর্ট: ফিঙ্গারপ্রিন্ট যাচাই"
+                            } else {
+                                if (exportVisibility.isVisible) "Exclude cost" else "Authenticate to include cost"
+                            }
+                        )
                     }
                 }
-                // 1. Share PDF
+
                 ExportActionItem(
-                    title = if (isBn) "পিডিএফ রিপোর্ট শেয়ার করুন (PDF Report)" else "Share PDF Document",
-                    subtitle = if (isBn) "WhatsApp, Gmail বা অন্য অ্যাপে শেয়ার করুন" else "A4 printable report with header & summary",
+                    title = if (isBn) "পিডিএফ প্রিভিউ দেখুন (Preview PDF)" else "Preview PDF Report",
+                    subtitle = if (isBn) "প্রিভিউ দেখে শেয়ার বা সংরক্ষণ করুন" else "Open preview before saving or sharing",
+                    icon = Icons.Outlined.Visibility,
+                    iconColor = PrimaryPurple,
+                    onClick = {
+                        showExportSheet = false
+                        viewModel.previewReportPdf(context, exportSensitive)
+                    }
+                )
+
+                ExportActionItem(
+                    title = if (isBn) "পিডিএফ রিপোর্ট শেয়ার করুন (PDF)" else "Share PDF Document",
+                    subtitle = if (isBn) "WhatsApp, Gmail বা অন্য অ্যাপে শেয়ার" else "A4 printable report with header & summary",
                     icon = Icons.Outlined.Share,
                     iconColor = StatusError,
                     onClick = {
                         showExportSheet = false
-                        viewModel.exportAndSharePdf(context, exportVisibility.isVisible)
+                        viewModel.exportAndSharePdf(context, exportSensitive)
                     }
                 )
 
-                // 2. Share Excel XLSX
                 ExportActionItem(
-                    title = if (isBn) "এক্সেল ওয়ার্কবুক শেয়ার করুন (Excel XLSX)" else "Share Excel (XLSX) Workbook",
-                    subtitle = if (isBn) "ক্যাটাগরিভিত্তিক আলাদা শীট ও বিশ্লেষণ" else "Multi-sheet spreadsheet with summary & ledgers",
+                    title = if (isBn) "এক্সেল ওয়ার্কবুক শেয়ার করুন (XLSX)" else "Share Excel (XLSX) Workbook",
+                    subtitle = if (isBn) "সারসংক্ষেপ ও লেজারসহ আলাদা শিট" else "Multi-sheet spreadsheet with summary & ledgers",
                     icon = Icons.Outlined.TableChart,
                     iconColor = StatusSuccess,
                     onClick = {
                         showExportSheet = false
-                        viewModel.exportAndShareExcel(context, exportVisibility.isVisible)
+                        viewModel.exportAndShareExcel(context, exportSensitive)
                     }
                 )
 
-                // 3. Share CSV
                 ExportActionItem(
-                    title = if (isBn) "সিএসভি ফাইল শেয়ার করুন (CSV Export)" else "Share CSV Data File",
-                    subtitle = if (isBn) "সহজ ডাটা এনালাইসিসের জন্য" else "Plain comma-separated transaction records",
+                    title = if (isBn) "সিএসভি ফাইল শেয়ার করুন (CSV)" else "Share CSV Data File",
+                    subtitle = if (isBn) "সহজ ডেটা বিশ্লেষণের জন্য" else "Plain comma-separated transaction records",
                     icon = Icons.Outlined.Share,
                     iconColor = StatusInfo,
                     onClick = {
                         showExportSheet = false
-                        viewModel.exportAndShareCsv(context, exportVisibility.isVisible)
+                        viewModel.exportAndShareCsv(context, exportSensitive)
                     }
                 )
 
-                // 4. Print Report
                 ExportActionItem(
-                    title = if (isBn) "সরাসরি প্রিন্ট করুন (Print Report)" else "Print Report Directly",
-                    subtitle = if (isBn) "Android PrintManager ব্যবহার করে প্রিন্ট" else "Send formatted document to WiFi or Bluetooth printer",
+                    title = if (isBn) "সরাসরি প্রিন্ট করুন (Print)" else "Print Report Directly",
+                    subtitle = if (isBn) "Android PrintManager ব্যবহার করে প্রিন্ট" else "Send document to printer",
                     icon = Icons.Outlined.Print,
                     iconColor = PrimaryPurple,
                     onClick = {
                         showExportSheet = false
-                        viewModel.printReport(context, exportVisibility.isVisible)
+                        viewModel.printReport(context, exportSensitive)
                     }
                 )
 
-                // 5. Save to Downloads
                 ExportActionItem(
-                    title = if (isBn) "ডিভাইসে ডাউনলোড করুন (Save to Downloads)" else "Save to Downloads Folder",
-                    subtitle = if (isBn) "মোবাইলের ইন্টারনাল স্টোরেজে সংরক্ষণ" else "Save PDF & XLSX directly to device storage",
+                    title = if (isBn) "ডিভাইসে সংরক্ষণ করুন (Save PDF & XLSX)" else "Save PDF & XLSX to Downloads",
+                    subtitle = if (isBn) "ফোনের Downloads ফোল্ডারে সেভ করুন" else "Save PDF & XLSX to device Downloads",
                     icon = Icons.Outlined.Download,
                     iconColor = StatusWarning,
                     onClick = {
                         showExportSheet = false
-                        viewModel.savePdfToStorage(context, exportVisibility.isVisible)
-                        viewModel.saveExcelToStorage(context, exportVisibility.isVisible)
+                        viewModel.savePdfToStorage(context, exportSensitive)
+                        viewModel.saveExcelToStorage(context, exportSensitive)
                     }
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LedgerFabActionPill(
+    action: LedgerFabAction,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        color = action.containerColor,
+        shadowElevation = 4.dp,
+        tonalElevation = 0.dp,
+        border = BorderStroke(1.dp, action.iconTint.copy(alpha = 0.22f)),
+        modifier = Modifier
+            .heightIn(min = 44.dp)
+            .testTag(action.testTag)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = action.label,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 12.5.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .background(action.iconTint.copy(alpha = 0.14f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = action.icon,
+                    contentDescription = null,
+                    tint = action.iconTint,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
@@ -912,115 +1734,149 @@ private fun UnifiedTransactionCard(
     dateFormat: SimpleDateFormat,
     onClick: () -> Unit
 ) {
+    val isBn = language == AppLanguage.BANGLA
+    val (typeIcon, iconTint) = when (item.category) {
+        ReportCategory.SALES -> Icons.Outlined.ShoppingBag to PrimaryPurple
+        ReportCategory.DELIVERY -> Icons.Outlined.LocalShipping to SecondaryTeal
+        ReportCategory.PURCHASE -> Icons.Outlined.Inventory2 to PrimaryPurple
+        ReportCategory.IMPORT -> Icons.Outlined.LocalShipping to PrimaryPurple
+        ReportCategory.PAYMENT, ReportCategory.RECEIPT -> Icons.Outlined.AccountBalanceWallet to SecondaryTeal
+        ReportCategory.EXPENSE -> Icons.Outlined.MoneyOff to StatusWarning
+        ReportCategory.SALES_RETURN, ReportCategory.PURCHASE_RETURN -> Icons.Outlined.Replay to StatusError
+        ReportCategory.STOCK_TRANSFER, ReportCategory.STOCK_ADJUSTMENT, ReportCategory.INVENTORY -> Icons.Outlined.SwapHoriz to SecondaryTeal
+        else -> Icons.Outlined.ReceiptLong to PrimaryPurple
+    }
+    val categoryLabel = if (isBn) item.category.titleBn else item.category.titleEn
+    val amountSign = if (item.effectSign < 0) "↶ " else if (item.isInflow) "+ " else "- "
+    val amountColor = when {
+        item.effectSign < 0 || !item.accountingPosted -> MaterialTheme.colorScheme.onSurfaceVariant
+        item.isInflow -> StatusSuccess
+        else -> StatusError
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = BorderStroke(0.6.dp, ERPDivider.copy(alpha = 0.65f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.8.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            // Header Row: Reference & Date & Status Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 11.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left: Category Icon Box
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = iconTint.copy(alpha = 0.1f),
+                modifier = Modifier.size(38.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    Text(
-                        text = item.referenceNumber,
-                        style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = typeIcon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(19.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(item.statusColorHex.toInt()).copy(alpha = 0.12f)
-                    ) {
-                        Text(
-                            text = item.status,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = Color(item.statusColorHex.toInt()),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                        )
-                    }
                 }
-
-                Text(
-                    text = dateFormat.format(Date(item.date)),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-            // Entity Name & Category
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Middle: Party Name + Type/Ref/Status
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.primaryEntityName,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp),
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
-                        text = item.category.titleEn,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                        text = "$categoryLabel · ${item.referenceNumber}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (item.status in setOf("UNPAID", "PARTIALLY_PAID", "CANCELLED", "VOIDED", "REVERSED", "DRAFT")) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(item.statusColorHex.toInt()).copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = item.status,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color(item.statusColorHex.toInt()),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                 }
             }
 
-            // Particulars
-            if (item.particulars.isNotBlank()) {
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Right: Signed Amount + Compact Date/Time
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "$amountSign${Formatters.formatMoney(item.amountMinor, currencyCode, language)}",
+                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = amountColor,
+                    maxLines = 1,
+                    softWrap = false
+                )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = item.particulars,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                    text = formatCompactTransactionDateTime(item.date, language, dateFormat),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(5.dp))
+private fun formatCompactTransactionDateTime(
+    timestampMs: Long,
+    language: AppLanguage,
+    dateFormat: SimpleDateFormat
+): String {
+    if (timestampMs <= 0L) return if (language == AppLanguage.BANGLA) "প্রারম্ভিক" else "Opening"
+    val calNow = Calendar.getInstance()
+    val calItem = Calendar.getInstance().apply { timeInMillis = timestampMs }
+    val sameDay = calNow.get(Calendar.YEAR) == calItem.get(Calendar.YEAR) &&
+        calNow.get(Calendar.DAY_OF_YEAR) == calItem.get(Calendar.DAY_OF_YEAR)
+    val calYesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+    val isYesterday = calYesterday.get(Calendar.YEAR) == calItem.get(Calendar.YEAR) &&
+        calYesterday.get(Calendar.DAY_OF_YEAR) == calItem.get(Calendar.DAY_OF_YEAR)
 
-            Text(
-                text = listOfNotNull(item.paymentMethod,item.warehouseName).joinToString(" • "),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-            val sign = if (item.effectSign < 0) "↶ " else if (item.isInflow) "+" else "−"
-            Text(
-                text = "$sign${Formatters.formatMoney(item.amountMinor, currencyCode, language)}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                maxLines = 1, softWrap = false,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                color = if (item.isInflow) StatusSuccess else StatusError
-            )
+    return when {
+        sameDay -> {
+            val prefix = if (language == AppLanguage.BANGLA) "আজ, " else "Today, "
+            prefix + Formatters.formatTime(timestampMs, language)
+        }
+        isYesterday -> {
+            val prefix = if (language == AppLanguage.BANGLA) "গতকাল, " else "Yesterday, "
+            prefix + Formatters.formatTime(timestampMs, language)
+        }
+        else -> {
+            val formattedDate = dateFormat.format(Date(timestampMs))
+            if (language == AppLanguage.BANGLA) Formatters.toBanglaDigits(formattedDate) else formattedDate
         }
     }
 }
@@ -1029,7 +1885,7 @@ private fun UnifiedTransactionCard(
 private fun ExportActionItem(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     iconColor: Color,
     onClick: () -> Unit
 ) {
@@ -1037,8 +1893,8 @@ private fun ExportActionItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp),
+            .padding(vertical = 3.dp),
+        shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface
     ) {
         Row(
@@ -1048,11 +1904,13 @@ private fun ExportActionItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(8.dp),
                 color = iconColor.copy(alpha = 0.12f),
-                modifier = Modifier.size(34.dp)
+                modifier = Modifier.size(36.dp)
             ) {
-                Icon(imageVector = icon, contentDescription = null, tint = iconColor, modifier = Modifier.padding(7.dp))
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(imageVector = icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(18.dp))
+                }
             }
             Spacer(modifier = Modifier.width(10.dp))
             Column {

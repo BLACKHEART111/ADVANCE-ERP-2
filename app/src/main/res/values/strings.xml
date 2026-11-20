@@ -14,7 +14,7 @@
     <string name="nav_shipments">Shipments</string>
     <string name="nav_customers">Customers</string>
     <string name="nav_suppliers">Suppliers</string>
-    <string name="nav_ledger">Ledger</string>
+    <string name="nav_ledger">Central Ledger</string>
     <string name="nav_reports">Business Control Center</string>
     <string name="business_control_center">Business Control Center</string>
     <string name="centralized_ledger_reports">Centralized Business Ledger, Reports &amp; Export</string>

@@ -52,6 +52,7 @@ object LedgerReportEngine {
                 SortOption.OLDEST_FIRST -> rows.sortedWith(chronology)
                 SortOption.HIGHEST_AMOUNT -> rows.sortedWith(compareByDescending<UnifiedTransactionItem> { it.amountMinor }.then(chronology))
                 SortOption.LOWEST_AMOUNT -> rows.sortedWith(compareBy<UnifiedTransactionItem> { it.amountMinor }.then(chronology))
+                SortOption.TRANSACTION_TYPE -> rows.sortedWith(compareBy<UnifiedTransactionItem> { it.category.ordinal }.then(chronology.reversed()))
                 SortOption.NAME_ASC -> rows.sortedWith(compareBy<UnifiedTransactionItem> { it.primaryEntityName.lowercase() }.then(chronology))
                 SortOption.NAME_DESC -> rows.sortedWith(compareByDescending<UnifiedTransactionItem> { it.primaryEntityName.lowercase() }.then(chronology))
             }
@@ -118,7 +119,30 @@ object LedgerReportEngine {
         if (f.selectedCustomerId != null && (!isCustomer(row) || row.primaryEntityId != f.selectedCustomerId)) return false
         if (f.selectedSupplierId != null && (!isSupplier(row) || row.primaryEntityId != f.selectedSupplierId)) return false
         if (f.selectedWarehouseId != null && row.warehouseId != f.selectedWarehouseId) return false
+        if (f.selectedCategoryId != null && f.selectedCategoryId !in row.categoryIds) return false
+        if (f.selectedProductId != null && f.selectedProductId !in row.productIds) return false
         val method = row.paymentMethod.orEmpty().uppercase()
+        val paymentMethodMatch = when (f.paymentMethodFilter) {
+            PaymentMethodFilter.ALL -> true
+            PaymentMethodFilter.CASH -> method.contains("CASH")
+            PaymentMethodFilter.BANK -> method.contains("BANK") || method in setOf("CHEQUE", "TT", "BANK_TT", "LETTER_OF_CREDIT")
+            PaymentMethodFilter.MOBILE_BANKING -> method in setOf("BKASH", "NAGAD", "ROCKET", "UPAY", "MOBILE_BANKING", "MFS")
+            PaymentMethodFilter.LC -> method.contains("LC") || method.contains("LETTER_OF_CREDIT")
+            PaymentMethodFilter.TT -> method.contains("TT") || method.contains("TELEGRAPHIC")
+        }
+        if (!paymentMethodMatch) return false
+        val directionMatch = when (f.transactionDirection) {
+            TransactionDirectionFilter.ALL -> true
+            TransactionDirectionFilter.INFLOW -> row.isInflow
+            TransactionDirectionFilter.OUTFLOW -> !row.isInflow
+        }
+        if (!directionMatch) return false
+        val channelMatch = when (f.saleChannel) {
+            SaleChannelFilter.ALL -> true
+            SaleChannelFilter.WHOLESALE -> kind == "INVOICE" && !row.isRetailSale
+            SaleChannelFilter.RETAIL -> kind == "INVOICE" && row.isRetailSale
+        }
+        if (!channelMatch) return false
         val due = row.secondaryAmountMinor ?: 0
         val payment = when (f.paymentStatus) {
             PaymentStatusFilter.ALL -> true
@@ -173,6 +197,14 @@ object LedgerReportEngine {
         }
         if (!amount) return false
         val q = f.searchQuery.trim()
-        return q.isEmpty() || listOf(row.referenceNumber, row.primaryEntityName, row.particulars, row.notes.orEmpty(), row.warehouseName.orEmpty()).any { it.contains(q, true) }
+        return q.isEmpty() || listOf(
+            row.referenceNumber,
+            row.primaryEntityName,
+            row.particulars,
+            row.notes.orEmpty(),
+            row.warehouseName.orEmpty(),
+            row.paymentMethod.orEmpty(),
+            row.status
+        ).any { it.contains(q, true) }
     }
 }

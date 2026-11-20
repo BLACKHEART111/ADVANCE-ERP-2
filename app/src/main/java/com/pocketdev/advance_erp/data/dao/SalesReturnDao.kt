@@ -44,6 +44,9 @@ interface SalesReturnDao {
     @Query("SELECT * FROM sales_return_items WHERE returnId = :returnId")
     suspend fun getItemsForReturn(returnId: String): List<SalesReturnItem>
 
+    @Query("SELECT * FROM sales_return_items")
+    suspend fun getAllReturnItemsSync(): List<SalesReturnItem>
+
     @Query("SELECT COALESCE(SUM(totalReturnAmountMinor), 0) FROM sales_returns WHERE isPosted = 1")
     fun getTotalSalesReturnMinor(): Flow<Long>
 

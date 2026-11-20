@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp
 
+import com.pocketdev.advance_erp.core.security.SecurityManager
+import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.domain.model.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -49,6 +51,33 @@ class BusinessControlCenterTest {
         val (normStart, normEnd) = DateRangeOption.CUSTOM.getBoundsMillis(customTo, customFrom)
         assertTrue(normStart <= customTo)
         assertTrue(normEnd >= customFrom)
+
+        // Business Start Date to Selected Date
+        val (inceptionStart, inceptionEnd) = DateRangeOption.INCEPTION_TO_DATE.getBoundsMillis(null, customTo)
+        assertEquals(0L, inceptionStart)
+        assertTrue(inceptionEnd >= customTo)
+    }
+
+    @Test
+    fun testRolePermissionsForLedgerActionsAndProfitPrivacy() {
+        assertTrue(SecurityManager.canViewProfit(UserRole.OWNER_ADMIN))
+        assertFalse(SecurityManager.canViewProfit(UserRole.MANAGER))
+        assertFalse(SecurityManager.canViewProfit(UserRole.ACCOUNTANT))
+        assertFalse(SecurityManager.canViewProfit(UserRole.SALES_OPERATOR))
+
+        assertTrue(SecurityManager.canMakePayment(UserRole.OWNER_ADMIN))
+        assertTrue(SecurityManager.canMakePayment(UserRole.PURCHASE_OPERATOR))
+        assertFalse(SecurityManager.canMakePayment(UserRole.SALES_OPERATOR))
+        assertFalse(SecurityManager.canMakePayment(UserRole.INVENTORY_OPERATOR))
+
+        assertTrue(SecurityManager.canReceivePayment(UserRole.SALES_OPERATOR))
+        assertFalse(SecurityManager.canReceivePayment(UserRole.PURCHASE_OPERATOR))
+
+        assertTrue(SecurityManager.canRecordExpense(UserRole.ACCOUNTANT))
+        assertFalse(SecurityManager.canRecordExpense(UserRole.SALES_OPERATOR))
+
+        assertTrue(SecurityManager.canPostJournal(UserRole.OWNER_ADMIN))
+        assertFalse(SecurityManager.canPostJournal(UserRole.PURCHASE_OPERATOR))
     }
 
     @Test

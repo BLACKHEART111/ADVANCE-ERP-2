@@ -61,6 +61,9 @@ interface SalesDao {
     @Query("SELECT * FROM sales_invoice_items WHERE invoiceId = :invoiceId")
     suspend fun getItemsForInvoice(invoiceId: String): List<SalesInvoiceItem>
 
+    @Query("SELECT * FROM sales_invoice_items")
+    suspend fun getAllInvoiceItemsSync(): List<SalesInvoiceItem>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCostLayerUsages(usages: List<SalesCostLayerUsage>)
 

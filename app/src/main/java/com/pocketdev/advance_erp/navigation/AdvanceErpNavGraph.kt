@@ -106,7 +106,7 @@ fun AdvanceErpNavGraph(
         }
 
         composable(Destinations.LEDGER) {
-            BusinessControlCenterScreen(viewModel = hiltViewModel(), initialCategory = ReportCategory.CUSTOMER_LEDGER)
+            BusinessControlCenterScreen(viewModel = hiltViewModel())
         }
 
         composable(Destinations.REPORTS) {

@@ -2,6 +2,7 @@ package com.pocketdev.advance_erp.domain.repository
 
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
 import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.data.entity.Warehouse
@@ -24,6 +25,7 @@ interface BusinessControlCenterRepository {
     fun getAllSuppliers(): Flow<List<Supplier>>
     fun getAllWarehouses(): Flow<List<Warehouse>>
     fun getAllCategories(): Flow<List<ProductCategory>>
+    fun getAllProducts(): Flow<List<Product>>
     fun getBusinessProfile(): Flow<BusinessProfile?>
     fun getSavedPresets(): Flow<List<SavedFilterPreset>>
     suspend fun savePreset(name: String, filterState: ControlCenterFilterState): String

@@ -129,6 +129,9 @@ interface ProductDao {
     fun getProductFlow(id: String): Flow<Product?>
 
     @Query("SELECT * FROM products WHERE isActive = 1 ORDER BY nameEn ASC")
+    fun getAllActiveProducts(): Flow<List<Product>>
+
+    @Query("SELECT * FROM products WHERE isActive = 1 ORDER BY nameEn ASC")
     suspend fun getAllProductsSync(): List<Product>
 
     @Query("UPDATE products SET isActive = 0 WHERE id = :id")

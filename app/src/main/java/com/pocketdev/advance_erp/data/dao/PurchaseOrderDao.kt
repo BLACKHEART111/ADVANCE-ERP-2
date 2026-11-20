@@ -61,6 +61,9 @@ interface PurchaseOrderDao {
     @Query("SELECT * FROM purchase_order_items WHERE purchaseOrderId = :orderId")
     suspend fun getItemsForOrderSync(orderId: String): List<PurchaseOrderItem>
 
+    @Query("SELECT * FROM purchase_order_items")
+    suspend fun getAllOrderItemsSync(): List<PurchaseOrderItem>
+
     @Query("SELECT * FROM purchase_orders WHERE supplierId = :supplierId ORDER BY createdAt DESC")
     fun getOrdersBySupplier(supplierId: String): Flow<List<PurchaseOrder>>
 

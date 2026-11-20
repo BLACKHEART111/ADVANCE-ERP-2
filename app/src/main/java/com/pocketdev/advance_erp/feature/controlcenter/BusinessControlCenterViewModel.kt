@@ -1,10 +1,15 @@
 package com.pocketdev.advance_erp.feature.controlcenter
 
 import com.pocketdev.advance_erp.domain.model.LedgerReport
+import com.pocketdev.advance_erp.domain.repository.AccountingRepository
+import com.pocketdev.advance_erp.domain.repository.FinancialRepository
+import com.pocketdev.advance_erp.domain.repository.JournalLineDraft
 import com.pocketdev.advance_erp.domain.repository.SalesRepository
 import com.pocketdev.advance_erp.domain.repository.ImportRepository
 import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
+import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.PaymentMethod
+import com.pocketdev.advance_erp.data.entity.Product
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onStart
@@ -39,6 +44,7 @@ import com.pocketdev.advance_erp.domain.repository.BusinessControlCenterReposito
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,12 +55,14 @@ import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class BusinessControlCenterViewModel @Inject constructor(
     private val repository: BusinessControlCenterRepository,
     private val salesRepository: SalesRepository,
     private val importRepository: ImportRepository,
+    private val financialRepository: FinancialRepository,
+    private val accountingRepository: AccountingRepository,
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
@@ -103,10 +111,41 @@ class BusinessControlCenterViewModel @Inject constructor(
             finally { _paymentSaving.value = false }
         }
     }
-    fun collectPayment(draft: CustomerPaymentDraft, onSuccess: () -> Unit) = submitPayment({ salesRepository.recordCustomerPayment(draft); Unit }, onSuccess)
-    fun paySupplier(supplierId: String, orderId: String?, amount: Long, currency: String, rate: BigDecimal,
-        method: PaymentMethod, account: String, reference: String?, notes: String?, onSuccess: () -> Unit) =
-        submitPayment({ importRepository.recordSupplierPayment(supplierId, orderId, amount, currency, rate, method, account, reference, notes); Unit }, onSuccess)
+    fun collectPayment(draft: CustomerPaymentDraft, onSuccess: () -> Unit) =
+        submitPayment({
+            salesRepository.recordCustomerPayment(draft)
+            refreshNextPaymentNumbers()
+        }, onSuccess)
+
+    fun paySupplier(
+        supplierId: String,
+        orderId: String?,
+        amount: Long,
+        currency: String,
+        rate: BigDecimal,
+        method: PaymentMethod,
+        account: String,
+        reference: String?,
+        notes: String?,
+        paymentDate: Long = System.currentTimeMillis(),
+        paymentAccountId: String? = null,
+        onSuccess: () -> Unit
+    ) = submitPayment({
+        importRepository.recordSupplierPayment(
+            supplierId = supplierId,
+            orderId = orderId,
+            amountMinor = amount,
+            currency = currency,
+            exchangeRate = rate,
+            method = method,
+            paymentAccount = account,
+            reference = reference,
+            notes = notes,
+            paymentDate = paymentDate,
+            paymentAccountId = paymentAccountId
+        )
+        refreshNextPaymentNumbers()
+    }, onSuccess)
 
     private fun readyReport(includeSensitive: Boolean = false): LedgerReport {
         val snapshot = report.value
@@ -128,8 +167,149 @@ class BusinessControlCenterViewModel @Inject constructor(
     val categories: StateFlow<List<ProductCategory>> = repository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val products: StateFlow<List<Product>> = repository.getAllProducts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val accounts: StateFlow<List<ChartOfAccount>> = accountingRepository.getAllAccounts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val liquidAccounts: StateFlow<List<ChartOfAccount>> = accountingRepository.getLiquidAccounts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val savedPresets: StateFlow<List<SavedFilterPreset>> = repository.getSavedPresets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _nextCustomerPaymentNumber = MutableStateFlow<String?>(null)
+    val nextCustomerPaymentNumber: StateFlow<String?> = _nextCustomerPaymentNumber.asStateFlow()
+
+    private val _nextSupplierPaymentNumber = MutableStateFlow<String?>(null)
+    val nextSupplierPaymentNumber: StateFlow<String?> = _nextSupplierPaymentNumber.asStateFlow()
+
+    private val _previewPdfFile = MutableStateFlow<Pair<File, String>?>(null)
+    val previewPdfFile: StateFlow<Pair<File, String>?> = _previewPdfFile.asStateFlow()
+
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
+
+    fun clearPreviewPdf() { _previewPdfFile.value = null }
+    fun clearActionMessage() { _actionMessage.value = null }
+
+    fun refreshNextPaymentNumbers() {
+        viewModelScope.launch {
+            _nextCustomerPaymentNumber.value = runCatching { salesRepository.previewNextCustomerPaymentNumber() }.getOrNull()
+            val supplierCount = paymentOrders.value.let { _ ->
+                runCatching {
+                    val year = java.text.SimpleDateFormat("yyyy", java.util.Locale.US).format(java.util.Date())
+                    "SP-$year-AUTO"
+                }.getOrNull()
+            }
+            _nextSupplierPaymentNumber.value = supplierCount
+        }
+    }
+
+    fun recordExpense(
+        category: String,
+        descEn: String,
+        descBn: String,
+        amountMinor: Long,
+        currency: String,
+        exchangeRateToBdt: String,
+        paymentAccountId: String,
+        expenseAccountId: String,
+        voucherDate: Long,
+        referenceNumber: String?,
+        notes: String?,
+        onSuccess: () -> Unit
+    ) {
+        if (!SecurityManager.canRecordExpense(userRole.value)) {
+            _actionError.value = if (appLanguage.value == AppLanguage.BANGLA) "ব্যয় এন্ট্রি করার অনুমতি নেই।" else "Permission denied to record expense."
+            return
+        }
+        submitPayment({
+            financialRepository.recordExpense(
+                category = category,
+                descEn = descEn,
+                descBn = descBn,
+                amountMinor = amountMinor,
+                currency = currency,
+                exchangeRateToBdt = exchangeRateToBdt,
+                paymentAccountId = paymentAccountId,
+                expenseAccountId = expenseAccountId,
+                voucherDate = voucherDate,
+                referenceNumber = referenceNumber,
+                notes = notes
+            )
+            _actionMessage.value = if (appLanguage.value == AppLanguage.BANGLA) "ব্যয় ভাউচার সফলভাবে সংরক্ষিত হয়েছে" else "Expense voucher posted successfully"
+        }, onSuccess)
+    }
+
+    fun postManualJournalEntry(
+        entryDate: Long,
+        descEn: String,
+        descBn: String,
+        lines: List<JournalLineDraft>,
+        onSuccess: () -> Unit
+    ) {
+        if (!SecurityManager.canPostJournal(userRole.value)) {
+            _actionError.value = if (appLanguage.value == AppLanguage.BANGLA) "জার্নাল এন্ট্রি করার অনুমতি নেই।" else "Permission denied to post journal entry."
+            return
+        }
+        submitPayment({
+            require(lines.size >= 2) { "At least one debit and one credit line are required" }
+            val debitTotal = lines.filter { it.isDebit }.sumOf { it.amountMinor }
+            val creditTotal = lines.filter { !it.isDebit }.sumOf { it.amountMinor }
+            require(debitTotal > 0L && debitTotal == creditTotal) { "Debit and Credit totals must be positive and balanced" }
+            val entryId = accountingRepository.postJournalEntry(
+                entryDate = entryDate,
+                descEn = descEn,
+                descBn = descBn,
+                referenceType = "MANUAL_LEDGER",
+                referenceId = null,
+                lines = lines
+            )
+            financialRepository.logAudit(
+                recordType = "JOURNAL_ENTRY",
+                recordId = entryId,
+                action = "MANUAL_POST",
+                details = "Manual journal posted from Central Ledger: $descEn (Dr/Cr BDT ${debitTotal / 100.0})"
+            )
+            _actionMessage.value = if (appLanguage.value == AppLanguage.BANGLA) "জার্নাল এন্ট্রি সফলভাবে পোস্ট হয়েছে" else "Journal entry posted successfully"
+        }, onSuccess)
+    }
+
+    fun previewReportPdf(context: Context, includeSensitive: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isExporting.value = true
+            try {
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value)
+                val title = getReportTitle(snapshot.filter)
+                val file = if (snapshot.statement != null) {
+                    com.pocketdev.advance_erp.core.util.LedgerStatementExporter.pdf(
+                        context, snapshot, businessProfile.value, appLanguage.value == AppLanguage.BANGLA
+                    )
+                } else {
+                    ControlCenterPdfGenerator.generateReportPdf(
+                        context = context,
+                        title = title,
+                        filterState = snapshot.filter,
+                        summary = snapshot.summary,
+                        transactions = safeExportRows(snapshot, includeSensitive),
+                        businessProfile = businessProfile.value,
+                        canViewProfit = canView,
+                        isBangla = appLanguage.value == AppLanguage.BANGLA
+                    )
+                }
+                _previewPdfFile.value = file to title
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(context, "PDF Preview failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                _isExporting.value = false
+            }
+        }
+    }
 
     val userRole: StateFlow<UserRole> = preferencesRepository.selectedUserRole
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserRole.SALES_OPERATOR)

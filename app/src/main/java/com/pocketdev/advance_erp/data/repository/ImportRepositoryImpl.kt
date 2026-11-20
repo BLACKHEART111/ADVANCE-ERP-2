@@ -383,7 +383,9 @@ class ImportRepositoryImpl @Inject constructor(
         method: PaymentMethod,
         paymentAccount: String,
         reference: String?,
-        notes: String?
+        notes: String?,
+        paymentDate: Long,
+        paymentAccountId: String?
     ): String = database.withTransaction {
         require(amountMinor > 0) { "Payment amount must be positive" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive" }
@@ -400,8 +402,14 @@ class ImportRepositoryImpl @Inject constructor(
             }
         }
 
-        val paymentCount = supplierPaymentDao.getPaymentCount()
-        val paymentNumber = "SP-2026-%04d".format(paymentCount + 1)
+        val existingNumbers = supplierPaymentDao.getAllPaymentsSync().map { it.paymentNumber }.toSet()
+        val yearStr = java.text.SimpleDateFormat("yyyy", java.util.Locale.US).format(java.util.Date(paymentDate))
+        var seq = supplierPaymentDao.getPaymentCount() + 1
+        var paymentNumber = "SP-$yearStr-%04d".format(seq)
+        while (paymentNumber in existingNumbers) {
+            seq++
+            paymentNumber = "SP-$yearStr-%04d".format(seq)
+        }
         val paymentId = "sp-${UUID.randomUUID()}"
 
         val bdtAmountMinor = BigDecimal(amountMinor)
@@ -422,7 +430,7 @@ class ImportRepositoryImpl @Inject constructor(
             paymentAccount = paymentAccount,
             referenceNumber = reference,
             notes = notes,
-            paymentDate = System.currentTimeMillis(),
+            paymentDate = paymentDate,
             createdAt = System.currentTimeMillis()
         )
 
@@ -451,7 +459,7 @@ class ImportRepositoryImpl @Inject constructor(
         // Dr. Accounts Payable (2010)
         // Cr. Bank (1020)
         accountingRepository.postJournalEntry(
-                entryDate = System.currentTimeMillis(),
+                entryDate = paymentDate,
                 descEn = "Supplier Payment $paymentNumber to ${supplier?.companyName ?: supplierId}",
                 descBn = "সরবরাহকারী পেমেন্ট $paymentNumber (${supplier?.companyName ?: ""})",
                 referenceType = "SUPPLIER_PAYMENT",
@@ -464,7 +472,7 @@ class ImportRepositoryImpl @Inject constructor(
                         description = "Debit Accounts Payable for remittance $paymentNumber"
                     ),
                     JournalLineDraft(
-                        accountId = if (method == PaymentMethod.CASH) "coa-1010" else "coa-1020",
+                        accountId = paymentAccountId ?: if (method == PaymentMethod.CASH) "coa-1010" else "coa-1020",
                         isDebit = false,
                         amountMinor = bdtAmountMinor,
                         description = "Credit Bank Account for remittance $paymentNumber"
