@@ -51,14 +51,17 @@ fun AdvanceErpNavGraph(
         modifier = modifier
     ) {
         composable(Destinations.DASHBOARD) {
+            val navigateSingleTop: (String) -> Unit = { route ->
+                navController.navigate(route) { launchSingleTop = true }
+            }
             DashboardScreen(
                 viewModel = hiltViewModel(),
-                onNavigateToAddProduct = { navController.navigate("${Destinations.PRODUCTS}?action=add") },
-                onNavigateToStockAdjust = { navController.navigate("${Destinations.INVENTORY}?action=adjust") },
-                onNavigateToLedger = { navController.navigate(Destinations.LEDGER) },
-                onNavigateToImports = { navController.navigate(Destinations.PURCHASES) },
-                onNavigateToSales = { navController.navigate(Destinations.SALES) },
-                onNavigateToTransactions = { navController.navigate(Destinations.INVENTORY) }
+                onNavigateToAddProduct = { navigateSingleTop("${Destinations.PRODUCTS}?action=add") },
+                onNavigateToStockAdjust = { navigateSingleTop("${Destinations.INVENTORY}?action=adjust") },
+                onNavigateToLedger = { navigateSingleTop(Destinations.LEDGER) },
+                onNavigateToImports = { navigateSingleTop(Destinations.PURCHASES) },
+                onNavigateToSales = { navigateSingleTop(Destinations.SALES) },
+                onNavigateToTransactions = { navigateSingleTop(Destinations.INVENTORY) }
             )
         }
 
