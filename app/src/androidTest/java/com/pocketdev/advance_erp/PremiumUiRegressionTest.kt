@@ -72,14 +72,13 @@ class PremiumUiRegressionTest {
         }
         val strings = compose.activity.resources
         val modules = listOf(
-            R.string.nav_accounts to "accounts",
             R.string.nav_products to "products",
             R.string.nav_import_management to "import_management",
             R.string.nav_purchases to "purchases",
             R.string.nav_shipments to "shipments",
             R.string.nav_customers to "customers",
             R.string.nav_suppliers to "suppliers",
-            R.string.nav_ledger to "ledger",
+            R.string.accounts_ledger to "accounts",
             R.string.nav_reports to "reports",
             R.string.nav_settings to "settings"
         )
@@ -91,6 +90,8 @@ class PremiumUiRegressionTest {
             card.assertExists().performClick()
             compose.runOnIdle { assertEquals(route, openedRoute) }
         }
+        compose.onNodeWithText(strings.getString(R.string.nav_ledger), useUnmergedTree = true)
+            .assertDoesNotExist()
     }
 
     @Test fun incompletePurchaseDraftSurvivesRecreationAndExplicitSave() {
