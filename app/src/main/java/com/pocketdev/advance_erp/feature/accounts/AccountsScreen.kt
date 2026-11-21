@@ -1,16 +1,21 @@
 package com.pocketdev.advance_erp.feature.accounts
 
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.content.Context
+import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +29,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,6 +44,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Equalizer
@@ -68,6 +78,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -78,13 +89,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -97,15 +113,18 @@ import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.ERPLoadingState
 import com.pocketdev.advance_erp.core.designsystem.ERPSearchBar
 import com.pocketdev.advance_erp.core.designsystem.ERPSectionHeader
+import com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.StatusError
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
+import com.pocketdev.advance_erp.core.security.SecurityManager
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.entity.AccountTransfer
 import com.pocketdev.advance_erp.data.entity.AccountType
@@ -119,11 +138,14 @@ import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
 import com.pocketdev.advance_erp.data.entity.JournalEntry
 import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
 import com.pocketdev.advance_erp.data.entity.NormalBalance
+import com.pocketdev.advance_erp.data.entity.ReconciliationStatus
 import com.pocketdev.advance_erp.data.entity.TrialBalanceItem
 import com.pocketdev.advance_erp.domain.repository.JournalLineDraft
 import java.io.File
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.util.Calendar
+import kotlin.math.abs
 
 enum class AccountsTab(val titleEn: String, val titleBn: String, val icon: ImageVector) {
     CASH_BANK("Cash & Bank", "নগদ ও ব্যাংক", Icons.Outlined.AccountBalance),
@@ -146,6 +168,9 @@ private enum class CoaFilterCategory(val titleEn: String, val titleBn: String) {
     EXPENSE("Expense", "ব্যয়")
 }
 
+private enum class JournalPeriod { ALL, THIS_MONTH, THIS_YEAR }
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AccountsScreen(
     modifier: Modifier = Modifier,
@@ -153,9 +178,36 @@ fun AccountsScreen(
     initialTab: AccountsTab = AccountsTab.CASH_BANK
 ) {
     val context = LocalContext.current
+    val currentConfiguration = LocalConfiguration.current
     val uiState by viewModel.uiState.collectAsState()
     val isBangla = uiState.language == AppLanguage.BANGLA
+    val accountingConfiguration = remember(uiState.language, currentConfiguration) {
+        Configuration(currentConfiguration).apply { setLocale(uiState.language.locale) }
+    }
+    val canViewProfit = SecurityManager.canViewProfit(uiState.userRole)
+    val canExportReports = SecurityManager.canExportReport(uiState.userRole)
+    val canRecordExpenses = SecurityManager.canRecordExpense(uiState.userRole)
+    val canPostJournals = SecurityManager.canPostJournal(uiState.userRole)
     var selectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
+    val pagerState = rememberPagerState(initialPage = initialTab.ordinal, pageCount = { AccountsTab.entries.size })
+    val categoryListState = rememberLazyListState()
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            AccountsTab.entries.getOrNull(page)?.let { tab ->
+                selectedTab = tab
+                if (tab == AccountsTab.TRIAL_BALANCE) {
+                    viewModel.refreshTrialBalance()
+                } else if (tab == AccountsTab.STATEMENTS) {
+                    viewModel.loadFinancialStatements()
+                }
+            }
+        }
+    }
+    LaunchedEffect(selectedTab) {
+        if (pagerState.currentPage != selectedTab.ordinal) pagerState.animateScrollToPage(selectedTab.ordinal)
+        categoryListState.animateScrollToItem(selectedTab.ordinal)
+    }
 
     // Dialog state
     var showNewAccountDialog by rememberSaveable { mutableStateOf(false) }
@@ -166,6 +218,8 @@ fun AccountsScreen(
 
     var coaSearchQuery by rememberSaveable { mutableStateOf("") }
     var coaCategoryFilter by remember { mutableStateOf(CoaFilterCategory.ALL) }
+    var journalSearchQuery by rememberSaveable { mutableStateOf("") }
+    var journalPeriod by rememberSaveable { mutableStateOf(JournalPeriod.ALL) }
 
     var showNewJournalDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordExpenseDialog by rememberSaveable { mutableStateOf(false) }
@@ -204,6 +258,22 @@ fun AccountsScreen(
             matchesCat && matchesQuery
         }
     }
+    val filteredJournalEntries = remember(uiState.journalEntries, journalSearchQuery, journalPeriod) {
+        val query = journalSearchQuery.trim().lowercase()
+        val now = Calendar.getInstance()
+        uiState.journalEntries.filter { entry ->
+            val date = Calendar.getInstance().apply { timeInMillis = entry.entryDate }
+            val matchesPeriod = when (journalPeriod) {
+                JournalPeriod.ALL -> true
+                JournalPeriod.THIS_MONTH -> date.get(Calendar.YEAR) == now.get(Calendar.YEAR) && date.get(Calendar.MONTH) == now.get(Calendar.MONTH)
+                JournalPeriod.THIS_YEAR -> date.get(Calendar.YEAR) == now.get(Calendar.YEAR)
+            }
+            val matchesQuery = query.isBlank() || listOfNotNull(
+                entry.entryNumber, entry.descriptionEn, entry.descriptionBn, entry.referenceType, entry.referenceId
+            ).any { it.lowercase().contains(query) }
+            matchesPeriod && matchesQuery
+        }
+    }
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let {
@@ -217,6 +287,7 @@ fun AccountsScreen(
         return
     }
 
+    CompositionLocalProvider(LocalConfiguration provides accountingConfiguration) {
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -225,25 +296,43 @@ fun AccountsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             // Module Overview Header
-            ERPCard(
-                backgroundColor = DeepNavy,
-                contentPadding = 16.dp
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        Brush.linearGradient(
+                            if (LocalIsDarkTheme.current) {
+                                listOf(DeepNavy, Color(0xFF282044), Color(0xFF064C54))
+                            } else {
+                                listOf(Color(0xFF792B87), Color(0xFF8B45A7), Color(0xFF008F91))
+                            }
+                        )
+                    )
+                    .padding(16.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Icon(
+                        imageVector = Icons.Outlined.Assessment,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.12f),
+                        modifier = Modifier.align(Alignment.CenterEnd).size(88.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
-                            .background(SecondaryTeal, RoundedCornerShape(12.dp)),
+                            .size(52.dp)
+                            .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(16.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.AccountBalance,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(27.dp)
                         )
                     }
 
@@ -257,7 +346,7 @@ fun AccountsScreen(
                             color = Color.White
                         )
                         Text(
-                            text = if (isBangla) "ডাবল-এন্ট্রি হিসাব, নগদ ও ব্যাংক, ব্যয় ও রিপোর্ট" else "Double-Entry GL, Cash & Bank, Expenses & Reports",
+                            text = stringResource(R.string.accounting_header_subtitle),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.78f)
                         )
@@ -269,11 +358,12 @@ fun AccountsScreen(
                             .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Text(
-                            text = "${uiState.accounts.count { it.isActive }} A/Cs",
+                            text = stringResource(R.string.accounting_account_count, uiState.accounts.count { it.isActive }),
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
+                    }
                     }
                 }
             }
@@ -282,6 +372,7 @@ fun AccountsScreen(
 
             // Navigation Tabs
             LazyRow(
+                state = categoryListState,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 4.dp)
             ) {
@@ -290,14 +381,14 @@ fun AccountsScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
-                            .clickable {
+                            .background(
+                                if (isSelected) Brush.linearGradient(listOf(PrimaryPurple, SecondaryTeal))
+                                else Brush.linearGradient(listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surface))
+                            )
+                            .border(1.dp, if (isSelected) Color.Transparent else PrimaryPurple.copy(alpha = 0.16f), RoundedCornerShape(20.dp))
+                            .defaultMinSize(minHeight = 48.dp)
+                            .selectable(selected = isSelected, role = Role.Tab) {
                                 selectedTab = tab
-                                if (tab == AccountsTab.TRIAL_BALANCE) {
-                                    viewModel.refreshTrialBalance()
-                                } else if (tab == AccountsTab.STATEMENTS) {
-                                    viewModel.loadFinancialStatements()
-                                }
                             }
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -314,7 +405,7 @@ fun AccountsScreen(
                                 text = if (uiState.language == AppLanguage.BANGLA) tab.titleBn else tab.titleEn,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -323,16 +414,22 @@ fun AccountsScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Tab Content
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 88.dp)
-            ) {
+            // Each category has an independent vertically scrollable page.
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                key = { page -> AccountsTab.entries[page].name }
+            ) { page ->
+                val pageTab = AccountsTab.entries[page]
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 96.dp)
+                ) {
                 // ==========================================
                 // TAB 1: CASH & BANK
                 // ==========================================
-                if (selectedTab == AccountsTab.CASH_BANK) {
+                if (pageTab == AccountsTab.CASH_BANK) {
                     val activeLiquidAccounts = uiState.liquidAccounts.filter { it.isActive }
                     val totalLiquidMinor = activeLiquidAccounts.sumOf { acc ->
                         val tb = trialBalanceMap[acc.id]
@@ -361,7 +458,7 @@ fun AccountsScreen(
                         Column(modifier = Modifier.fillMaxWidth()) {
                             ERPSectionHeader(
                                 title = stringResource(R.string.cash_and_bank),
-                                subtitle = if (isBangla) "নগদ, ব্যাংক, বিকাশ/নগদ ও তহবিল স্থানান্তর" else "Cash Vaults, Banks, bKash/Nagad & Transfers"
+                                subtitle = stringResource(R.string.accounting_cash_subtitle)
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -379,7 +476,7 @@ fun AccountsScreen(
                                 ) {
                                     Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(if (isBangla) "ব্যাংক / বিকাশ যোগ" else "Add Bank / MFS", fontSize = 12.sp, maxLines = 1)
+                                    Text(stringResource(R.string.accounting_add_account), fontSize = 12.sp, maxLines = 1)
                                 }
                                 Button(
                                     onClick = { showTransferDialog = true },
@@ -389,7 +486,7 @@ fun AccountsScreen(
                                 ) {
                                     Icon(Icons.Outlined.SwapHoriz, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(if (isBangla) "ফান্ড ট্রান্সফার" else "Transfer Funds", fontSize = 12.sp, maxLines = 1)
+                                    Text(stringResource(R.string.accounting_transfer_funds), fontSize = 12.sp, maxLines = 1)
                                 }
                             }
                         }
@@ -397,7 +494,7 @@ fun AccountsScreen(
 
                     // Total Liquid Summary Card
                     item {
-                        ERPCard(backgroundColor = DeepNavy, contentPadding = 14.dp) {
+                        FinanceCard(backgroundColor = DeepNavy, contentPadding = 14.dp) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     text = if (isBangla) "মোট তরল তহবিল (Cash + Bank + MFS)" else "Total Liquid Balance (Cash + Bank + MFS)",
@@ -440,7 +537,7 @@ fun AccountsScreen(
                         val tb = trialBalanceMap[acc.id]
                         val balMinor = (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
                         val accentColor = when (acc.liquidKind) {
-                            LiquidAccountKind.CASH -> DeepNavy
+                            LiquidAccountKind.CASH -> PrimaryPurple
                             LiquidAccountKind.BANK -> SecondaryTeal
                             LiquidAccountKind.MOBILE_BANKING -> PrimaryPurple
                             null -> DeepNavy
@@ -480,7 +577,7 @@ fun AccountsScreen(
                             ) {
                                 ERPSectionHeader(
                                     modifier = Modifier.weight(1f),
-                                    title = if (isBangla) "ক্যাশ ও ব্যাংক বই (Ledger)" else "Cash & Bank Book",
+                                    title = stringResource(R.string.accounting_cash_book),
                                     subtitle = selectedBookAccount?.let {
                                         if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn
                                     } ?: "Running Balance"
@@ -531,16 +628,16 @@ fun AccountsScreen(
 
                     if (displayedBookEntries.isEmpty()) {
                         item {
-                            ERPCard {
+                            FinanceCard {
                                 Text(
-                                    text = if (isBangla) "নির্বাচিত অ্যাকাউন্টে সাম্প্রতিক কোনো লেনদেন নেই।" else "No transactions recorded for this account in the current period.",
+                                    text = stringResource(R.string.accounting_no_book_entries),
                                     color = TextMuted
                                 )
                             }
                         }
                     } else {
                         items(displayedBookEntries.reversed().take(20), key = { it.id }) { entry ->
-                            ERPCard(contentPadding = 10.dp) {
+                            FinanceCard(contentPadding = 10.dp) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -558,7 +655,7 @@ fun AccountsScreen(
                                         if (entry.paymentMinor > 0L) {
                                             Text("- ${Formatters.formatMoney(entry.paymentMinor, CurrencyCode.BDT, uiState.language)}", color = StatusError, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                         }
-                                        Text("Bal: ${Formatters.formatMoney(entry.runningBalanceMinor, CurrencyCode.BDT, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextPrimary)
+                                        Text("${if (isBangla) "ব্যালেন্স" else "Balance"}: ${Formatters.formatMoney(entry.runningBalanceMinor, CurrencyCode.BDT, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextPrimary)
                                     }
                                 }
                             }
@@ -569,39 +666,77 @@ fun AccountsScreen(
                 // ==========================================
                 // TAB 2: EXPENSES
                 // ==========================================
-                if (selectedTab == AccountsTab.EXPENSES) {
+                if (pageTab == AccountsTab.EXPENSES) {
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             ERPSectionHeader(
-                                modifier = Modifier.weight(1f),
-                                title = "Expense Management",
-                                subtitle = "Vouchers, Categories & Automated Double-Entry"
+                                title = stringResource(R.string.expenses),
+                                subtitle = stringResource(R.string.accounting_expense_subtitle)
                             )
-                            Button(
+                            if (canRecordExpenses && uiState.expenses.isNotEmpty()) Button(
                                 onClick = { showRecordExpenseDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("New Expense", fontSize = 12.sp)
+                                Text(stringResource(R.string.accounting_new_expense), fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    val postedExpenses = uiState.expenses.filter { it.isPosted && !it.isReversed }
+                    item {
+                        FinanceCard(
+                            backgroundColor = DeepNavy,
+                            border = BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.35f)),
+                            contentPadding = 14.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(if (isBangla) "মোট নথিভুক্ত ব্যয়" else "Total posted expenses", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium)
+                                    Text(Formatters.formatMoney(postedExpenses.sumOf { it.bdtAmountMinor }, CurrencyCode.BDT, uiState.language), color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(if (isBangla) "ভাউচার" else "Vouchers", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.labelSmall)
+                                    Text(Formatters.formatNumber(postedExpenses.size.toLong(), uiState.language), color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
 
                     if (uiState.expenses.isEmpty()) {
                         item {
-                            ERPCard {
-                                Text("No expenses recorded yet. Click 'New Expense' to record office rent, travel, salaries, customs or admin vouchers.", color = TextMuted)
+                            FinanceCard(contentPadding = 24.dp) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(Icons.Outlined.ReceiptLong, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(40.dp))
+                                    Text(if (isBangla) "এখনও কোনো ব্যয় নেই" else "No expenses yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.accounting_empty_expenses), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                    if (canRecordExpenses) {
+                                        OutlinedButton(onClick = { showRecordExpenseDialog = true }) {
+                                            Text(stringResource(R.string.accounting_new_expense))
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {
                         items(uiState.expenses) { exp ->
-                            ERPCard(contentPadding = 14.dp) {
+                            val categoryTitle = ExpenseCategory.entries.firstOrNull { it.name == exp.category || it.code == exp.category }
+                                ?.let { if (isBangla) it.titleBn else it.titleEn } ?: exp.category
+                            val paymentAccountName = uiState.accounts.firstOrNull { it.id == exp.paymentAccountId }
+                                ?.let { if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn }
+                                ?: exp.paymentAccountId
+                            FinanceCard(contentPadding = 14.dp) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -618,12 +753,13 @@ fun AccountsScreen(
                                                             .background(StatusErrorContainer, RoundedCornerShape(4.dp))
                                                             .padding(horizontal = 4.dp, vertical = 1.dp)
                                                     ) {
-                                                        Text("VOID/REVERSED", color = StatusError, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                        Text(if (isBangla) "বাতিল" else "VOID/REVERSED", color = StatusError, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                                     }
                                                 }
                                             }
-                                            Text(exp.descriptionEn, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
-                                            Text("Category: ${exp.category} • ${Formatters.formatDate(exp.voucherDate, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            Text(if (isBangla && exp.descriptionBn.isNotBlank()) exp.descriptionBn else exp.descriptionEn, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+                                            Text("$categoryTitle • ${Formatters.formatDate(exp.voucherDate, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            Text("${if (isBangla) "পেমেন্ট হিসাব" else "Payment account"}: $paymentAccountName", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                         }
 
                                         Column(horizontalAlignment = Alignment.End) {
@@ -645,7 +781,7 @@ fun AccountsScreen(
                                                 ) {
                                                     Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(12.dp))
                                                     Spacer(modifier = Modifier.width(2.dp))
-                                                    Text("Reverse", fontSize = 10.sp)
+                                                    Text(if (isBangla) "বিপরীত এন্ট্রি" else "Reverse", fontSize = 10.sp)
                                                 }
                                             }
                                         }
@@ -659,76 +795,95 @@ fun AccountsScreen(
                 // ==========================================
                 // TAB 3: FINANCIAL STATEMENTS
                 // ==========================================
-                if (selectedTab == AccountsTab.STATEMENTS) {
+                if (pageTab == AccountsTab.STATEMENTS) {
                     item {
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             ERPSectionHeader(
-                                modifier = Modifier.weight(1f),
-                                title = "Financial Statements",
-                                subtitle = "P&L, Balance Sheet, Cash Flow & Aging Reports"
+                                title = stringResource(R.string.financial_reports),
+                                subtitle = stringResource(R.string.accounting_statements_subtitle)
                             )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (canExportReports) Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (canViewProfit) {
                                 Button(
                                     onClick = { viewModel.exportProfitAndLossPdf(context) },
                                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("P&L PDF", fontSize = 11.sp)
+                                    Text(if (isBangla) "লাভ-ক্ষতি PDF" else "P&L PDF", fontSize = 11.sp, maxLines = 1)
+                                }
                                 }
                                 Button(
                                     onClick = { viewModel.exportBalanceSheetPdf(context) },
                                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Balance PDF", fontSize = 11.sp)
+                                    Text(if (isBangla) "উদ্বৃত্তপত্র PDF" else "Balance Sheet PDF", fontSize = 11.sp, maxLines = 1)
                                 }
                             }
                         }
                     }
 
                     // Profit & Loss Card
-                    uiState.profitAndLoss?.let { pnl ->
+                    if (canViewProfit) uiState.profitAndLoss?.let { pnl ->
                         item {
-                            ERPCard(backgroundColor = ERPSurfaceVariant, contentPadding = 14.dp) {
+                            FinanceCard(backgroundColor = ERPSurfaceVariant, contentPadding = 14.dp) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    Text("Profit & Loss Summary (Income Statement)", fontWeight = FontWeight.Bold, color = TextPrimary)
+                                    Text(if (isBangla) "লাভ-ক্ষতি সারসংক্ষেপ" else "Profit & Loss Summary (Income Statement)", fontWeight = FontWeight.Bold, color = TextPrimary)
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Gross Sales Revenue", style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) "মোট বিক্রয় আয়" else "Gross Sales Revenue", style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatMoney(pnl.grossSalesMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold)
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Net Sales Revenue", style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) "বিক্রয় ফেরত / সমন্বয়" else "Sales Returns / Adjustments", style = MaterialTheme.typography.bodySmall)
+                                        Text("- ${Formatters.formatMoney(pnl.salesReturnsMinor + pnl.salesDiscountsMinor, CurrencyCode.BDT, uiState.language)}", color = StatusError)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(if (isBangla) "নিট বিক্রয় আয়" else "Net Sales Revenue", style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatMoney(pnl.netSalesRevenueMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold)
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Cost of Goods Sold (COGS)", style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) "বিক্রিত পণ্যের ব্যয় (COGS)" else "Cost of Goods Sold (COGS)", style = MaterialTheme.typography.bodySmall)
                                         Text("- ${Formatters.formatMoney(pnl.costOfGoodsSoldMinor, CurrencyCode.BDT, uiState.language)}", color = StatusError)
                                     }
                                     Divider(color = ERPDivider, modifier = Modifier.padding(vertical = 4.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Gross Profit", fontWeight = FontWeight.Bold)
+                                        Text(if (isBangla) "মোট মুনাফা" else "Gross Profit", fontWeight = FontWeight.Bold)
                                         Text(Formatters.formatMoney(pnl.grossProfitMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Black, color = SecondaryTeal)
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Operating Expenses", style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) "পরিচালন ব্যয়" else "Operating Expenses", style = MaterialTheme.typography.bodySmall)
                                         Text("- ${Formatters.formatMoney(pnl.totalOperatingExpensesMinor, CurrencyCode.BDT, uiState.language)}", color = StatusError)
                                     }
                                     Divider(color = ERPDivider, modifier = Modifier.padding(vertical = 4.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("NET PROFIT / (LOSS)", fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall)
+                                        Text(if (isBangla) "নিট মুনাফা / (লোকসান)" else "NET PROFIT / (LOSS)", fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall)
                                         val netProfitColor = if (pnl.netProfitMinor >= 0) StatusSuccess else StatusError
                                         Text(Formatters.formatMoney(pnl.netProfitMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Black, color = netProfitColor, style = MaterialTheme.typography.titleMedium)
                                     }
                                 }
+                            }
+                        }
+                    } else if (!canViewProfit) {
+                        item {
+                            FinanceCard(border = BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.22f))) {
+                                Text(
+                                    if (isBangla) "লাভ-ক্ষতি ও COGS তথ্য দেখতে মালিক/প্রশাসকের অনুমতি প্রয়োজন।" else "Owner/Admin access is required to view profit and COGS details.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         }
                     }
@@ -736,10 +891,10 @@ fun AccountsScreen(
                     // Balance Sheet Card
                     uiState.balanceSheet?.let { bs ->
                         item {
-                            ERPCard(backgroundColor = ERPSurfaceVariant, contentPadding = 14.dp) {
+                            FinanceCard(backgroundColor = ERPSurfaceVariant, contentPadding = 14.dp) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Balance Sheet (Financial Position)", fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        Text(stringResource(R.string.accounting_balance_sheet), fontWeight = FontWeight.Bold, color = TextPrimary)
                                         Box(
                                             modifier = Modifier
                                                 .background(if (bs.isBalanced) StatusSuccess.copy(alpha = 0.15f) else StatusError.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
@@ -750,15 +905,15 @@ fun AccountsScreen(
                                     }
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Total Assets", style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) "মোট সম্পদ" else "Total Assets", style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatMoney(bs.totalAssetsMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold, color = SecondaryTeal)
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Total Liabilities", style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) "মোট দায়" else "Total Liabilities", style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatMoney(bs.totalLiabilitiesMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold, color = StatusError)
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Total Equity (Capital + Retained)", style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) "মোট মূলধন (মূলধন + সঞ্চিত আয়)" else "Total Equity (Capital + Retained)", style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatMoney(bs.totalEquityMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Bold, color = PrimaryPurple)
                                     }
                                 }
@@ -766,24 +921,47 @@ fun AccountsScreen(
                         }
                     }
 
+                    uiState.cashFlow?.let { flow ->
+                        item {
+                            FinanceCard(
+                                backgroundColor = ERPSurfaceVariant,
+                                contentPadding = 14.dp,
+                                border = BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.24f))
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(if (isBangla) "নগদ প্রবাহ বিবরণী" else "Cash Flow Statement", fontWeight = FontWeight.Bold, color = TextPrimary)
+                                    FinanceValueRow(if (isBangla) "গ্রাহকের কাছ থেকে আদায়" else "Customer receipts", flow.cashInflowCustomersMinor, uiState.language, StatusSuccess)
+                                    FinanceValueRow(if (isBangla) "সরবরাহকারীকে পরিশোধ" else "Supplier payments", -flow.cashOutflowSuppliersMinor, uiState.language, StatusError)
+                                    FinanceValueRow(if (isBangla) "ব্যয় পরিশোধ" else "Expense payments", -flow.cashOutflowExpensesMinor, uiState.language, StatusError)
+                                    Divider(color = ERPDivider)
+                                    FinanceValueRow(if (isBangla) "পরিচালন থেকে নিট নগদ" else "Net cash from operations", flow.netCashFromOperationsMinor, uiState.language, PrimaryPurple, emphasized = true)
+                                    FinanceValueRow(if (isBangla) "বিনিয়োগ থেকে নিট নগদ" else "Net cash from investing", flow.netCashFromInvestingMinor, uiState.language, TextPrimary)
+                                    FinanceValueRow(if (isBangla) "অর্থায়ন থেকে নিট নগদ" else "Net cash from financing", flow.netCashFromFinancingMinor, uiState.language, TextPrimary)
+                                    FinanceValueRow(if (isBangla) "নগদে নিট পরিবর্তন" else "Net change in cash", flow.netChangeInCashMinor, uiState.language, SecondaryTeal, emphasized = true)
+                                    FinanceValueRow(if (isBangla) "সমাপনী নগদ ও ব্যাংক" else "Closing cash & bank", flow.closingCashBankMinor, uiState.language, TextPrimary, emphasized = true)
+                                }
+                            }
+                        }
+                    }
+
                     // Receivables & Payables Aging Card
                     item {
-                        ERPCard(contentPadding = 14.dp) {
+                        FinanceCard(contentPadding = 14.dp) {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                Text("Working Capital Aging Breakdown", fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Text(stringResource(R.string.accounting_working_capital_aging), fontWeight = FontWeight.Bold, color = TextPrimary)
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text("Customer Receivables Aging:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                Text(if (isBangla) "গ্রাহকের পাওনা:" else "Customer Receivables Aging:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                                 uiState.receivablesAging?.buckets?.forEach { b ->
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(b.labelEn, style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) b.labelBn else b.labelEn, style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatMoney(b.amountMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Medium)
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("Supplier Payables Aging:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                Text(if (isBangla) "সরবরাহকারীর দেনা:" else "Supplier Payables Aging:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                                 uiState.payablesAging?.buckets?.forEach { b ->
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(b.labelEn, style = MaterialTheme.typography.bodySmall)
+                                        Text(if (isBangla) b.labelBn else b.labelEn, style = MaterialTheme.typography.bodySmall)
                                         Text(Formatters.formatMoney(b.amountMinor, CurrencyCode.BDT, uiState.language), fontWeight = FontWeight.Medium)
                                     }
                                 }
@@ -795,7 +973,7 @@ fun AccountsScreen(
                 // ==========================================
                 // TAB 4: BANK RECONCILIATION
                 // ==========================================
-                if (selectedTab == AccountsTab.RECONCILIATION) {
+                if (pageTab == AccountsTab.RECONCILIATION) {
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -804,8 +982,8 @@ fun AccountsScreen(
                         ) {
                             ERPSectionHeader(
                                 modifier = Modifier.weight(1f),
-                                title = "Bank Reconciliation",
-                                subtitle = "Statement Matching & Discrepancy Settlement"
+                                title = if (isBangla) "ব্যাংক সমন্বয়" else "Bank Reconciliation",
+                                subtitle = stringResource(R.string.accounting_reconciliation_subtitle)
                             )
                             Button(
                                 onClick = { showReconciliationDialog = true },
@@ -814,20 +992,21 @@ fun AccountsScreen(
                             ) {
                                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("New Reconciliation", fontSize = 12.sp)
+                                Text(stringResource(R.string.accounting_new_reconciliation), fontSize = 12.sp)
                             }
                         }
                     }
 
                     if (uiState.reconciliations.isEmpty()) {
                         item {
-                            ERPCard {
-                                Text("No reconciliation statements created yet. Start a reconciliation to match bank statement transactions against ERP journal records.", color = TextMuted)
+                            FinanceCard {
+                                Text(if (isBangla) "এখনও কোনো ব্যাংক সমন্বয় তৈরি হয়নি। ব্যাংক স্টেটমেন্টের লেনদেন ERP জাবেদার সঙ্গে মিলাতে নতুন সমন্বয় শুরু করুন।" else "No reconciliation statements created yet. Start a reconciliation to match bank statement transactions against ERP journal records.", color = TextMuted)
                             }
                         }
                     } else {
                         items(uiState.reconciliations) { rec ->
-                            ERPCard(contentPadding = 14.dp) {
+                            val reconciliationStatus = ReconciliationStatus.entries.firstOrNull { it.name == rec.status }
+                            FinanceCard(contentPadding = 14.dp) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -836,19 +1015,31 @@ fun AccountsScreen(
                                     ) {
                                         Column {
                                             Text(rec.reconciliationNumber, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                            Text("Bank A/C: ${rec.bankAccountId} • ${rec.status}", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
-                                            Text("Period: ${Formatters.formatDate(rec.statementStartDate, uiState.language)} - ${Formatters.formatDate(rec.statementEndDate, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            val bankName = uiState.accounts.firstOrNull { it.id == rec.bankAccountId }
+                                                ?.let { if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn }
+                                                ?: rec.bankAccountId
+                                            Text("${if (isBangla) "ব্যাংক হিসাব" else "Bank account"}: $bankName • ${reconciliationStatus?.let { if (isBangla) it.labelBn else it.labelEn } ?: rec.status}", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+                                            Text("${if (isBangla) "সময়কাল" else "Period"}: ${Formatters.formatDate(rec.statementStartDate, uiState.language)} - ${Formatters.formatDate(rec.statementEndDate, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                         }
                                         Column(horizontalAlignment = Alignment.End) {
-                                            val isZero = rec.discrepancyMinor == 0L
+                                            val isZero = rec.status == ReconciliationStatus.RECONCILED.name
                                             Box(
                                                 modifier = Modifier
                                                     .background(if (isZero) StatusSuccess.copy(alpha = 0.15f) else StatusError.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
-                                                Text(if (isZero) "RECONCILED" else "DISCREPANCY", color = if (isZero) StatusSuccess else StatusError, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                Text(
+                                                    reconciliationStatus?.let { if (isBangla) it.labelBn else it.labelEn } ?: rec.status,
+                                                    color = when (reconciliationStatus) {
+                                                        ReconciliationStatus.RECONCILED -> StatusSuccess
+                                                        ReconciliationStatus.IN_PROGRESS -> StatusWarning
+                                                        else -> StatusError
+                                                    },
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 10.sp
+                                                )
                                             }
-                                            Text("ERP Bal: ${Formatters.formatMoney(rec.erpClosingBalanceMinor, CurrencyCode.BDT, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            Text("ERP ${if (isBangla) "ব্যালেন্স" else "balance"}: ${Formatters.formatMoney(rec.erpClosingBalanceMinor, CurrencyCode.BDT, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                         }
                                     }
                                 }
@@ -860,7 +1051,7 @@ fun AccountsScreen(
                 // ==========================================
                 // TAB 5: CHART OF ACCOUNTS
                 // ==========================================
-                if (selectedTab == AccountsTab.CHART_OF_ACCOUNTS) {
+                if (pageTab == AccountsTab.CHART_OF_ACCOUNTS) {
                     val filteredAccounts = filteredCoaAccounts
 
                     item {
@@ -885,7 +1076,7 @@ fun AccountsScreen(
                             ) {
                                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text(if (isBangla) "নতুন A/C" else "New A/C", fontSize = 12.sp)
+                                Text("+ ${stringResource(R.string.accounting_new_account)}", fontSize = 12.sp)
                             }
                         }
                     }
@@ -935,7 +1126,7 @@ fun AccountsScreen(
 
                     if (filteredAccounts.isEmpty()) {
                         item {
-                            ERPCard {
+                            FinanceCard {
                                 Text(
                                     text = if (isBangla) "কোনো অ্যাকাউন্ট পাওয়া যায়নি।" else "No matching accounts found.",
                                     color = TextMuted
@@ -978,7 +1169,7 @@ fun AccountsScreen(
                 // ==========================================
                 // TAB 6: JOURNAL ENTRIES
                 // ==========================================
-                if (selectedTab == AccountsTab.JOURNAL) {
+                if (pageTab == AccountsTab.JOURNAL) {
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -988,29 +1179,71 @@ fun AccountsScreen(
                             ERPSectionHeader(
                                 modifier = Modifier.weight(1f),
                                 title = stringResource(R.string.journal_entries),
-                                subtitle = "Audit Log • Total Debit = Total Credit"
+                                subtitle = stringResource(R.string.accounting_journal_subtitle)
                             )
-                            Button(
+                            if (canPostJournals) Button(
                                 onClick = { showNewJournalDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("New Entry", fontSize = 12.sp)
+                                Text(stringResource(R.string.accounting_new_entry), fontSize = 12.sp)
                             }
                         }
                     }
 
-                    if (uiState.journalEntries.isEmpty()) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = journalSearchQuery,
+                                onValueChange = { journalSearchQuery = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                placeholder = { Text(if (isBangla) "রেফারেন্স, বিবরণ বা জাবেদা নম্বর খুঁজুন" else "Search reference, description or journal number") },
+                                leadingIcon = { Icon(Icons.Outlined.Assessment, contentDescription = null) }
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(JournalPeriod.entries) { period ->
+                                    val selected = journalPeriod == period
+                                    val title = when (period) {
+                                        JournalPeriod.ALL -> if (isBangla) "সব তারিখ" else "All time"
+                                        JournalPeriod.THIS_MONTH -> if (isBangla) "এই মাস" else "This month"
+                                        JournalPeriod.THIS_YEAR -> if (isBangla) "এই বছর" else "This year"
+                                    }
+                                    Text(
+                                        text = title,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .background(if (selected) PrimaryPurple else MaterialTheme.colorScheme.surface)
+                                            .selectable(selected = selected, role = Role.Tab) { journalPeriod = period }
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (filteredJournalEntries.isEmpty()) {
                         item {
-                            ERPCard {
-                                Text("No journal entries posted yet. Supplier payments and warehouse receipts auto-post entries here.", color = TextMuted)
+                            FinanceCard {
+                                Text(
+                                    if (uiState.journalEntries.isEmpty()) {
+                                        if (isBangla) "এখনও কোনো জাবেদা পোস্ট হয়নি। সরবরাহকারী পেমেন্ট ও গুদাম গ্রহণের এন্ট্রি এখানে স্বয়ংক্রিয়ভাবে আসে।" else "No journal entries posted yet. Supplier payments and warehouse receipts auto-post entries here."
+                                    } else {
+                                        if (isBangla) "এই খোঁজ বা তারিখে কোনো জাবেদা নেই।" else "No journal entries match this search or date filter."
+                                    },
+                                    color = TextMuted
+                                )
                             }
                         }
                     } else {
-                        items(uiState.journalEntries) { entry ->
-                            ERPCard(contentPadding = 14.dp) {
+                        items(filteredJournalEntries, key = { it.id }) { entry ->
+                            FinanceCard(contentPadding = 14.dp) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1031,16 +1264,18 @@ fun AccountsScreen(
                                                     }
                                                 }
                                             }
-                                            Text(entry.descriptionEn, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+                                            Text(if (isBangla && entry.descriptionBn.isNotBlank()) entry.descriptionBn else entry.descriptionEn, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
                                             Text("Ref: ${entry.referenceType} • ${Formatters.formatDate(entry.entryDate, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            Text(if (entry.isPosted) { if (isBangla) "পোস্ট হয়েছে" else "Posted" } else { if (isBangla) "খসড়া" else "Draft" }, style = MaterialTheme.typography.labelSmall, color = if (entry.isPosted) StatusSuccess else TextMuted)
                                         }
 
                                         Column(horizontalAlignment = Alignment.End) {
                                             Text(
-                                                Formatters.formatMoney(entry.totalDebitMinor, CurrencyCode.BDT, uiState.language),
+                                                "Dr ${Formatters.formatMoney(entry.totalDebitMinor, CurrencyCode.BDT, uiState.language)}",
                                                 fontWeight = FontWeight.Bold,
                                                 color = PrimaryPurple
                                             )
+                                            Text("Cr ${Formatters.formatMoney(entry.totalCreditMinor, CurrencyCode.BDT, uiState.language)}", fontWeight = FontWeight.Bold, color = SecondaryTeal)
                                             if (!entry.isReversed && entry.referenceType != "REVERSAL") {
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 OutlinedButton(
@@ -1065,7 +1300,7 @@ fun AccountsScreen(
                 // ==========================================
                 // TAB 7: TRIAL BALANCE
                 // ==========================================
-                if (selectedTab == AccountsTab.TRIAL_BALANCE) {
+                if (pageTab == AccountsTab.TRIAL_BALANCE) {
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1075,7 +1310,7 @@ fun AccountsScreen(
                             ERPSectionHeader(
                                 modifier = Modifier.weight(1f),
                                 title = stringResource(R.string.trial_balance),
-                                subtitle = "General Ledger Debit-Credit Reconciliation"
+                                subtitle = stringResource(R.string.accounting_trial_subtitle)
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(
@@ -1095,7 +1330,7 @@ fun AccountsScreen(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = if (uiState.isBalanced) "Balanced" else "Out of Balance",
+                                            text = if (uiState.isBalanced) { if (isBangla) "সমতাপূর্ণ" else "Balanced" } else { if (isBangla) "অমিল" else "Out of Balance" },
                                             color = if (uiState.isBalanced) StatusSuccess else StatusError,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp
@@ -1111,13 +1346,13 @@ fun AccountsScreen(
 
                     // Trial Balance Summary Card
                     item {
-                        ERPCard(backgroundColor = DeepNavy, contentPadding = 14.dp) {
+                        FinanceCard(backgroundColor = DeepNavy, contentPadding = 14.dp) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceAround
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Total Debit", color = TextMuted, style = MaterialTheme.typography.labelSmall)
+                                    Text(if (isBangla) "মোট ডেবিট" else "Total Debit", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.labelSmall)
                                     Text(
                                         Formatters.formatMoney(uiState.totalTrialDebit, CurrencyCode.BDT, uiState.language),
                                         color = Color.White,
@@ -1126,7 +1361,7 @@ fun AccountsScreen(
                                     )
                                 }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Total Credit", color = TextMuted, style = MaterialTheme.typography.labelSmall)
+                                    Text(if (isBangla) "মোট ক্রেডিট" else "Total Credit", color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.labelSmall)
                                     Text(
                                         Formatters.formatMoney(uiState.totalTrialCredit, CurrencyCode.BDT, uiState.language),
                                         color = SecondaryTeal,
@@ -1135,24 +1370,32 @@ fun AccountsScreen(
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            FinanceValueRow(
+                                label = if (isBangla) "পার্থক্য" else "Difference",
+                                amountMinor = abs(uiState.totalTrialDebit - uiState.totalTrialCredit),
+                                language = uiState.language,
+                                amountColor = if (uiState.isBalanced) StatusSuccess else StatusError,
+                                emphasized = true
+                            )
                         }
                     }
 
                     items(uiState.trialBalance) { tb ->
                         if (tb.totalDebitMinor > 0L || tb.totalCreditMinor > 0L) {
-                            ERPCard(contentPadding = 10.dp) {
+                            FinanceCard(contentPadding = 10.dp) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("${tb.accountCode} - ${tb.accountNameEn}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                        Text("${tb.accountCode} - ${if (isBangla && tb.accountNameBn.isNotBlank()) tb.accountNameBn else tb.accountNameEn}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                         Text(tb.accountType, style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                         Column(horizontalAlignment = Alignment.End) {
-                                            Text("Debit", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            Text(if (isBangla) "ডেবিট" else "Debit", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                             Text(
                                                 if (tb.netDebitMinor > 0L) Formatters.formatMoney(tb.netDebitMinor, CurrencyCode.BDT, uiState.language) else "-",
                                                 fontWeight = FontWeight.Bold,
@@ -1161,7 +1404,7 @@ fun AccountsScreen(
                                             )
                                         }
                                         Column(horizontalAlignment = Alignment.End) {
-                                            Text("Credit", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            Text(if (isBangla) "ক্রেডিট" else "Credit", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                                             Text(
                                                 if (tb.netCreditMinor > 0L) Formatters.formatMoney(tb.netCreditMinor, CurrencyCode.BDT, uiState.language) else "-",
                                                 fontWeight = FontWeight.Bold,
@@ -1179,7 +1422,7 @@ fun AccountsScreen(
                 // ==========================================
                 // TAB 8: BACKUP & RESTORE
                 // ==========================================
-                if (selectedTab == AccountsTab.BACKUP_RESTORE) {
+                if (pageTab == AccountsTab.BACKUP_RESTORE) {
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1188,8 +1431,8 @@ fun AccountsScreen(
                         ) {
                             ERPSectionHeader(
                                 modifier = Modifier.weight(1f),
-                                title = "Backup & Safety System",
-                                subtitle = "Offline Database Archive & Safety Snapshots"
+                                title = stringResource(R.string.backup_safety),
+                                subtitle = stringResource(R.string.accounting_backup_subtitle)
                             )
                             Button(
                                 onClick = { showCreateBackupDialog = true },
@@ -1198,20 +1441,20 @@ fun AccountsScreen(
                             ) {
                                 Icon(Icons.Outlined.Security, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Create Backup", fontSize = 12.sp)
+                                Text(stringResource(R.string.accounting_create_backup), fontSize = 12.sp)
                             }
                         }
                     }
 
                     if (uiState.backupRecords.isEmpty()) {
                         item {
-                            ERPCard {
-                                Text("No offline backup records found. Create an instant backup snapshot to preserve SQLite database state with SHA-256 integrity.", color = TextMuted)
+                            FinanceCard {
+                                Text(stringResource(R.string.accounting_empty_backups), color = TextMuted)
                             }
                         }
                     } else {
                         items(uiState.backupRecords) { bak ->
-                            ERPCard(contentPadding = 12.dp) {
+                            FinanceCard(contentPadding = 12.dp) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1219,7 +1462,15 @@ fun AccountsScreen(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(bak.fileName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                                        Text("Size: ${bak.fileSizeBytes / 1024} KB • Schema v${bak.schemaVersion} • SHA: ${bak.checksumSha256.take(8)}...", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                        Text("${if (isBangla) "আকার" else "Size"}: ${bak.fileSizeBytes / 1024} KB • Schema v${bak.schemaVersion}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                        Text("SHA-256: ${bak.checksumSha256.take(12)}…", style = MaterialTheme.typography.labelSmall, color = StatusSuccess)
+                                        Text(
+                                            "${if (isBangla) "স্থানীয় অবস্থান" else "Local location"}: ${File(bak.filePath).parent ?: "App storage"}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMuted,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                         Text(Formatters.formatDate(bak.createdAt, uiState.language), style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                                     }
                                     Button(
@@ -1228,7 +1479,7 @@ fun AccountsScreen(
                                         shape = RoundedCornerShape(6.dp),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Text("Restore", fontSize = 11.sp)
+                                        Text(if (isBangla) "পুনরুদ্ধার" else "Restore", fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -1239,13 +1490,13 @@ fun AccountsScreen(
                     item {
                         Spacer(modifier = Modifier.height(10.dp))
                         ERPSectionHeader(
-                            title = "Immutable Audit Trail",
-                            subtitle = "Financial Operations Log"
+                            title = stringResource(R.string.accounting_audit_trail),
+                            subtitle = stringResource(R.string.accounting_financial_operations_log)
                         )
                     }
 
                     items(uiState.auditLogs.take(20)) { log ->
-                        ERPCard(contentPadding = 10.dp) {
+                        FinanceCard(contentPadding = 10.dp) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1267,6 +1518,7 @@ fun AccountsScreen(
                     }
                 }
             }
+            }
         }
 
         SnackbarHost(
@@ -1279,11 +1531,13 @@ fun AccountsScreen(
     entryToReverse?.let { entry ->
         AlertDialog(
             onDismissRequest = { entryToReverse = null },
-            title = { Text("Confirm Journal Reversal", fontWeight = FontWeight.Bold) },
+            title = { Text(if (isBangla) "জাবেদা বিপরীত করার নিশ্চয়তা" else "Confirm Journal Reversal", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Are you sure you want to reverse journal entry ${entry.entryNumber}?\n\n" +
-                    "A new balancing reversal entry will be posted, swapping debits and credits, preserving the complete immutable audit trail."
+                    if (isBangla) "আপনি কি ${entry.entryNumber} জাবেদাটি বিপরীত করতে চান?\n\n" +
+                        "ডেবিট ও ক্রেডিট উল্টে একটি নতুন সমন্বয়কারী এন্ট্রি পোস্ট হবে এবং নিরীক্ষা ইতিহাস অক্ষত থাকবে।"
+                    else "Are you sure you want to reverse journal entry ${entry.entryNumber}?\n\n" +
+                        "A new balancing reversal entry will be posted, swapping debits and credits, preserving the complete immutable audit trail."
                 )
             },
             confirmButton = {
@@ -1294,12 +1548,12 @@ fun AccountsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                 ) {
-                    Text("Confirm Reversal")
+                    Text(if (isBangla) "বিপরীত এন্ট্রি নিশ্চিত করুন" else "Confirm Reversal")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { entryToReverse = null }) {
-                    Text("Cancel")
+                    Text(if (isBangla) "বাতিল" else "Cancel")
                 }
             }
         )
@@ -1309,11 +1563,13 @@ fun AccountsScreen(
     expenseToReverse?.let { exp ->
         AlertDialog(
             onDismissRequest = { expenseToReverse = null },
-            title = { Text("Confirm Expense Voucher Void", fontWeight = FontWeight.Bold) },
+            title = { Text(if (isBangla) "ব্যয় ভাউচার বাতিলের নিশ্চয়তা" else "Confirm Expense Voucher Void", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Are you sure you want to reverse expense voucher ${exp.voucherNumber}?\n\n" +
-                    "The offsetting journal entry will be posted automatically to balance the accounts."
+                    if (isBangla) "আপনি কি ${exp.voucherNumber} ব্যয় ভাউচারটি বিপরীত করতে চান?\n\n" +
+                        "হিসাবের ভারসাম্য রাখতে বিপরীত জাবেদা স্বয়ংক্রিয়ভাবে পোস্ট হবে।"
+                    else "Are you sure you want to reverse expense voucher ${exp.voucherNumber}?\n\n" +
+                        "The offsetting journal entry will be posted automatically to balance the accounts."
                 )
             },
             confirmButton = {
@@ -1324,12 +1580,12 @@ fun AccountsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = StatusError)
                 ) {
-                    Text("Void Voucher")
+                    Text(if (isBangla) "ভাউচার বাতিল করুন" else "Void Voucher")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { expenseToReverse = null }) {
-                    Text("Cancel")
+                    Text(if (isBangla) "বাতিল" else "Cancel")
                 }
             }
         )
@@ -1339,11 +1595,13 @@ fun AccountsScreen(
     backupToRestore?.let { bak ->
         AlertDialog(
             onDismissRequest = { backupToRestore = null },
-            title = { Text("Confirm Database Restore", fontWeight = FontWeight.Bold) },
+            title = { Text(if (isBangla) "ডেটাবেস পুনরুদ্ধার নিশ্চিত করুন" else "Confirm Database Restore", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Are you sure you want to restore database from ${bak.fileName}?\n\n" +
-                    "A safety snapshot of your current database will be saved before restoring. System will overwrite active database tables with this backup."
+                    if (isBangla) "${bak.fileName} ব্যাকআপ থেকে ডেটাবেস পুনরুদ্ধার করবেন?\n\n" +
+                        "পুনরুদ্ধারের আগে বর্তমান ডেটাবেসের একটি নিরাপত্তা কপি তৈরি হবে। এরপর সক্রিয় ডেটাবেসের তথ্য এই ব্যাকআপ দিয়ে প্রতিস্থাপিত হবে।"
+                    else "Are you sure you want to restore database from ${bak.fileName}?\n\n" +
+                        "A safety snapshot of your current database will be saved before restoring. System will overwrite active database tables with this backup."
                 )
             },
             confirmButton = {
@@ -1354,12 +1612,12 @@ fun AccountsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
                 ) {
-                    Text("Restore Database")
+                    Text(if (isBangla) "ডেটাবেস পুনরুদ্ধার" else "Restore Database")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { backupToRestore = null }) {
-                    Text("Cancel")
+                    Text(if (isBangla) "বাতিল" else "Cancel")
                 }
             }
         )
@@ -1437,6 +1695,7 @@ fun AccountsScreen(
     if (showRecordExpenseDialog) {
         RecordExpenseDialog(
             accounts = uiState.accounts.filter { it.isActive },
+            isBangla = isBangla,
             onDismiss = { showRecordExpenseDialog = false },
             onConfirm = { cat, descEn, descBn, amtMinor, curr, rate, payAcc, expAcc, date, ref, notes ->
                 viewModel.recordExpense(cat, descEn, descBn, amtMinor, curr, rate, payAcc, expAcc, date, ref, notes)
@@ -1449,6 +1708,7 @@ fun AccountsScreen(
         AccountTransferDialog(
             accounts = uiState.liquidAccounts.filter { it.isActive }
                 .ifEmpty { uiState.accounts.filter { it.isActive && it.accountType == "ASSET" } },
+            isBangla = isBangla,
             onDismiss = { showTransferDialog = false },
             onConfirm = { src, dst, amt, date, ref, notes ->
                 viewModel.transferFunds(src, dst, amt, date, ref, notes)
@@ -1462,6 +1722,7 @@ fun AccountsScreen(
             bankAccounts = uiState.liquidAccounts.filter {
                 it.isActive && it.liquidKind != LiquidAccountKind.CASH
             }.ifEmpty { uiState.accounts.filter { it.accountCode in listOf("1020", "1030") } },
+            isBangla = isBangla,
             onDismiss = { showReconciliationDialog = false },
             onConfirm = { accId, start, end, openBal, closeBal, notes ->
                 viewModel.startReconciliation(accId, start, end, openBal, closeBal, notes)
@@ -1472,6 +1733,7 @@ fun AccountsScreen(
     // Create Backup Dialog
     if (showCreateBackupDialog) {
         CreateBackupDialog(
+            isBangla = isBangla,
             onDismiss = { showCreateBackupDialog = false },
             onConfirm = { notes ->
                 viewModel.createBackup(notes)
@@ -1483,10 +1745,67 @@ fun AccountsScreen(
     if (showNewJournalDialog) {
         NewJournalEntryDialog(
             accounts = uiState.accounts.filter { it.isActive },
+            isBangla = isBangla,
             onDismiss = { showNewJournalDialog = false },
             onConfirm = { descEn, descBn, lines ->
                 viewModel.postManualJournalEntry(descEn, descBn, lines)
             }
+        )
+    }
+    }
+}
+
+@Composable
+private fun FinanceCard(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(18.dp),
+    backgroundColor: Color = MaterialTheme.colorScheme.surface,
+    elevation: Dp = 3.dp,
+    border: BorderStroke? = null,
+    onClick: (() -> Unit)? = null,
+    contentPadding: Dp = 16.dp,
+    content: @Composable BoxScope.() -> Unit
+) {
+    ERPCard(
+        modifier = modifier,
+        shape = shape,
+        backgroundColor = backgroundColor,
+        elevation = elevation,
+        border = border ?: BorderStroke(
+            1.dp,
+            (if (LocalIsDarkTheme.current) SecondaryTeal else PrimaryPurple).copy(alpha = if (LocalIsDarkTheme.current) 0.24f else 0.11f)
+        ),
+        onClick = onClick,
+        contentPadding = contentPadding,
+        content = content
+    )
+}
+
+@Composable
+private fun FinanceValueRow(
+    label: String,
+    amountMinor: Long,
+    language: AppLanguage,
+    amountColor: Color,
+    emphasized: Boolean = false
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            style = if (emphasized) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            Formatters.formatMoney(amountMinor, CurrencyCode.BDT, language),
+            style = if (emphasized) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = amountColor
         )
     }
 }
@@ -1523,9 +1842,10 @@ private fun AccountBalanceCard(
         LiquidAccountKind.BANK -> Icons.Outlined.AccountBalance
         LiquidAccountKind.MOBILE_BANKING -> Icons.Outlined.PhoneAndroid
     }
-    ERPCard(
+    FinanceCard(
         contentPadding = 14.dp,
-        onClick = onClick
+        onClick = onClick,
+        border = BorderStroke(1.dp, color.copy(alpha = if (LocalIsDarkTheme.current) 0.32f else 0.18f))
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1567,6 +1887,7 @@ private fun AccountBalanceCard(
                 fontWeight = FontWeight.Bold,
                 color = if (isActive) color else TextMuted
             )
+            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1637,7 +1958,7 @@ private fun ChartOfAccountCard(
         account.accountNumber?.let { add("A/C $it") }
     }.joinToString(" • ")
 
-    ERPCard(contentPadding = 12.dp, onClick = onClick) {
+    FinanceCard(contentPadding = 12.dp, onClick = onClick) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -1746,6 +2067,7 @@ private fun accountTypeColor(accountType: String): Color = when (accountType) {
 @Composable
 private fun AccountDropdownField(
     label: String,
+    isBangla: Boolean = false,
     accounts: List<ChartOfAccount>,
     selectedAccountId: String,
     onSelect: (ChartOfAccount) -> Unit,
@@ -1761,8 +2083,9 @@ private fun AccountDropdownField(
         OutlinedTextField(
             value = selected?.let { acc ->
                 val inst = acc.institutionName?.takeIf { it !in acc.nameEn }?.let { " • $it" } ?: ""
-                "${acc.accountCode} - ${acc.nameEn}$inst"
-            } ?: "Select Account",
+                val name = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn
+                "${acc.accountCode} - $name$inst"
+            } ?: if (isBangla) "হিসাব নির্বাচন করুন" else "Select Account",
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
@@ -1781,8 +2104,12 @@ private fun AccountDropdownField(
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text("${acc.accountCode} • ${acc.nameEn}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            val sub = listOfNotNull(acc.liquidKind?.titleEn, acc.institutionName, acc.accountNumber?.let { "A/C $it" })
+                            Text("${acc.accountCode} • ${if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            val sub = listOfNotNull(
+                                acc.liquidKind?.let { if (isBangla) it.titleBn else it.titleEn },
+                                acc.institutionName,
+                                acc.accountNumber?.let { "A/C $it" }
+                            )
                                 .joinToString(" • ")
                             if (sub.isNotBlank()) {
                                 Text(sub, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
@@ -1802,6 +2129,7 @@ private fun AccountDropdownField(
 @Composable
 private fun RecordExpenseDialog(
     accounts: List<ChartOfAccount>,
+    isBangla: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (
         category: String,
@@ -1848,10 +2176,10 @@ private fun RecordExpenseDialog(
                     .padding(18.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Text("Record Operating Expense", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(if (isBangla) "পরিচালন ব্যয় নথিভুক্ত করুন" else "Record Operating Expense", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("Expense Category:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                Text(if (isBangla) "ব্যয়ের খাত:" else "Expense Category:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(categories) { cat ->
                         val isSel = selectedCat == cat
@@ -1862,7 +2190,7 @@ private fun RecordExpenseDialog(
                                 .clickable { selectedCat = cat }
                                 .padding(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            Text(cat.titleEn, color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary, fontSize = 11.sp)
+                            Text(if (isBangla) cat.titleBn else cat.titleEn, color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary, fontSize = 11.sp)
                         }
                     }
                 }
@@ -1872,7 +2200,16 @@ private fun RecordExpenseDialog(
                 OutlinedTextField(
                     value = descEn,
                     onValueChange = { descEn = it },
-                    label = { Text("Description (English)") },
+                    label = { Text(if (isBangla) "বিবরণ (ইংরেজি)" else "Description (English)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = descBn,
+                    onValueChange = { descBn = it },
+                    label = { Text(if (isBangla) "বিবরণ (বাংলা)" else "Description (Bangla)") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -1882,14 +2219,14 @@ private fun RecordExpenseDialog(
                     OutlinedTextField(
                         value = amountStr,
                         onValueChange = { amountStr = it },
-                        label = { Text("Amount") },
+                        label = { Text(if (isBangla) "পরিমাণ" else "Amount") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = currency,
                         onValueChange = { currency = it.uppercase() },
-                        label = { Text("Currency") },
+                        label = { Text(if (isBangla) "মুদ্রা" else "Currency") },
                         modifier = Modifier.width(90.dp)
                     )
                 }
@@ -1899,7 +2236,7 @@ private fun RecordExpenseDialog(
                     OutlinedTextField(
                         value = exchangeRate,
                         onValueChange = { exchangeRate = it },
-                        label = { Text("Rate to BDT (e.g. 17.20)") },
+                        label = { Text(if (isBangla) "টাকায় বিনিময় হার (যেমন 17.20)" else "Rate to BDT (e.g. 17.20)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1908,7 +2245,8 @@ private fun RecordExpenseDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 AccountDropdownField(
-                    label = "Payment Account (Cash / Bank / MFS)",
+                    label = if (isBangla) "পেমেন্ট হিসাব (নগদ / ব্যাংক / MFS)" else "Payment Account (Cash / Bank / MFS)",
+                    isBangla = isBangla,
                     accounts = paymentAccounts,
                     selectedAccountId = paymentAccountId,
                     onSelect = { paymentAccountId = it.id }
@@ -1919,7 +2257,7 @@ private fun RecordExpenseDialog(
                 OutlinedTextField(
                     value = refNumber,
                     onValueChange = { refNumber = it },
-                    label = { Text("Receipt / Invoice Ref") },
+                    label = { Text(if (isBangla) "রসিদ / ইনভয়েস রেফারেন্স" else "Receipt / Invoice Ref") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -1931,20 +2269,20 @@ private fun RecordExpenseDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
                             try {
                                 val amtBd = BigDecimal(amountStr.trim())
-                                require(amtBd > BigDecimal.ZERO) { "Amount must be positive" }
-                                require(descEn.isNotBlank()) { "Description is required" }
+                                require(amtBd > BigDecimal.ZERO) { if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive" }
+                                require(descEn.isNotBlank()) { if (isBangla) "বিবরণ আবশ্যক" else "Description is required" }
 
                                 val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
                                 onConfirm(
                                     selectedCat.name,
                                     descEn,
-                                    descEn,
+                                    descBn.ifBlank { descEn },
                                     minor,
                                     currency,
                                     exchangeRate,
@@ -1956,12 +2294,12 @@ private fun RecordExpenseDialog(
                                 )
                                 onDismiss()
                             } catch (e: Exception) {
-                                errorMessage = e.message ?: "Invalid expense details"
+                                errorMessage = e.message ?: if (isBangla) "ব্যয়ের তথ্য সঠিক নয়" else "Invalid expense details"
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
-                        Text("Post Expense")
+                        Text(if (isBangla) "ব্যয় পোস্ট করুন" else "Post Expense")
                     }
                 }
             }
@@ -1972,6 +2310,7 @@ private fun RecordExpenseDialog(
 @Composable
 private fun AccountTransferDialog(
     accounts: List<ChartOfAccount>,
+    isBangla: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (sourceId: String, destId: String, amountMinor: Long, date: Long, ref: String?, notes: String?) -> Unit
 ) {
@@ -1990,11 +2329,12 @@ private fun AccountTransferDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Inter-Account Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(if (isBangla) "হিসাবের মধ্যে তহবিল স্থানান্তর" else "Inter-Account Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 AccountDropdownField(
-                    label = "From (Source Account)",
+                    label = if (isBangla) "যে হিসাব থেকে" else "From (Source Account)",
+                    isBangla = isBangla,
                     accounts = accounts,
                     selectedAccountId = sourceId,
                     onSelect = { sourceId = it.id }
@@ -2003,7 +2343,8 @@ private fun AccountTransferDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 AccountDropdownField(
-                    label = "To (Destination Account)",
+                    label = if (isBangla) "যে হিসাবে" else "To (Destination Account)",
+                    isBangla = isBangla,
                     accounts = accounts,
                     selectedAccountId = destId,
                     onSelect = { destId = it.id }
@@ -2014,7 +2355,7 @@ private fun AccountTransferDialog(
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = { amountStr = it },
-                    label = { Text("Transfer Amount (BDT)") },
+                    label = { Text(if (isBangla) "স্থানান্তরের পরিমাণ (BDT)" else "Transfer Amount (BDT)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -2024,7 +2365,7 @@ private fun AccountTransferDialog(
                 OutlinedTextField(
                     value = refStr,
                     onValueChange = { refStr = it },
-                    label = { Text("Reference (Cheque / Deposit Slip)") },
+                    label = { Text(if (isBangla) "রেফারেন্স (চেক / জমা স্লিপ)" else "Reference (Cheque / Deposit Slip)") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -2036,7 +2377,7 @@ private fun AccountTransferDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
@@ -2054,7 +2395,7 @@ private fun AccountTransferDialog(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
                     ) {
-                        Text("Execute Transfer")
+                        Text(if (isBangla) "স্থানান্তর সম্পন্ন করুন" else "Execute Transfer")
                     }
                 }
             }
@@ -2065,6 +2406,7 @@ private fun AccountTransferDialog(
 @Composable
 private fun StartReconciliationDialog(
     bankAccounts: List<ChartOfAccount>,
+    isBangla: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (bankAccountId: String, start: Long, end: Long, openBal: Long, closeBal: Long, notes: String?) -> Unit
 ) {
@@ -2080,11 +2422,12 @@ private fun StartReconciliationDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Start Bank Reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(if (isBangla) "ব্যাংক সমন্বয় শুরু করুন" else "Start Bank Reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 AccountDropdownField(
-                    label = "Bank / MFS Account",
+                    label = if (isBangla) "ব্যাংক / MFS হিসাব" else "Bank / MFS Account",
+                    isBangla = isBangla,
                     accounts = bankAccounts,
                     selectedAccountId = selectedAccId,
                     onSelect = { selectedAccId = it.id }
@@ -2095,7 +2438,7 @@ private fun StartReconciliationDialog(
                 OutlinedTextField(
                     value = openBalStr,
                     onValueChange = { openBalStr = it },
-                    label = { Text("Statement Opening Balance (BDT)") },
+                    label = { Text(if (isBangla) "স্টেটমেন্টের প্রারম্ভিক ব্যালেন্স (BDT)" else "Statement Opening Balance (BDT)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -2105,7 +2448,7 @@ private fun StartReconciliationDialog(
                 OutlinedTextField(
                     value = closeBalStr,
                     onValueChange = { closeBalStr = it },
-                    label = { Text("Statement Closing Balance (BDT)") },
+                    label = { Text(if (isBangla) "স্টেটমেন্টের সমাপনী ব্যালেন্স (BDT)" else "Statement Closing Balance (BDT)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -2118,7 +2461,7 @@ private fun StartReconciliationDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
@@ -2133,12 +2476,12 @@ private fun StartReconciliationDialog(
                                 onConfirm(selectedAccId, monthStart, now, openMinor, closeMinor, notes.ifBlank { null })
                                 onDismiss()
                             } catch (e: Exception) {
-                                errorMessage = e.message ?: "Invalid reconciliation balance"
+                                errorMessage = e.message ?: if (isBangla) "সমন্বয়ের ব্যালেন্স সঠিক নয়" else "Invalid reconciliation balance"
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
                     ) {
-                        Text("Create Session")
+                        Text(if (isBangla) "সমন্বয় সেশন তৈরি" else "Create Session")
                     }
                 }
             }
@@ -2148,6 +2491,7 @@ private fun StartReconciliationDialog(
 
 @Composable
 private fun CreateBackupDialog(
+    isBangla: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (notes: String?) -> Unit
 ) {
@@ -2159,10 +2503,10 @@ private fun CreateBackupDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Create Offline Safety Backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(if (isBangla) "অফলাইন নিরাপত্তা ব্যাকআপ তৈরি" else "Create Offline Safety Backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "This creates an immutable copy of advance_erp.db on local storage, flushes active SQLite WAL journals, and records a SHA-256 integrity checksum.",
+                    if (isBangla) "এটি advance_erp.db-এর একটি অপরিবর্তনীয় স্থানীয় কপি তৈরি করে, SQLite WAL journal সংরক্ষণ করে এবং SHA-256 checksum রাখে।" else "This creates an immutable copy of advance_erp.db on local storage, flushes active SQLite WAL journals, and records a SHA-256 integrity checksum.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -2171,14 +2515,14 @@ private fun CreateBackupDialog(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Backup Notes") },
+                    label = { Text(if (isBangla) "ব্যাকআপ নোট" else "Backup Notes") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
@@ -2187,7 +2531,7 @@ private fun CreateBackupDialog(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
-                        Text("Archive Now")
+                        Text(if (isBangla) "এখনই সংরক্ষণ" else "Archive Now")
                     }
                 }
             }
@@ -2198,10 +2542,12 @@ private fun CreateBackupDialog(
 @Composable
 private fun NewJournalEntryDialog(
     accounts: List<ChartOfAccount>,
+    isBangla: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (descEn: String, descBn: String, lines: List<JournalLineDraft>) -> Unit
 ) {
     var descEn by rememberSaveable { mutableStateOf("Manual Adjustment Entry") }
+    var descBn by rememberSaveable { mutableStateOf("") }
     var debitAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
     var creditAccountId by remember { mutableStateOf(accounts.getOrNull(1)?.id ?: "") }
     var amountStr by rememberSaveable { mutableStateOf("10000.00") }
@@ -2216,22 +2562,32 @@ private fun NewJournalEntryDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("New Double-Entry Journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(if (isBangla) "নতুন ডাবল-এন্ট্রি জাবেদা" else "New Double-Entry Journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = descEn,
                     onValueChange = { descEn = it },
-                    label = { Text("Description") },
+                    label = { Text(if (isBangla) "বিবরণ (ইংরেজি)" else "Description (English)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = descBn,
+                    onValueChange = { descBn = it },
+                    label = { Text(if (isBangla) "বিবরণ (বাংলা)" else "Description (Bangla)") },
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Text("Debit & Credit Accounts:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                Text(if (isBangla) "ডেবিট ও ক্রেডিট হিসাব:" else "Debit & Credit Accounts:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                 Spacer(modifier = Modifier.height(6.dp))
                 AccountDropdownField(
-                    label = "Debit Account (Dr)",
+                    label = if (isBangla) "ডেবিট হিসাব (Dr)" else "Debit Account (Dr)",
+                    isBangla = isBangla,
                     accounts = accounts,
                     selectedAccountId = debitAccountId,
                     onSelect = { debitAccountId = it.id }
@@ -2240,7 +2596,8 @@ private fun NewJournalEntryDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 AccountDropdownField(
-                    label = "Credit Account (Cr)",
+                    label = if (isBangla) "ক্রেডিট হিসাব (Cr)" else "Credit Account (Cr)",
+                    isBangla = isBangla,
                     accounts = accounts,
                     selectedAccountId = creditAccountId,
                     onSelect = { creditAccountId = it.id }
@@ -2251,7 +2608,7 @@ private fun NewJournalEntryDialog(
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = { amountStr = it },
-                    label = { Text("Amount (BDT)") },
+                    label = { Text(if (isBangla) "পরিমাণ (BDT)" else "Amount (BDT)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -2264,29 +2621,29 @@ private fun NewJournalEntryDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
                             try {
                                 val amtBd = BigDecimal(amountStr.trim())
-                                require(amtBd > BigDecimal.ZERO) { "Amount must be positive" }
-                                require(debitAccountId != creditAccountId) { "Debit and Credit accounts must be different" }
+                                require(amtBd > BigDecimal.ZERO) { if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive" }
+                                require(debitAccountId != creditAccountId) { if (isBangla) "ডেবিট ও ক্রেডিট হিসাব আলাদা হতে হবে" else "Debit and Credit accounts must be different" }
 
                                 val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
                                 val lines = listOf(
                                     JournalLineDraft(accountId = debitAccountId, isDebit = true, amountMinor = minor),
                                     JournalLineDraft(accountId = creditAccountId, isDebit = false, amountMinor = minor)
                                 )
-                                onConfirm(descEn, descEn, lines)
+                                onConfirm(descEn, descBn.ifBlank { descEn }, lines)
                                 onDismiss()
                             } catch (e: Exception) {
-                                errorMessage = e.message ?: "Invalid journal parameters"
+                                errorMessage = e.message ?: if (isBangla) "জাবেদার তথ্য সঠিক নয়" else "Invalid journal parameters"
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                     ) {
-                        Text("Post Entry")
+                        Text(if (isBangla) "দাখিলা পোস্ট করুন" else "Post Entry")
                     }
                 }
             }

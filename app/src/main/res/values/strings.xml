@@ -20,7 +20,9 @@
     <string name="centralized_ledger_reports">Centralized Business Ledger, Reports &amp; Export</string>
     <string name="nav_settings">Settings</string>
     <string name="more_modules_title">All Modules &amp; Tools</string>
-    <string name="more_modules_subtitle">Single-user business tools</string>
+    <string name="more_modules_subtitle">Business tools for everyday operations</string>
+    <string name="more_banner_subtitle">All modules and tools in one place</string>
+    <string name="more_modules_icon_description">Module grid</string>
     <string name="more_products_subtitle">Catalog, variants &amp; prices</string>
     <string name="more_import_subtitle">Import overview and workflow</string>
     <string name="more_purchases_subtitle">Purchase orders and supplier payments</string>
@@ -192,6 +194,32 @@
 
     <!-- Accounts -->
     <string name="accounts_ledger">Accounts &amp; Finance</string>
+    <string name="accounting_header_subtitle">Double-entry accounting, cash, banks, expenses &amp; reports</string>
+    <string name="accounting_account_count">%1$d active accounts</string>
+    <string name="accounting_cash_subtitle">Cash, banks, mobile wallets and fund transfers</string>
+    <string name="accounting_add_account">Add account</string>
+    <string name="accounting_transfer_funds">Transfer funds</string>
+    <string name="accounting_cash_book">Cash &amp; bank book</string>
+    <string name="accounting_no_book_entries">No recent transactions for this account.</string>
+    <string name="accounting_expense_subtitle">Vouchers, categories and double-entry posting</string>
+    <string name="accounting_new_expense">New expense</string>
+    <string name="accounting_empty_expenses">No expenses recorded yet. Add a voucher for rent, travel, salaries, customs or administration.</string>
+    <string name="accounting_statements_subtitle">Profit &amp; Loss, Balance Sheet, Cash Flow and Aging Reports</string>
+    <string name="accounting_balance_sheet">Balance Sheet (Financial Position)</string>
+    <string name="accounting_working_capital_aging">Working Capital Aging Breakdown</string>
+    <string name="accounting_reconciliation_subtitle">Match bank statement transactions with ERP ledger entries</string>
+    <string name="accounting_new_reconciliation">New reconciliation</string>
+    <string name="accounting_coa_subtitle">Assets, liabilities, equity, income and expense accounts</string>
+    <string name="accounting_new_account">New account</string>
+    <string name="accounting_journal_subtitle">Audit log • Total debit must equal total credit</string>
+    <string name="accounting_new_entry">New entry</string>
+    <string name="accounting_trial_subtitle">General ledger debit and credit reconciliation</string>
+    <string name="accounting_backup_subtitle">Offline database archives and safety snapshots</string>
+    <string name="backup_safety">Backup &amp; Safety</string>
+    <string name="accounting_create_backup">Create backup</string>
+    <string name="accounting_empty_backups">No offline backups found. Create a snapshot to preserve the database with SHA-256 integrity information.</string>
+    <string name="accounting_audit_trail">Immutable Audit Trail</string>
+    <string name="accounting_financial_operations_log">Financial Operations Log</string>
     <string name="accounts_desc">Cash, Bank, Expenses, Customer &amp; Supplier Ledgers</string>
     <string name="cash_and_bank">Cash &amp; Bank Accounts</string>
     <string name="expenses">Expense Management</string>

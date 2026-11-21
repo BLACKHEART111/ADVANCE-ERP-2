@@ -91,8 +91,8 @@ fun MainAppScaffold(
         Destinations.SHIPMENTS -> stringResource(R.string.nav_shipments)
         Destinations.CUSTOMERS -> stringResource(R.string.nav_customers)
         Destinations.SUPPLIERS -> stringResource(R.string.nav_suppliers)
-        Destinations.LEDGER, Destinations.REPORTS ->
-            if (currentLanguage == AppLanguage.BANGLA) "কেন্দ্রীয় লেজার" else "Central Ledger"
+        Destinations.LEDGER -> stringResource(R.string.nav_ledger)
+        Destinations.REPORTS -> stringResource(R.string.business_control_center)
         Destinations.SETTINGS ->
             if (currentLanguage == AppLanguage.BANGLA) "সেটিংস" else "Settings"
         else -> stringResource(R.string.app_name)

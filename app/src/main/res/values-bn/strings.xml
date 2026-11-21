@@ -20,7 +20,9 @@
     <string name="centralized_ledger_reports">কেন্দ্রীয় লেজার, হিসাব বিবরণী ও এক্সপোর্ট</string>
     <string name="nav_settings">সেটিংস</string>
     <string name="more_modules_title">সব মডিউল ও টুল</string>
-    <string name="more_modules_subtitle">একক ব্যবহারকারীর ব্যবসায়িক টুল</string>
+    <string name="more_modules_subtitle">দৈনন্দিন ব্যবসা পরিচালনার টুল</string>
+    <string name="more_banner_subtitle">সব মডিউল ও টুল এক জায়গায়</string>
+    <string name="more_modules_icon_description">মডিউল গ্রিড</string>
     <string name="more_products_subtitle">পণ্য, ভ্যারিয়েন্ট ও দাম</string>
     <string name="more_import_subtitle">আমদানি সারসংক্ষেপ ও কার্যপ্রবাহ</string>
     <string name="more_purchases_subtitle">ক্রয়াদেশ ও সরবরাহকারী পেমেন্ট</string>
@@ -192,6 +194,32 @@
 
     <!-- Accounts -->
     <string name="accounts_ledger">হিসাব ও অর্থায়ন</string>
+    <string name="accounting_header_subtitle">ডাবল-এন্ট্রি হিসাব, নগদ ও ব্যাংক, ব্যয় ও রিপোর্ট</string>
+    <string name="accounting_account_count">সক্রিয় %1$dটি হিসাব</string>
+    <string name="accounting_cash_subtitle">নগদ, ব্যাংক, মোবাইল ওয়ালেট এবং তহবিল স্থানান্তর</string>
+    <string name="accounting_add_account">হিসাব যোগ</string>
+    <string name="accounting_transfer_funds">তহবিল স্থানান্তর</string>
+    <string name="accounting_cash_book">নগদ ও ব্যাংক বই</string>
+    <string name="accounting_no_book_entries">এই হিসাবে সাম্প্রতিক কোনো লেনদেন নেই।</string>
+    <string name="accounting_expense_subtitle">ভাউচার, খাত এবং ডাবল-এন্ট্রি পোস্টিং</string>
+    <string name="accounting_new_expense">নতুন ব্যয়</string>
+    <string name="accounting_empty_expenses">এখনও কোনো ব্যয় নথিভুক্ত নেই। ভাড়া, যাতায়াত, বেতন, কাস্টমস বা প্রশাসনিক ব্যয়ের ভাউচার যোগ করুন।</string>
+    <string name="accounting_statements_subtitle">লাভ-ক্ষতি, উদ্বৃত্তপত্র, নগদ প্রবাহ ও বকেয়ার রিপোর্ট</string>
+    <string name="accounting_balance_sheet">উদ্বৃত্তপত্র (আর্থিক অবস্থান)</string>
+    <string name="accounting_working_capital_aging">পাওনা ও দেনার বয়সভিত্তিক বিবরণ</string>
+    <string name="accounting_reconciliation_subtitle">ব্যাংক স্টেটমেন্টের লেনদেন ERP খতিয়ানের সঙ্গে মিলান</string>
+    <string name="accounting_new_reconciliation">নতুন সমন্বয়</string>
+    <string name="accounting_coa_subtitle">সম্পদ, দায়, মূলধন, আয় ও ব্যয়ের হিসাব</string>
+    <string name="accounting_new_account">নতুন হিসাব</string>
+    <string name="accounting_journal_subtitle">নিরীক্ষা লগ • মোট ডেবিট ও ক্রেডিট সমান হতে হবে</string>
+    <string name="accounting_new_entry">নতুন দাখিলা</string>
+    <string name="accounting_trial_subtitle">সাধারণ খতিয়ানের ডেবিট-ক্রেডিট সমন্বয়</string>
+    <string name="accounting_backup_subtitle">অফলাইন ডেটাবেস আর্কাইভ ও নিরাপত্তা ব্যাকআপ</string>
+    <string name="backup_safety">ব্যাকআপ ও নিরাপত্তা</string>
+    <string name="accounting_create_backup">ব্যাকআপ তৈরি</string>
+    <string name="accounting_empty_backups">অফলাইন ব্যাকআপ নেই। SHA-256 অখণ্ডতার তথ্যসহ ডেটাবেস সংরক্ষণ করতে ব্যাকআপ তৈরি করুন।</string>
+    <string name="accounting_audit_trail">অপরিবর্তনীয় নিরীক্ষা ট্রেইল</string>
+    <string name="accounting_financial_operations_log">আর্থিক কার্যক্রমের লগ</string>
     <string name="accounts_desc">নগদ, ব্যাংক, ব্যয়, গ্রাহক ও সরবরাহকারী খতিয়ান</string>
     <string name="cash_and_bank">নগদ ও ব্যাংক অ্যাকাউন্ট</string>
     <string name="expenses">ব্যয় ব্যবস্থাপনা</string>

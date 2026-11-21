@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.model.AppLanguage
+import com.pocketdev.advance_erp.core.security.SecurityManager
+import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.core.util.FinancialCsvExporter
 import com.pocketdev.advance_erp.core.util.FinancialPdfGenerator
 import com.pocketdev.advance_erp.data.entity.AccountTransfer
@@ -66,6 +68,7 @@ data class AccountsUiState(
     val selectedBankAccountId: String = "coa-1020",
     val businessProfile: BusinessProfile? = null,
     val language: AppLanguage = AppLanguage.BANGLA,
+    val userRole: UserRole = UserRole.INVENTORY_OPERATOR,
     val isLoading: Boolean = false,
     val userMessage: String? = null
 )
@@ -111,9 +114,10 @@ class AccountsViewModel @Inject constructor(
 
             combine(
                 accountingFlow,
-                preferencesRepository.selectedLanguage
-            ) { state, lang ->
-                state.copy(language = lang, isLoading = false)
+                preferencesRepository.selectedLanguage,
+                preferencesRepository.selectedUserRole
+            ) { state, lang, role ->
+                state.copy(language = lang, userRole = role, isLoading = false)
             }.collect { state ->
                 _uiState.value = state
                 refreshTrialBalance()
@@ -380,6 +384,7 @@ class AccountsViewModel @Inject constructor(
 
     // Export Reports
     fun exportProfitAndLossPdf(context: Context) {
+        if (!SecurityManager.canViewProfit(_uiState.value.userRole)) return
         val pnl = _uiState.value.profitAndLoss ?: return
         try {
             val file = FinancialPdfGenerator.generateProfitAndLossPdf(
@@ -410,6 +415,7 @@ class AccountsViewModel @Inject constructor(
     }
 
     fun exportFinancialCsv(context: Context, type: String) {
+        if (type == "PNL" && !SecurityManager.canViewProfit(_uiState.value.userRole)) return
         try {
             val file = when (type) {
                 "PNL" -> _uiState.value.profitAndLoss?.let { FinancialCsvExporter.exportProfitAndLossCsv(context, it) }

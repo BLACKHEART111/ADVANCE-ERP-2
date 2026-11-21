@@ -39,6 +39,7 @@ import com.pocketdev.advance_erp.domain.repository.HistoricalClosingBalances
 import com.pocketdev.advance_erp.feature.dashboard.DashboardContent
 import com.pocketdev.advance_erp.feature.dashboard.DashboardUiState
 import com.pocketdev.advance_erp.feature.imports.CreatePurchaseOrderDialog
+import com.pocketdev.advance_erp.feature.more.MoreHubScreen
 import com.pocketdev.advance_erp.feature.product.ProductDetailDialog
 import org.junit.Assert.*
 import org.junit.Rule
@@ -60,6 +61,36 @@ class PremiumUiRegressionTest {
         assertTrue(BottomNavDestination.PURCHASES.contains("shipments"))
         assertTrue(BottomNavDestination.MORE.contains("accounts"))
         assertFalse(BottomNavDestination.MORE.contains("purchases"))
+    }
+
+    @Test fun moreHubShowsEveryModuleAndOpensItsRealRoute() {
+        var openedRoute: String? = null
+        compose.setContent {
+            AdvanceErpTheme(darkTheme = false) {
+                MoreHubScreen(onNavigate = { openedRoute = it })
+            }
+        }
+        val strings = compose.activity.resources
+        val modules = listOf(
+            R.string.nav_accounts to "accounts",
+            R.string.nav_products to "products",
+            R.string.nav_import_management to "import_management",
+            R.string.nav_purchases to "purchases",
+            R.string.nav_shipments to "shipments",
+            R.string.nav_customers to "customers",
+            R.string.nav_suppliers to "suppliers",
+            R.string.nav_ledger to "ledger",
+            R.string.nav_reports to "reports",
+            R.string.nav_settings to "settings"
+        )
+        modules.forEach { (id, route) ->
+            val label = strings.getString(id)
+            compose.onNode(hasScrollToNodeAction())
+                .performScrollToNode(hasText(label))
+            val card = compose.onNodeWithText(label, useUnmergedTree = true)
+            card.assertExists().performClick()
+            compose.runOnIdle { assertEquals(route, openedRoute) }
+        }
     }
 
     @Test fun incompletePurchaseDraftSurvivesRecreationAndExplicitSave() {
