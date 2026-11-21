@@ -1784,27 +1784,38 @@ object CentralizedPdfReportRegistry {
         closingArMinor: Long,
         closingApMinor: Long,
         closingInventoryMinor: Long,
-        isBangla: Boolean = false
+        isBangla: Boolean = false,
+        includeProfit: Boolean = true
     ): CentralizedPdfReport {
         val columns = listOf(
             PdfReportColumn("Daily Metric Indicator", "দৈনিক সূচক", widthWeight = 4.0f),
             PdfReportColumn("Amount (BDT)", "টাকা", widthWeight = 2.5f, isRightAligned = true)
         )
 
-        val rows = listOf(
-            PdfReportRow(listOf("Daily Sales Revenue / দৈনিক বিক্রয় আয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor))),
-            PdfReportRow(listOf("Daily Purchase Commitment / দৈনিক ক্রয়", "৳" + Formatters.formatMinorUnit(totalPurchasesMinor))),
-            PdfReportRow(listOf("Customer Collections Received / গ্রাহক আদায়", "৳" + Formatters.formatMinorUnit(totalCollectionsMinor))),
-            PdfReportRow(listOf("Supplier Payments Disbursed / সরবরাহকারী পরিশোধ", "-৳" + Formatters.formatMinorUnit(totalPaymentsMinor))),
-            PdfReportRow(listOf("Operating Expenses Paid / পরিচালন খরচ", "-৳" + Formatters.formatMinorUnit(totalExpensesMinor))),
-            PdfReportRow(listOf("Net Operating Cash Flow / নিট নগদ প্রবাহ", "৳" + Formatters.formatMinorUnit(netCashFlowMinor)), isSummary = true),
-            PdfReportRow(listOf("Daily Gross Profit / দৈনিক মোট লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor)), isSummary = true),
-            PdfReportRow(listOf("HISTORICAL CLOSING BALANCES / সমাপনী জের", ""), isEmphasized = true),
-            PdfReportRow(listOf("  • Closing Cash & Bank Balance / নগদ ও ব্যাংক সমাপনী জের", "৳" + Formatters.formatMinorUnit(closingCashBankMinor))),
-            PdfReportRow(listOf("  • Total Customer Receivables (AR) / মোট পাওনা", "৳" + Formatters.formatMinorUnit(closingArMinor))),
-            PdfReportRow(listOf("  • Total Supplier Payables (AP) / মোট দেনা", "৳" + Formatters.formatMinorUnit(closingApMinor))),
-            PdfReportRow(listOf("  • Total Inventory Asset Valuation / মোট মজুদ মূল্যায়ন", "৳" + Formatters.formatMinorUnit(closingInventoryMinor)), isEmphasized = true)
-        )
+        val rows = buildList {
+            add(PdfReportRow(listOf("Daily Sales Revenue / দৈনিক বিক্রয় আয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor))))
+            add(PdfReportRow(listOf("Daily Purchase Commitment / দৈনিক ক্রয়", "৳" + Formatters.formatMinorUnit(totalPurchasesMinor))))
+            add(PdfReportRow(listOf("Customer Collections Received / গ্রাহক আদায়", "৳" + Formatters.formatMinorUnit(totalCollectionsMinor))))
+            add(PdfReportRow(listOf("Supplier Payments Disbursed / সরবরাহকারী পরিশোধ", "-৳" + Formatters.formatMinorUnit(totalPaymentsMinor))))
+            add(PdfReportRow(listOf("Operating Expenses Paid / পরিচালন খরচ", "-৳" + Formatters.formatMinorUnit(totalExpensesMinor))))
+            add(PdfReportRow(listOf("Net Operating Cash Flow / নিট নগদ প্রবাহ", "৳" + Formatters.formatMinorUnit(netCashFlowMinor)), isSummary = true))
+            if (includeProfit) {
+                add(PdfReportRow(listOf("Daily Gross Profit / দৈনিক মোট লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor)), isSummary = true))
+            }
+            add(PdfReportRow(listOf("HISTORICAL CLOSING BALANCES / সমাপনী জের", ""), isEmphasized = true))
+            add(PdfReportRow(listOf("  • Closing Cash & Bank Balance / নগদ ও ব্যাংক সমাপনী জের", "৳" + Formatters.formatMinorUnit(closingCashBankMinor))))
+            add(PdfReportRow(listOf("  • Total Customer Receivables (AR) / মোট পাওনা", "৳" + Formatters.formatMinorUnit(closingArMinor))))
+            add(PdfReportRow(listOf("  • Total Supplier Payables (AP) / মোট দেনা", "৳" + Formatters.formatMinorUnit(closingApMinor))))
+            add(PdfReportRow(listOf("  • Total Inventory Asset Valuation / মোট মজুদ মূল্যায়ন", "৳" + Formatters.formatMinorUnit(closingInventoryMinor)), isEmphasized = true))
+        }
+
+        val kpiBadges = buildList {
+            add(PdfKpiBadge("Daily Sales", "দৈনিক বিক্রয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor)))
+            add(PdfKpiBadge("Net Cash Flow", "নিট নগদ প্রবাহ", "৳" + Formatters.formatMinorUnit(netCashFlowMinor)))
+            if (includeProfit) {
+                add(PdfKpiBadge("Daily Profit", "দৈনিক লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor)))
+            }
+        }
 
         return CentralizedPdfReport(
             reportId = "RPT-37-DAILY-SNAPSHOT",
@@ -1812,11 +1823,7 @@ object CentralizedPdfReportRegistry {
             titleEn = "Daily Executive Business Snapshot",
             titleBn = "দৈনিক কার্যনির্বাহী ব্যবসায়িক চিত্র",
             dateRangeText = "Selected Date: ${dateFormat.format(Date(dateMillis))}",
-            kpiBadges = listOf(
-                PdfKpiBadge("Daily Sales", "দৈনিক বিক্রয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor)),
-                PdfKpiBadge("Net Cash Flow", "নিট নগদ প্রবাহ", "৳" + Formatters.formatMinorUnit(netCashFlowMinor)),
-                PdfKpiBadge("Daily Profit", "দৈনিক লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor))
-            ),
+            kpiBadges = kpiBadges,
             sections = listOf(PdfReportSection(columns = columns, rows = rows)),
             isBangla = isBangla
         )
@@ -1830,20 +1837,30 @@ object CentralizedPdfReportRegistry {
         collectionsMinor: Long,
         expensesMinor: Long,
         netProfitMinor: Long,
-        isBangla: Boolean = false
+        isBangla: Boolean = false,
+        includeProfit: Boolean = true
     ): CentralizedPdfReport {
         val columns = listOf(
             PdfReportColumn("Performance Indicator", "মাসিক পারফরম্যান্স সূচক", widthWeight = 4.0f),
             PdfReportColumn("Value (BDT)", "টাকা", widthWeight = 2.5f, isRightAligned = true)
         )
 
-        val rows = listOf(
-            PdfReportRow(listOf("Total Monthly Revenue / মোট বিক্রয়", "৳" + Formatters.formatMinorUnit(salesMinor))),
-            PdfReportRow(listOf("Total Monthly Purchases / মোট ক্রয়", "৳" + Formatters.formatMinorUnit(purchasesMinor))),
-            PdfReportRow(listOf("Total Monthly Collections / মোট আদায়", "৳" + Formatters.formatMinorUnit(collectionsMinor))),
-            PdfReportRow(listOf("Total Monthly Expenses / মোট ব্যয়", "৳" + Formatters.formatMinorUnit(expensesMinor))),
-            PdfReportRow(listOf("Net Monthly Profit / নিট লাভ", "৳" + Formatters.formatMinorUnit(netProfitMinor)), isSummary = true, isEmphasized = true)
-        )
+        val rows = buildList {
+            add(PdfReportRow(listOf("Total Monthly Revenue / মোট বিক্রয়", "৳" + Formatters.formatMinorUnit(salesMinor))))
+            add(PdfReportRow(listOf("Total Monthly Purchases / মোট ক্রয়", "৳" + Formatters.formatMinorUnit(purchasesMinor))))
+            add(PdfReportRow(listOf("Total Monthly Collections / মোট আদায়", "৳" + Formatters.formatMinorUnit(collectionsMinor))))
+            add(PdfReportRow(listOf("Total Monthly Expenses / মোট ব্যয়", "৳" + Formatters.formatMinorUnit(expensesMinor))))
+            if (includeProfit) {
+                add(PdfReportRow(listOf("Net Monthly Profit / নিট লাভ", "৳" + Formatters.formatMinorUnit(netProfitMinor)), isSummary = true, isEmphasized = true))
+            }
+        }
+
+        val kpiBadges = buildList {
+            add(PdfKpiBadge("Month Sales", "মাসিক বিক্রয়", "৳" + Formatters.formatMinorUnit(salesMinor)))
+            if (includeProfit) {
+                add(PdfKpiBadge("Month Profit", "মাসিক মুনাফা", "৳" + Formatters.formatMinorUnit(netProfitMinor)))
+            }
+        }
 
         return CentralizedPdfReport(
             reportId = "RPT-38-MONTHLY-PERFORMANCE",
@@ -1851,10 +1868,7 @@ object CentralizedPdfReportRegistry {
             titleEn = "Monthly Business Performance Review",
             titleBn = "মাসিক ব্যবসায়িক অগ্রগতি পর্যালোচনা",
             dateRangeText = "Month: $monthName",
-            kpiBadges = listOf(
-                PdfKpiBadge("Month Sales", "মাসিক বিক্রয়", "৳" + Formatters.formatMinorUnit(salesMinor)),
-                PdfKpiBadge("Month Profit", "মাসিক মুনাফা", "৳" + Formatters.formatMinorUnit(netProfitMinor))
-            ),
+            kpiBadges = kpiBadges,
             sections = listOf(PdfReportSection(columns = columns, rows = rows)),
             isBangla = isBangla
         )

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -39,8 +40,23 @@ data class DashboardUiState(
     val generatedPdf: File? = null,
     val generatedPdfTitle: String = "",
     val canViewProfit: Boolean = true,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val companyName: String = "My Business"
 )
+
+internal fun maskDashboardSummaryForRole(
+    rawSummary: DashboardSummary,
+    canViewProfit: Boolean,
+    currency: CurrencyCode
+): DashboardSummary {
+    if (canViewProfit) return rawSummary
+    return rawSummary.copy(
+        grossProfit = Money.ofMinor(0L, currency),
+        netProfit = Money.ofMinor(0L, currency),
+        dateWiseMetrics = rawSummary.dateWiseMetrics?.copy(dailyGrossProfit = Money.ofMinor(0L, currency)),
+        monthlyMetrics = rawSummary.monthlyMetrics?.copy(netProfit = Money.ofMinor(0L, currency))
+    )
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -71,8 +87,9 @@ class DashboardViewModel @Inject constructor(
     val uiState: StateFlow<DashboardUiState> = combine(
         _streamA,
         _selectedDateMillis,
-        _streamB
-    ) { rawSummary, selectedDate, extra ->
+        _streamB,
+        businessProfileDao.getProfile().onStart { emit(null) }
+    ) { rawSummary, selectedDate, extra, businessProfile ->
         val lang = extra[0] as AppLanguage
         val curr = extra[1] as CurrencyCode
         val role = extra[2] as com.pocketdev.advance_erp.core.security.UserRole
@@ -80,16 +97,11 @@ class DashboardViewModel @Inject constructor(
         val title = extra[4] as String
 
         val canViewProfit = com.pocketdev.advance_erp.core.security.SecurityManager.canViewProfit(role)
-        val safeSummary = if (canViewProfit) {
-            rawSummary
-        } else {
-            // Mask restricted profit metrics at ViewModel layer (Confirmed Rule 3.4)
-            rawSummary.copy(
-                grossProfit = Money.ofMinor(0L, curr),
-                netProfit = Money.ofMinor(0L, curr),
-                dateWiseMetrics = rawSummary.dateWiseMetrics?.copy(dailyGrossProfit = Money.ofMinor(0L, curr))
-            )
-        }
+        val safeSummary = maskDashboardSummaryForRole(
+            rawSummary = rawSummary,
+            canViewProfit = canViewProfit,
+            currency = curr
+        )
 
         DashboardUiState(
             summary = safeSummary,
@@ -99,7 +111,8 @@ class DashboardViewModel @Inject constructor(
             generatedPdf = pdf,
             generatedPdfTitle = title,
             canViewProfit = canViewProfit,
-            isLoading = false
+            isLoading = false,
+            companyName = businessProfile?.companyName?.ifBlank { null } ?: "My Business"
         )
     }.stateIn(
         scope = viewModelScope,
@@ -153,12 +166,17 @@ class DashboardViewModel @Inject constructor(
                 totalPaymentsMinor = metrics?.totalPayments?.minorUnits ?: 0L,
                 totalExpensesMinor = metrics?.totalExpenses?.minorUnits ?: summary.totalExpenses.minorUnits,
                 netCashFlowMinor = metrics?.netCashFlow?.minorUnits ?: 0L,
-                dailyProfitMinor = metrics?.dailyGrossProfit?.minorUnits ?: summary.grossProfit.minorUnits,
+                dailyProfitMinor = if (currentState.canViewProfit) {
+                    metrics?.dailyGrossProfit?.minorUnits ?: summary.grossProfit.minorUnits
+                } else {
+                    0L
+                },
                 closingCashBankMinor = closing?.closingCashBank?.minorUnits ?: summary.totalCashBank.minorUnits,
                 closingArMinor = closing?.customerOutstanding?.minorUnits ?: summary.totalReceivable.minorUnits,
                 closingApMinor = closing?.supplierOutstanding?.minorUnits ?: summary.totalPayable.minorUnits,
                 closingInventoryMinor = closing?.inventoryValuation?.minorUnits ?: summary.stockValuation.minorUnits,
-                isBangla = isBangla
+                isBangla = isBangla,
+                includeProfit = currentState.canViewProfit
             )
 
             val file = CentralizedPdfEngine.generatePdf(context, report, profile)
@@ -187,8 +205,9 @@ class DashboardViewModel @Inject constructor(
                 purchasesMinor = monthMetrics.totalPurchases.minorUnits,
                 collectionsMinor = monthMetrics.totalCollections.minorUnits,
                 expensesMinor = monthMetrics.totalExpenses.minorUnits,
-                netProfitMinor = monthMetrics.netProfit.minorUnits,
-                isBangla = isBangla
+                netProfitMinor = if (currentState.canViewProfit) monthMetrics.netProfit.minorUnits else 0L,
+                isBangla = isBangla,
+                includeProfit = currentState.canViewProfit
             )
 
             val file = CentralizedPdfEngine.generatePdf(context, report, profile)

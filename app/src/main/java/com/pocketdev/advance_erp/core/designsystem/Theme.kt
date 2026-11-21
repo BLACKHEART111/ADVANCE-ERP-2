@@ -56,10 +56,12 @@ fun AdvanceErpTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Compos
     }
     val drawerTokens = if (darkTheme) DarkDrawerTokens else LightDrawerTokens
     val settingsTokens = if (darkTheme) DarkSettingsTokens else LightSettingsTokens
+    val dashboardTokens = if (darkTheme) DarkDashboardTokens else LightDashboardTokens
     CompositionLocalProvider(
         LocalIsDarkTheme provides darkTheme,
         LocalDrawerTokens provides drawerTokens,
-        LocalSettingsTokens provides settingsTokens
+        LocalSettingsTokens provides settingsTokens,
+        LocalDashboardTokens provides dashboardTokens
     ) {
         MaterialTheme(colorScheme = colors, typography = ERPTypography, shapes = ERPShapes, content = content)
     }

@@ -328,6 +328,8 @@ class PremiumUiRegressionTest {
         assertEquals(1, monthlyPdfClicks)
 
         compose.onNodeWithTag("dashboard_scroll_list").performScrollToIndex(4)
+        compose.onNodeWithTag("dashboard_closing_position_header").performClick()
+        compose.waitForIdle()
         compose.onNodeWithText("সমাপনী নগদ ও ব্যাংক").assertExists()
         compose.onNodeWithText("গ্রাহক বকেয়া (পাওনা)").assertExists()
         compose.onNodeWithText("সরবরাহকারী দেনা").assertExists()

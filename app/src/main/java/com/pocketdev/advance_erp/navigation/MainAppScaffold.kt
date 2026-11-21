@@ -80,7 +80,7 @@ fun MainAppScaffold(
     var showSyncLogoutDialog by remember { mutableStateOf(false) }
 
     val topBarTitle = when (currentRoute) {
-        Destinations.DASHBOARD -> stringResource(R.string.nav_dashboard)
+        Destinations.DASHBOARD -> if (currentLanguage == AppLanguage.BANGLA) "ড্যাশবোর্ড" else "Dashboard"
         Destinations.PRODUCTS -> stringResource(R.string.nav_products)
         Destinations.INVENTORY -> stringResource(R.string.nav_inventory)
         Destinations.SALES -> stringResource(R.string.nav_sales)
