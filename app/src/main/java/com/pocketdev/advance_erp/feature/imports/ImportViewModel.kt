@@ -1501,6 +1501,7 @@ class ImportViewModel @Inject constructor(
         minStockAlert: Int,
         productPhotos: List<GalleryItemDraft>,
         variants: List<NewVariantDraft>,
+        description: String? = null,
         onCreated: (Product, List<ProductVariant>) -> Unit
     ) {
         viewModelScope.launch {
@@ -1515,6 +1516,7 @@ class ImportViewModel @Inject constructor(
                     baseSku = sku,
                     barcode = barcode?.trim()?.ifBlank { null },
                     qrCode = QrCodeGenerator.createProductQrPayload(productId, sku),
+                    description = description?.trim()?.ifBlank { null },
                     unit = unit,
                     purchasePriceMinor = purchasePriceMinor,
                     sellingPriceMinor = sellingPriceMinor,

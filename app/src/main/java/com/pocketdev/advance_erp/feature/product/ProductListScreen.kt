@@ -453,7 +453,7 @@ fun ProductListScreen(
             onLoadProductRestockBundle = { productId ->
                 viewModel.loadProductRestockBundle(productId)
             },
-            onUpdateExistingProduct = { productId, nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, deletedImageIds, additionalStock, whId ->
+            onUpdateExistingProduct = { productId, nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, deletedImageIds, additionalStock, whId, description ->
                 viewModel.updateProductWithMedia(
                     productId = productId,
                     nameEn = nameEn,
@@ -469,12 +469,13 @@ fun ProductListScreen(
                     variants = variants,
                     deletedImageIds = deletedImageIds,
                     additionalStock = additionalStock,
-                    warehouseId = whId
+                    warehouseId = whId,
+                    description = description
                 )
             },
-            onConfirm = { nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, initialStock, whId ->
+            onConfirm = { nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, initialStock, whId, description ->
                 viewModel.createProductWithMedia(
-                    nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, initialStock, whId
+                    nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, initialStock, whId, description
                 )
             }
         )
@@ -508,7 +509,7 @@ fun ProductListScreen(
             onDeleteProduct = { prodId ->
                 viewModel.deleteProduct(prodId)
             },
-            onConfirm = { nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, deletedImageIds ->
+            onConfirm = { nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, productPhotos, variants, deletedImageIds, description ->
                 viewModel.updateProductWithMedia(
                     productId = state.selectedProductForDetail!!.id,
                     nameEn = nameEn,
@@ -522,7 +523,8 @@ fun ProductListScreen(
                     minStockAlert = minStock,
                     productPhotos = productPhotos,
                     variants = variants,
-                    deletedImageIds = deletedImageIds
+                    deletedImageIds = deletedImageIds,
+                    description = description
                 )
             }
         )

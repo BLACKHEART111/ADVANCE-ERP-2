@@ -14,7 +14,14 @@ import androidx.compose.ui.window.DialogWindowProvider
 
 /** A native full-screen editor: system bars and keyboard never cover its actions. */
 @Composable
-fun ERPFullScreenEditor(onDismissRequest: () -> Unit, content: @Composable () -> Unit) {
+fun ERPFullScreenEditor(
+    onDismissRequest: () -> Unit,
+    applySafeDrawingPadding: Boolean = true,
+    lightStatusBarIcons: Boolean? = null,
+    statusBarColor: Int? = null,
+    navigationBarColor: Int? = null,
+    content: @Composable () -> Unit
+) {
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(decorFitsSystemWindows = false, dismissOnClickOutside = false)
@@ -24,12 +31,16 @@ fun ERPFullScreenEditor(onDismissRequest: () -> Unit, content: @Composable () ->
         val dark=LocalIsDarkTheme.current
         SideEffect {
             window.setDimAmount(0f)
+            if (!applySafeDrawingPadding) {
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+            }
+            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             @Suppress("DEPRECATION")
-            window.statusBarColor=barColor
+            window.statusBarColor = statusBarColor ?: barColor
             @Suppress("DEPRECATION")
-            window.navigationBarColor=barColor
+            window.navigationBarColor = navigationBarColor ?: barColor
             androidx.core.view.WindowCompat.getInsetsController(window,window.decorView).apply {
-                isAppearanceLightStatusBars=!dark
+                isAppearanceLightStatusBars = lightStatusBarIcons ?: !dark
                 isAppearanceLightNavigationBars=!dark
             }
             // Compose 1.6's non-default-width mode fixes the window to the full display size.
@@ -45,7 +56,12 @@ fun ERPFullScreenEditor(onDismissRequest: () -> Unit, content: @Composable () ->
             }
         }
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Box(Modifier.fillMaxSize().safeDrawingPadding()) { content() }
+            val containerModifier = if (applySafeDrawingPadding) {
+                Modifier.fillMaxSize().safeDrawingPadding()
+            } else {
+                Modifier.fillMaxSize()
+            }
+            Box(containerModifier) { content() }
         }
     }
 }

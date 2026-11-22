@@ -1,5 +1,14 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Latest Add Product 3-Step Redesign checkpoint — 2026-11-22
+
+Three-step premium Light & Dark Add Product wizard implemented in `AddProductDesignComponents.kt` and `AddProductDialog.kt`, plus end-to-end `Product.description` persistence across `ProductViewModel`, `ProductListScreen`, `EditProductDialog`, `ProductDetailDialog`, `CreatePurchaseOrderDialog`, and `ImportViewModel` without any Room DB schema/migration or financial-engine changes. Also fixed `SuggestTextField` non-Hilt fallback, `Theme.kt` `findActivity()` ContextWrapper unwrapping, and `ERPFullScreenEditor` optional inset/status-bar controls. [Full report](docs/ui-refinement/2026-11-22/add-product-redesign/report.md).
+
+Verified on `adev` + ADB (`com.pocketdev.advance_erp2`, APK SHA-256 `b78618b3bbdaebf8c1fb59b4f07c353d7da6e6d9442f420a2db62c1416cb172c`):
+- `assembleDebug`, `testDebugUnitTest`, `assembleDebugAndroidTest`: **BUILD SUCCESSFUL**; **381/381** JVM tests passed across 71 files (0 failures/errors/skipped).
+- Direct ADB instrumentation: `AddProductThreeReferenceTest` **8/8 passed**, `PremiumUiRegressionTest` **5/5 passed**.
+- Actual Light & Dark device screenshots for Steps 1–3 and variant cards captured under `docs/ui-refinement/2026-11-22/add-product-redesign/screenshots/` using isolated fixtures; existing app/user data never uninstalled, cleared, or modified.
+
 ## Latest PO checkpoint — 2026-11-22
 
 Six-reference PO UI refinement implemented across List, Information, Products, Packaging, Landed Cost and Details. Continue from this implementation; do not restart. [Full feature checklist, modified files, visual differences and verification](docs/ui-refinement/2026-11-22/po-six-reference/implementation-review.md). [Offline side-by-side comparison](docs/ui-refinement/2026-11-22/po-six-reference/comparison.html).

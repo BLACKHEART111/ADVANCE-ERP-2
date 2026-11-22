@@ -267,7 +267,7 @@ fun CreatePurchaseOrderDialog(
     onCreateFullProduct: ((
         nameEn: String, nameBn: String, baseSku: String, barcode: String?, categoryId: String, unit: String,
         purchasePriceMinor: Long, sellingPriceMinor: Long, minStockAlert: Int,
-        productPhotos: List<GalleryItemDraft>, variants: List<NewVariantDraft>,
+        productPhotos: List<GalleryItemDraft>, variants: List<NewVariantDraft>, description: String?,
         onCreated: (Product, List<ProductVariant>) -> Unit
     ) -> Unit)? = null,
     onGenerateSku: (suspend (categoryId: String, nameEn: String) -> String)? = null,
@@ -2453,9 +2453,9 @@ fun CreatePurchaseOrderDialog(
             onGenerateBarcode = onGenerateBarcode,
             onValidateSku = onValidateSku,
             onValidateBarcode = onValidateBarcode,
-            onConfirm = { nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, photos, vars, _, _ ->
+            onConfirm = { nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, photos, vars, _, _, desc ->
                 onCreateFullProduct(
-                    nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, photos, vars
+                    nameEn, nameBn, baseSku, barcode, catId, unit, purchaseMinor, sellMinor, minStock, photos, vars, desc
                 ) { created, createdVars ->
                     showInlineAddProductDialog = false
                     if (createdVars.isEmpty()) {

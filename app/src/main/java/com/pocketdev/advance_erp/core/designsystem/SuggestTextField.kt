@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.core.designsystem
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,9 +15,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,8 +32,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -36,6 +44,7 @@ import androidx.lifecycle.viewModelScope
 import com.pocketdev.advance_erp.data.entity.SavedSuggestion
 import com.pocketdev.advance_erp.data.repository.SuggestionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.internal.GeneratedComponentManagerHolder
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -49,9 +58,16 @@ class SuggestionViewModel @Inject constructor(
     fun forget(id: String) { viewModelScope.launch { try { repo.forget(id) } catch (_: Exception) {} } }
 }
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 /**
  * Text field that remembers what was typed once and suggests it again after the first letters.
  * Tap a chip to fill; long-press a chip to delete a wrong suggestion.
+ * Falls back cleanly when hosted in non-Hilt preview/test activities.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -59,24 +75,35 @@ fun SuggestTextField(
     fieldType: String,
     value: String,
     onValueChange: (String) -> Unit,
-    label: @Composable () -> Unit,
+    label: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
     shape: Shape = RoundedCornerShape(8.dp),
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    placeholder: (@Composable () -> Unit)? = null,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
+    textStyle: TextStyle = LocalTextStyle.current,
+    inputModifier: Modifier = Modifier
 ) {
-    val vm: SuggestionViewModel = hiltViewModel()
+    val context = LocalContext.current
+    val isInspection = LocalInspectionMode.current
+    val hasHilt = remember(context, isInspection) {
+        !isInspection && context.findActivity() is GeneratedComponentManagerHolder
+    }
+    val vm: SuggestionViewModel? = if (hasHilt) hiltViewModel() else null
+
     var focused by remember { mutableStateOf(false) }
     var touched by remember { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<SavedSuggestion>>(emptyList()) }
     var refresh by remember { mutableStateOf(0) }
     val latest by rememberUpdatedState(value)
 
-    LaunchedEffect(value, focused, refresh) {
-        suggestions = if (focused) vm.suggest(fieldType, value) else emptyList()
+    LaunchedEffect(value, focused, refresh, vm) {
+        suggestions = if (focused && vm != null) vm.suggest(fieldType, value) else emptyList()
     }
-    DisposableEffect(Unit) {
-        onDispose { if (touched) vm.remember(fieldType, latest) }
+    DisposableEffect(vm) {
+        onDispose { if (touched && vm != null) vm.remember(fieldType, latest) }
     }
 
     Column(modifier = modifier) {
@@ -84,19 +111,24 @@ fun SuggestTextField(
             value = value,
             onValueChange = onValueChange,
             label = label,
+            placeholder = placeholder,
+            leadingIcon = leadingIcon,
             singleLine = singleLine,
             shape = shape,
+            colors = colors,
+            textStyle = textStyle,
             keyboardOptions = keyboardOptions,
             modifier = Modifier
                 .fillMaxWidthCompat()
                 .onFocusChanged {
-                    if (focused && !it.isFocused) vm.remember(fieldType, latest)
+                    if (focused && !it.isFocused && vm != null) vm.remember(fieldType, latest)
                     if (it.isFocused) touched = true
                     focused = it.isFocused
                 }
+                .then(inputModifier)
         )
         val shown = suggestions.filter { !it.value.equals(value.trim(), ignoreCase = true) }
-        if (focused && shown.isNotEmpty()) {
+        if (focused && shown.isNotEmpty() && vm != null) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(top = 4.dp)

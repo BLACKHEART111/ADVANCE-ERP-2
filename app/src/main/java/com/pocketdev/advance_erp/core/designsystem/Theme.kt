@@ -1,6 +1,8 @@
 package com.pocketdev.advance_erp.core.designsystem
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -40,13 +42,22 @@ internal val DarkColorScheme = darkColorScheme(
     errorContainer = Color(0xFF522522), onErrorContainer = Color(0xFFFFDAD6)
 )
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
 fun AdvanceErpTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val colors = if (darkTheme) DarkColorScheme else LightColorScheme
     val view = LocalView.current
     if (!view.isInEditMode) SideEffect {
-        (view.context as? Activity)?.window?.let { window ->
+        view.context.findActivity()?.window?.let { window ->
+            window.decorView.setBackgroundColor(colors.background.toArgb())
+            @Suppress("DEPRECATION")
             window.statusBarColor = colors.surface.toArgb()
+            @Suppress("DEPRECATION")
             window.navigationBarColor = colors.surface.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = !darkTheme

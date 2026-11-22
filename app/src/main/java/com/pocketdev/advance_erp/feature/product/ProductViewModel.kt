@@ -340,7 +340,8 @@ class ProductViewModel @Inject constructor(
         productPhotos: List<GalleryItemDraft>,
         variants: List<NewVariantDraft>,
         initialStock: Int,
-        warehouseId: String
+        warehouseId: String,
+        description: String? = null
     ) {
         viewModelScope.launch {
             try {
@@ -353,6 +354,7 @@ class ProductViewModel @Inject constructor(
                     baseSku = baseSku.trim().uppercase(),
                     barcode = barcode?.trim()?.ifBlank { null },
                     qrCode = QrCodeGenerator.createProductQrPayload(productId, baseSku.trim().uppercase()),
+                    description = description?.trim()?.ifBlank { null },
                     unit = unit,
                     purchasePriceMinor = purchasePriceMinor,
                     sellingPriceMinor = sellingPriceMinor,
@@ -458,7 +460,8 @@ class ProductViewModel @Inject constructor(
         variants: List<NewVariantDraft>,
         deletedImageIds: List<String>,
         additionalStock: Int = 0,
-        warehouseId: String = ""
+        warehouseId: String = "",
+        description: String? = null
     ) {
         viewModelScope.launch {
             try {
@@ -469,6 +472,7 @@ class ProductViewModel @Inject constructor(
                     nameBn = if (nameBn.isNotBlank()) nameBn.trim() else nameEn.trim(),
                     baseSku = baseSku.trim().uppercase(),
                     barcode = barcode?.trim()?.ifBlank { null },
+                    description = description?.trim()?.ifBlank { null },
                     unit = unit,
                     purchasePriceMinor = purchasePriceMinor,
                     sellingPriceMinor = sellingPriceMinor,

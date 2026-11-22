@@ -111,7 +111,8 @@ fun EditProductDialog(
         minStockAlert: Int,
         productPhotos: List<GalleryItemDraft>,
         variants: List<NewVariantDraft>,
-        deletedImageIds: List<String>
+        deletedImageIds: List<String>,
+        description: String?
     ) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -124,6 +125,7 @@ fun EditProductDialog(
     var purchasePriceStr by remember { mutableStateOf((product.purchasePriceMinor / 100.0).toString()) }
     var sellingPriceStr by remember { mutableStateOf((product.sellingPriceMinor / 100.0).toString()) }
     var minStockAlertStr by remember { mutableStateOf(product.minStockAlert.toString()) }
+    var description by remember { mutableStateOf(product.description ?: "") }
 
     var selectedCategory by remember {
         mutableStateOf(categories.firstOrNull { it.id == product.categoryId } ?: categories.firstOrNull())
@@ -454,6 +456,19 @@ fun EditProductDialog(
                         singleLine = true
                     )
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = normalizeProductDescription(it) },
+                    label = { Text(if (language == AppLanguage.BANGLA) "পণ্যের বিবরণ" else "Product Description") },
+                    supportingText = { Text("${description.length} / 500") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    minLines = 2,
+                    maxLines = 4
+                )
 
                 Spacer(modifier = Modifier.height(18.dp))
                 Divider(color = ERPDivider)
@@ -958,7 +973,8 @@ fun EditProductDialog(
                                                     minStock,
                                                     productPhotos.toList(),
                                                     variants.toList(),
-                                                    deletedImageIds.toList()
+                                                    deletedImageIds.toList(),
+                                                    normalizeProductDescription(description).trim().ifBlank { null }
                                                 )
                                             }
                                         }
