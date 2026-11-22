@@ -100,6 +100,7 @@ import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
+import com.pocketdev.advance_erp.data.entity.CostCategory
 import com.pocketdev.advance_erp.data.entity.DamageRecord
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.ImportShipment
@@ -109,6 +110,7 @@ import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
+import com.pocketdev.advance_erp.data.entity.ShipmentFreightRate
 import com.pocketdev.advance_erp.data.entity.ShortageRecord
 import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.data.entity.SupplierPayment
@@ -154,7 +156,8 @@ fun PurchaseOrderDetailDialog(
     onDeleteCostItem: ((costItemId: String) -> Unit)? = null,
     onUpdatePacking: ((cartons: Int, grossWeight: String, netWeight: String, cbm: String) -> Unit)? = null,
     onUpdatePoItem: ((itemId: String, quantity: Int, unitPriceMinor: Long, cartonQuantity: Int, grossWeightKg: String) -> Unit)? = null,
-    onDeletePoItem: ((itemId: String) -> Unit)? = null
+    onDeletePoItem: ((itemId: String) -> Unit)? = null,
+    freightRates: List<ShipmentFreightRate> = emptyList()
 ) {
     var detailTab by rememberSaveable { mutableStateOf(0) }
     var showLifecycleActions by rememberSaveable { mutableStateOf(false) }
@@ -294,7 +297,10 @@ fun PurchaseOrderDetailDialog(
                                 val cat=runCatching {com.pocketdev.advance_erp.data.entity.CostCategory.valueOf(category)}.getOrNull()
                                 PremiumPoCostLine(cat?.let {if(isBangla)it.titleBn else it.titleEn} ?: category,"৳ ${Formatters.formatMinorUnit(costs.sumOf {it.bdtAmountMinor})}")
                             }
-                            val capitalCosts=costItems.filter {it.isCapitalizableCost && it.costCategory != "PRODUCT_PURCHASE"}.sumOf {it.bdtAmountMinor}
+                            val capitalCosts = costItems.filter {
+                                (it.isCapitalizableCost || it.isCapitalized || it.costCategory == CostCategory.OTHER_CHARGES.name) &&
+                                    it.costCategory != CostCategory.PRODUCT_PURCHASE.name
+                            }.sumOf { it.bdtAmountMinor }
                             PoLandedHighlight("৳ ${Formatters.formatMinorUnit(order.totalBdtAmountMinor+capitalCosts)}",isBangla=isBangla)
                             Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                                 if(remainingBalanceMinor>0 && order.status!="CANCELLED") PoDetailAction(if(isBangla) "পেমেন্ট রেকর্ড" else "Payment",Icons.Outlined.Payment,Modifier.weight(1f)){onMakePayment(order)}
@@ -336,20 +342,24 @@ fun PurchaseOrderDetailDialog(
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text(
-                                            text = if (isBangla) "ক্রয়াদেশ সম্পূর্ণ করা হয়েছে (Order Completed)" else "Purchase Order Completed",
+                                            text = if (isBangla) "ক্রয়াদেশ সম্পূর্ণ করা হয়েছে" else "Purchase Order Completed",
                                             fontWeight = FontWeight.Bold,
                                             color = TextPrimary,
                                             style = MaterialTheme.typography.titleSmall
                                         )
                                         if (completionRecord != null) {
                                             Text(
-                                                text = "Completed on ${Formatters.formatDate(completionRecord.completedAt, language)} • Disposition: ${completionRecord.unreceivedDisposition ?: "None"}",
+                                                text = if (isBangla) {
+                                                    "সমাপ্তির তারিখ: ${Formatters.formatDate(completionRecord.completedAt, language)} • নিষ্পত্তি: ${completionRecord.unreceivedDisposition ?: "নেই"}"
+                                                } else {
+                                                    "Completed on ${Formatters.formatDate(completionRecord.completedAt, language)} • Disposition: ${completionRecord.unreceivedDisposition ?: "None"}"
+                                                },
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = TextSecondary
                                             )
                                             if (!completionRecord.notes.isNullOrBlank()) {
                                                 Text(
-                                                    text = "Audit Note: ${completionRecord.notes}",
+                                                    text = if (isBangla) "অডিট নোট: ${completionRecord.notes}" else "Audit Note: ${completionRecord.notes}",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = TextMuted
                                                 )
@@ -935,9 +945,57 @@ fun PurchaseOrderDetailDialog(
                                 Spacer(modifier = Modifier.height(12.dp))
 
                                 // Shipping Cost Calculator Display: Gross Weight * Rate/KG
-                                val shippingRate = BigDecimal(order.shippingRatePerKgBdt.ifBlank { "120" })
-                                val poGrossWeightBd = BigDecimal(displayGrossWeight.ifBlank { "0" })
-                                val calculatedShipping = poGrossWeightBd.multiply(shippingRate).setScale(2, RoundingMode.HALF_UP)
+                                val poGrossWeightBd = runCatching { BigDecimal(displayGrossWeight.ifBlank { "0" }) }.getOrDefault(BigDecimal.ZERO)
+                                val persistedRateBd = runCatching { BigDecimal(order.shippingRatePerKgBdt.ifBlank { "0" }) }.getOrDefault(BigDecimal.ZERO)
+                                val freightCostItemsBdtMinor = costItems.filter {
+                                    it.costCategory in setOf(
+                                        CostCategory.INTERNATIONAL_FREIGHT.name,
+                                        CostCategory.AIR_FREIGHT.name,
+                                        CostCategory.SEA_FREIGHT.name
+                                    )
+                                }.sumOf { it.bdtAmountMinor }
+                                val activeFreightRates = freightRates.mapNotNull { r ->
+                                    val rMinor = r.overrideRatePerKgBdtMinor?.takeIf { it > 0L }
+                                        ?: r.appliedRatePerKgBdtMinor.takeIf { it > 0L }
+                                        ?: r.defaultRatePerKgBdtMinor.takeIf { it > 0L }
+                                    if (rMinor != null) r to rMinor else null
+                                }
+                                val isLocalOrderNoShipping = order.currency.equals("BDT", ignoreCase = true) &&
+                                    poGrossWeightBd.compareTo(BigDecimal.ZERO) == 0 &&
+                                    freightCostItemsBdtMinor == 0L &&
+                                    persistedRateBd.compareTo(BigDecimal.ZERO) == 0 &&
+                                    activeFreightRates.isEmpty()
+
+                                val (effectiveShippingRate, calculatedShipping) = when {
+                                    persistedRateBd > BigDecimal.ZERO -> {
+                                        val rateScaled = persistedRateBd.setScale(2, RoundingMode.HALF_UP)
+                                        rateScaled to poGrossWeightBd.multiply(rateScaled).setScale(2, RoundingMode.HALF_UP)
+                                    }
+                                    freightCostItemsBdtMinor > 0L && poGrossWeightBd > BigDecimal.ZERO -> {
+                                        val freightBdt = BigDecimal(freightCostItemsBdtMinor).movePointLeft(2).setScale(2, RoundingMode.HALF_UP)
+                                        val derivedRate = freightBdt.divide(poGrossWeightBd, 2, RoundingMode.HALF_UP)
+                                        derivedRate to freightBdt
+                                    }
+                                    activeFreightRates.isNotEmpty() -> {
+                                        val weightedBdtMinor = activeFreightRates.fold(BigDecimal.ZERO) { acc, (r, rMinor) ->
+                                            val w = runCatching { BigDecimal(r.totalCategoryGrossWeightKg.ifBlank { "0" }) }.getOrDefault(BigDecimal.ZERO)
+                                            acc.add(if (w > BigDecimal.ZERO) BigDecimal(rMinor).multiply(w) else BigDecimal(rMinor))
+                                        }
+                                        val weightedKg = activeFreightRates.fold(BigDecimal.ZERO) { acc, (r, _) ->
+                                            val w = runCatching { BigDecimal(r.totalCategoryGrossWeightKg.ifBlank { "0" }) }.getOrDefault(BigDecimal.ZERO)
+                                            acc.add(if (w > BigDecimal.ZERO) w else BigDecimal.ONE)
+                                        }
+                                        val derivedRate = if (weightedKg > BigDecimal.ZERO) {
+                                            weightedBdtMinor.divide(BigDecimal("100")).divide(weightedKg, 2, RoundingMode.HALF_UP)
+                                        } else {
+                                            BigDecimal.ZERO.setScale(2)
+                                        }
+                                        derivedRate to poGrossWeightBd.multiply(derivedRate).setScale(2, RoundingMode.HALF_UP)
+                                    }
+                                    else -> {
+                                        BigDecimal.ZERO.setScale(2) to BigDecimal.ZERO.setScale(2)
+                                    }
+                                }
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
@@ -956,14 +1014,18 @@ fun PurchaseOrderDetailDialog(
                                                 color = TextPrimary
                                             )
                                             Text(
-                                                text = "${displayGrossWeight} KG × ৳${shippingRate}/KG",
+                                                text = if (isLocalOrderNoShipping) {
+                                                    if (isBangla) "স্থানীয় ক্রয় — আন্তর্জাতিক শিপিং প্রযোজ্য নয়" else "Local Purchase — International shipping N/A"
+                                                } else {
+                                                    "${displayGrossWeight} KG × ৳${effectiveShippingRate}/KG"
+                                                },
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = TextSecondary
                                             )
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "৳ $calculatedShipping BDT",
+                                            text = if (isLocalOrderNoShipping) "—" else "৳ $calculatedShipping BDT",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = PrimaryPurple

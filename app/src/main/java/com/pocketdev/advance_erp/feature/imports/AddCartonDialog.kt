@@ -126,7 +126,7 @@ fun AddCartonDialog(
     val isBangla = language == AppLanguage.BANGLA
     var isMixedTab by rememberSaveable { mutableStateOf(false) }
 
-    var cartonNumber by rememberSaveable { mutableStateOf("CTN-%03d".format(packedCartonCount + 1)) }
+    var cartonNumber by rememberSaveable { mutableStateOf(String.format(java.util.Locale.ROOT, "CTN-%03d", packedCartonCount + 1)) }
     var singleProductId by rememberSaveable { mutableStateOf(products.firstOrNull()?.id ?: "") }
     var singleVariantId by rememberSaveable { mutableStateOf<String?>(null) }
     var singleQuantityStr by rememberSaveable { mutableStateOf("50") }

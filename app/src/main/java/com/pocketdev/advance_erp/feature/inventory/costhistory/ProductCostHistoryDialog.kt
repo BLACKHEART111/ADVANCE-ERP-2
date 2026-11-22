@@ -501,14 +501,19 @@ fun CostAdjustmentInputDialog(
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
+                val isBangla = language == AppLanguage.BANGLA
                 Text(
-                    text = "Inventory Landed Cost Adjustment",
+                    text = if (isBangla) "ইনভেন্টরি ল্যান্ডেড কস্ট সমন্বয়" else "Inventory Landed Cost Adjustment",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "Batch #${layer.receiptNumber} (${layer.remainingQuantity} remaining, $soldQty already sold)",
+                    text = if (isBangla) {
+                        "ব্যাচ #${layer.receiptNumber} (${layer.remainingQuantity} অবশিষ্ট, $soldQty ইতিমধ্যে বিক্রিত)"
+                    } else {
+                        "Batch #${layer.receiptNumber} (${layer.remainingQuantity} remaining, $soldQty already sold)"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -521,7 +526,7 @@ fun CostAdjustmentInputDialog(
                         newCostInput = it
                         errorText = null
                     },
-                    label = { Text("New Landed Unit Cost (BDT)") },
+                    label = { Text(if (isBangla) "নতুন প্রতি পিস ল্যান্ডেড ব্যয় (BDT)" else "New Landed Unit Cost (BDT)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -534,8 +539,13 @@ fun CostAdjustmentInputDialog(
                         reasonInput = it
                         errorText = null
                     },
-                    label = { Text("Adjustment Reason / Audit Note") },
-                    placeholder = { Text("e.g. Customs duty assessment revised, shipping tariff adjustment") },
+                    label = { Text(if (isBangla) "সমন্বয়ের কারণ / অডিট নোট" else "Adjustment Reason / Audit Note") },
+                    placeholder = {
+                        Text(
+                            if (isBangla) "যেমন: শুল্ক বা পরিবহন ব্যয় সংশোধন"
+                            else "e.g. Customs duty assessment revised, shipping tariff adjustment"
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -572,26 +582,27 @@ fun CostAdjustmentInputDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                val isBnBtn = language == AppLanguage.BANGLA
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ERPActionButton(
-                        text = "Cancel",
+                        text = if (isBnBtn) "বাতিল" else "Cancel",
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
                         variant = ERPButtonVariant.OUTLINED
                     )
 
                     ERPActionButton(
-                        text = "Post Adjustment",
+                        text = if (isBnBtn) "সমন্বয় সংরক্ষণ" else "Post Adjustment",
                         onClick = {
                             if (variance == 0L) {
-                                errorText = "New unit cost cannot equal current cost"
+                                errorText = if (isBnBtn) "নতুন একক ব্যয় বর্তমান ব্যয়ের সমান হতে পারবে না" else "New unit cost cannot equal current cost"
                                 return@ERPActionButton
                             }
                             if (reasonInput.isBlank()) {
-                                errorText = "Please enter an adjustment reason"
+                                errorText = if (isBnBtn) "অনুগ্রহ করে সমন্বয়ের কারণ লিখুন" else "Please enter an adjustment reason"
                                 return@ERPActionButton
                             }
                             onConfirm(layer.id, newCostMinor, reasonInput)

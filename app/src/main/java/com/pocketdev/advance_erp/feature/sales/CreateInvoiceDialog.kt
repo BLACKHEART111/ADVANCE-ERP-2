@@ -353,7 +353,7 @@ fun CreateInvoiceDialog(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = if (isBangla) "নতুন বিক্রয় চালান / NEW SALE" else "New Sales Invoice",
+                                text = if (isBangla) "নতুন বিক্রয় চালান" else "New Sales Invoice",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary
@@ -976,7 +976,7 @@ fun CreateInvoiceDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Subtotal / উপমোট:", color = Color.White.copy(alpha = 0.8f))
+                                    Text(if (isBangla) "উপমোট:" else "Subtotal:", color = Color.White.copy(alpha = 0.8f))
                                     Text("৳" + Formatters.formatMinorUnit(subtotalMinor), color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                                 if (invDiscountMinor > 0) {
@@ -985,7 +985,7 @@ fun CreateInvoiceDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Invoice Discount / বাট্টা:", color = StatusError)
+                                        Text(if (isBangla) "চালান বাট্টা:" else "Invoice Discount:", color = StatusError)
                                         Text("-৳" + Formatters.formatMinorUnit(invDiscountMinor), color = StatusError, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
@@ -995,7 +995,7 @@ fun CreateInvoiceDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Additional Charges / অন্যান্য:", color = Color.White.copy(alpha = 0.8f))
+                                        Text(if (isBangla) "অতিরিক্ত চার্জ:" else "Additional Charges:", color = Color.White.copy(alpha = 0.8f))
                                         Text("+৳" + Formatters.formatMinorUnit(addChargesMinor), color = Color.White, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
@@ -1004,7 +1004,7 @@ fun CreateInvoiceDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Grand Total / মোট বিল:", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                    Text(if (isBangla) "সর্বমোট বিল:" else "Grand Total:", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                     Text("৳" + Formatters.formatMinorUnit(grandTotalMinor), color = StatusSuccess, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -1012,14 +1012,14 @@ fun CreateInvoiceDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Paid Amount / পরিশোধ:", color = Color.White.copy(alpha = 0.8f))
+                                    Text(if (isBangla) "পরিশোধিত:" else "Paid Amount:", color = Color.White.copy(alpha = 0.8f))
                                     Text("৳" + Formatters.formatMinorUnit(currentPaidMinor), color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Due Amount / বকেয়া:", color = if (dueAmountMinor > 0) StatusError else Color.White.copy(alpha = 0.8f))
+                                    Text(if (isBangla) "বকেয়া:" else "Due Amount:", color = if (dueAmountMinor > 0) StatusError else Color.White.copy(alpha = 0.8f))
                                     Text("৳" + Formatters.formatMinorUnit(dueAmountMinor), color = if (dueAmountMinor > 0) StatusError else Color.White, fontWeight = FontWeight.Bold)
                                 }
 
@@ -1039,7 +1039,7 @@ fun CreateInvoiceDialog(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Estimated Profit / আনুমানিক লাভ:", color = StatusSuccessContainer, fontWeight = FontWeight.SemiBold)
+                                        Text(if (isBangla) "আনুমানিক লাভ:" else "Estimated Profit:", color = StatusSuccessContainer, fontWeight = FontWeight.SemiBold)
                                         Text(
                                             "৳" + Formatters.formatMinorUnit(totalProfitMinor) + " (${String.format(java.util.Locale.US, "%.1f", marginPct)}%)",
                                             color = StatusSuccessContainer,

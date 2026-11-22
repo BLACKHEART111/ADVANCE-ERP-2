@@ -88,12 +88,17 @@ fun InventoryReconciliationView(
                     color = TextPrimary
                 )
                 Text(
-                    text = "5-way ledger audit: Stock Balance vs Movements vs FIFO vs Valuation vs Account 1210",
+                    text = if (language == AppLanguage.BANGLA) {
+                        "৫-দিক লেজার নিরীক্ষা: স্টক ব্যালেন্স, মুভমেন্ট, ফিফো, মূল্যায়ন ও হিসাব ১২১০"
+                    } else {
+                        "5-way ledger audit: Stock Balance vs Movements vs FIFO vs Valuation vs Account 1210"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
             }
 
+            val isBn = language == AppLanguage.BANGLA
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (reconciliation != null) {
                     ERPActionButton(
@@ -105,7 +110,11 @@ fun InventoryReconciliationView(
                 }
 
                 ERPActionButton(
-                    text = if (isReconciling) "Auditing..." else "Run Audit",
+                    text = if (isReconciling) {
+                        if (isBn) "নিরীক্ষা চলছে..." else "Auditing..."
+                    } else {
+                        if (isBn) "নিরীক্ষা চালান" else "Run Audit"
+                    },
                     onClick = onRunReconciliation,
                     icon = if (isReconciling) null else Icons.Outlined.Refresh,
                     enabled = !isReconciling
@@ -118,8 +127,12 @@ fun InventoryReconciliationView(
         if (reconciliation == null) {
             ERPEmptyState(
                 icon = Icons.Outlined.Refresh,
-                title = "No Reconciliation Audit Yet",
-                message = "Click 'Run Audit' to reconcile stock balances, movements ledger, FIFO layers, and Account 1210."
+                title = if (language == AppLanguage.BANGLA) "এখনও কোনো পুনর্মিলন নিরীক্ষা হয়নি" else "No Reconciliation Audit Yet",
+                message = if (language == AppLanguage.BANGLA) {
+                    "স্টক ব্যালেন্স, মুভমেন্ট লেজার, ফিফো লেয়ার এবং হিসাব ১২১০ যাচাই করতে 'নিরীক্ষা চালান' চাপুন।"
+                } else {
+                    "Click 'Run Audit' to reconcile stock balances, movements ledger, FIFO layers, and Account 1210."
+                }
             )
         } else {
             val isMatched = reconciliation.status == "MATCHED"

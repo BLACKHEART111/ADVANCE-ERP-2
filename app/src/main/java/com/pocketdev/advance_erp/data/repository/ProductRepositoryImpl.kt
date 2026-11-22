@@ -331,7 +331,7 @@ class ProductRepositoryImpl @Inject constructor(
     }
 
     override suspend fun addCategory(nameEn: String, nameBn: String): ProductCategory {
-        val slug = nameEn.trim().lowercase().replace(Regex("[^a-z0-9]"), "-").take(20).ifBlank { "cat" }
+        val slug = normalizeCategorySlug(nameEn)
         val uniqueCode = "$slug-${UUID.randomUUID().toString().take(4)}"
         val category = ProductCategory(
             id = "cat-" + UUID.randomUUID().toString().take(8),
@@ -606,4 +606,15 @@ class ProductRepositoryImpl @Inject constructor(
             0
         }
     }
+}
+
+internal fun normalizeCategorySlug(nameEn: String): String {
+    return nameEn
+        .trim()
+        .lowercase(java.util.Locale.ROOT)
+        .replace(Regex("[^a-z0-9]+"), "-")
+        .trim('-')
+        .take(20)
+        .trimEnd('-')
+        .ifBlank { "cat" }
 }

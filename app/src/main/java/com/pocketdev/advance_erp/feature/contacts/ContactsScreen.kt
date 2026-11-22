@@ -25,6 +25,7 @@ import com.pocketdev.advance_erp.core.util.ContactPickerHelper
 import com.pocketdev.advance_erp.feature.sales.DueReminderDialog
 import kotlinx.coroutines.launch
 import java.io.File
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
@@ -82,6 +83,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -111,7 +113,8 @@ import com.pocketdev.advance_erp.data.entity.Customer
 fun ContactsScreen(
     viewModel: ContactsViewModel,
     initialTab: ContactsTab = ContactsTab.CUSTOMERS,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSwitchTabRoute: ((ContactsTab) -> Unit)? = null
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -172,7 +175,7 @@ fun ContactsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
                     .padding(4.dp)
             ) {
                 val isCustomers = state.selectedTab == ContactsTab.CUSTOMERS
@@ -181,7 +184,10 @@ fun ContactsScreen(
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (isCustomers) PrimaryPurple else Color.Transparent)
-                        .clickable { viewModel.onTabSelect(ContactsTab.CUSTOMERS) }
+                        .clickable {
+                            viewModel.onTabSelect(ContactsTab.CUSTOMERS)
+                            onSwitchTabRoute?.invoke(ContactsTab.CUSTOMERS)
+                        }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -198,7 +204,10 @@ fun ContactsScreen(
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (!isCustomers) PrimaryPurple else Color.Transparent)
-                        .clickable { viewModel.onTabSelect(ContactsTab.SUPPLIERS) }
+                        .clickable {
+                            viewModel.onTabSelect(ContactsTab.SUPPLIERS)
+                            onSwitchTabRoute?.invoke(ContactsTab.SUPPLIERS)
+                        }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -219,7 +228,7 @@ fun ContactsScreen(
                     ERPEmptyState(
                         icon = Icons.Outlined.Group,
                         title = stringResource(R.string.no_contacts),
-                        message = "No customers registered yet.",
+                        message = if (state.language == AppLanguage.BANGLA) "এখনও কোনো গ্রাহক নিবন্ধিত হয়নি।" else "No customers registered yet.",
                         actionText = stringResource(R.string.add_customer),
                         onActionClick = { viewModel.setAddDialogVisible(true) }
                     )
@@ -288,7 +297,7 @@ fun ContactsScreen(
                                                     color = TextPrimary
                                                 )
                                                 Text(
-                                                    text = "Code: ${c.customerCode}",
+                                                    text = "${if (state.language == AppLanguage.BANGLA) "কোড:" else "Code:"} ${c.customerCode}",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = TextSecondary
                                                 )
@@ -383,7 +392,7 @@ fun ContactsScreen(
                     ERPEmptyState(
                         icon = Icons.Outlined.Storefront,
                         title = stringResource(R.string.no_contacts),
-                        message = "No overseas suppliers recorded.",
+                        message = if (state.language == AppLanguage.BANGLA) "এখনও কোনো সরবরাহকারী যোগ করা হয়নি।" else "No suppliers recorded yet.",
                         actionText = stringResource(R.string.add_supplier),
                         onActionClick = { viewModel.setAddDialogVisible(true) }
                     )
@@ -412,7 +421,11 @@ fun ContactsScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 color = TextPrimary
                                             )
-                                            Text(text = "Payable Due", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                                            Text(
+                                                text = if (state.language == AppLanguage.BANGLA) "প্রদেয় বকেয়া" else "Payable Due",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMuted
+                                            )
                                         }
                                     }
 
@@ -421,7 +434,11 @@ fun ContactsScreen(
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     Text(
-                                        text = "Contact: ${s.contactPerson ?: "-"} • Phone: ${s.phone} • ${s.address}",
+                                        text = if (state.language == AppLanguage.BANGLA) {
+                                            "প্রতিনিধি: ${s.contactPerson ?: "-"} • ফোন: ${s.phone} • ${s.address}"
+                                        } else {
+                                            "Contact: ${s.contactPerson ?: "-"} • Phone: ${s.phone} • ${s.address}"
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
@@ -550,6 +567,7 @@ private fun AddContactDialog(
     var country by rememberSaveable { mutableStateOf("China") }
     var currency by rememberSaveable { mutableStateOf("CNY") }
     var profileImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     val contactPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -611,13 +629,15 @@ private fun AddContactDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(56.dp)
+                                    .size(52.dp)
                                     .clip(CircleShape)
                                     .background(PrimaryPurple.copy(alpha = 0.12f))
                                     .clickable {
@@ -635,7 +655,7 @@ private fun AddContactDialog(
                                             .build(),
                                         contentDescription = "Customer Photo",
                                         modifier = Modifier
-                                            .size(56.dp)
+                                            .size(52.dp)
                                             .clip(CircleShape)
                                     )
                                 } else {
@@ -643,29 +663,35 @@ private fun AddContactDialog(
                                         Icons.Outlined.CameraAlt,
                                         contentDescription = "Add Photo",
                                         tint = PrimaryPurple,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
                             }
                             Spacer(modifier = Modifier.width(10.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = if (profileImageUri != null) {
                                         if (isBangla) "ছবি নির্বাচিত" else "Photo Selected"
                                     } else {
-                                        if (isBangla) "প্রোফাইল ছবি যোগ করুন" else "Add Profile Photo"
+                                        if (isBangla) "প্রোফাইল ছবি" else "Add Profile Photo"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = if (isBangla) "ট্যাপ করে ছবি বাছুন" else "Tap avatar to select",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextMuted,
-                                    fontSize = 10.sp
+                                    fontSize = 10.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.width(8.dp))
 
                         // Phone Contacts Picker Button
                         Button(
@@ -683,17 +709,29 @@ private fun AddContactDialog(
                                 text = if (isBangla) "কন্টাক্ট থেকে আনুন" else "Pick from Contacts",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
                 }
 
+                if (validationError != null) {
+                    Text(
+                        text = validationError!!,
+                        color = StatusError,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
                 SuggestTextField(
                     fieldType = if (isCustomer) SuggestionType.CUSTOMER_NAME else SuggestionType.SUPPLIER_NAME,
                     value = name,
-                    onValueChange = { name = it },
-                    label = { Text(if (isCustomer) (if (isBangla) "গ্রাহকের নাম *" else stringResource(R.string.contact_name)) else stringResource(R.string.company_name)) },
+                    onValueChange = { name = it; validationError = null },
+                    label = { Text(if (isCustomer) (if (isBangla) "গ্রাহকের নাম *" else stringResource(R.string.contact_name)) else (if (isBangla) "প্রতিষ্ঠানের নাম *" else stringResource(R.string.company_name))) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
@@ -704,7 +742,7 @@ private fun AddContactDialog(
                         fieldType = SuggestionType.CONTACT_PERSON,
                         value = contactPerson,
                         onValueChange = { contactPerson = it },
-                        label = { Text("Contact Person") },
+                        label = { Text(if (isBangla) "যোগাযোগকারী ব্যক্তির নাম" else "Contact Person") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -713,9 +751,10 @@ private fun AddContactDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = phone,
-                    onValueChange = { phone = it },
+                    onValueChange = { phone = it; validationError = null },
                     label = { Text(if (isBangla) "মোবাইল নম্বর *" else stringResource(R.string.contact_phone)) },
                     modifier = Modifier.fillMaxWidth(),
+                    isError = validationError != null && phone.isBlank(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     singleLine = true
                 )
@@ -728,6 +767,59 @@ private fun AddContactDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
+                if (!isCustomer) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = if (isBangla) "সরবরাহকারীর দেশ ও মুদ্রা" else "Supplier Country & Currency",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val presets = listOf(
+                        Triple(if (isBangla) "বাংলাদেশ (BDT)" else "Bangladesh (BDT)", "Bangladesh", "BDT"),
+                        Triple(if (isBangla) "চীন (CNY)" else "China (CNY)", "China", "CNY"),
+                        Triple(if (isBangla) "অন্যান্য (USD)" else "Other (USD)", "International", "USD")
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        presets.forEach { (label, presetCountry, presetCurrency) ->
+                            val isSelected = currency.equals(presetCurrency, ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, if (isSelected) PrimaryPurple else ERPDivider),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        country = presetCountry
+                                        currency = presetCurrency
+                                    }
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = country,
+                        onValueChange = { country = it },
+                        label = { Text(if (isBangla) "দেশ *" else "Country *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
 
                 if (isCustomer) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -752,7 +844,14 @@ private fun AddContactDialog(
                     ERPActionButton(
                         text = stringResource(R.string.save),
                         onClick = {
-                            if (name.isBlank() || phone.isBlank()) return@ERPActionButton
+                            if (name.isBlank()) {
+                                validationError = if (isBangla) "নাম লেখা আবশ্যক" else "Name is required"
+                                return@ERPActionButton
+                            }
+                            if (phone.isBlank()) {
+                                validationError = if (isBangla) "মোবাইল নম্বর দেওয়া আবশ্যক" else "Phone number is required"
+                                return@ERPActionButton
+                            }
                             if (isCustomer) {
                                 val limit = Money.parseFromString(creditLimitStr).minorUnits
                                 coroutineScope.launch {
@@ -765,7 +864,7 @@ private fun AddContactDialog(
                                     onAddCustomer(name, phone, email, address, limit, savedPhotoPath)
                                 }
                             } else {
-                                onAddSupplier(name, contactPerson, phone, email, address, country, currency)
+                                onAddSupplier(name, contactPerson, phone, email, address, country.ifBlank { "Bangladesh" }, currency)
                             }
                         },
                         variant = ERPButtonVariant.PRIMARY

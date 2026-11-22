@@ -356,11 +356,19 @@ fun WarehouseReceivingDialog(
             val received = good + damaged
 
             if (good < 0 || damaged < 0 || missing < 0 || pending < 0) {
-                errorMessage = "Row #${idx + 1} (${line.productName}): Quantities cannot be negative."
+                errorMessage = if (isBangla) {
+                    "সারি #${idx + 1} (${line.productName}): পরিমাণ ঋণাত্মক হতে পারবে না।"
+                } else {
+                    "Row #${idx + 1} (${line.productName}): Quantities cannot be negative."
+                }
                 return null
             }
             if (good.toLong() + damaged + missing + pending != line.expectedQty.toLong()) {
-                errorMessage = "Row #${idx + 1} (${line.productName}): Packed (${line.expectedQty}) must equal Good ($good) + Damaged ($damaged) + Missing ($missing) + Pending ($pending)."
+                errorMessage = if (isBangla) {
+                    "সারি #${idx + 1} (${line.productName}): মোট (${line.expectedQty}) = ভালো ($good) + ক্ষতিগ্রস্ত ($damaged) + নিখোঁজ ($missing) + অপেক্ষমাণ ($pending) হতে হবে।"
+                } else {
+                    "Row #${idx + 1} (${line.productName}): Packed (${line.expectedQty}) must equal Good ($good) + Damaged ($damaged) + Missing ($missing) + Pending ($pending)."
+                }
                 return null
             }
 
@@ -847,7 +855,7 @@ fun WarehouseReceivingDialog(
             },
             dismissButton = {
                 TextButton(onClick = { showConfirmationDialog = false }) {
-                    Text("Cancel")
+                    Text(if (isBangla) "বাতিল" else "Cancel")
                 }
             }
         )
@@ -873,7 +881,7 @@ private fun ReceivingLineInputs(
                 line.receivedQtyStr = (g + d).toString()
                 line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
             },
-            label = { Text("Good", fontSize = 11.sp, color = StatusSuccess) },
+            label = { Text(if (isBangla) "ভালো" else "Good", fontSize = 11.sp, color = StatusSuccess) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.weight(1f),
             singleLine = true
@@ -888,7 +896,7 @@ private fun ReceivingLineInputs(
                 line.receivedQtyStr = (g + d).toString()
                 line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
             },
-            label = { Text("Damaged", fontSize = 11.sp, color = StatusError) },
+            label = { Text(if (isBangla) "ক্ষতিগ্রস্ত" else "Damaged", fontSize = 11.sp, color = StatusError) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.weight(1f),
             singleLine = true
@@ -905,7 +913,7 @@ private fun ReceivingLineInputs(
                 val m = newVal.trim().toIntOrNull() ?: 0
                 line.pendingQtyStr = maxOf(0, line.expectedQty - g - d - m).toString()
             },
-            label = { Text("Missing", fontSize = 11.sp, color = StatusWarning) },
+            label = { Text(if (isBangla) "নিখোঁজ" else "Missing", fontSize = 11.sp, color = StatusWarning) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.weight(1f),
             singleLine = true
@@ -913,7 +921,7 @@ private fun ReceivingLineInputs(
         OutlinedTextField(
             value = line.pendingQtyStr,
             onValueChange = { line.pendingQtyStr = it },
-            label = { Text("Pending", fontSize = 11.sp, color = PrimaryPurple) },
+            label = { Text(if (isBangla) "অপেক্ষমাণ" else "Pending", fontSize = 11.sp, color = PrimaryPurple) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.weight(1f),
             singleLine = true

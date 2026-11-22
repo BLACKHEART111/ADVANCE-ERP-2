@@ -74,12 +74,12 @@ fun CogsTraceabilityView(
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "Total Depletions",
+                        text = if (language == AppLanguage.BANGLA) "মোট ব্যয়-বিভাজন" else "Total Depletions",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
                     Text(
-                        text = "${consumptions.size} layer consumptions",
+                        text = if (language == AppLanguage.BANGLA) "${consumptions.size}টি লেয়ার ব্যবহার" else "${consumptions.size} layer consumptions",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = SecondaryTeal
@@ -93,8 +93,12 @@ fun CogsTraceabilityView(
         if (consumptions.isEmpty()) {
             ERPEmptyState(
                 icon = Icons.Outlined.ReceiptLong,
-                title = "No COGS Depletions Recorded",
-                message = "Sales dispatches will automatically record detailed FIFO layer consumptions here."
+                title = if (language == AppLanguage.BANGLA) "কোনো COGS ব্যয় রেকর্ড হয়নি" else "No COGS Depletions Recorded",
+                message = if (language == AppLanguage.BANGLA) {
+                    "বিক্রয় ডিসপ্যাচ সম্পন্ন হলে স্বয়ংক্রিয়ভাবে ফিফো লেয়ার ভিত্তিক COGS হিসাব এখানে দেখা যাবে।"
+                } else {
+                    "Sales dispatches will automatically record detailed FIFO layer consumptions here."
+                }
             )
         } else {
             LazyColumn(

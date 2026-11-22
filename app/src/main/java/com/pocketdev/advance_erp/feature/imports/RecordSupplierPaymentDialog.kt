@@ -204,7 +204,7 @@ fun RecordSupplierPaymentDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isBangla) "পেমেন্ট প্রদান (Make Payment)" else "Make Outgoing Payment",
+                            text = if (isBangla) "পেমেন্ট প্রদান" else "Make Outgoing Payment",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
@@ -407,7 +407,7 @@ fun RecordSupplierPaymentDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("${po.poNumber} (${po.status})", style = MaterialTheme.typography.bodySmall, fontWeight = if (isPoSel) FontWeight.Bold else FontWeight.Normal)
-                                    Text("${po.currency} ${BigDecimal(remainingMinor).movePointLeft(2).toPlainString()} due", style = MaterialTheme.typography.bodySmall, color = StatusError)
+                                    Text("${po.currency} ${BigDecimal(remainingMinor).movePointLeft(2).toPlainString()} ${if (isBangla) "বকেয়া" else "due"}", style = MaterialTheme.typography.bodySmall, color = StatusError)
                                 }
                             }
                         }
@@ -611,8 +611,12 @@ fun RecordSupplierPaymentDialog(
                                 }
                                 val rate = if (selectedCurrency == "BDT") BigDecimal.ONE else BigDecimal(exchangeRateStr.trim())
                                 val amtBd = BigDecimal(amountStr.trim())
-                                require(amtBd > BigDecimal.ZERO) { "Amount must be greater than zero" }
-                                require(rate > BigDecimal.ZERO) { "Rate must be positive" }
+                                require(amtBd > BigDecimal.ZERO) {
+                                    if (isBangla) "পেমেন্টের পরিমাণ শূন্যের চেয়ে বেশি হতে হবে" else "Amount must be greater than zero"
+                                }
+                                require(rate > BigDecimal.ZERO) {
+                                    if (isBangla) "বিনিময় হার শূন্যের চেয়ে বেশি হতে হবে" else "Rate must be positive"
+                                }
 
                                 val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
 
@@ -645,7 +649,7 @@ fun RecordSupplierPaymentDialog(
                                 }
                                 if (dismissOnSubmit) onDismiss()
                             } catch (e: Exception) {
-                                errorMessage = e.message ?: "Invalid payment parameters"
+                                errorMessage = e.message ?: if (isBangla) "পেমেন্টের তথ্য সঠিক নয়" else "Invalid payment parameters"
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)

@@ -75,7 +75,8 @@ fun PhotoGalleryPicker(
     photos: List<GalleryItemDraft>,
     onPhotosChanged: (List<GalleryItemDraft>) -> Unit,
     modifier: Modifier = Modifier,
-    maxPhotos: Int = 10
+    maxPhotos: Int = 10,
+    isBangla: Boolean = false
 ) {
     val context = LocalContext.current
     var previewUri by remember { mutableStateOf<String?>(null) }
@@ -125,13 +126,13 @@ fun PhotoGalleryPicker(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.AddAPhoto,
-                        contentDescription = "Add Photos",
+                        contentDescription = if (isBangla) "ছবি যোগ করুন" else "Add Photos",
                         tint = PrimaryPurple,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Add Photos",
+                        text = if (isBangla) "ছবি যোগ করুন" else "Add Photos",
                         style = MaterialTheme.typography.labelMedium,
                         color = PrimaryPurple,
                         fontWeight = FontWeight.Bold
@@ -166,7 +167,7 @@ fun PhotoGalleryPicker(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Tap to select photos from gallery",
+                        text = if (isBangla) "গ্যালারি থেকে ছবি নির্বাচন করতে ট্যাপ করুন" else "Tap to select photos from gallery",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )

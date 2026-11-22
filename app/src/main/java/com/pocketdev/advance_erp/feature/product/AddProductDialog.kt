@@ -479,12 +479,13 @@ fun AddProductDialog(
         statusBarColor = palette.headerGradientStart.toArgb(),
         navigationBarColor = palette.footerBg.toArgb()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(palette.pageBg)
-                .imePadding()
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(palette.pageBg)
+                    .imePadding()
+            ) {
             val headerTitle = if (selectedExistingProduct != null) {
                 if (isBangla) "পণ্য স্টক ও সম্পাদনা" else "Restock & Edit Product"
             } else {
@@ -625,10 +626,13 @@ fun AddProductDialog(
                                         scope.launch {
                                             val seedName = if (nameEn.isBlank()) "PRD" else nameEn
                                             baseSku = onGenerateSku(cat.id, seedName)
+                                            if (errorMessage != null) errorMessage = null
                                         }
                                     }
                                 }
-                            } else null
+                            } else null,
+                            isNameEnError = errorMessage != null && nameEn.isBlank(),
+                            isBaseSkuError = errorMessage != null && baseSku.isBlank()
                         )
 
                         1 -> AddProductStep2OtherInfo(
@@ -845,44 +849,61 @@ fun AddProductDialog(
                     if (currentStep > 0) currentStep -= 1
                 },
                 onNext = {
-                    errorMessage = null
                     when (currentStep) {
-                        0 -> currentStep = 1
-                        1 -> if (variantsEnabled) currentStep = 2 else handleSubmit()
+                        0 -> {
+                            when {
+                                selectedCategory == null -> {
+                                    errorMessage = if (isBangla) "অনুগ্রহ করে একটি ক্যাটাগরি নির্বাচন করুন" else "Please select a category"
+                                }
+                                nameEn.isBlank() -> {
+                                    errorMessage = if (isBangla) "পণ্যের ইংরেজি নাম দেওয়া আবশ্যক" else "Product English name cannot be empty"
+                                }
+                                else -> {
+                                    errorMessage = null
+                                    currentStep = 1
+                                }
+                            }
+                        }
+                        1 -> {
+                            errorMessage = null
+                            if (variantsEnabled) currentStep = 2 else handleSubmit()
+                        }
+                        else -> errorMessage = null
                     }
                 },
                 onSubmit = handleSubmit
             )
+            }
+
+            if (showCategorySheet) {
+                AddProductSearchableCategorySheet(
+                    categories = categories,
+                    selectedCategory = selectedCategory,
+                    language = language,
+                    palette = palette,
+                    canCreateCategory = onAddNewCategory != null,
+                    onSelectCategory = { cat ->
+                        if (cat.id != selectedCategoryId) {
+                            selectedCategoryId = cat.id
+                            clearToNewProduct()
+                        }
+                    },
+                    onRequestCreateCategory = { showAddCategoryDialog = true },
+                    onDismiss = { showCategorySheet = false }
+                )
+            }
+
+            if (showWarehouseSheet) {
+                AddProductWarehouseSheet(
+                    warehouses = warehouses,
+                    selectedWarehouse = selectedWarehouse,
+                    language = language,
+                    palette = palette,
+                    onSelectWarehouse = { wh -> selectedWarehouseId = wh.id },
+                    onDismiss = { showWarehouseSheet = false }
+                )
+            }
         }
-    }
-
-    if (showCategorySheet) {
-        AddProductSearchableCategorySheet(
-            categories = categories,
-            selectedCategory = selectedCategory,
-            language = language,
-            palette = palette,
-            canCreateCategory = onAddNewCategory != null,
-            onSelectCategory = { cat ->
-                if (cat.id != selectedCategoryId) {
-                    selectedCategoryId = cat.id
-                    clearToNewProduct()
-                }
-            },
-            onRequestCreateCategory = { showAddCategoryDialog = true },
-            onDismiss = { showCategorySheet = false }
-        )
-    }
-
-    if (showWarehouseSheet) {
-        AddProductWarehouseSheet(
-            warehouses = warehouses,
-            selectedWarehouse = selectedWarehouse,
-            language = language,
-            palette = palette,
-            onSelectWarehouse = { wh -> selectedWarehouseId = wh.id },
-            onDismiss = { showWarehouseSheet = false }
-        )
     }
 
     // Add Category Dialog
@@ -1030,7 +1051,9 @@ private fun AddProductStep1BasicInfo(
     onNameBnChange: (String) -> Unit,
     baseSku: String,
     onBaseSkuChange: (String) -> Unit,
-    onAutoGenerateSku: (() -> Unit)?
+    onAutoGenerateSku: (() -> Unit)?,
+    isNameEnError: Boolean = false,
+    isBaseSkuError: Boolean = false
 ) {
     val scrollState = rememberScrollState()
     val fieldColors = addProductFieldColors(palette)
@@ -1307,6 +1330,7 @@ private fun AddProductStep1BasicInfo(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("add_product_name_en"),
+            isError = isNameEnError,
             shape = RoundedCornerShape(14.dp),
             colors = fieldColors,
             singleLine = true
@@ -1378,6 +1402,7 @@ private fun AddProductStep1BasicInfo(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("add_product_base_sku"),
+                isError = isBaseSkuError,
                 shape = RoundedCornerShape(14.dp),
                 colors = fieldColors,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
@@ -2037,7 +2062,7 @@ private fun AddProductStep3Variants(
                             onValueChange = onVariantSkuChange,
                             placeholder = {
                                 Text(
-                                    text = if (baseSku.isNotBlank()) "$baseSku-V1" else "Variant SKU",
+                                    text = if (baseSku.isNotBlank()) "$baseSku-V1" else if (isBangla) "ভ্যারিয়েন্ট SKU" else "Variant SKU",
                                     color = palette.textMuted
                                 )
                             },
@@ -2073,7 +2098,7 @@ private fun AddProductStep3Variants(
 
                     // Variant Barcode
                     AddProductFieldLabel(
-                        text = if (isBangla) "Variant Barcode (Optional)" else "Variant Barcode (Optional)",
+                        text = if (isBangla) "ভ্যারিয়েন্ট বারকোড (ঐচ্ছিক)" else "Variant Barcode (Optional)",
                         palette = palette
                     )
                     Row(
@@ -2253,7 +2278,7 @@ private fun AddProductStep3Variants(
 
                     // Variant Photos (max 4)
                     AddProductPhotoUploader(
-                        title = "Variant Photos",
+                        title = if (isBangla) "ভ্যারিয়েন্টের ছবি" else "Variant Photos",
                         photos = variantPhotos,
                         onPhotosChanged = onVariantPhotosChanged,
                         maxPhotos = 4,

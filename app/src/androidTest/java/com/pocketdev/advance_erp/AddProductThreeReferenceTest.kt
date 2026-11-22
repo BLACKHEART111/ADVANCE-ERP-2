@@ -119,7 +119,7 @@ class AddProductThreeReferenceTest {
         compose.onNodeWithTag("add_product_base_sku").performScrollTo()
         capture("01b_add_product_step1_bottom_$suffix")
 
-        compose.onNodeWithTag("add_product_next_btn").performClick()
+        compose.onNodeWithText("২. অন্যান্য").performClick()
         compose.onNodeWithText("ভ্যারিয়েন্ট ব্যবহার করবেন?").performScrollTo().assertExists()
         compose.onNodeWithTag("add_product_variant_switch").performClick()
         capture("02b_add_product_step2_bottom_$suffix")
@@ -392,8 +392,12 @@ class AddProductThreeReferenceTest {
             }
         }
 
-        // Go to Step 2 without entering nameEn -> submit -> must redirect to Step 1 with error
+        // 1. Clicking Next on empty Step 1 blocks advancing and shows inline error immediately
         compose.onNodeWithTag("add_product_next_btn").performClick()
+        compose.onNodeWithText("পণ্যের ইংরেজি নাম দেওয়া আবশ্যক").assertIsDisplayed()
+
+        // 2. Navigating directly to Step 2 via step bar and submitting redirects back to Step 1 with error
+        compose.onNodeWithText("২. অন্যান্য").performClick()
         compose.onNodeWithTag("add_product_submit_btn").performClick()
         compose.onNodeWithText("পণ্যের ইংরেজি নাম দেওয়া আবশ্যক").assertIsDisplayed()
 
@@ -436,7 +440,7 @@ class AddProductThreeReferenceTest {
         compose.onNodeWithText("1. Basic Info").assertExists()
         compose.onNodeWithText("2. Other Info").assertExists()
         compose.onNodeWithText("3. Variants").assertExists()
-        compose.onNodeWithTag("add_product_next_btn").performClick()
+        compose.onNodeWithText("2. Other Info").performClick()
         compose.onNodeWithText("Use Product Variants?").performScrollTo().assertExists()
         compose.onNodeWithTag("add_product_variant_switch").performClick()
         compose.onNodeWithTag("add_product_next_btn").performClick()

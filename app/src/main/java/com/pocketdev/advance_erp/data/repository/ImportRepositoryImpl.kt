@@ -245,15 +245,21 @@ class ImportRepositoryImpl @Inject constructor(
         purchaseOrderDao.saveOrderWithItems(order, poItems)
 
         // One Purchase = One Batch: Automatically create linked batch shipment
+        val supplier = supplierDao.getSupplierById(supplierId)
+        val isLocalOrder = currency.equals("BDT", ignoreCase = true)
         val batchNumber = "BATCH-$poNumber"
         val batchShipment = ImportShipment(
             id = "shp-${UUID.randomUUID()}",
             shipmentNumber = batchNumber,
             supplierId = supplierId,
             purchaseOrderId = orderId,
-            shippingMethod = shippingMethod,
-            origin = "Guangzhou, China",
-            destination = "Chattogram Port, Bangladesh",
+            shippingMethod = if (isLocalOrder) "LOCAL" else shippingMethod,
+            origin = if (isLocalOrder) {
+                supplier?.address?.takeIf { it.isNotBlank() } ?: "Local Supplier, Bangladesh"
+            } else {
+                "Guangzhou, China"
+            },
+            destination = if (isLocalOrder) "Main Warehouse, Bangladesh" else "Chattogram Port, Bangladesh",
             status = ShipmentStatus.DRAFT.name,
             totalCartons = totalCartonsSum,
             totalQuantity = poItems.sumOf { it.quantity },
@@ -552,7 +558,7 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         val shipmentCount = importShipmentDao.getShipmentCount()
-        val shipmentNumber = "SHP-2026-%04d".format(shipmentCount + 1)
+        val shipmentNumber = String.format(java.util.Locale.ROOT, "SHP-2026-%04d", shipmentCount + 1)
         val shipmentId = "shp-${UUID.randomUUID()}"
 
         var totalQty = 0
@@ -2747,7 +2753,9 @@ class ImportRepositoryImpl @Inject constructor(
                 val costCurrency = if (category == CostCategory.CHINA_DOMESTIC_TRANSPORT) currency else "BDT"
                 val costRate = if (costCurrency == "BDT") BigDecimal.ONE else exchangeRate
                 val existing = existingCosts.firstOrNull {
-                    it.costCategory == category.name && it.description.contains(descMatch, ignoreCase = true)
+                    (it.costCategory == category.name ||
+                        (category == CostCategory.OTHER_EXPENSES && it.costCategory == CostCategory.OTHER_CHARGES.name)) &&
+                        it.description.contains(descMatch, ignoreCase = true)
                 }
                 if (amountMinor > 0L) {
                     val bdtMinor = BigDecimal(amountMinor)
@@ -2757,6 +2765,7 @@ class ImportRepositoryImpl @Inject constructor(
                     if (existing != null) {
                         importCostDao.updateCostItem(
                             existing.copy(
+                                costCategory = category.name,
                                 amountMinor = amountMinor,
                                 currency = costCurrency,
                                 exchangeRateToBdt = costRate.toPlainString(),
@@ -2790,7 +2799,7 @@ class ImportRepositoryImpl @Inject constructor(
             }
             if (handlingCostMinor > 0L || existingCosts.any { it.description.contains("Handling", ignoreCase = true) }) {
                 upsertPoCost(
-                    category = CostCategory.OTHER_CHARGES,
+                    category = CostCategory.OTHER_EXPENSES,
                     descMatch = "Handling",
                     defaultDesc = "Handling & Packaging Charge",
                     amountMinor = handlingCostMinor
@@ -2798,7 +2807,7 @@ class ImportRepositoryImpl @Inject constructor(
             }
             if (sampleCostMinor > 0L || existingCosts.any { it.description.contains("Sample", ignoreCase = true) }) {
                 upsertPoCost(
-                    category = CostCategory.OTHER_CHARGES,
+                    category = CostCategory.OTHER_EXPENSES,
                     descMatch = "Sample",
                     defaultDesc = "Sample Cost",
                     amountMinor = sampleCostMinor
@@ -2810,6 +2819,34 @@ class ImportRepositoryImpl @Inject constructor(
                     if (rateMinor >= 0L) {
                         overrideShipmentCategoryFreightRate(batchShipment.id, catId, rateMinor)
                     }
+                }
+                val positiveRatesMinor = categoryFreightRatesBdtMinor.values.filter { it > 0L }
+                if (positiveRatesMinor.isNotEmpty()) {
+                    val positiveRateMap = categoryFreightRatesBdtMinor.filterValues { it > 0L }
+                    var weightedSum = BigDecimal.ZERO
+                    var totalWeightedKg = BigDecimal.ZERO
+                    for (item in poItems) {
+                        val prod = productDao.getProductById(item.productId)
+                        val catId = prod?.categoryId ?: continue
+                        val rateMinor = positiveRateMap[catId] ?: continue
+                        val itemWeight = BigDecimal(item.grossWeightKg.ifBlank { "0" })
+                        if (itemWeight > BigDecimal.ZERO) {
+                            weightedSum = weightedSum.add(BigDecimal(rateMinor).multiply(itemWeight))
+                            totalWeightedKg = totalWeightedKg.add(itemWeight)
+                        }
+                    }
+                    val effectiveRateBdt = if (totalWeightedKg > BigDecimal.ZERO) {
+                        weightedSum
+                            .divide(BigDecimal("100"))
+                            .divide(totalWeightedKg, 2, RoundingMode.HALF_UP)
+                    } else {
+                        BigDecimal(positiveRatesMinor.sum())
+                            .divide(BigDecimal("100"))
+                            .divide(BigDecimal(positiveRatesMinor.size), 2, RoundingMode.HALF_UP)
+                    }
+                    purchaseOrderDao.updateOrder(
+                        updatedOrder.copy(shippingRatePerKgBdt = effectiveRateBdt.toPlainString())
+                    )
                 }
             }
         }

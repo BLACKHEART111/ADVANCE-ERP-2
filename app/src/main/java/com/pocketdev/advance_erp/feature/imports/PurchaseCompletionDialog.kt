@@ -60,6 +60,7 @@ import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 
 @Composable
@@ -129,7 +130,7 @@ fun PurchaseCompletionDialog(
                             )
                         }
                         Text(
-                            text = "Purchase: ${order.poNumber}",
+                            text = if (isBangla) "ক্রয়াদেশ: ${order.poNumber}" else "Purchase: ${order.poNumber}",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.7f)
                         )
@@ -158,42 +159,50 @@ fun PurchaseCompletionDialog(
                                 color = TextPrimary
                             )
 
+                            val unitLabel = if (isBangla) "পিস" else "units"
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Ordered Quantity:", color = TextSecondary, fontSize = 13.sp)
-                                Text("$totalOrdered units", fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Text(if (isBangla) "অর্ডারকৃত পরিমাণ:" else "Ordered Quantity:", color = TextSecondary, fontSize = 13.sp)
+                                Text("$totalOrdered $unitLabel", fontWeight = FontWeight.Bold, color = TextPrimary)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Total Received:", color = TextSecondary, fontSize = 13.sp)
-                                Text("$totalReceived units", fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Text(if (isBangla) "মোট রিসিভড:" else "Total Received:", color = TextSecondary, fontSize = 13.sp)
+                                Text("$totalReceived $unitLabel", fontWeight = FontWeight.Bold, color = TextPrimary)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Good (In Stock):", color = TextSecondary, fontSize = 13.sp)
-                                Text("$goodQuantity units", fontWeight = FontWeight.Bold, color = StatusSuccess)
+                                Text(if (isBangla) "ভালো (স্টকে যুক্ত):" else "Good (In Stock):", color = TextSecondary, fontSize = 13.sp)
+                                Text("$goodQuantity $unitLabel", fontWeight = FontWeight.Bold, color = StatusSuccess)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Damaged (Written Off):", color = TextSecondary, fontSize = 13.sp)
-                                Text("$damagedQuantity units", fontWeight = FontWeight.Bold, color = StatusError)
+                                Text(if (isBangla) "ক্ষতিগ্রস্ত (রাইট-অফ):" else "Damaged (Written Off):", color = TextSecondary, fontSize = 13.sp)
+                                Text("$damagedQuantity $unitLabel", fontWeight = FontWeight.Bold, color = StatusError)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Missing (Shortage Claim):", color = TextSecondary, fontSize = 13.sp)
-                                Text("$missingQuantity units", fontWeight = FontWeight.Bold, color = StatusWarning)
+                                Text(if (isBangla) "নিখোঁজ (ঘাটতি দাবি):" else "Missing (Shortage Claim):", color = TextSecondary, fontSize = 13.sp)
+                                Text("$missingQuantity $unitLabel", fontWeight = FontWeight.Bold, color = StatusWarning)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Remaining Unreceived:", color = TextSecondary, fontSize = 13.sp)
-                                Text("$remainingQuantity units", fontWeight = FontWeight.Bold, color = if (remainingQuantity > 0) StatusError else StatusSuccess)
+                                Text(if (isBangla) "অবশিষ্ট অপ্রাপ্ত:" else "Remaining Unreceived:", color = TextSecondary, fontSize = 13.sp)
+                                Text("$remainingQuantity $unitLabel", fontWeight = FontWeight.Bold, color = if (remainingQuantity > 0) StatusError else StatusSuccess)
                             }
 
                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Payment Due Balance:", color = TextSecondary, fontSize = 13.sp)
-                                val dueMajor = paymentDueMinor / 100
-                                Text("${order.currency} $dueMajor", fontWeight = FontWeight.Bold, color = if (paymentDueMinor > 0) StatusWarning else StatusSuccess)
+                                Text(if (isBangla) "বকেয়া পেমেন্ট:" else "Payment Due Balance:", color = TextSecondary, fontSize = 13.sp)
+                                Text("${order.currency} ${Formatters.formatMinorUnit(paymentDueMinor)}", fontWeight = FontWeight.Bold, color = if (paymentDueMinor > 0) StatusWarning else StatusSuccess)
                             }
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Actual Cost Status:", color = TextSecondary, fontSize = 13.sp)
-                                Text(if (isCostFinalized) "FINALIZED" else "PENDING", fontWeight = FontWeight.Bold, color = if (isCostFinalized) StatusSuccess else StatusWarning)
+                                Text(if (isBangla) "প্রকৃত খরচ স্থিতি:" else "Actual Cost Status:", color = TextSecondary, fontSize = 13.sp)
+                                Text(
+                                    text = if (isBangla) {
+                                        if (isCostFinalized) "চূড়ান্ত" else "অপেক্ষমাণ"
+                                    } else {
+                                        if (isCostFinalized) "FINALIZED" else "PENDING"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCostFinalized) StatusSuccess else StatusWarning
+                                )
                             }
                         }
                     }

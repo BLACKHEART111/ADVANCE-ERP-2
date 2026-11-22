@@ -25,7 +25,8 @@ data class StockItemOverview(
     val isLowStock: Boolean,
     val primaryImageUri: String? = null,
     val minCostMinor: Long = 0L,
-    val maxCostMinor: Long = 0L
+    val maxCostMinor: Long = 0L,
+    val categoryNameBn: String = ""
 )
 
 @Dao
@@ -35,7 +36,7 @@ interface StockBalanceDao {
         SELECT p.id as productId, p.categoryId as categoryId, p.barcode as barcode,
                (SELECT GROUP_CONCAT(pv.sku, ', ') FROM product_variants pv WHERE pv.productId = p.id) as variantSkus,
                p.nameEn as productNameEn, p.nameBn as productNameBn,
-               p.baseSku as baseSku, c.nameEn as categoryNameEn, p.unit as unit,
+               p.baseSku as baseSku, c.nameEn as categoryNameEn, c.nameBn as categoryNameBn, p.unit as unit,
                p.minStockAlert as minStockAlert,
                COALESCE(SUM(sb.quantity), 0) as totalQuantity,
                COALESCE(SUM(sb.reservedQuantity), 0) as totalReserved,
@@ -65,7 +66,7 @@ interface StockBalanceDao {
         SELECT p.id as productId, p.categoryId as categoryId, p.barcode as barcode,
                (SELECT GROUP_CONCAT(pv.sku, ', ') FROM product_variants pv WHERE pv.productId = p.id) as variantSkus,
                p.nameEn as productNameEn, p.nameBn as productNameBn,
-               p.baseSku as baseSku, c.nameEn as categoryNameEn, p.unit as unit,
+               p.baseSku as baseSku, c.nameEn as categoryNameEn, c.nameBn as categoryNameBn, p.unit as unit,
                p.minStockAlert as minStockAlert,
                COALESCE(SUM(sb.quantity), 0) as totalQuantity,
                COALESCE(SUM(sb.reservedQuantity), 0) as totalReserved,
@@ -97,7 +98,7 @@ interface StockBalanceDao {
         SELECT p.id as productId, p.categoryId as categoryId, p.barcode as barcode,
                (SELECT GROUP_CONCAT(pv.sku, ', ') FROM product_variants pv WHERE pv.productId = p.id) as variantSkus,
                p.nameEn as productNameEn, p.nameBn as productNameBn,
-               p.baseSku as baseSku, c.nameEn as categoryNameEn, p.unit as unit,
+               p.baseSku as baseSku, c.nameEn as categoryNameEn, c.nameBn as categoryNameBn, p.unit as unit,
                p.minStockAlert as minStockAlert,
                COALESCE(SUM(sb.quantity), 0) as totalQuantity,
                COALESCE(SUM(sb.reservedQuantity), 0) as totalReserved,

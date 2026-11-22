@@ -92,7 +92,12 @@ fun AddCostItemDialog(
     val manualAmounts = remember { mutableStateMapOf<String, String>() }
     var isEstimated by rememberSaveable { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf(CostCategory.INTERNATIONAL_FREIGHT) }
-    var description by rememberSaveable { mutableStateOf("International Freight & Air/Sea Consignment") }
+    var description by rememberSaveable {
+        mutableStateOf(
+            if (isBangla) CostCategory.INTERNATIONAL_FREIGHT.titleBn
+            else "International Freight & Air/Sea Consignment"
+        )
+    }
     var amountStr by rememberSaveable { mutableStateOf("") }
     var selectedCurrency by rememberSaveable { mutableStateOf("BDT") }
     var exchangeRateStr by rememberSaveable { mutableStateOf("1.00") }
@@ -275,7 +280,7 @@ fun AddCostItemDialog(
                                                 color = if (isSel) PrimaryPurple else TextPrimary
                                             )
                                             Text(
-                                                text = "Default: ${cat.defaultAllocationMethod.name}",
+                                                text = if (isBangla) "ডিফল্ট: ${cat.defaultAllocationMethod.titleBn}" else "Default: ${cat.defaultAllocationMethod.name}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = TextSecondary,
                                                 fontSize = 10.sp
@@ -308,7 +313,7 @@ fun AddCostItemDialog(
                                     }
 
                                     Text(
-                                        text = "Total Gross Weight: ${totalGrossWeightKg.toPlainString()} KG",
+                                        text = if (isBangla) "মোট গ্রস ওজন: ${totalGrossWeightKg.toPlainString()} কেজি" else "Total Gross Weight: ${totalGrossWeightKg.toPlainString()} KG",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
                                         color = TextPrimary
@@ -327,7 +332,7 @@ fun AddCostItemDialog(
                                                 val total = totalGrossWeightKg.multiply(rate)
                                                 amountStr = total.setScale(2, RoundingMode.HALF_UP).toPlainString()
                                             },
-                                            label = { Text("Rate (BDT/KG)", fontSize = 11.sp) },
+                                            label = { Text(if (isBangla) "হার (৳/কেজি)" else "Rate (BDT/KG)", fontSize = 11.sp) },
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                             modifier = Modifier.weight(1f),
                                             singleLine = true
@@ -343,7 +348,7 @@ fun AddCostItemDialog(
                                             modifier = Modifier.weight(1f),
                                             colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess)
                                         ) {
-                                            Text("Calculate Total", fontSize = 12.sp)
+                                            Text(if (isBangla) "মোট হিসাব" else "Calculate Total", fontSize = 12.sp)
                                         }
                                     }
                                 }
@@ -412,7 +417,7 @@ fun AddCostItemDialog(
                                 OutlinedTextField(
                                     value = description,
                                     onValueChange = { description = it },
-                                    label = { Text("Description") },
+                                    label = { Text(if (isBangla) "খরচের বিবরণ" else "Description") },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -424,7 +429,7 @@ fun AddCostItemDialog(
                                     OutlinedTextField(
                                         value = amountStr,
                                         onValueChange = { amountStr = it },
-                                        label = { Text("Amount") },
+                                        label = { Text(if (isBangla) "পরিমাণ" else "Amount") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1.5f),
                                         singleLine = true
@@ -432,7 +437,7 @@ fun AddCostItemDialog(
                                     OutlinedTextField(
                                         value = selectedCurrency,
                                         onValueChange = { selectedCurrency = it },
-                                        label = { Text("Currency") },
+                                        label = { Text(if (isBangla) "মুদ্রা" else "Currency") },
                                         modifier = Modifier.weight(1f),
                                         singleLine = true
                                     )
@@ -481,18 +486,24 @@ fun AddCostItemDialog(
                             onClick = {
                                 try {
                                     val amtBd = BigDecimal(amountStr.trim().ifEmpty { "0" })
-                                    require(amtBd > BigDecimal.ZERO) { "Amount must be greater than zero" }
+                                    require(amtBd > BigDecimal.ZERO) {
+                                        if (isBangla) "খরচের পরিমাণ শূন্যের চেয়ে বেশি হতে হবে" else "Amount must be greater than zero"
+                                    }
                                     val fx = BigDecimal(exchangeRateStr.trim().ifEmpty { "1.00" })
                                     val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
 
                                     val manual = if (selectedMethod == AllocationMethod.MANUAL) allocationTargets.keys.associateWith { key ->
                                         (manualAmounts[key].orEmpty().ifBlank { "0" }).toBigDecimal().movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact()
                                     } else emptyMap()
-                                    require(manual.values.all { it >= 0 }) { "Allocations cannot be negative" }
-                                    require(selectedMethod != AllocationMethod.MANUAL || (manual.isNotEmpty() && manual.values.sum() == amtBd.multiply(fx).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact())) { "Manual BDT allocations must equal expense total" }
+                                    require(manual.values.all { it >= 0 }) {
+                                        if (isBangla) "বরাদ্দকৃত পরিমাণ ঋণাত্মক হতে পারবে না" else "Allocations cannot be negative"
+                                    }
+                                    require(selectedMethod != AllocationMethod.MANUAL || (manual.isNotEmpty() && manual.values.sum() == amtBd.multiply(fx).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact())) {
+                                        if (isBangla) "ম্যানুয়াল BDT বরাদ্দের যোগফল মোট খরচের সমান হতে হবে" else "Manual BDT allocations must equal expense total"
+                                    }
                                     onConfirm(
                                         selectedCategory,
-                                        description.trim().ifEmpty { selectedCategory.titleEn },
+                                        description.trim().ifEmpty { if (isBangla) selectedCategory.titleBn else selectedCategory.titleEn },
                                         minor,
                                         selectedCurrency,
                                         fx,
@@ -505,7 +516,7 @@ fun AddCostItemDialog(
                                     )
                                     onDismiss()
                                 } catch (e: Exception) {
-                                    errorMessage = e.message ?: "Validation error"
+                                    errorMessage = e.message ?: if (isBangla) "তথ্য যাচাইয়ে ত্রুটি" else "Validation error"
                                 }
                             },
                             modifier = Modifier.weight(1.5f),

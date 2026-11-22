@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,9 +15,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -68,7 +72,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -78,7 +81,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldColors
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -1348,6 +1350,62 @@ internal fun AddProductStickyFooter(
     }
 }
 
+/**
+ * Renders a bottom-sheet overlay inside the same full-screen Dialog window so it always stays above form content.
+ */
+@Composable
+private fun AddProductInWindowSheetOverlay(
+    onDismiss: () -> Unit,
+    palette: AddProductPalette,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    BackHandler(onBack = onDismiss)
+    val scrimInteraction = remember { MutableInteractionSource() }
+    val sheetInteraction = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable(
+                interactionSource = scrimInteraction,
+                indication = null,
+                onClick = onDismiss
+            ),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = sheetInteraction,
+                    indication = null,
+                    onClick = {}
+                )
+                .imePadding(),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            color = palette.cardSurface,
+            shadowElevation = 12.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 18.dp, vertical = 10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 10.dp)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(palette.fieldBorder)
+                )
+                content()
+            }
+        }
+    }
+}
+
 @Composable
 internal fun AddProductSearchableCategorySheet(
     categories: List<ProductCategory>,
@@ -1360,7 +1418,6 @@ internal fun AddProductSearchableCategorySheet(
     onDismiss: () -> Unit
 ) {
     val isBangla = language == AppLanguage.BANGLA
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var searchQuery by remember { mutableStateOf("") }
 
     val filtered = remember(categories, searchQuery) {
@@ -1373,17 +1430,11 @@ internal fun AddProductSearchableCategorySheet(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = palette.cardSurface
+    AddProductInWindowSheetOverlay(
+        onDismiss = onDismiss,
+        palette = palette
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1566,19 +1617,12 @@ internal fun AddProductWarehouseSheet(
     onDismiss: () -> Unit
 ) {
     val isBangla = language == AppLanguage.BANGLA
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = palette.cardSurface
+    AddProductInWindowSheetOverlay(
+        onDismiss = onDismiss,
+        palette = palette
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = if (isBangla) "ওয়্যারহাউস নির্বাচন করুন" else "Select Warehouse",
                 fontSize = 17.sp,

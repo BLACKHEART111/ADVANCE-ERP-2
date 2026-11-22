@@ -145,6 +145,7 @@ class InventoryViewModel @Inject constructor(
     private val _selectedTab = MutableStateFlow(InventoryTab.STOCK_OVERVIEW)
     private val _selectedWarehouseId = MutableStateFlow<String?>(null)
     private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
     private val _selectedCategoryId = MutableStateFlow<String?>(null)
     private val _showAdjustDialog = MutableStateFlow(false)
     private val _showTransferDialog = MutableStateFlow(false)
@@ -232,54 +233,49 @@ class InventoryViewModel @Inject constructor(
         )
     }
 
-    val uiState: StateFlow<InventoryUiState> = filterParamsFlow.flatMapLatest { p ->
-        val stockFlow = if (p.whId != null) {
-            inventoryRepository.getStockOverviewByWarehouse(p.whId)
+    private val warehouseScopedDataFlow = _selectedWarehouseId.flatMapLatest { whId ->
+        val stockFlow = if (whId != null) {
+            inventoryRepository.getStockOverviewByWarehouse(whId)
         } else {
             inventoryRepository.getStockOverview()
         }
 
         val movementsFlow = costHistoryRepository.getFilteredMovementLedger(
             productId = null,
-            warehouseId = p.whId,
+            warehouseId = whId,
             movementType = null,
             limit = 100
         )
 
-        val transfersFlow = if (p.whId != null) {
-            inventoryRepository.getStockTransfersByWarehouse(p.whId)
+        val transfersFlow = if (whId != null) {
+            inventoryRepository.getStockTransfersByWarehouse(whId)
         } else {
             inventoryRepository.getAllStockTransfers()
         }
 
-        val totalPhysicalQtyFlow = if (p.whId != null) {
-            inventoryRepository.getPhysicalQuantityByWarehouse(p.whId)
+        val totalPhysicalQtyFlow = if (whId != null) {
+            inventoryRepository.getPhysicalQuantityByWarehouse(whId)
         } else {
             inventoryRepository.getTotalPhysicalQuantity()
         }
 
-        val totalSellableQtyFlow = if (p.whId != null) {
-            inventoryRepository.getSellableQuantityByWarehouse(p.whId)
+        val totalSellableQtyFlow = if (whId != null) {
+            inventoryRepository.getSellableQuantityByWarehouse(whId)
         } else {
             inventoryRepository.getTotalSellableQuantity()
         }
 
-        val totalDamagedQtyFlow = if (p.whId != null) {
-            inventoryRepository.getDamagedQuantityByWarehouse(p.whId)
+        val totalDamagedQtyFlow = if (whId != null) {
+            inventoryRepository.getDamagedQuantityByWarehouse(whId)
         } else {
             inventoryRepository.getTotalDamagedQuantity()
         }
 
-        val valuationFlow = if (p.whId != null) {
-            inventoryRepository.getInventoryValuationByWarehouseMinor(p.whId)
+        val valuationFlow = if (whId != null) {
+            inventoryRepository.getInventoryValuationByWarehouseMinor(whId)
         } else {
             inventoryRepository.getTotalInventoryValuationMinor()
         }
-
-        val valuationBreakdownFlow = costHistoryRepository.getInventoryValuationBreakdown()
-        val reconciliationsFlow = costHistoryRepository.getAllReconciliations()
-        val consumptionsFlow = costHistoryRepository.getAllFifoConsumptions(100)
-        val totalCogsFlow = costHistoryRepository.getTotalCogsMinor()
 
         val metricsFlow = combine(
             totalPhysicalQtyFlow,
@@ -290,141 +286,160 @@ class InventoryViewModel @Inject constructor(
             InventoryMetrics(physical, sellable, damaged, valuation)
         }
 
-        val auditStateFlow = combine(
-            valuationBreakdownFlow,
-            reconciliationsFlow,
-            consumptionsFlow,
-            totalCogsFlow
-        ) { breakdown, reconciliations, consumptions, cogs ->
-            AuditData(
-                valuationBreakdown = breakdown,
-                latestReconciliation = reconciliations.firstOrNull(),
-                consumptions = consumptions,
-                totalCogs = cogs
-            )
-        }
-
-        val costHistoryDialogStateFlow = combine(
-            _showCostHistoryDialog,
-            _showCostAdjustmentDialog,
-            _selectedLayerForAdjustment,
-            _selectedCostSummary,
-            combine(_selectedCostLayers, _selectedCostAdjustments, _isReconciling) { layers, adjs, isRec ->
-                Triple(layers, adjs, isRec)
-            }
-        ) { showHist, showAdj, layer, summary, (layers, adjs, isRec) ->
-            CostDialogState(
-                showHistory = showHist,
-                showAdjustment = showAdj,
-                selectedLayer = layer,
-                summary = summary,
-                layers = layers,
-                adjustments = adjs,
-                isReconciling = isRec
-            )
-        }
-
         combine(
             stockFlow,
             movementsFlow,
             inventoryRepository.getLowStockItems(),
             transfersFlow,
-            combine(metricsFlow, auditStateFlow, costHistoryDialogStateFlow) { m, a, c ->
-                Triple(m, a, c)
-            }
-        ) { rawStock, movements, rawLowStock, transfers, (metrics, auditData, costState) ->
-            // Filter products by search query and category
-            val query = p.searchQuery.trim().lowercase()
-            val textMatchedStock = rawStock.filter { item ->
-                val matchesCategory = p.catId == null || item.categoryId == p.catId
-                val matchesSearch = query.isEmpty() ||
-                        item.productNameEn.lowercase().contains(query) ||
-                        item.productNameBn.lowercase().contains(query) ||
-                        item.baseSku.lowercase().contains(query) ||
-                        (item.barcode?.lowercase()?.contains(query) == true) ||
-                        (item.variantSkus?.lowercase()?.contains(query) == true)
-                matchesCategory && matchesSearch
-            }
-
-            // Apply Stock Status Filter
-            val statusFilteredStock = textMatchedStock.filter { item ->
-                when (p.stockStatusFilter) {
-                    StockStatusFilter.ALL -> true
-                    StockStatusFilter.IN_STOCK -> item.totalQuantity > 0
-                    StockStatusFilter.LOW_STOCK -> item.isLowStock
-                    StockStatusFilter.OUT_OF_STOCK -> item.totalQuantity == 0
-                }
-            }
-
-            // Apply Sorting
-            val sortedStock = when (p.sortOption) {
-                InventorySortOption.NAME_ASC -> statusFilteredStock.sortedBy { if (p.lang == AppLanguage.BANGLA) it.productNameBn.lowercase() else it.productNameEn.lowercase() }
-                InventorySortOption.NAME_DESC -> statusFilteredStock.sortedByDescending { if (p.lang == AppLanguage.BANGLA) it.productNameBn.lowercase() else it.productNameEn.lowercase() }
-                InventorySortOption.SKU_ASC -> statusFilteredStock.sortedBy { it.baseSku.lowercase() }
-                InventorySortOption.QUANTITY_DESC -> statusFilteredStock.sortedByDescending { it.availableQuantity }
-                InventorySortOption.QUANTITY_ASC -> statusFilteredStock.sortedBy { it.availableQuantity }
-            }
-
-            val filteredLowStock = rawLowStock.filter { item ->
-                val matchesCategory = p.catId == null || item.categoryId == p.catId
-                val matchesSearch = query.isEmpty() ||
-                        item.productNameEn.lowercase().contains(query) ||
-                        item.productNameBn.lowercase().contains(query) ||
-                        item.baseSku.lowercase().contains(query) ||
-                        (item.barcode?.lowercase()?.contains(query) == true) ||
-                        (item.variantSkus?.lowercase()?.contains(query) == true)
-                matchesCategory && matchesSearch
-            }
-
-            val canViewCost = SecurityManager.canViewCost(p.userRole)
-            val securedValuationMinor = if (canViewCost) metrics.totalValuation else 0L
-
-            InventoryUiState(
-                selectedTab = p.tab,
-                searchQuery = p.searchQuery,
-                selectedCategoryId = p.catId,
-                categories = p.cats,
-                stockItems = sortedStock,
+            metricsFlow
+        ) { rawStock, movements, rawLowStock, transfers, metrics ->
+            WarehouseScopedData(
+                rawStock = rawStock,
                 movements = movements,
-                lowStockItems = filteredLowStock,
+                rawLowStock = rawLowStock,
                 transfers = transfers,
-                warehouses = p.whs,
-                allProducts = p.prods,
-                selectedWarehouseId = p.whId,
-                language = p.lang,
-                currency = p.curr,
-                showAdjustDialog = p.showAdj,
-                showTransferDialog = p.showTr,
-                userMessage = p.msg,
-                totalInventoryQuantity = metrics.totalPhysical,
-                totalSellableStock = metrics.totalSellable,
-                totalDamagedStock = metrics.totalDamaged,
-                totalInventoryValueMinor = securedValuationMinor,
-                showScannerDialog = p.showScan,
-                selectedProductForDetail = p.selectedProduct,
-                selectedProductVariants = p.variants,
-                selectedProductImages = p.images,
-                preSelectedVariantId = p.preSelectedVariantId,
-                valuationBreakdown = if (canViewCost) auditData.valuationBreakdown else null,
-                latestReconciliation = auditData.latestReconciliation,
-                fifoConsumptions = if (canViewCost) auditData.consumptions else emptyList(),
-                totalCogsMinor = if (canViewCost) auditData.totalCogs else 0L,
-                selectedProductCostSummary = if (canViewCost) costState.summary else null,
-                selectedProductCostLayers = if (canViewCost) costState.layers else emptyList(),
-                selectedProductCostAdjustments = if (canViewCost) costState.adjustments else emptyList(),
-                showCostHistoryDialog = costState.showHistory,
-                showCostAdjustmentDialog = costState.showAdjustment,
-                selectedLayerForAdjustment = costState.selectedLayer,
-                isReconciling = costState.isReconciling,
-                sortOption = p.sortOption,
-                stockStatusFilter = p.stockStatusFilter,
-                userRole = p.userRole,
-                canViewCost = canViewCost,
-                variantStockMap = p.variantStock,
-                showStockForecastDialog = p.showForecast,
-                stockForecastSummary = p.forecastSummary
+                metrics = metrics
             )
         }
+    }
+
+    private val auditStateFlow = combine(
+        costHistoryRepository.getInventoryValuationBreakdown(),
+        costHistoryRepository.getAllReconciliations(),
+        costHistoryRepository.getAllFifoConsumptions(100),
+        costHistoryRepository.getTotalCogsMinor()
+    ) { breakdown, reconciliations, consumptions, cogs ->
+        AuditData(
+            valuationBreakdown = breakdown,
+            latestReconciliation = reconciliations.firstOrNull(),
+            consumptions = consumptions,
+            totalCogs = cogs
+        )
+    }
+
+    private val costHistoryDialogStateFlow = combine(
+        _showCostHistoryDialog,
+        _showCostAdjustmentDialog,
+        _selectedLayerForAdjustment,
+        _selectedCostSummary,
+        combine(_selectedCostLayers, _selectedCostAdjustments, _isReconciling) { layers, adjs, isRec ->
+            Triple(layers, adjs, isRec)
+        }
+    ) { showHist, showAdj, layer, summary, (layers, adjs, isRec) ->
+        CostDialogState(
+            showHistory = showHist,
+            showAdjustment = showAdj,
+            selectedLayer = layer,
+            summary = summary,
+            layers = layers,
+            adjustments = adjs,
+            isReconciling = isRec
+        )
+    }
+
+    val uiState: StateFlow<InventoryUiState> = combine(
+        filterParamsFlow,
+        warehouseScopedDataFlow,
+        auditStateFlow,
+        costHistoryDialogStateFlow
+    ) { p, whData, auditData, costState ->
+        val rawStock = whData.rawStock
+        val movements = whData.movements
+        val rawLowStock = whData.rawLowStock
+        val transfers = whData.transfers
+        val metrics = whData.metrics
+
+        // Filter products by search query and category
+        val query = p.searchQuery.trim().lowercase()
+        val textMatchedStock = rawStock.filter { item ->
+            val matchesCategory = p.catId == null || item.categoryId == p.catId
+            val matchesSearch = query.isEmpty() ||
+                item.productNameEn.lowercase().contains(query) ||
+                item.productNameBn.lowercase().contains(query) ||
+                item.baseSku.lowercase().contains(query) ||
+                (item.barcode?.lowercase()?.contains(query) == true) ||
+                (item.variantSkus?.lowercase()?.contains(query) == true)
+            matchesCategory && matchesSearch
+        }
+
+        // Apply Stock Status Filter
+        val statusFilteredStock = textMatchedStock.filter { item ->
+            when (p.stockStatusFilter) {
+                StockStatusFilter.ALL -> true
+                StockStatusFilter.IN_STOCK -> item.totalQuantity > 0
+                StockStatusFilter.LOW_STOCK -> item.isLowStock
+                StockStatusFilter.OUT_OF_STOCK -> item.totalQuantity == 0
+            }
+        }
+
+        // Apply Sorting
+        val sortedStock = when (p.sortOption) {
+            InventorySortOption.NAME_ASC -> statusFilteredStock.sortedBy { if (p.lang == AppLanguage.BANGLA) it.productNameBn.lowercase() else it.productNameEn.lowercase() }
+            InventorySortOption.NAME_DESC -> statusFilteredStock.sortedByDescending { if (p.lang == AppLanguage.BANGLA) it.productNameBn.lowercase() else it.productNameEn.lowercase() }
+            InventorySortOption.SKU_ASC -> statusFilteredStock.sortedBy { it.baseSku.lowercase() }
+            InventorySortOption.QUANTITY_DESC -> statusFilteredStock.sortedByDescending { it.availableQuantity }
+            InventorySortOption.QUANTITY_ASC -> statusFilteredStock.sortedBy { it.availableQuantity }
+        }
+
+        val filteredLowStock = rawLowStock.filter { item ->
+            val matchesCategory = p.catId == null || item.categoryId == p.catId
+            val matchesSearch = query.isEmpty() ||
+                item.productNameEn.lowercase().contains(query) ||
+                item.productNameBn.lowercase().contains(query) ||
+                item.baseSku.lowercase().contains(query) ||
+                (item.barcode?.lowercase()?.contains(query) == true) ||
+                (item.variantSkus?.lowercase()?.contains(query) == true)
+            matchesCategory && matchesSearch
+        }
+
+        val canViewCost = SecurityManager.canViewCost(p.userRole)
+        val securedValuationMinor = if (canViewCost) metrics.totalValuation else 0L
+
+        InventoryUiState(
+            selectedTab = p.tab,
+            searchQuery = p.searchQuery,
+            selectedCategoryId = p.catId,
+            categories = p.cats,
+            stockItems = sortedStock,
+            movements = movements,
+            lowStockItems = filteredLowStock,
+            transfers = transfers,
+            warehouses = p.whs,
+            allProducts = p.prods,
+            selectedWarehouseId = p.whId,
+            language = p.lang,
+            currency = p.curr,
+            showAdjustDialog = p.showAdj,
+            showTransferDialog = p.showTr,
+            userMessage = p.msg,
+            totalInventoryQuantity = metrics.totalPhysical,
+            totalSellableStock = metrics.totalSellable,
+            totalDamagedStock = metrics.totalDamaged,
+            totalInventoryValueMinor = securedValuationMinor,
+            showScannerDialog = p.showScan,
+            selectedProductForDetail = p.selectedProduct,
+            selectedProductVariants = p.variants,
+            selectedProductImages = p.images,
+            preSelectedVariantId = p.preSelectedVariantId,
+            valuationBreakdown = if (canViewCost) auditData.valuationBreakdown else null,
+            latestReconciliation = auditData.latestReconciliation,
+            fifoConsumptions = if (canViewCost) auditData.consumptions else emptyList(),
+            totalCogsMinor = if (canViewCost) auditData.totalCogs else 0L,
+            selectedProductCostSummary = if (canViewCost) costState.summary else null,
+            selectedProductCostLayers = if (canViewCost) costState.layers else emptyList(),
+            selectedProductCostAdjustments = if (canViewCost) costState.adjustments else emptyList(),
+            showCostHistoryDialog = costState.showHistory,
+            showCostAdjustmentDialog = costState.showAdjustment,
+            selectedLayerForAdjustment = costState.selectedLayer,
+            isReconciling = costState.isReconciling,
+            sortOption = p.sortOption,
+            stockStatusFilter = p.stockStatusFilter,
+            userRole = p.userRole,
+            canViewCost = canViewCost,
+            variantStockMap = p.variantStock,
+            showStockForecastDialog = p.showForecast,
+            stockForecastSummary = p.forecastSummary
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -840,6 +855,14 @@ private data class InventoryMetrics(
     val totalSellable: Int,
     val totalDamaged: Int,
     val totalValuation: Long
+)
+
+private data class WarehouseScopedData(
+    val rawStock: List<StockItemOverview>,
+    val movements: List<StockMovementWithDetails>,
+    val rawLowStock: List<StockItemOverview>,
+    val transfers: List<StockTransferWithDetails>,
+    val metrics: InventoryMetrics
 )
 
 private data class AuditData(

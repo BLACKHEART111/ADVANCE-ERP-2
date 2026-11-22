@@ -262,7 +262,19 @@ fun ProductListScreen(
                 ERPEmptyState(
                     icon = Icons.Outlined.Inventory2,
                     title = stringResource(R.string.no_products_found),
-                    message = if (state.searchQuery.isNotBlank()) "No products match '${state.searchQuery}'" else "Tap '+' to add your first product."
+                    message = if (state.searchQuery.isNotBlank()) {
+                        if (state.language == AppLanguage.BANGLA) {
+                            "'${state.searchQuery}' এর সাথে কোনো পণ্য পাওয়া যায়নি"
+                        } else {
+                            "No products match '${state.searchQuery}'"
+                        }
+                    } else {
+                        if (state.language == AppLanguage.BANGLA) {
+                            "প্রথম পণ্য যোগ করতে '+' বোতামে ট্যাপ করুন।"
+                        } else {
+                            "Tap '+' to add your first product."
+                        }
+                    }
                 )
             } else {
                 LazyColumn(

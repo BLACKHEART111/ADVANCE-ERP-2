@@ -122,7 +122,11 @@ class ContactsViewModel @Inject constructor(
             )
             contactsRepository.addCustomer(customer)
             _showAddDialog.value = false
-            _userMessage.value = "Customer added successfully"
+            _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                "গ্রাহক সফলভাবে যোগ করা হয়েছে"
+            } else {
+                "Customer added successfully"
+            }
         }
     }
 
@@ -182,7 +186,11 @@ class ContactsViewModel @Inject constructor(
                     _userMessage.value = result.message
                 }
                 is CustomerDeleteResult.HardDeleted -> {
-                    _userMessage.value = "Customer deleted permanently (no financial records found)"
+                    _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                        "গ্রাহক স্থায়ীভাবে মুছে ফেলা হয়েছে"
+                    } else {
+                        "Customer deleted permanently (no financial records found)"
+                    }
                 }
             }
         }
@@ -205,7 +213,11 @@ class ContactsViewModel @Inject constructor(
             )
             contactsRepository.addSupplier(supplier)
             _showAddDialog.value = false
-            _userMessage.value = "Supplier added successfully"
+            _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                "সরবরাহকারী সফলভাবে যোগ করা হয়েছে"
+            } else {
+                "Supplier added successfully"
+            }
         }
     }
 }

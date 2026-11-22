@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -73,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -120,6 +122,7 @@ fun InventoryScreen(
     initialAction: String = ""
 ) {
     val state by viewModel.uiState.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
     var actionHandled by rememberSaveable(initialAction) { mutableStateOf(false) }
     LaunchedEffect(initialAction) {
         if (!actionHandled && initialAction == "adjust") {
@@ -179,35 +182,59 @@ fun InventoryScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 2. Compact Search & Filter Bar (42dp height)
+            // 2. Compact Search & Filter Bar (46dp height)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Compact Search Input Field
-                OutlinedTextField(
-                    value = state.searchQuery,
-                    onValueChange = { viewModel.onSearchQueryChange(it) },
-                    placeholder = {
-                        Text(
-                            text = stringResource(R.string.search_inventory_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                    },
-                    leadingIcon = {
+                // Compact Search Input Field using BasicTextField so height doesn't clip text
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (searchQuery.isNotEmpty()) PrimaryPurple else ERPDivider)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
                             imageVector = Icons.Outlined.Search,
                             contentDescription = stringResource(R.string.search),
                             tint = TextSecondary,
                             modifier = Modifier.size(18.dp)
                         )
-                    },
-                    trailingIcon = {
-                        if (state.searchQuery.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.search_inventory_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { viewModel.onSearchQueryChange(it) },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodySmall.copy(color = TextPrimary),
+                                cursorBrush = SolidColor(PrimaryPurple),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (searchQuery.isNotEmpty()) {
                             IconButton(
                                 onClick = { viewModel.onSearchQueryChange("") },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Clear,
@@ -217,20 +244,8 @@ fun InventoryScreen(
                                 )
                             }
                         }
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(42.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryPurple,
-                        unfocusedBorderColor = ERPDivider,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    ),
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall
-                )
+                    }
+                }
 
                 Spacer(modifier = Modifier.width(6.dp))
 
@@ -238,7 +253,7 @@ fun InventoryScreen(
                 IconButton(
                     onClick = { viewModel.setScannerDialogVisible(true) },
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(46.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(PrimaryPurple.copy(alpha = 0.1f))
                 ) {
@@ -259,7 +274,7 @@ fun InventoryScreen(
 
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(46.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (isFilterActive) PrimaryPurple.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
                         .border(
@@ -297,7 +312,7 @@ fun InventoryScreen(
 
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(46.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (hasAlerts) StatusErrorContainer else PrimaryPurple.copy(alpha = 0.1f))
                         .border(
@@ -370,7 +385,7 @@ fun InventoryScreen(
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -499,7 +514,7 @@ fun InventoryScreen(
                             )
                             if (state.movements.isNotEmpty()) {
                                 ERPActionButton(
-                                    text = "Export PDF",
+                                    text = if (state.language == AppLanguage.BANGLA) "PDF রপ্তানি" else "Export PDF",
                                     onClick = { viewModel.exportMovementLedgerPdf(context) },
                                     icon = Icons.Outlined.PictureAsPdf,
                                     variant = ERPButtonVariant.OUTLINED
@@ -513,7 +528,11 @@ fun InventoryScreen(
                             ERPEmptyState(
                                 icon = Icons.Outlined.History,
                                 title = stringResource(R.string.no_movements_data),
-                                message = "Stock movements like receipts, dispatches and transfers will appear here."
+                                message = if (state.language == AppLanguage.BANGLA) {
+                                    "পণ্য গ্রহণ, বিক্রয় ডিসপ্যাচ ও স্টক স্থানান্তরের মুভমেন্ট এখানে দেখা যাবে।"
+                                } else {
+                                    "Stock movements like receipts, dispatches and transfers will appear here."
+                                }
                             )
                         } else {
                             LazyColumn(
@@ -576,7 +595,11 @@ fun InventoryScreen(
                                                     color = TextSecondary
                                                 )
                                                 Text(
-                                                    text = "Bal: ${mov.balanceAfterMovement} u • Cost: ${Formatters.formatCurrency(mov.totalCostImpactMinor, state.currency, state.language)}",
+                                                    text = if (state.language == AppLanguage.BANGLA) {
+                                                        "স্থিতি: ${mov.balanceAfterMovement} পিস • ব্যয়: ${Formatters.formatCurrency(mov.totalCostImpactMinor, state.currency, state.language)}"
+                                                    } else {
+                                                        "Bal: ${mov.balanceAfterMovement} u • Cost: ${Formatters.formatCurrency(mov.totalCostImpactMinor, state.currency, state.language)}"
+                                                    },
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = SecondaryTeal,
                                                     fontWeight = FontWeight.SemiBold
@@ -742,7 +765,7 @@ fun InventoryScreen(
                                             }
 
                                             Text(
-                                                text = "${transfer.quantity} units",
+                                                text = "${transfer.quantity} ${if (state.language == AppLanguage.BANGLA) "পিস" else "units"}",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = TextPrimary
@@ -1196,28 +1219,37 @@ private fun CompactStockProductCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        val catLabel = if (language == AppLanguage.BANGLA) {
+                            item.categoryNameBn.ifBlank { item.categoryNameEn }
+                        } else {
+                            item.categoryNameEn
+                        }
                         Text(
-                            text = "SKU: ${item.baseSku}${if (item.categoryNameEn.isNotBlank()) " • " + item.categoryNameEn else ""}",
+                            text = "SKU: ${item.baseSku}${if (catLabel.isNotBlank()) " • $catLabel" else ""}",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (variantCount > 0) {
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(PrimaryPurple.copy(alpha = 0.12f))
-                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
                                     text = if (language == AppLanguage.BANGLA) "$variantCount ভেরিয়েন্ট" else "$variantCount vars",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = PrimaryPurple,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -1262,26 +1294,32 @@ private fun CompactStockProductCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(ERPBackground.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CompactMetricPill(
                     label = stringResource(R.string.in_stock),
                     value = "${Formatters.formatNumber(item.totalQuantity.toLong(), language)} ${item.unit}",
-                    valueColor = stockColor
+                    valueColor = stockColor,
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start
                 )
 
                 CompactMetricPill(
                     label = stringResource(R.string.reserved_stock),
                     value = "${Formatters.formatNumber(item.totalReserved.toLong(), language)} ${item.unit}",
-                    valueColor = TextMuted
+                    valueColor = TextMuted,
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 )
 
                 CompactMetricPill(
                     label = stringResource(R.string.available_stock),
                     value = "${Formatters.formatNumber(item.availableQuantity.toLong(), language)} ${item.unit}",
-                    valueColor = if (item.availableQuantity > 0) SecondaryTeal else StatusError
+                    valueColor = if (item.availableQuantity > 0) SecondaryTeal else StatusError,
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.End
                 )
             }
 
@@ -1329,22 +1367,28 @@ private fun CompactStockProductCard(
 private fun CompactMetricPill(
     label: String,
     value: String,
-    valueColor: Color
+    valueColor: Color,
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = horizontalAlignment
     ) {
         Text(
-            text = "$label:",
+            text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = TextMuted
+            color = TextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Text(
             text = value,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = valueColor
+            color = valueColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

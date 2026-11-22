@@ -722,7 +722,7 @@ fun CreatePurchaseOrderDialog(
                     }
                     if (validLines.isNotEmpty()) {
                         PoMixedCartonDraft(
-                            cartonNumber = box.cartonNumber.trim().ifBlank { "CTN-%02d".format(idx + 1) },
+                            cartonNumber = box.cartonNumber.trim().ifBlank { String.format(java.util.Locale.ROOT, "CTN-%02d", idx + 1) },
                             grossWeightKg = gw,
                             netWeightKg = box.netWeightKg(),
                             lengthCm = box.lengthCm, widthCm = box.widthCm, heightCm = box.heightCm,
@@ -1375,7 +1375,7 @@ fun CreatePurchaseOrderDialog(
                                                         if (itm.productId.isNotBlank()) {
                                                             cartonBoxes.add(
                                                                 CartonBoxState(
-                                                                    cartonNumber = "CTN-%02d".format(idx + 1),
+                                                                    cartonNumber = String.format(java.util.Locale.ROOT, "CTN-%02d", idx + 1),
                                                                     grossWeightKgStr = itm.grossWeightKgStr.ifBlank { "15.0" },
                                                                     initialLines = listOf(
                                                                         CartonLineState(
@@ -1402,7 +1402,7 @@ fun CreatePurchaseOrderDialog(
                                         }
                                         Button(
                                             onClick = {
-                                                val nextNum = "CTN-%02d".format(cartonBoxes.size + 1)
+                                                val nextNum = String.format(java.util.Locale.ROOT, "CTN-%02d", cartonBoxes.size + 1)
                                                 val defItem = itemsList.firstOrNull()
                                                 cartonBoxes.add(
                                                     CartonBoxState(
@@ -1476,7 +1476,7 @@ fun CreatePurchaseOrderDialog(
                                                             // Duplicate Carton Button
                                                             IconButton(
                                                                 onClick = {
-                                                                    val nextNum = "CTN-%02d".format(cartonBoxes.size + 1)
+                                                                    val nextNum = String.format(java.util.Locale.ROOT, "CTN-%02d", cartonBoxes.size + 1)
                                                                     cartonBoxes.add(
                                                                         CartonBoxState(
                                                                             cartonNumber = nextNum,

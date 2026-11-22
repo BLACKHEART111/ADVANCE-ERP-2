@@ -105,11 +105,31 @@ fun AdvanceErpNavGraph(
         }
 
         composable(Destinations.CUSTOMERS) {
-            ContactsScreen(viewModel = hiltViewModel(), initialTab = ContactsTab.CUSTOMERS)
+            ContactsScreen(
+                viewModel = hiltViewModel(),
+                initialTab = ContactsTab.CUSTOMERS,
+                onSwitchTabRoute = { tab ->
+                    val target = if (tab == ContactsTab.CUSTOMERS) Destinations.CUSTOMERS else Destinations.SUPPLIERS
+                    navController.navigate(target) {
+                        popUpTo(Destinations.CUSTOMERS) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
         }
 
         composable(Destinations.SUPPLIERS) {
-            ContactsScreen(viewModel = hiltViewModel(), initialTab = ContactsTab.SUPPLIERS)
+            ContactsScreen(
+                viewModel = hiltViewModel(),
+                initialTab = ContactsTab.SUPPLIERS,
+                onSwitchTabRoute = { tab ->
+                    val target = if (tab == ContactsTab.CUSTOMERS) Destinations.CUSTOMERS else Destinations.SUPPLIERS
+                    navController.navigate(target) {
+                        popUpTo(Destinations.SUPPLIERS) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
         }
 
         composable(Destinations.LEDGER) {

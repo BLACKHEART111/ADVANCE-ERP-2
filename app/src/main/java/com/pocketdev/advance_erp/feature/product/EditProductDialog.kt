@@ -261,6 +261,7 @@ fun EditProductDialog(
                 PhotoGalleryPicker(
                     title = if (language == AppLanguage.BANGLA) "পণ্যের ছবি" else "Product Photos",
                     photos = productPhotos,
+                    isBangla = language == AppLanguage.BANGLA,
                     onPhotosChanged = { updated ->
                         // Detect deleted initial images
                         val updatedIds = updated.map { it.id }.toSet()

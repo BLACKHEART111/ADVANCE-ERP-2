@@ -388,25 +388,26 @@ fun StockAdjustmentDialog(
                     ERPActionButton(
                         text = stringResource(R.string.confirm),
                         onClick = {
+                            val isBangla = language == AppLanguage.BANGLA
                             val qty = quantityStr.toIntOrNull()
                             if (qty == null || qty <= 0) {
-                                errorMessage = "Please enter a valid positive quantity"
+                                errorMessage = if (isBangla) "সঠিক ধনাত্মক পরিমাণ লিখুন" else "Please enter a valid positive quantity"
                                 return@ERPActionButton
                             }
                             if (selectedWarehouse == null) {
-                                errorMessage = "Please select a warehouse"
+                                errorMessage = if (isBangla) "অনুগ্রহ করে একটি ওয়্যারহাউস নির্বাচন করুন" else "Please select a warehouse"
                                 return@ERPActionButton
                             }
                             if (selectedProduct == null) {
-                                errorMessage = "Please select a product"
+                                errorMessage = if (isBangla) "অনুগ্রহ করে একটি পণ্য নির্বাচন করুন" else "Please select a product"
                                 return@ERPActionButton
                             }
                             if (availableVariants.isNotEmpty() && selectedVariant == null) {
-                                errorMessage = "Please select a variant for this product"
+                                errorMessage = if (isBangla) "এই পণ্যের একটি ভেরিয়েন্ট নির্বাচন করুন" else "Please select a variant for this product"
                                 return@ERPActionButton
                             }
                             if (reason.isBlank()) {
-                                errorMessage = "Please enter an adjustment reason"
+                                errorMessage = if (isBangla) "অনুগ্রহ করে সমন্বয়ের কারণ লিখুন" else "Please enter an adjustment reason"
                                 return@ERPActionButton
                             }
 

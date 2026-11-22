@@ -253,6 +253,7 @@ fun ImportManagementScreen(
             }
             // Pre-calculate filtered orders outside LazyColumn
             val supplierMap = remember(uiState.suppliers) { uiState.suppliers.associateBy { it.id } }
+            val poById = remember(uiState.purchaseOrders) { uiState.purchaseOrders.associateBy { it.id } }
             val filteredOrders = remember(uiState.purchaseOrders, uiState.searchQuery, uiState.poStatusFilter, uiState.poSupplierFilter, uiState.shipments) {
                 uiState.purchaseOrders.filter { po ->
                     val supplier = supplierMap[po.supplierId]
@@ -497,9 +498,14 @@ fun ImportManagementScreen(
                     }
                     val query = shipmentQuery.trim()
                     val matches = uiState.shipments.filter { shipment ->
-                        query.isBlank() || shipment.shipmentNumber.contains(query, true) ||
-                            shipment.trackingReference.orEmpty().contains(query, true) ||
-                            uiState.suppliers.find { it.id == shipment.supplierId }?.companyName.orEmpty().contains(query, true)
+                        val linkedPo = shipment.purchaseOrderId?.let { poById[it] }
+                        val isHiddenLocalBatch = shipment.shipmentNumber.startsWith("BATCH-") &&
+                            linkedPo?.currency.equals("BDT", ignoreCase = true)
+                        !isHiddenLocalBatch && (
+                            query.isBlank() || shipment.shipmentNumber.contains(query, true) ||
+                                shipment.trackingReference.orEmpty().contains(query, true) ||
+                                uiState.suppliers.find { it.id == shipment.supplierId }?.companyName.orEmpty().contains(query, true)
+                        )
                     }
                     if (matches.isEmpty()) item {
                         ERPCard {
@@ -734,6 +740,7 @@ fun ImportManagementScreen(
             orders = uiState.purchaseOrders,
             preselectedSupplierId = preselectedSupplierIdForPayment,
             preselectedOrderId = preselectedOrderIdForPayment,
+            isBangla = isBangla,
             onDismiss = { showRecordPaymentDialog = false },
             onConfirm = { supId, ordId, amt, cur, rate, meth, acc, ref, notes ->
                 viewModel.recordSupplierPayment(supId, ordId, amt, cur, rate, meth, acc, ref, notes)
@@ -1077,7 +1084,8 @@ fun ImportManagementScreen(
             onDeleteCostItem = { costId -> viewModel.deleteCostItem(selectedPo.id, costId) },
             onUpdatePacking = { ctn, gross, net, cbm -> viewModel.updateOrderPacking(selectedPo.id, ctn, gross, net, cbm) },
             onUpdatePoItem = { itemId, q, p, c, g -> viewModel.updatePoItem(selectedPo.id, itemId, q, p, c, g) },
-            onDeletePoItem = { itemId -> viewModel.deletePoItem(selectedPo.id, itemId) }
+            onDeletePoItem = { itemId -> viewModel.deletePoItem(selectedPo.id, itemId) },
+            freightRates = uiState.selectedShipmentFreightRates
         )
     }
 

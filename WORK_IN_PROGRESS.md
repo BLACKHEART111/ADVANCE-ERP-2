@@ -1,5 +1,15 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Latest E2E Phase 0–3 Bugfix & Resume Checkpoint — 2026-11-22
+
+Real-device E2E verification progressed through **Phases 0–3** on `com.pocketdev.advance_erp2`, followed by fixes for all discovered Phase 0–3 bugs across Add Product, Product Catalog, PO/Import landed cost & freight rate, Shipments filtering, Sales invoice localization, Inventory `flatMapLatest` search/layout, Contacts title sync/validation, and Bangla localization (27 modified Kotlin files + `E2eBugFixesRegressionTest.kt`). [Full E2E checkpoint & Phase 4–6 resume plan](docs/e2e-verification/2026-11-22/checkpoint.md).
+
+Verified on `adev` + live ADB device (`com.pocketdev.advance_erp2`, APK SHA-256 `eeb7169fc6a885476778a17fed315af6c0db9c8f4472a530458d65fd8d1f2303`):
+- `git diff --check` passed; `:app:assembleDebug :app:testDebugUnitTest` -> **BUILD SUCCESSFUL**; **384/384** JVM tests passed across 72 files (0 failures, 0 errors, 0 skipped).
+- Upgraded debug APK installed in-place via `adb install -r` (live DB/sample data untouched); 20 baseline & post-fix verification screenshots saved under `docs/e2e-verification/2026-11-22/screenshots/`.
+- Direct `am instrument` on the live device remained blocked by an older pre-existing `com.pocketdev.advance_erp2.test` signature (`[51806981]` vs `[f7267c35]`), intentionally left uninstalled per `AGENTS.md`.
+- **Remaining E2E scope (paused for user's emergency PO module work)**: **Phase 4** (Sales, POS, Delivery Challan, Customer Ledger, Due Collection, Returns), **Phase 5** (Accounts, Control Center/Reports/PDF/XLSX exports, Dashboard, Settings Dark/Light & BN/EN, Cold Restart), and **Phase 6** (WAL SQLite & Logcat audit + final `e2e-test-report.md`). Never uninstall `com.pocketdev.advance_erp2`, clear user data, or run destructive restores.
+
 ## Latest Add Product 3-Step Redesign checkpoint — 2026-11-22
 
 Three-step premium Light & Dark Add Product wizard implemented in `AddProductDesignComponents.kt` and `AddProductDialog.kt`, plus end-to-end `Product.description` persistence across `ProductViewModel`, `ProductListScreen`, `EditProductDialog`, `ProductDetailDialog`, `CreatePurchaseOrderDialog`, and `ImportViewModel` without any Room DB schema/migration or financial-engine changes. Also fixed `SuggestTextField` non-Hilt fallback, `Theme.kt` `findActivity()` ContextWrapper unwrapping, and `ERPFullScreenEditor` optional inset/status-bar controls. [Full report](docs/ui-refinement/2026-11-22/add-product-redesign/report.md).
