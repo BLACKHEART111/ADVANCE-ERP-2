@@ -28,6 +28,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Calculate
@@ -154,6 +156,8 @@ fun PurchaseOrderDetailDialog(
     onUpdatePoItem: ((itemId: String, quantity: Int, unitPriceMinor: Long, cartonQuantity: Int, grossWeightKg: String) -> Unit)? = null,
     onDeletePoItem: ((itemId: String) -> Unit)? = null
 ) {
+    var detailTab by rememberSaveable { mutableStateOf(0) }
+    var showLifecycleActions by rememberSaveable { mutableStateOf(false) }
     val isBangla = language == AppLanguage.BANGLA
     val productMap = remember(products) { products.associateBy { it.id } }
     var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
@@ -238,49 +242,18 @@ fun PurchaseOrderDetailDialog(
 
     val isCostFinalized = order.isActualCostFinalized || order.status == PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.92f)
-                .widthIn(max = 640.dp)
-                .clip(RoundedCornerShape(20.dp)),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 8.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(ERPBackground)
-            ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PremiumPoHero(
-                        title = order.poNumber,
-                        subtitle = supplier?.companyName?.takeIf { it.isNotBlank() }
-                            ?: if (isBangla) "ক্রয়াদেশের বিস্তারিত ও কার্যক্রম" else "Purchase order details and actions"
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        PoStatusBadge(statusStr = order.status, isBangla = isBangla)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { onSharePdf(order) }) {
-                                Icon(Icons.Outlined.Share, contentDescription = null, tint = SecondaryTeal)
-                                Spacer(Modifier.width(4.dp))
-                                Text(if (isBangla) "PDF শেয়ার" else "Share PDF")
-                            }
-                            IconButton(onClick = onDismiss) {
-                                Icon(Icons.Outlined.Close, contentDescription = if (isBangla) "বন্ধ করুন" else "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
+    val navigateTab=com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate.current
+    PoReferenceTheme {
+    com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor(onDismissRequest=onDismiss) {
+        Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize()) {
+                Column(Modifier.padding(horizontal=16.dp)) {
+                    PoTopBar(if(isBangla) "PO বিস্তারিত" else "PO details",onBack=onDismiss,actions={
+                        if(onEditFullPo!=null && order.status !in setOf("COMPLETED","CANCELLED")) IconButton(onClick={onEditFullPo(order)}) { Icon(Icons.Outlined.Edit,if(isBangla) "সম্পাদনা" else "Edit") }
+                        IconButton(onClick={onSharePdf(order)}) { Icon(Icons.Outlined.Print,if(isBangla) "PDF প্রিন্ট / শেয়ার" else "Print / share PDF") }
+                        IconButton(onClick={showLifecycleActions=!showLifecycleActions}) { Icon(Icons.Outlined.MoreVert,if(isBangla) "আরও কার্যক্রম" else "More actions") }
+                    })
                 }
-
                 // Scrollable Content
                 LazyColumn(
                     modifier = Modifier
@@ -288,6 +261,50 @@ fun PurchaseOrderDetailDialog(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    item {
+                        Surface(shape=RoundedCornerShape(19.dp),color=Color.Transparent) {
+                            Column(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF9D28BD),Color(0xFF4B1974),Color(0xFF008F95)))).padding(14.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                                    Surface(shape=RoundedCornerShape(12.dp),color=Color.White.copy(alpha=.15f)) {Icon(Icons.Outlined.ViewInAr,null,Modifier.padding(9.dp).size(28.dp),tint=Color.White)}
+                                    Column(Modifier.weight(1f)) {Text(order.poNumber,color=Color.White,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium);Text(supplier?.companyName.orEmpty(),color=Color.White,style=MaterialTheme.typography.bodySmall)}
+                                    Surface(shape=RoundedCornerShape(20.dp),color=when(order.status){"DRAFT"->Color(0xFF9B6A18);"CANCELLED"->Color(0xFFB74444);"PARTIALLY_PAID"->Color(0xFF8742AA);else->Color(0xFF2C9B61)}) { Text(com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus.entries.find {it.name==order.status}?.let {if(isBangla)it.labelBn else it.labelEn} ?: order.status,Modifier.padding(horizontal=9.dp,vertical=4.dp),color=Color.White,style=MaterialTheme.typography.labelSmall) }
+                                }
+                                Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                                    PoHeroMetadata(if(isBangla) "PO তারিখ" else "PO date",Formatters.formatDate(order.orderDate,language),Icons.Outlined.CalendarMonth,Modifier.weight(1f))
+                                    PoHeroMetadata(if(isBangla) "প্রত্যাশিত আগমন" else "Expected arrival",order.expectedArrivalDate?.let {Formatters.formatDate(it,language)} ?: "—",Icons.Outlined.LocalShipping,Modifier.weight(1f))
+                                }
+                                Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                                    PoHeroMetadata(if(isBangla) "মুদ্রা" else "Currency",order.currency,Icons.Outlined.Payments,Modifier.weight(1f))
+                                    PoHeroMetadata(if(isBangla) "পেমেন্ট শর্ত" else "Payment terms",if(isBangla)paymentTerm.labelBn else paymentTerm.labelEn,Icons.Outlined.Handshake,Modifier.weight(1f))
+                                }
+
+                            }
+                        }
+                    }
+                    item {
+                        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                            val tabs=if(isBangla)listOf("সাধারণ","পণ্য (${items.size})","প্যাকিং ($displayCartons)","খরচ","পেমেন্ট")else listOf("General","Products (${items.size})","Packing ($displayCartons)","Costs","Payments")
+                            items(tabs.size) { index -> androidx.compose.material3.FilterChip(selected=detailTab==index,onClick={detailTab=index},label={Text(tabs[index])}) }
+                        }
+                    }
+                    if(detailTab==0) item {
+                        Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            PremiumPoCostLine(if(isBangla) "পণ্যের মোট ক্রয়মূল্য" else "Purchase value","${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}")
+                            costItems.groupBy { it.costCategory }.forEach { (category,costs) ->
+                                val cat=runCatching {com.pocketdev.advance_erp.data.entity.CostCategory.valueOf(category)}.getOrNull()
+                                PremiumPoCostLine(cat?.let {if(isBangla)it.titleBn else it.titleEn} ?: category,"৳ ${Formatters.formatMinorUnit(costs.sumOf {it.bdtAmountMinor})}")
+                            }
+                            val capitalCosts=costItems.filter {it.isCapitalizableCost && it.costCategory != "PRODUCT_PURCHASE"}.sumOf {it.bdtAmountMinor}
+                            PoLandedHighlight("৳ ${Formatters.formatMinorUnit(order.totalBdtAmountMinor+capitalCosts)}",isBangla=isBangla)
+                            Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                                if(remainingBalanceMinor>0 && order.status!="CANCELLED") PoDetailAction(if(isBangla) "পেমেন্ট রেকর্ড" else "Payment",Icons.Outlined.Payment,Modifier.weight(1f)){onMakePayment(order)}
+                                if(order.status !in setOf("DRAFT","CANCELLED","COMPLETED")) PoDetailAction(if(isBangla) "রিসিভ করুন" else "Receive",Icons.Outlined.LocalShipping,Modifier.weight(1f)){onReceiveProducts(order)}
+                                PoDetailAction(if(isBangla) "PDF প্রিন্ট/শেয়ার" else "PDF / Share",Icons.Outlined.PictureAsPdf,Modifier.weight(1f)){onSharePdf(order)}
+                            }
+                            TextButton(onClick={showLifecycleActions=!showLifecycleActions}) {Text(if(isBangla) "অর্ডারের সব কার্যক্রম" else "All order operations")}
+                        }
+                    }
+                    if(detailTab==0) {
                     // 1. Completion Banner (if completed)
                     if (completionRecord != null || order.status == PurchaseOrderStatus.COMPLETED.name) {
                         item {
@@ -344,6 +361,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==0 && showLifecycleActions) {
                     // 2. Supplier & FX Profile Card
                     item {
                         ERPCard {
@@ -420,6 +439,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==4) {
                     // 3. Financial & Payment Summary Card with Installment Schedule
                     item {
                         ERPCard {
@@ -625,6 +646,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==1) {
                     // 4. Line Items Card
                     item {
                         ERPCard {
@@ -719,6 +742,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==2) {
                     // 5. Carton & Packing Management Card (Single + Mixed, Auto Weight Allocation)
                     item {
                         ERPCard {
@@ -862,6 +887,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==3) {
                     // 6. Landing Cost & Gross Weight Shipping Card
                     item {
                         ERPCard {
@@ -1041,6 +1068,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==2) {
                     // 7. Warehouse Receiving Progress & Stock Posting Card
                     item {
                         ERPCard {
@@ -1151,6 +1180,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==2) {
                     // 8. Damage & Shortage Discrepancy Accounting Card
                     if (damageRecords.isNotEmpty() || shortageRecords.isNotEmpty()) {
                         item {
@@ -1228,6 +1259,8 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
+                    }
+                    if(detailTab==3) {
                     // 9. Post-Arrival Additional Costs Card
                     item {
                         ERPCard {
@@ -1341,9 +1374,9 @@ fun PurchaseOrderDetailDialog(
                                 }
                             }
                         }
-                    }
-                }
+                    }                    }
 
+                    if(showLifecycleActions) item {
                 // Bottom Action Bar - Responsive 2-Row Layout
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
@@ -1567,9 +1600,16 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
                 }
+                    }
+
+                }
+                if(navigateTab!=null) com.pocketdev.advance_erp.core.designsystem.ERPBottomNavigation("purchases", { onDismiss();navigateTab(it) },language=language)
+
             }
         }
     }
+
+    } // PO palette
 
     // Cancel PO Confirmation Alert with Reason input
     if (showCancelConfirmDialog) {

@@ -216,12 +216,11 @@ internal fun PremiumPoStepper(
     val dark = LocalIsDarkTheme.current
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        shape = RoundedCornerShape(0.dp),
+        color = Color.Transparent
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(5.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             labels.forEachIndexed { index, label ->
@@ -240,16 +239,16 @@ internal fun PremiumPoStepper(
                     modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp)
                         .semantics { selected = isCurrent }
                         .testTag("po_step_$index"),
-                    shape = RoundedCornerShape(15.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = Color.Transparent,
-                    border = if (completed) BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f)) else null
+                    border = null
                 ) {
                     Box(
-                        modifier = Modifier.fillMaxWidth().background(background).padding(horizontal = 3.dp, vertical = 12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical=7.dp).clip(RoundedCornerShape(9.dp)).background(background).padding(horizontal = 3.dp, vertical = 7.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            (if (completed) "✓ " else "${index + 1}. ") + label,
+                            "${index + 1}. " + label,
                             color = if (isCurrent) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
@@ -297,18 +296,9 @@ internal fun PremiumPoDateField(
 ) {
     var showPicker by rememberSaveable(label) { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dateMillis ?: System.currentTimeMillis())
-    val displayDate = dateMillis?.let { Formatters.formatDate(it, language) }
-        ?: if (language == AppLanguage.BANGLA) "তারিখ নির্বাচন করুন" else "Select date"
-    OutlinedTextField(
-        value = displayDate,
-        onValueChange = {},
-        readOnly = true,
-        label = { Text(label, maxLines = 1) },
-        trailingIcon = { IconButton(onClick = { showPicker = true }) { Icon(Icons.Outlined.CalendarMonth, contentDescription = label) } },
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        singleLine = true
-    )
+    val displayDate = dateMillis?.let { java.text.SimpleDateFormat("d MMM yyyy",language.locale).format(java.util.Date(it)) }
+        ?: if (language == AppLanguage.BANGLA) "নির্বাচন করুন" else "Select date"
+    PoValueCard(label,displayDate,Icons.Outlined.CalendarMonth,modifier,onClick={showPicker=true})
     if (showPicker) {
         DatePickerDialog(
             onDismissRequest = { showPicker = false },

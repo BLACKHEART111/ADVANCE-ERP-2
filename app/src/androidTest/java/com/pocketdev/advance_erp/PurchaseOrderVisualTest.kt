@@ -15,6 +15,7 @@ import android.os.Looper
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -61,15 +62,18 @@ class PurchaseOrderVisualTest {
         var savedCartons: List<PoMixedCartonDraft>? = null
         compose.setContent {
             val density=LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density * densityScale, fontScale)) {
+            CompositionLocalProvider(LocalDensity provides Density(density.density * densityScale, fontScale), com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate provides {}) {
                 AdvanceErpTheme(darkTheme = darkMode) {
+                    androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize(),color=androidx.compose.material3.MaterialTheme.colorScheme.background) {
                     CreatePurchaseOrderDialog(listOf(supplier),listOf(product),variants,
                         categories=listOf(ProductCategory("c","Accessories","অ্যাকসেসরিজ","ACC",defaultFreightRatePerKgBdtMinor=12000)),
                         isBangla=bn,onDismiss={},metadataOnly=metadataOnly,
+                        onCreateFullProduct={_,_,_,_,_,_,_,_,_,_,_,created -> created(product,variants)},
                         onUpdateMetadata={ _,_ -> metadataSaved=true },editingOrder=PurchaseOrder("po","PO-UI-TEST","s",currency=currency,exchangeRateToBdt=if(currency=="BDT") "1" else "17",paidAmountMinor=if(metadataOnly) 100L else 0L),
                         initialEditingItems=items,initialEditingCartons=cartons,
                         onUpdatePo={ _,_,_,_,lines,_,_,boxes,_,rates,_,_,_,_,_,_ -> savedItems=lines; savedCartons=boxes; savedRates=rates },
                         onSavePo={ _,_,_,_,_,_,_,_,_,_,_,_,_,_,_ -> })
+                    }
                 }
             }
         }
@@ -137,6 +141,9 @@ class PurchaseOrderVisualTest {
                 return null
             }
 
+            compose.waitForIdle()
+            SystemClock.sleep(500) // Capture the settled selected state after the ripple.
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p /data/local/tmp/advance-$prefix-$name.png").use { descriptor -> java.io.FileInputStream(descriptor.fileDescriptor).readBytes() }
             val bitmap = requireNotNull((1..8).firstNotNullOfOrNull {
                 SystemClock.sleep(180)
                 copyVisibleDialog()
@@ -151,6 +158,10 @@ class PurchaseOrderVisualTest {
         labels.forEachIndexed { index,_ ->
             compose.onNodeWithTag("po_step_$index").performClick()
             capture("step-${index+1}")
+            if(index==3) {
+                compose.onNodeWithText(if(bn) "গড় প্রতি পিস:" else "Average per unit:",substring=true).performScrollTo()
+                capture("step-4-cost-summary")
+            }
             if(index==1 || index==2 || index==3) {
                 val root=compose.onAllNodes(isRoot()).filter(hasAnyDescendant(hasText(title))).onFirst()
                 repeat(3) { compose.onAllNodes(hasScrollAction()).onFirst().performTouchInput { swipeUp() }; compose.waitForIdle() }

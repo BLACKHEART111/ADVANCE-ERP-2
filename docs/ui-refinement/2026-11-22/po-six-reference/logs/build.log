@@ -1,0 +1,242 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :app
+WARNING: The option setting 'android.aapt2FromMavenOverride=/data/data/ai.antigem/files/usr/bin/aapt2' is experimental.
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:checkDebugAndroidTestAarMetadata UP-TO-DATE
+> Task :app:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :app:mapDebugAndroidTestSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugAndroidTestResources UP-TO-DATE
+> Task :app:mergeDebugAndroidTestResources UP-TO-DATE
+> Task :app:processDebugAndroidTestManifest UP-TO-DATE
+> Task :app:processDebugAndroidTestResources UP-TO-DATE
+> Task :app:javaPreCompileDebugAndroidTest UP-TO-DATE
+> Task :app:mergeDebugAndroidTestShaders UP-TO-DATE
+> Task :app:compileDebugAndroidTestShaders NO-SOURCE
+> Task :app:generateDebugAndroidTestAssets UP-TO-DATE
+> Task :app:mergeDebugAndroidTestAssets UP-TO-DATE
+> Task :app:compressDebugAndroidTestAssets UP-TO-DATE
+> Task :app:desugarDebugAndroidTestFileDependencies UP-TO-DATE
+> Task :app:checkDebugAndroidTestDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebugAndroidTest UP-TO-DATE
+> Task :app:mergeLibDexDebugAndroidTest UP-TO-DATE
+> Task :app:mergeDebugAndroidTestJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugAndroidTestNativeLibs NO-SOURCE
+> Task :app:stripDebugAndroidTestDebugSymbols NO-SOURCE
+> Task :app:validateSigningDebugAndroidTest UP-TO-DATE
+> Task :app:writeDebugAndroidTestSigningConfigVersions UP-TO-DATE
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/ai/StockForecastEngine.kt:146:9 Parameter 'productName' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/ai/StockForecastEngine.kt:148:9 Parameter 'minAlert' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/ai/StockForecastEngine.kt:149:9 Parameter 'unitsSold' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/designsystem/ERPTopBar.kt:146:9 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/designsystem/Theme.kt:49:20 'setter for statusBarColor: Int' is deprecated. Deprecated in Java
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/designsystem/Theme.kt:50:20 'setter for navigationBarColor: Int' is deprecated. Deprecated in Java
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/pdf/CentralizedPdfReportRegistry.kt:1316:35 Destructured parameter 'id' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/util/ControlCenterPdfGenerator.kt:79:28 Variable 'currentY' initializer is redundant
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/util/LabelPrintingEngine.kt:74:17 Variable 'paint' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/util/StatementShareHelper.kt:18:9 Parameter 'phone' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:106:42 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:107:43 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:108:43 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:109:43 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/FinancialRepositoryImpl.kt:426:13 Variable 'bankAccount' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:301:103 Condition 'currentOrder != null' is always 'true'
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:458:17 Variable 'newPaidBdt' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:1559:13 Variable 'po' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:1849:13 Variable 'po' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:2094:25 Variable 'curQty' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:2305:13 Variable 'po' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:3874:39 Variable 'journalEntryId' initializer is redundant
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:3952:39 Variable 'journalEntryId' initializer is redundant
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/InventoryRepositoryImpl.kt:244:13 Variable 'product' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:152:62 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:156:64 'MenuBook: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.MenuBook
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:721:57 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:861:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:870:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:936:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/contacts/ContactsScreen.kt:314:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/contacts/ContactsScreen.kt:348:72 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/contacts/ContactsScreen.kt:420:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/contacts/ContactsScreen.kt:606:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/contacts/ContactsViewModel.kt:69:46 Unchecked cast: Any? to Pair<List<Customer>, List<Supplier>>
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/contacts/ContactsViewModel.kt:70:44 Unchecked cast: Any? to Pair<AppLanguage, CurrencyCode>
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/BusinessControlCenterScreen.kt:1747:32 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:103:39 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:281:90 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:281:121 'TrendingDown: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingDown
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:291:88 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:291:119 'TrendingDown: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingDown
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:203:35 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:376:67 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:402:67 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:503:59 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/components/DashboardPremiumComponents.kt:1421:50 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddAdditionalCostDialog.kt:72:5 Parameter 'orderId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddAdditionalCostDialog.kt:73:5 Parameter 'warehouseId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddCostItemDialog.kt:72:5 Parameter 'shipmentId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddCostItemDialog.kt:73:5 Parameter 'orderId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:354:9 Variable 'supplierSearch' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:393:9 Variable 'newProdNameEn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:394:9 Variable 'newProdNameBn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:395:9 Variable 'newProdSku' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:396:9 Variable 'newProdUnit' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:397:9 Variable 'newProdPurchasePriceStr' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:398:9 Variable 'newProdSellingPriceStr' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:399:9 Variable 'selectedCategoryId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:411:9 Variable 'showInlineAddCategoryDialog' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:412:9 Variable 'newCatNameEn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:413:9 Variable 'newCatNameBn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:554:39 Unsafe use of a nullable receiver of type Array<(out) PaymentTermType!>?
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:134:9 Variable 'coroutineScope' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:1080:61 Parameter 'idx' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:1148:35 Parameter 'shipmentId' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:1148:47 Parameter 'shipmentNumber' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:287:25 Variable 'activeShipmentsCount' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:288:25 Variable 'totalCbmSum' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:289:25 Variable 'totalExpensesBdt' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:1140:5 Parameter 'onConfirmOrder' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:1141:5 Parameter 'onSharePdf' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportViewModel.kt:607:21 Variable 'newId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportViewModel.kt:1173:24 Parameter 'orderId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoListContent.kt:18:46 Parameter 'supplierFilter' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoReferenceComponents.kt:99:9 Variable 'dark' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoReferenceComponents.kt:143:21 Variable 'status' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PremiumPurchaseOrderUi.kt:228:21 Variable 'completed' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PurchaseOrderDetailDialog.kt:2366:42 Elvis operator (?:) always returns the left operand of non-nullable type String?
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/RecordSupplierPaymentDialog.kt:237:49 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ShipmentWorkspaceDialog.kt:548:5 Parameter 'landingPreview' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ShipmentWorkspaceDialog.kt:968:5 Parameter 'snapshots' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/BarcodeQrScannerDialog.kt:228:34 'setTargetResolution(Size): Preview.Builder' is deprecated. Deprecated in Java
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/BarcodeQrScannerDialog.kt:234:34 'setTargetResolution(Size): ImageAnalysis.Builder' is deprecated. Deprecated in Java
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:721:41 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1054:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1257:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1466:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1504:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1589:5 Parameter 'language' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryViewModel.kt:542:21 Variable 'id' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/ProductLabelPrintDialog.kt:116:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/ProductLabelPrintDialog.kt:243:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/StockAdjustmentDialog.kt:139:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/StockTransferDialog.kt:133:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/cogs/CogsTraceabilityView.kt:95:39 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/cogs/CogsTraceabilityView.kt:147:29 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/costhistory/ProductCostHistoryDialog.kt:215:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/costhistory/ProductCostHistoryDialog.kt:390:41 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/reconciliation/InventoryReconciliationView.kt:220:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/AddProductDialog.kt:311:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/AddProductDialog.kt:435:29 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/AddProductDialog.kt:563:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/AddProductDialog.kt:808:36 The expression is unused
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/AddProductDialog.kt:1361:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/AddProductDialog.kt:1446:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:238:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:459:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:886:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:1029:40 Unnecessary safe call on a non-null receiver of type ((String) -> Unit)?
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/PhotoGalleryPicker.kt:252:70 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/PhotoGalleryPicker.kt:292:70 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowForward
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:167:40 Parameter 'idx' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:312:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:379:87 Parameter 'imgIndex' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:985:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLedgerDialog.kt:303:53 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLedgerDialog.kt:319:49 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DirectExchangeDialog.kt:102:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DispatchDeliveryDialog.kt:85:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueCollectionStatementShareDialog.kt:128:62 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueCollectionStatementShareDialog.kt:320:45 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueReminderDialog.kt:131:66 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueReminderDialog.kt:401:58 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/PosDialog.kt:79:9 Variable 'context' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/RecordCustomerPaymentDialog.kt:279:62 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:152:76 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:256:36 'Indicator(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Use SecondaryIndicator instead.
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:643:45 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:870:5 Parameter 'onRecordPaymentClick' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:1362:58 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:1682:49 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:hiltAggregateDepsDebug UP-TO-DATE
+> Task :app:hiltJavaCompileDebug UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:transformDebugClassesWithAsm
+> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :app:mergeProjectDexDebug
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebug
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:kspDebugAndroidTestKotlin
+> Task :app:kspDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :app:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:transformDebugUnitTestClassesWithAsm UP-TO-DATE
+> Task :app:testDebugUnitTest
+
+> Task :app:compileDebugAndroidTestKotlin
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/androidTest/java/com/pocketdev/advance_erp/PurchaseOrderVisualTest.kt:166:21 Variable 'root' is never used
+
+> Task :app:compileDebugAndroidTestJavaWithJavac NO-SOURCE
+> Task :app:hiltAggregateDepsDebugAndroidTest UP-TO-DATE
+> Task :app:hiltJavaCompileDebugAndroidTest NO-SOURCE
+> Task :app:processDebugAndroidTestJavaRes UP-TO-DATE
+> Task :app:mergeDebugAndroidTestJavaResource UP-TO-DATE
+> Task :app:transformDebugAndroidTestClassesWithAsm
+> Task :app:dexBuilderDebugAndroidTest
+> Task :app:mergeDebugAndroidTestGlobalSynthetics UP-TO-DATE
+> Task :app:mergeProjectDexDebugAndroidTest
+> Task :app:packageDebugAndroidTest
+> Task :app:createDebugAndroidTestApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebugAndroidTest
+
+BUILD SUCCESSFUL in 4m 23s
+79 actionable tasks: 17 executed, 62 up-to-date

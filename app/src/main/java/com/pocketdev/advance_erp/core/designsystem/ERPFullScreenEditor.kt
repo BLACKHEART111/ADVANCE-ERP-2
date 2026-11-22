@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -19,7 +20,18 @@ fun ERPFullScreenEditor(onDismissRequest: () -> Unit, content: @Composable () ->
         properties = DialogProperties(decorFitsSystemWindows = false, dismissOnClickOutside = false)
     ) {
         val window = (LocalView.current.parent as DialogWindowProvider).window
+        val barColor=MaterialTheme.colorScheme.background.toArgb()
+        val dark=LocalIsDarkTheme.current
         SideEffect {
+            window.setDimAmount(0f)
+            @Suppress("DEPRECATION")
+            window.statusBarColor=barColor
+            @Suppress("DEPRECATION")
+            window.navigationBarColor=barColor
+            androidx.core.view.WindowCompat.getInsetsController(window,window.decorView).apply {
+                isAppearanceLightStatusBars=!dark
+                isAppearanceLightNavigationBars=!dark
+            }
             // Compose 1.6's non-default-width mode fixes the window to the full display size.
             // Let the native window measure against the available space when the IME opens.
             val matchParent = WindowManager.LayoutParams.MATCH_PARENT

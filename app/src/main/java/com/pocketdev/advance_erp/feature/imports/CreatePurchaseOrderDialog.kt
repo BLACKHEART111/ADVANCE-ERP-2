@@ -47,6 +47,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
@@ -278,6 +283,7 @@ fun CreatePurchaseOrderDialog(
     initialEditingCosts: List<ImportCostItem> = emptyList(),
     initialEditingFreightRates: Map<String, Long> = emptyMap(),
     initialShippingMethod: String = ShippingMethod.SEA.name,
+    resolveProductImage: (suspend (String, String?) -> String?)? = null,
     onUpdatePo: ((
         orderId: String,
         supplierId: String,
@@ -558,16 +564,19 @@ fun CreatePurchaseOrderDialog(
             initialSnapshot = snapshotEditor(includeStep = false).toString()
         }
     }
+    val navigateTab=com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate.current
+    var pendingTab by remember { mutableStateOf<com.pocketdev.advance_erp.core.designsystem.BottomNavDestination?>(null) }
+    val finishDismiss: () -> Unit = { onDismiss(); pendingTab?.let { navigateTab?.invoke(it) } }
     val requestClose: () -> Unit = {
         if (!isSaving && !savingBuffer) {
-            if (snapshotEditor(includeStep = false).toString() != initialSnapshot) showLeavePrompt = true else onDismiss()
+            if (snapshotEditor(includeStep = false).toString() != initialSnapshot) showLeavePrompt = true else finishDismiss()
         }
     }
     if (showLeavePrompt) ERPLeaveEditorDialog(
         isBangla = isBangla,
         isSaving = savingBuffer,
-        onContinue = { showLeavePrompt = false },
-        onDiscard = { draftStore.remove(draftKey); showLeavePrompt = false; onDismiss() },
+        onContinue = { showLeavePrompt = false; pendingTab=null },
+        onDiscard = { draftStore.remove(draftKey); showLeavePrompt = false; finishDismiss() },
         onSaveDraft = {
             if (!savingBuffer) {
                 val snapshot = snapshotEditor()
@@ -575,7 +584,7 @@ fun CreatePurchaseOrderDialog(
                 draftScope.launch {
                     try {
                         withContext(Dispatchers.IO) { draftStore.save(draftKey, snapshot) }
-                        onDismiss()
+                        finishDismiss()
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
                         errorMessage = e.message
@@ -809,6 +818,7 @@ fun CreatePurchaseOrderDialog(
         }
     }
 
+    PoReferenceTheme {
     ERPFullScreenEditor(
         onDismissRequest = requestClose
     ) {
@@ -821,48 +831,15 @@ fun CreatePurchaseOrderDialog(
             shadowElevation = 8.dp
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxWidth().padding(vertical=4.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = PrimaryPurple.copy(alpha = 0.10f)
-                    ) {
-                        Icon(
-                            Icons.Outlined.ShoppingCart,
-                            contentDescription = null,
-                            tint = PrimaryPurple,
-                            modifier = Modifier.padding(9.dp).size(22.dp)
-                        )
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = if (isEditing) {
-                                if (isBangla) "ক্রয়াদেশ সম্পাদনা" else "Edit purchase order"
-                            } else if (isBangla) "নতুন ক্রয়াদেশ" else "New purchase order",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            maxLines = 1
-                        )
-                        Text(
-                            editingOrder?.poNumber
-                                ?: if (isBangla) "তথ্য → পণ্য → প্যাকিং → হিসাব" else "Information → Products → Packing → Cost",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary,
-                            maxLines = 1
-                        )
-                    }
-                    IconButton(onClick = requestClose, enabled = !isSaving && !savingBuffer) {
-                        Icon(Icons.Outlined.Close, contentDescription = if (isBangla) "বন্ধ করুন" else "Close", tint = TextSecondary)
-                    }
-                }
+                Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal=16.dp)) {
+                PoTopBar(
+                    title=if(isEditing) { if(isBangla) "ক্রয়াদেশ সম্পাদনা" else "Edit purchase order" } else if(isBangla) "নতুন ক্রয়াদেশ" else "New purchase order",
+                    subtitle=if(isBangla) "তথ্য → পণ্য → প্যাকিং → হিসাব" else "Information → Products → Packing → Cost",
+                    onBack=requestClose,
+                    actions={ IconButton(onClick=requestClose,enabled=!isSaving&&!savingBuffer) { Icon(Icons.Outlined.Close,contentDescription=if(isBangla) "বন্ধ করুন" else "Close") } }
+                )
 
                 if (restoredDraft) Text(if (isBangla) "সংরক্ষিত খসড়া থেকে চালু হয়েছে" else "Resumed saved draft",
                     color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
@@ -887,452 +864,50 @@ fun CreatePurchaseOrderDialog(
                 ) {
                     // ==========================================
                     if (currentStep == 0) {
-                    // 1. Supplier Selection + Inline New Supplier
-                    // ==========================================
-                    item {
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (isBangla) "সরবরাহকারী" else "Supplier",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                if (onAddNewSupplier != null) {
-                                    Button(
-                                        onClick = { showInlineAddSupplierDialog = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal.copy(alpha = 0.15f)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(Icons.Outlined.Add, contentDescription = "New Supplier", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = if (isBangla) "নতুন" else "New",
-                                            color = SecondaryTeal,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
-                                        )
-                                    }
+                        item {
+                            var supplierPicker by rememberSaveable { mutableStateOf(false) }
+                            var purchaseTypePicker by rememberSaveable { mutableStateOf(false) }
+                            var currencyPicker by rememberSaveable { mutableStateOf(false) }
+                            var shippingExpanded by rememberSaveable { mutableStateOf(false) }
+                            Column(verticalArrangement=Arrangement.spacedBy(9.dp)) {
+                                Row(verticalAlignment=Alignment.CenterVertically) {
+                                    Text(if(isBangla) "ক্রয়াদেশের মূল তথ্য" else "Purchase information", style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
                                 }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            if (suppliers.isEmpty()) {
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = StatusWarningContainer),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Outlined.Info, contentDescription = null, tint = StatusWarning)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = if (isBangla) "কোনো সরবরাহকারী নেই। উপরের '+ নতুন সরবরাহকারী' বাটনে চাপ দিয়ে নতুন সরবরাহকারী তৈরি করুন।" else "No suppliers found. Tap '+ New Supplier' above to create one.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = StatusWarning
-                                        )
-                                    }
+                                PoValueCard(if(isBangla) "সরবরাহকারী *" else "Supplier *", suppliers.find { it.id==selectedSupplierId }?.companyName ?: if(isBangla) "নির্বাচন করুন" else "Select supplier", Icons.Outlined.Inventory2,onClick={supplierPicker=true},trailing=Icons.Outlined.ChevronRight)
+                                PoValueCard(if(isBangla) "PO নম্বর" else "PO number",editingOrder?.poNumber ?: if(isBangla) "সংরক্ষণে স্বয়ংক্রিয় নম্বর" else "Assigned when saved",Icons.Outlined.Inventory2)
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    PremiumPoDateField(if(isBangla) "PO তারিখ *" else "PO date *",orderDateMillis,if(isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH,Modifier.weight(1f),onDateSelected={it?.let { date -> orderDateMillis=date }})
+                                    PremiumPoDateField(if(isBangla) "প্রত্যাশিত আগমন" else "Expected arrival",expectedArrivalDateMillis,if(isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH,Modifier.weight(1f),allowClear=true,onDateSelected={expectedArrivalDateMillis=it})
                                 }
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    if (suppliers.size > 4) {
-                                        OutlinedTextField(
-                                            value = supplierSearch,
-                                            onValueChange = { supplierSearch = it },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                                            label = { Text(if (isBangla) "সরবরাহকারী খুঁজুন" else "Search suppliers") },
-                                            singleLine = true,
-                                            shape = RoundedCornerShape(14.dp)
-                                        )
-                                    }
-                                    val filteredSuppliers = suppliers.filter { supplier ->
-                                        supplierSearch.isBlank() || supplier.companyName.contains(supplierSearch, ignoreCase = true) ||
-                                            supplier.contactPerson.orEmpty().contains(supplierSearch, ignoreCase = true) ||
-                                            supplier.country.contains(supplierSearch, ignoreCase = true)
-                                    }
-                                    filteredSuppliers.forEach { sup ->
-                                        val isSelected = sup.id == selectedSupplierId
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(if (isSelected) PrimaryPurple.copy(alpha = 0.12f) else ERPSurfaceVariant)
-                                                .border(
-                                                    width = if (isSelected) 1.5.dp else 0.dp,
-                                                    color = if (isSelected) PrimaryPurple else Color.Transparent,
-                                                    shape = RoundedCornerShape(10.dp)
-                                                )
-                                                .clickable {
-                                                    selectedSupplierId = sup.id
-                                                    if (!isLocalPurchase && sup.currency.isNotBlank()) {
-                                                        selectedCurrency = sup.currency
-                                                        exchangeRateStr = when (sup.currency) {
-                                                            "CNY" -> "17.00"
-                                                            "USD" -> "120.00"
-                                                            else -> "1.00"
-                                                        }
-                                                    } else if (isLocalPurchase) {
-                                                        selectedCurrency = "BDT"
-                                                        exchangeRateStr = "1.00"
-                                                    }
-                                                }
-                                                .padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(10.dp)
-                                                    .background(if (isSelected) PrimaryPurple else Color.Gray, CircleShape)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column {
-                                                Text(
-                                                    text = sup.companyName,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isSelected) PrimaryPurple else TextPrimary
-                                                )
-                                                Text(
-                                                    text = "${sup.country} • Currency: ${sup.currency}" + (if (!sup.contactPerson.isNullOrBlank()) " • ${sup.contactPerson}" else ""),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = TextMuted
-                                                )
-                                            }
-                                        }
-                                    }
+                                PoValueCard(if(isBangla) "ক্রয় ধরন" else "Purchase type",if(isLocalPurchase) { if(isBangla) "স্থানীয় ক্রয়" else "Local purchase" } else { if(isBangla) "আমদানি (Import)" else "Import" },Icons.Outlined.Payments,onClick={purchaseTypePicker=true},trailing=Icons.Outlined.ChevronRight)
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                                    PoValueCard(if(isBangla) "মুদ্রা" else "Currency",selectedCurrency,Icons.Outlined.Payments,Modifier.weight(.42f),onClick={if(!isLocalPurchase)currencyPicker=true},trailing=Icons.Outlined.ExpandMore,showIcon=false)
+                                    OutlinedTextField(exchangeRateStr,{exchangeRateStr=it},modifier=Modifier.weight(.58f).testTag("po_exchange_rate"),label={Text("1 $selectedCurrency = BDT")},singleLine=true,shape=RoundedCornerShape(13.dp),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),readOnly=isLocalPurchase,textStyle=MaterialTheme.typography.bodyMedium)
                                 }
-                            }
-                        }
-                    }
-
-                    // ==========================================
-                    // 2. Currency, Exchange Rate & Delivery Charges
-                    // ==========================================
-                    item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.18f))
-                        ) {
-                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text(
-                                    if (isBangla) "ক্রয়াদেশের তথ্য" else "Purchase order information",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Surface(
-                                        onClick = {
-                                            isLocalPurchase = false
-                                            if (selectedCurrency == "BDT") {
-                                                selectedCurrency = "CNY"
-                                                exchangeRateStr = "17.00"
-                                            }
-                                        },
-                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (!isLocalPurchase) PrimaryPurple else MaterialTheme.colorScheme.surfaceVariant,
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            1.dp,
-                                            if (!isLocalPurchase) PrimaryPurple else MaterialTheme.colorScheme.outlineVariant
-                                        )
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                if (isBangla) "আমদানি" else "Import",
-                                                color = if (!isLocalPurchase) MaterialTheme.colorScheme.onPrimary else TextPrimary,
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                    Surface(
-                                        onClick = {
-                                            isLocalPurchase = true
-                                            selectedCurrency = "BDT"
-                                            exchangeRateStr = "1.00"
-                                        },
-                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isLocalPurchase) SecondaryTeal else MaterialTheme.colorScheme.surfaceVariant,
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            1.dp,
-                                            if (isLocalPurchase) SecondaryTeal else MaterialTheme.colorScheme.outlineVariant
-                                        )
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                if (isBangla) "স্থানীয়" else "Local",
-                                                color = if (isLocalPurchase) Color.White else TextPrimary,
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-                                OutlinedTextField(
-                                    value = editingOrder?.poNumber ?: if (isBangla) "সংরক্ষণের পর স্বয়ংক্রিয়ভাবে তৈরি হবে" else "Assigned automatically when saved",
-                                    onValueChange = {},
-                                    readOnly = true,
-                                    label = { Text(if (isBangla) "PO নম্বর" else "PO number") },
-                                    supportingText = { Text(if (isBangla) "সিস্টেমের অনন্য নম্বর" else "Unique system reference") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    PremiumPoDateField(
-                                        label = if (isBangla) "ক্রয়ের তারিখ" else "Purchase date",
-                                        dateMillis = orderDateMillis,
-                                        language = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH,
-                                        modifier = Modifier.weight(1f),
-                                        onDateSelected = { it?.let { selected -> orderDateMillis = selected } }
-                                    )
-                                    PremiumPoDateField(
-                                        label = if (isBangla) "সম্ভাব্য পৌঁছানোর তারিখ" else "Expected arrival",
-                                        dateMillis = expectedArrivalDateMillis,
-                                        language = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH,
-                                        modifier = Modifier.weight(1f),
-                                        allowClear = true,
-                                        onDateSelected = { expectedArrivalDateMillis = it }
-                                    )
-                                }
-                                Text(if (isBangla) "শিপিং পদ্ধতি" else "Shipping method", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(ShippingMethod.values().toList()) { method ->
-                                        val selected = selectedShippingMethod == method.name
-                                        Surface(
-                                            onClick = { selectedShippingMethod = method.name },
-                                            shape = RoundedCornerShape(13.dp),
-                                            color = if (selected) PrimaryPurple.copy(alpha = 0.13f) else MaterialTheme.colorScheme.surfaceVariant,
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                1.dp,
-                                                if (selected) PrimaryPurple else MaterialTheme.colorScheme.outlineVariant
-                                            ),
-                                            modifier = Modifier.heightIn(min = 48.dp)
-                                        ) {
-                                            Text(
-                                                if (isBangla) method.labelBn else method.labelEn,
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = if (selected) PrimaryPurple else TextPrimary,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                                maxLines = 1
-                                            )
-                                        }
-                                    }
-                                }
-                                OutlinedTextField(
-                                    value = forwarderAddressStr,
-                                    onValueChange = { forwarderAddressStr = it },
-                                    label = {
-                                        Text(
-                                            if (isLocalPurchase) {
-                                                if (isBangla) "গুদাম / ডেলিভারি ঠিকানা" else "Warehouse / delivery address"
-                                            } else {
-                                                if (isBangla) "ফরোয়ার্ডার গুদাম ঠিকানা ও রিসিভার ফোন" else "Forwarder warehouse and receiver contact"
-                                            }
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    minLines = 2,
-                                    maxLines = 3,
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                                OutlinedTextField(
-                                    value = notes,
-                                    onValueChange = { notes = it },
-                                    label = { Text(if (isBangla) "অর্ডার নোট / রেফারেন্স" else "Order notes / reference") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    minLines = 2,
-                                    maxLines = 4,
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                                Text(if (isBangla) "পেমেন্ট শর্ত" else "Payment terms", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(if(isBangla) "পেমেন্ট শর্ত (Payment Terms)" else "Payment terms",style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
+                                LazyRow(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                                     items(PaymentTermType.values().toList()) { term ->
-                                        val selected = selectedPaymentTerm == term
-                                        Surface(
-                                            onClick = { selectedPaymentTerm = term },
-                                            shape = RoundedCornerShape(13.dp),
-                                            color = if (selected) PrimaryPurple else MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.heightIn(min = 48.dp)
-                                        ) {
-                                            Text(
-                                                if (isBangla) term.labelBn else term.labelEn,
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = if (selected) MaterialTheme.colorScheme.onPrimary else TextPrimary,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                                maxLines = 1
-                                            )
-                                        }
+                                        FilterChip(selected=selectedPaymentTerm==term,onClick={selectedPaymentTerm=term},label={Text(if(isBangla)term.labelBn else term.labelEn)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=PrimaryPurple,selectedLabelColor=MaterialTheme.colorScheme.onPrimary))
                                     }
                                 }
+                                OutlinedTextField(notes,{notes=it},label={Text(if(isBangla) "নোট / বিবরণ (ঐচ্ছিক)" else "Notes / reference (optional)")},modifier=Modifier.fillMaxWidth(),minLines=2,shape=RoundedCornerShape(13.dp))
+                                TextButton(onClick={shippingExpanded=!shippingExpanded},modifier=Modifier.fillMaxWidth()) { Text(if(isBangla) "ডেলিভারি, শিপিং ও অতিরিক্ত তথ্য" else "Delivery, shipping & additional information"); Icon(if(shippingExpanded)Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null) }
+                                if(shippingExpanded) {
+                                    LazyRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) { items(ShippingMethod.values().toList()) { method -> FilterChip(selected=selectedShippingMethod==method.name,onClick={selectedShippingMethod=method.name},label={Text(if(isBangla)method.labelBn else method.labelEn)}) } }
+                                    OutlinedTextField(forwarderAddressStr,{forwarderAddressStr=it},label={Text(if(isBangla) "ফরোয়ার্ডার / ডেলিভারি ঠিকানা ও ফোন" else "Forwarder / delivery address & phone")},modifier=Modifier.fillMaxWidth(),minLines=2,shape=RoundedCornerShape(13.dp))
+                                    PoNumberInput(if(isBangla) "ডেলিভারি খরচ ($selectedCurrency)" else "Delivery charge ($selectedCurrency)",chinaLocalDeliveryStr,{chinaLocalDeliveryStr=it})
+                                    val converted=(chinaLocalDeliveryStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).multiply(exchangeRateStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).setScale(2,RoundingMode.HALF_UP)
+                                    Text(if(isBangla) "বাংলাদেশি টাকায়: ৳ $converted" else "Converted to BDT: ৳ $converted",color=SecondaryTeal,style=MaterialTheme.typography.bodySmall)
+                                    if(isLocalPurchase) PoNumberInput(if(isBangla) "আনলোডিং / শ্রম খরচ (৳)" else "Unloading / labour (BDT)",handlingCostStr,{handlingCostStr=it})
+                                }
                             }
+                            if(supplierPicker) {
+                                var query by rememberSaveable { mutableStateOf("") }
+                                AlertDialog(onDismissRequest={supplierPicker=false},title={Text(if(isBangla) "সরবরাহকারী নির্বাচন" else "Select supplier")},text={Column { OutlinedTextField(query,{query=it},label={Text(if(isBangla) "খুঁজুন" else "Search")},singleLine=true); LazyColumn(Modifier.heightIn(max=330.dp)) { items(suppliers.filter { it.companyName.contains(query,true)||it.phone.contains(query,true) }) { supplier -> TextButton(onClick={selectedSupplierId=supplier.id;if(isLocalPurchase){selectedCurrency="BDT";exchangeRateStr="1.00"}else if(supplier.currency.isNotBlank()){selectedCurrency=supplier.currency;exchangeRateStr=when(supplier.currency){"CNY"->"17.00";"USD"->"120.00";else->"1.00"}};supplierPicker=false},modifier=Modifier.fillMaxWidth()) {Text(supplier.companyName)} } } }},confirmButton={Row {if(onAddNewSupplier!=null) TextButton(onClick={supplierPicker=false;showInlineAddSupplierDialog=true}){Text(if(isBangla) "+ নতুন সরবরাহকারী" else "+ New supplier")};TextButton(onClick={supplierPicker=false}){Text(if(isBangla) "বন্ধ" else "Close")}}})
+                            }
+                            if(purchaseTypePicker) AlertDialog(onDismissRequest={purchaseTypePicker=false},title={Text(if(isBangla) "ক্রয় ধরন" else "Purchase type")},text={Column { TextButton(onClick={isLocalPurchase=false;if(selectedCurrency=="BDT"){selectedCurrency="CNY";exchangeRateStr="17.00"};purchaseTypePicker=false}){Text(if(isBangla) "আমদানি" else "Import")};TextButton(onClick={isLocalPurchase=true;selectedCurrency="BDT";exchangeRateStr="1.00";purchaseTypePicker=false}){Text(if(isBangla) "স্থানীয়" else "Local")} }},confirmButton={})
+                            if(currencyPicker) AlertDialog(onDismissRequest={currencyPicker=false},title={Text(if(isBangla) "মুদ্রা" else "Currency")},text={Column { listOf("CNY","USD").forEach { currency -> TextButton(onClick={selectedCurrency=currency;exchangeRateStr=if(currency=="CNY")"17.00" else "120.00";currencyPicker=false}){Text(currency)} } }},confirmButton={})
                         }
-                    }
-
-                    item {
-                        if (isLocalPurchase) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
-                                shape = RoundedCornerShape(10.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.4f))
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (isBangla) "২. স্থানীয় ক্রয় খরচ ও পরিবহন (বাংলাদেশ):" else "2. Local Purchase & Transport Costs (BD):",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimary
-                                        )
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = SecondaryTeal.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                text = "মুদ্রা: ৳ BDT • রেট: ১.০০",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = SecondaryTeal,
-                                                modifier = Modifier.heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 12.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        OutlinedTextField(
-                                            value = chinaLocalDeliveryStr,
-                                            onValueChange = { chinaLocalDeliveryStr = it },
-                                            label = { Text(if (isBangla) "স্থানীয় পরিবহন বা ডেলিভারি খরচ (৳)" else "Local Transport / Courier (৳)") },
-                                            placeholder = { Text("0") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true
-                                        )
-                                        OutlinedTextField(
-                                            value = handlingCostStr,
-                                            onValueChange = { handlingCostStr = it },
-                                            label = { Text(if (isBangla) "আনলোডিং বা লেবার খরচ (৳)" else "Unloading / Labour Cost (৳)") },
-                                            placeholder = { Text("0") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            Column {
-                                Text(
-                                    text = if (isBangla) "মুদ্রা ও বিনিময় হার" else "Currency & exchange rate",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Currency Toggle (CNY / USD)
-                                    Row(
-                                        modifier = Modifier
-                                            .background(ERPSurfaceVariant, RoundedCornerShape(10.dp))
-                                            .padding(3.dp)
-                                    ) {
-                                        listOf("CNY", "USD").forEach { cur ->
-                                            val isSel = selectedCurrency == cur
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(if (isSel) PrimaryPurple else Color.Transparent)
-                                                    .clickable {
-                                                        selectedCurrency = cur
-                                                        exchangeRateStr = if (cur == "CNY") "17.00" else "120.00"
-                                                    }
-                                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                                            ) {
-                                                Text(
-                                                    text = cur,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isSel) MaterialTheme.colorScheme.onPrimary else TextPrimary
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Rate Input
-                                    OutlinedTextField(
-                                        value = exchangeRateStr,
-                                        onValueChange = { exchangeRateStr = it },
-                                        label = { Text("1 $selectedCurrency = ? BDT") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.weight(1f).testTag("po_exchange_rate"),
-                                        singleLine = true
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // China Local Delivery Charge Input
-                                val rateBd = exchangeRateStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                val chinaDelivBd = chinaLocalDeliveryStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                val chinaDelivBdt = chinaDelivBd.multiply(rateBd).setScale(2, RoundingMode.HALF_UP)
-
-                                OutlinedTextField(
-                                    value = chinaLocalDeliveryStr,
-                                    onValueChange = { chinaLocalDeliveryStr = it },
-                                    label = {
-                                        Text(
-                                            if (isBangla)
-                                                "চীন লোকাল ডেলিভারি ($selectedCurrency)"
-                                            else
-                                                "China delivery ($selectedCurrency)"
-                                        )
-                                    },
-                                    supportingText = {
-                                        Text(
-                                            text = if (isBangla)
-                                                "বাংলাদেশি টাকায় রূপান্তরিত: ৳ $chinaDelivBdt (পরিমাণ/PCS অনুপাতে পণ্যে বণ্টিত হবে)"
-                                            else
-                                                "Converted to BDT: ৳ $chinaDelivBdt (Allocated to products by quantity)",
-                                            color = SecondaryTeal,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
-                            }
-                        }
-                    }
-
-                    // ==========================================
                     }
                     if (currentStep == 1) {
                     // 3. Order Items + Product Variant Selection
@@ -1372,16 +947,16 @@ fun CreatePurchaseOrderDialog(
                                 if (onCreateFullProduct != null) {
                                     Button(
                                         onClick = { showInlineAddProductDialog = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal.copy(alpha = 0.15f)),
-                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor=MaterialTheme.colorScheme.onPrimary),
+                                        shape = RoundedCornerShape(10.dp),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(Icons.Outlined.Add, contentDescription = "New Product", tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Outlined.Add, contentDescription = "New Product", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = if (isBangla) "নতুন পণ্য" else "New product",
-                                            color = SecondaryTeal,
+                                            color = MaterialTheme.colorScheme.onPrimary,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp,
                                             maxLines = 1
@@ -1397,16 +972,16 @@ fun CreatePurchaseOrderDialog(
                                             itemsList.add(ItemDraftState(productId = pId, variantId = vId))
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple.copy(alpha = 0.12f)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal, contentColor=Color.White),
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Outlined.Add, contentDescription = "Add Item", tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Add, contentDescription = "Add Item", tint = Color.White, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = if (isBangla) "+ আইটেম/ভ্যারিয়েন্ট লাইন" else "+ Add Line",
-                                        color = PrimaryPurple,
+                                        text = if (isBangla) "আইটেম/ভ্যারিয়েন্ট লাইন" else "Item / variant",
+                                        color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp,
                                         maxLines = 1
@@ -1416,6 +991,14 @@ fun CreatePurchaseOrderDialog(
                         }
                     }
 
+                    if(products.isNotEmpty()) item {
+                        Surface(shape=RoundedCornerShape(12.dp),color=if(com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme.current)Color(0xFF39352A) else Color(0xFFFFF4D8)) {
+                            Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Info,null,Modifier.size(19.dp),tint=StatusWarning)
+                                Text(if(isBangla) "নতুন পণ্য বা আইটেম/ভ্যারিয়েন্ট যোগ করুন। পেন্সিল চিহ্নে পণ্য ও পরিমাণ সম্পাদনা করুন।" else "Add products or variant lines. Tap the pencil to edit product, quantity and price.",style=MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                     if (products.isEmpty()) {
                         item {
                             Card(
@@ -1466,12 +1049,34 @@ fun CreatePurchaseOrderDialog(
                         val selectedProd = products.find { it.id == itemState.productId }
                         val selectedCat = categories.find { it.id == selectedProd?.categoryId }
 
+                        var expanded by rememberSaveable(index) { mutableStateOf(false) }
+                        var imageUri by remember(itemState.productId,itemState.variantId) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(itemState.productId,itemState.variantId) { imageUri=resolveProductImage?.invoke(itemState.productId,itemState.variantId) }
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(20.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.18f))
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                                    Surface(shape=RoundedCornerShape(10.dp),color=MaterialTheme.colorScheme.surfaceVariant) {
+                                        if(imageUri!=null) AsyncImage(com.pocketdev.advance_erp.core.designsystem.rememberImageModel(imageUri),null,Modifier.size(56.dp),contentScale=ContentScale.Crop)
+                                        else Icon(Icons.Outlined.Inventory2,null,Modifier.padding(13.dp).size(28.dp),tint=PrimaryPurple)
+                                    }
+                                    Column(Modifier.weight(1f)) {
+                                        Text(selectedProd?.let { if(isBangla&&it.nameBn.isNotBlank())it.nameBn else it.nameEn }.orEmpty(),fontWeight=FontWeight.Bold,style=MaterialTheme.typography.bodyMedium)
+                                        Text("SKU: ${variants.find { it.id==itemState.variantId }?.sku ?: selectedProd?.baseSku.orEmpty()}",style=MaterialTheme.typography.labelSmall,color=TextSecondary)
+                                        variants.find { it.id==itemState.variantId }?.let { variant -> Surface(shape=RoundedCornerShape(6.dp),color=SecondaryTeal.copy(alpha=.12f)) { Text(variantLabel(variant),Modifier.padding(horizontal=5.dp,vertical=2.dp),style=MaterialTheme.typography.labelSmall) } }
+                                    }
+                                    IconButton(onClick={expanded=!expanded},modifier=Modifier.size(48.dp)) {Icon(Icons.Outlined.Edit,if(isBangla) "সম্পাদনা" else "Edit item",tint=PrimaryPurple)}
+                                    IconButton(onClick={itemsList.removeAt(index)},modifier=Modifier.size(48.dp)) {Icon(Icons.Outlined.Delete,if(isBangla) "মুছুন" else "Delete item",tint=StatusError)}
+                                }
+                                Row(Modifier.fillMaxWidth().padding(top=7.dp),horizontalArrangement=Arrangement.SpaceBetween) {
+                                    Text("$selectedCurrency ${itemState.unitPriceStr}",style=MaterialTheme.typography.labelLarge)
+                                    Text("${itemState.quantityStr} ${selectedProd?.unit ?: "PCS"}",style=MaterialTheme.typography.labelLarge)
+                                    Text("$selectedCurrency ${(itemState.unitPriceStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).multiply(itemState.quantityStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).setScale(2,RoundingMode.HALF_UP)}",style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
+                                }
+                                if(expanded) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1518,11 +1123,14 @@ fun CreatePurchaseOrderDialog(
                                     color = TextSecondary
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
+                                var productQuery by rememberSaveable(index) { mutableStateOf("") }
+                                OutlinedTextField(productQuery,{productQuery=it},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=RoundedCornerShape(12.dp),placeholder={Text(if(isBangla) "পণ্য / SKU খুঁজুন" else "Search product / SKU")},leadingIcon={Icon(Icons.Outlined.Search,null)})
+                                Spacer(Modifier.height(6.dp))
                                 LazyRow(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    items(products) { prod ->
+                                    items(products.filter { productQuery.isBlank() || it.nameEn.contains(productQuery,true) || it.nameBn.contains(productQuery,true) || it.baseSku.contains(productQuery,true) }) { prod ->
                                         val isProdSel = itemState.productId == prod.id
                                         Box(
                                             modifier = Modifier
@@ -1724,41 +1332,42 @@ fun CreatePurchaseOrderDialog(
                                         )
                                     }
                                 }
+                                } // expanded item editor
                             }
                         }
                     }
 
                     // ==========================================
+                    item {
+                        Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surfaceVariant) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text(if(isBangla) "মোট আইটেম: ${itemsList.size}" else "Items: ${itemsList.size}",style=MaterialTheme.typography.labelLarge)
+                                Text((if(isBangla) "মোট পরিমাণ: " else "Quantity: ")+itemsList.sumOf { it.quantityStr.toIntOrNull() ?: 0 },style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
+                            }
+                        }
+                    }
                     }
                     if (currentStep == 2) {
                     // 4. Carton-by-Carton Packaging (Mixed Variants Supported)
                     // ==========================================
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.4f))
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Transparent)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (isBangla) "৪. কার্টন অনুযায়ী প্যাকিং ও ওজন (একই কার্টনে একাধিক ভ্যারিয়েন্ট)" else "4. Carton-by-Carton Packing (Mixed Variants Supported)",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimary
-                                        )
-                                        Text(
-                                            text = if (isBangla) "প্রতিটি কার্টনে কোন ভ্যারিয়েন্ট কত পিস ও কার্টনের ওজন (KG) দিন — শিপমেন্টে অটো যুক্ত হবে" else "Assign single or multiple variants per carton with carton weight (KG)",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TextSecondary
-                                        )
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Column(modifier = Modifier.padding(0.dp)) {
+                                Text(if(isBangla) "প্যাকিং ও কার্টন তথ্য" else "Packing & cartons",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Bold)
+                                Spacer(Modifier.height(9.dp))
+                                PoShipmentMetrics(listOf(
+                                    (if(isBangla) "মোট কার্টন" else "Cartons") to "${cartonBoxes.size} CTN",
+                                    (if(isBangla) "মোট পিস" else "Pieces") to "${cartonBoxes.sumOf { box -> box.lines.sumOf { it.quantityStr.toIntOrNull() ?: 0 } }} PCS",
+                                    (if(isBangla) "মোট ওজন" else "Weight") to "${cartonBoxes.fold(BigDecimal.ZERO) { sum,box -> sum.add(box.grossWeightKgStr.toBigDecimalOrNull() ?: BigDecimal.ZERO) }.stripTrailingZeros().toPlainString()} KG",
+                                    (if(isBangla) "মোট CBM" else "CBM") to cartonBoxes.fold(BigDecimal.ZERO) { sum,box -> sum.add(box.cbm) }.setScale(3,RoundingMode.HALF_UP).toPlainString()
+                                ))
+                                Spacer(Modifier.height(9.dp))
+                                Column {
+                                    Row(Modifier.fillMaxWidth(),horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         if (cartonBoxes.isEmpty() && itemsList.isNotEmpty()) {
                                             OutlinedButton(
                                                 onClick = {
@@ -1809,14 +1418,15 @@ fun CreatePurchaseOrderDialog(
                                                     )
                                                 )
                                             },
-                                            colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal, contentColor = MaterialTheme.colorScheme.onSecondary),
+                                            modifier=Modifier.weight(1f),
+                                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple, contentColor = MaterialTheme.colorScheme.onPrimary),
                                             shape = RoundedCornerShape(8.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                         ) {
                                             Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = if (isBangla) "+ কার্টন যোগ" else "+ Add Carton",
+                                                text = if (isBangla) "কার্টন যোগ" else "Add Carton",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 11.sp
                                             )
@@ -1827,38 +1437,6 @@ fun CreatePurchaseOrderDialog(
                                 if (cartonBoxes.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    // Mixed Carton Explanatory Guide
-                                    Card(
-                                        colors = CardDefaults.cardColors(containerColor = StatusInfoContainer),
-                                        shape = RoundedCornerShape(8.dp),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusInfoContainer),
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Outlined.Info, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = if (isBangla) "💡 একই কার্টনে একাধিক প্রোডাক্ট বা ভ্যারিয়েন্ট (মিক্সড কার্টন) প্যাকিং গাইড:" else "💡 Mixed Carton Packing Guide:",
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TextPrimary,
-                                                    fontSize = 11.sp
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = if (isBangla)
-                                                    "• প্রতিটি কার্টনে যত ইচ্ছা ভিন্ন ভিন্ন পণ্য বা রঙের/সাইজের ভ্যারিয়েন্ট একসাথে রাখতে পারেন।\n• নিচে '+ এই একই কার্টনে অন্য প্রোডাক্ট / ভ্যারিয়েন্ট মিক্স করুন' চাপলে নতুন লাইন যুক্ত হবে।\n• কার্টনের মোট ওজন (KG) দিলে প্রতিটি পণ্যের পিস (PCS) অনুপাতে সিস্টেম নিজে থেকেই স্বয়ংক্রিয়ভাবে ওজন ও ফ্রেইট বণ্টন করবে।"
-                                                else
-                                                    "• Pack single or multiple different products and variants inside any carton.\n• Tap '+ Mix Another Product/Variant' below to add another item to this box.\n• Enter gross weight (KG); weights are allocated proportionally per piece.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = StatusInfo,
-                                                fontSize = 10.5.sp,
-                                                lineHeight = 15.sp
-                                            )
-                                        }
-                                    }
-
                                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         cartonBoxes.forEachIndexed { cIdx, box ->
                                             val boxTotalPcs = box.lines.sumOf { it.quantityStr.trim().toIntOrNull() ?: 0 }
@@ -1866,25 +1444,26 @@ fun CreatePurchaseOrderDialog(
                                             val distinctLinesCount = box.lines.map { it.productId to it.variantId }.distinct().size
                                             val isMixedCarton = distinctLinesCount > 1
 
+                                            var cartonExpanded by rememberSaveable(cIdx) { mutableStateOf(cIdx==0) }
                                             Card(
                                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                                 shape = RoundedCornerShape(18.dp),
                                                 border = androidx.compose.foundation.BorderStroke(
-                                                    width = if (isMixedCarton) 1.5.dp else 1.dp,
-                                                    color = if (isMixedCarton) SecondaryTeal else PrimaryPurple.copy(alpha = 0.18f)
+                                                    width = 1.dp,
+                                                    color = PrimaryPurple.copy(alpha = 0.18f)
                                                 )
                                             ) {
                                                 Column(modifier = Modifier.padding(10.dp)) {
                                                     Row(
-                                                        modifier = Modifier.fillMaxWidth(),
+                                                        modifier = Modifier.fillMaxWidth().clickable { cartonExpanded=!cartonExpanded },
                                                         horizontalArrangement = Arrangement.SpaceBetween,
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         Column(modifier = Modifier.weight(1f)) {
                                                             Text(
                                                                 text = if (isMixedCarton)
-                                                                    (if (isBangla) "🔀 কার্টন #${cIdx + 1} (মিক্সড কার্টন • ${distinctLinesCount}টি আইটেম • $boxTotalPcs PCS)"
-                                                                    else "🔀 Carton #${cIdx + 1} (Mixed • ${distinctLinesCount} items • $boxTotalPcs PCS)")
+                                                                    (if (isBangla) "কার্টন #${cIdx + 1} • মিশ্র • $boxTotalPcs PCS"
+                                                                    else "Carton #${cIdx + 1} • Mixed • $boxTotalPcs PCS")
                                                                 else
                                                                     (if (isBangla) "📦 কার্টন #${cIdx + 1} (একক পণ্য • $boxTotalPcs PCS)"
                                                                     else "📦 Carton #${cIdx + 1} (Single • $boxTotalPcs PCS)"),
@@ -1936,6 +1515,7 @@ fun CreatePurchaseOrderDialog(
 
                                                     Spacer(modifier = Modifier.height(6.dp))
 
+                                                    if(cartonExpanded) {
                                                     OutlinedTextField(
                                                         value = box.cartonNumber, onValueChange = { box.cartonNumber = it },
                                                         label = { Text(if (isBangla) "কার্টন নম্বর" else "Carton no.") },
@@ -2007,6 +1587,13 @@ fun CreatePurchaseOrderDialog(
                                                         Spacer(modifier = Modifier.height(4.dp))
                                                     }
 
+                                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                                        Text((if(isBangla) "মোট পিস: " else "Pieces: ")+boxTotalPcs,style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
+                                                        Text("${box.cbm.setScale(3,RoundingMode.HALF_UP)} CBM",style=MaterialTheme.typography.labelLarge,color=SecondaryTeal,fontWeight=FontWeight.Bold)
+                                                    }
+                                                    var assignmentsExpanded by rememberSaveable { mutableStateOf(false) }
+                                                    TextButton(onClick={assignmentsExpanded=!assignmentsExpanded}) { Text(if(isBangla) "পণ্য, ভ্যারিয়েন্ট ও ওজন বণ্টন" else "Products, variants & weight allocation");Icon(if(assignmentsExpanded)Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null) }
+                                                    if(assignmentsExpanded) {
                                                     box.lines.forEachIndexed { lIdx, lineState ->
                                                         val lineQty = lineState.quantityStr.trim().toIntOrNull() ?: 0
                                                         val manualWt = lineState.manualWeightKgStr.trim().toBigDecimalOrNull()
@@ -2179,10 +1766,47 @@ fun CreatePurchaseOrderDialog(
                                                             color = SecondaryTeal
                                                         )
                                                     }
+                                                    } // assignments
+                                                    } // carton details
                                                 }
                                             }
                                         }
                                     }
+                                    var showPackingGuide by rememberSaveable { mutableStateOf(false) }
+                                    // Mixed Carton Explanatory Guide
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = StatusInfoContainer),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusInfoContainer),
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Row(modifier = Modifier.fillMaxWidth().clickable { showPackingGuide = !showPackingGuide }, verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Outlined.Info, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (isBangla) "💡 একই কার্টনে একাধিক প্রোডাক্ট বা ভ্যারিয়েন্ট (মিক্সড কার্টন) প্যাকিং গাইড:" else "💡 Mixed Carton Packing Guide:",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TextPrimary,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                            if (showPackingGuide) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = if (isBangla)
+                                                    "• প্রতিটি কার্টনে যত ইচ্ছা ভিন্ন ভিন্ন পণ্য বা রঙের/সাইজের ভ্যারিয়েন্ট একসাথে রাখতে পারেন।\n• নিচে '+ এই একই কার্টনে অন্য প্রোডাক্ট / ভ্যারিয়েন্ট মিক্স করুন' চাপলে নতুন লাইন যুক্ত হবে।\n• কার্টনের মোট ওজন (KG) দিলে প্রতিটি পণ্যের পিস (PCS) অনুপাতে সিস্টেম নিজে থেকেই স্বয়ংক্রিয়ভাবে ওজন ও ফ্রেইট বণ্টন করবে।"
+                                                else
+                                                    "• Pack single or multiple different products and variants inside any carton.\n• Tap '+ Mix Another Product/Variant' below to add another item to this box.\n• Enter gross weight (KG); weights are allocated proportionally per piece.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = StatusInfo,
+                                                fontSize = 10.5.sp,
+                                                lineHeight = 15.sp
+                                            )
+                                            }
+                                        }
+                                    }
+
                                 }
                             }
                         }
@@ -2263,17 +1887,19 @@ fun CreatePurchaseOrderDialog(
                             grandTotalEstimatedBdt.divide(BigDecimal(totalOrderedPcs), 2, RoundingMode.HALF_UP)
                         } else BigDecimal.ZERO
 
+                        Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                        Text(if(isBangla) "ল্যান্ডিং কস্ট / আমদানি ব্যয়" else "Landed cost / import expenses",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Bold)
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(22.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.5.dp, PrimaryPurple.copy(alpha = 0.30f))
+                            shape = RoundedCornerShape(16.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Text(
                                     text = if (isBangla)
-                                        "৫. আর্থিক সামারি ও ওয়েট-বেসড কস্টিং বরাদ্দ (Weight-Based Costing Allocation)"
+                                        "ওজন ভিত্তিক কস্টিং (Weight-Based Costing)"
                                     else
-                                        "5. Financial Summary & Weight-Based Costing Allocation",
+                                        "Weight-based costing",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
@@ -2370,7 +1996,7 @@ fun CreatePurchaseOrderDialog(
                                         value = handlingCostStr,
                                         onValueChange = { handlingCostStr = it },
                                         label = { Text(if (isBangla) "হ্যান্ডলিং খরচ (৳)" else "Handling Cost (BDT)") },
-                                        supportingText = { Text(if (isBangla) "আনলোডিং ও পোর্টার চার্জ" else "Unloading & Porter charge", fontSize = 10.sp) },
+
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1f),
                                         singleLine = true
@@ -2379,7 +2005,7 @@ fun CreatePurchaseOrderDialog(
                                         value = sampleCostStr,
                                         onValueChange = { sampleCostStr = it },
                                         label = { Text(if (isBangla) "স্যাম্পল খরচ (৳)" else "Sample Cost (BDT)") },
-                                        supportingText = { Text(if (isBangla) "প্রোটোটাইপ স্যাম্পল খরচ" else "Pre-order sample cost", fontSize = 10.sp) },
+
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1f),
                                         singleLine = true
@@ -2388,6 +2014,9 @@ fun CreatePurchaseOrderDialog(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
+                            }
+                        }
+                        Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
                                 // Base Financial Breakdown
                                 val prodTotalDisplay = if (isLocalPurchase) "৳ $totalProductBdt" else "$selectedCurrency $totalProductForeign (৳ $totalProductBdt)"
                                 PremiumPoCostLine(if (isBangla) "পণ্যের মোট ক্রয়মূল্য:" else "Products Purchase Total:", prodTotalDisplay)
@@ -2398,7 +2027,7 @@ fun CreatePurchaseOrderDialog(
                                     PremiumPoCostLine(if (isBangla) "আন্তর্জাতিক ফ্রেইট ($totalGrossWeightKg KG):" else "International Freight ($totalGrossWeightKg KG):", "৳ $totalCategoryFreightBdt", SecondaryTeal)
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
-                                PremiumPoCostLine(if (isBangla) "হ্যান্ডলিং ও আনলোডিং খরচ (ক্যাপিটালাইজড):" else "Handling & Porter (Capitalized):", "৳ $handlingCostBdt")
+                                PremiumPoCostLine(if (isBangla) "হ্যান্ডলিং ও আনলোডিং:" else "Handling & unloading:", "৳ $handlingCostBdt")
                                 if (sampleCostBdt > BigDecimal.ZERO) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     PremiumPoCostLine(if (isBangla) "স্যাম্পল প্রসেসিং খরচ (ক্যাপিটালাইজড):" else "Sample Processing (Capitalized):", "৳ $sampleCostBdt")
@@ -2406,37 +2035,7 @@ fun CreatePurchaseOrderDialog(
                                 Spacer(modifier = Modifier.height(6.dp))
                                 HorizontalDivider(color = ERPDivider)
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.22f))
-                                ) {
-                                    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                                        Text(
-                                            if (isBangla) "সর্বমোট ল্যান্ডেড কস্ট" else "Total landed cost",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Text(
-                                            "৳ $grandTotalEstimatedBdt",
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        Spacer(Modifier.height(3.dp))
-                                        Text(
-                                            text = if (isBangla)
-                                                "গড় প্রতি পিস: ৳ $avgUnitLandedBdt / PCS"
-                                            else
-                                                "Average per unit: ৳ $avgUnitLandedBdt / PCS",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
+                                PoLandedHighlight("৳ $grandTotalEstimatedBdt",(if(isBangla) "গড় প্রতি পিস: " else "Average per unit: ")+"৳ $avgUnitLandedBdt / PCS",isBangla)
 
                                 Spacer(modifier = Modifier.height(8.dp))
                                 // Warehouse Rent OPEX Note
@@ -2612,15 +2211,15 @@ fun CreatePurchaseOrderDialog(
                     }
                 }
 
-                HorizontalDivider(color = ERPDivider, modifier = Modifier.padding(vertical = 10.dp))
+                HorizontalDivider(color = ERPDivider, modifier = Modifier.padding(vertical = 4.dp))
 
                 (errorMessage ?: saveError)?.let { message ->
                     Text(message, color = StatusError, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (currentStep > 0 && !metadataOnly) OutlinedButton(
-                        onClick = { currentStep-- }, enabled = !isSaving,
+                    if (!metadataOnly) OutlinedButton(
+                        onClick = { if(currentStep>0) currentStep-- else requestClose() }, enabled = !isSaving,
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                     ) { Text(if (isBangla) "পেছনে" else "Back") }
                     if (currentStep < 3) {
@@ -2643,9 +2242,16 @@ fun CreatePurchaseOrderDialog(
                         }
                     }
                 }
+                } // form and fixed wizard actions
+                if(navigateTab!=null) com.pocketdev.advance_erp.core.designsystem.ERPBottomNavigation("purchases", { tab ->
+                    if(tab==com.pocketdev.advance_erp.core.designsystem.BottomNavDestination.PURCHASES) requestClose()
+                    else {pendingTab=tab;requestClose()}
+                },language=if(isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH)
             }
         }
     }
+
+    } // PO palette
 
     // ==========================================
     // Inline Add Supplier Dialog

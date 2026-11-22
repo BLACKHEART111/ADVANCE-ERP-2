@@ -40,6 +40,21 @@ class ImportPersistenceRegressionTest {
     private suspend fun save(id: String?=null, boxes: List<PoMixedCartonDraft> = listOf(carton()), status: PurchaseOrderStatus=PurchaseOrderStatus.DRAFT): String =
         repository.savePurchaseOrderDraft(id, "s", "CNY", BigDecimal("17"), items(), "test", status, boxes, 1000, mapOf("c" to 12000L), 500, 200, null)
 
+    @Test fun purchaseScheduleAndShippingRoundTripWithoutSchemaChanges() = runBlocking {
+        val purchasedAt=1795219200000L
+        val expectedAt=1796860800000L
+        val id=repository.savePurchaseOrderDraft(null,"s","CNY",BigDecimal("17"),items(),"schedule",PurchaseOrderStatus.DRAFT,listOf(carton()),1000,mapOf("c" to 12000L),500,200,null,
+            orderDateMillis=purchasedAt,expectedArrivalDateMillis=expectedAt,shippingMethod=ShippingMethod.AIR.name)
+        val saved=repository.getPurchaseOrderById(id)!!
+        assertEquals(purchasedAt,saved.orderDate)
+        assertEquals(expectedAt,saved.expectedArrivalDate)
+        assertEquals(ShippingMethod.AIR.name,repository.getShipmentsForOrderSync(id).single().shippingMethod)
+        repository.savePurchaseOrderDraft(id,"s","CNY",BigDecimal("17"),items(),"schedule edited",PurchaseOrderStatus.DRAFT,listOf(carton()),1000,mapOf("c" to 12000L),500,200,null,
+            orderDateMillis=purchasedAt,expectedArrivalDateMillis=null,shippingMethod=ShippingMethod.SEA.name)
+        assertNull(repository.getPurchaseOrderById(id)!!.expectedArrivalDate)
+        assertEquals(ShippingMethod.SEA.name,repository.getShipmentsForOrderSync(id).single().shippingMethod)
+    }
+
     @Test fun saveReloadAndEditPreserveShipmentLinkManualWeightsAndBdtCosts() = runBlocking {
         val id=save()
         val shipment=repository.getShipmentsForOrderSync(id).single()

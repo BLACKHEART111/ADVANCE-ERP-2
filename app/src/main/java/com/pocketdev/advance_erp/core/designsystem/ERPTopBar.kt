@@ -79,8 +79,13 @@ fun ERPTopBar(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
+                    val brandPrimary=PrimaryPurple
+                    val brandSecondary=SecondaryTeal
                     Text(
-                        text = title,
+                        text = if(title=="ADVANCE ERP") androidx.compose.ui.text.buildAnnotatedString {
+                            pushStyle(androidx.compose.ui.text.SpanStyle(color=brandPrimary));append("ADVANCE ");pop()
+                            pushStyle(androidx.compose.ui.text.SpanStyle(color=brandSecondary));append("ERP");pop()
+                        } else androidx.compose.ui.text.AnnotatedString(title),
                         style = MaterialTheme.typography.titleLarge,
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,

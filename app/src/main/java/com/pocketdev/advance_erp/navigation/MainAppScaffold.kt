@@ -86,7 +86,7 @@ fun MainAppScaffold(
         Destinations.SALES -> stringResource(R.string.nav_sales)
         Destinations.ACCOUNTS -> stringResource(R.string.nav_accounts)
         Destinations.MORE -> stringResource(R.string.nav_more)
-        Destinations.PURCHASES -> stringResource(R.string.nav_purchases)
+        Destinations.PURCHASES -> "ADVANCE ERP"
         Destinations.IMPORT_MANAGEMENT -> stringResource(R.string.nav_import_management)
         Destinations.SHIPMENTS -> stringResource(R.string.nav_shipments)
         Destinations.CUSTOMERS -> stringResource(R.string.nav_customers)

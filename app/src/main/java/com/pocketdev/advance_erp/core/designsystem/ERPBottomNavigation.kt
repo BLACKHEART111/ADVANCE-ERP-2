@@ -28,6 +28,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.unit.dp
 import com.pocketdev.advance_erp.R
 
+val LocalERPOnNavigate = androidx.compose.runtime.staticCompositionLocalOf<((BottomNavDestination) -> Unit)?> { null }
+
 enum class BottomNavDestination(val route: String, val icon: ImageVector, val selectedIcon: ImageVector, val labelResId: Int) {
     DASHBOARD("dashboard", Icons.Outlined.Home, Icons.Filled.Home, R.string.nav_home),
     PURCHASES("purchases", Icons.Outlined.ShoppingCart, Icons.Filled.ShoppingCart, R.string.nav_purchase_short),
@@ -43,19 +45,19 @@ enum class BottomNavDestination(val route: String, val icon: ImageVector, val se
 }
 
 @Composable
-fun ERPBottomNavigation(currentRoute: String, onNavigate: (BottomNavDestination) -> Unit, modifier: Modifier = Modifier) {
+fun ERPBottomNavigation(currentRoute: String, onNavigate: (BottomNavDestination) -> Unit, modifier: Modifier = Modifier, language: com.pocketdev.advance_erp.core.model.AppLanguage? = null) {
     val colors = MaterialTheme.colorScheme
     val dark = LocalIsDarkTheme.current
     val shape = RoundedCornerShape(25.dp)
     Surface(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp).navigationBarsPadding(),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).navigationBarsPadding(),
         shape = shape,
         color = colors.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant.copy(alpha = .8f)),
         shadowElevation = 8.dp
     ) {
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
@@ -65,33 +67,33 @@ fun ERPBottomNavigation(currentRoute: String, onNavigate: (BottomNavDestination)
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 58.dp)
+                    .heightIn(min = 48.dp)
                     .clip(itemShape)
-                    .background(
-                        if (selected) Brush.horizontalGradient(
-                            if (dark) listOf(Color(0xFF7C22A5), Color(0xFF5C2387))
-                            else listOf(colors.primary, colors.primary.copy(alpha = .84f))
-                        ) else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                    )
                     .selectable(selected = selected, role = Role.Tab, onClick = { onNavigate(destination) })
-                    .padding(horizontal = 2.dp, vertical = 5.dp),
+                    .padding(horizontal = 2.dp, vertical = 2.dp),
                 contentAlignment = Alignment.Center
             ) {
                 androidx.compose.foundation.layout.Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(
-                        imageVector = if (selected) destination.selectedIcon else destination.icon,
-                        contentDescription = null,
-                        tint = if (selected) Color.White else colors.onSurfaceVariant,
-                        modifier = Modifier.size(23.dp)
-                    )
+                    Box(Modifier.clip(RoundedCornerShape(18.dp)).background(if(selected) { if(dark) Color(0xFF6E2693) else Color(0xFFF1E0F9) } else Color.Transparent).padding(horizontal=20.dp,vertical=5.dp)) {
+                        Icon(imageVector=if(selected) destination.selectedIcon else destination.icon,contentDescription=null,tint=if(selected) { if(dark) Color.White else colors.primary } else colors.onSurfaceVariant,modifier=Modifier.size(23.dp))
+                    }
                     Spacer(Modifier.size(2.dp))
                     Text(
-                        text = stringResource(destination.labelResId),
+                        text = if(language==null) stringResource(destination.labelResId) else {
+                            val bn=language==com.pocketdev.advance_erp.core.model.AppLanguage.BANGLA
+                            when(destination) {
+                                BottomNavDestination.DASHBOARD -> if(bn) "হোম" else "Home"
+                                BottomNavDestination.PURCHASES -> if(bn) "ক্রয়" else "Buy"
+                                BottomNavDestination.INVENTORY -> if(bn) "স্টক" else "Stock"
+                                BottomNavDestination.SALES -> if(bn) "বিক্রয়" else "Sell"
+                                BottomNavDestination.MORE -> if(bn) "আরও" else "More"
+                            }
+                        },
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (selected) Color.White else colors.onSurfaceVariant,
+                        color = if (selected) colors.primary else colors.onSurfaceVariant,
                         maxLines = 1
                     )
                 }

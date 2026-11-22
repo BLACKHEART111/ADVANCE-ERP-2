@@ -319,6 +319,11 @@ class ImportViewModel @Inject constructor(
 
     fun getLandedCostSnapshots(shipmentId: String) = importRepository.getLandedCostSnapshots(shipmentId)
 
+    suspend fun resolvePurchaseProductImage(productId: String, variantId: String?): String? {
+        val variantImage = variantId?.let { productRepository.getImagesForVariantSync(it).firstOrNull { imageStorage.doesImageExist(it.imageUri) }?.imageUri }
+        return variantImage ?: productRepository.getImagesForProductSync(productId).firstOrNull { imageStorage.doesImageExist(it.imageUri) }?.imageUri
+    }
+
     suspend fun resolveShareImagesForItems(items: List<PurchaseOrderItem>): Map<String, String> {
         if (items.isEmpty()) return emptyMap()
         val variantCache = mutableMapOf<String, String?>()

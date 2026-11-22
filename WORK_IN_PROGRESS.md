@@ -1,5 +1,16 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Latest PO checkpoint — 2026-11-22
+
+Six-reference PO UI refinement implemented across List, Information, Products, Packaging, Landed Cost and Details. Continue from this implementation; do not restart. [Full feature checklist, modified files, visual differences and verification](docs/ui-refinement/2026-11-22/po-six-reference/implementation-review.md). [Offline side-by-side comparison](docs/ui-refinement/2026-11-22/po-six-reference/comparison.html).
+
+Final native `adev` build (`assembleDebug`, `testDebugUnitTest`, `assembleDebugAndroidTest`) succeeded; 376 JVM tests passed. Direct ADB instrumentation passed 37 tests. Gradle connected wrapper has an environment missing-aapt teardown limitation; do not claim that wrapper passed. Pinned Gradle 8.13/dependencies preserved.
+
+Actual device captures: six Light, six Dark, extra scrolled cost summaries and live keyboard check in report directory. Screenshots use production Compose UI with isolated fixtures; no fixture records posted to live database. Package/applicationId remains `com.pocketdev.advance_erp2`; no schema/migration/financial-engine changes. Existing app/data not cleared or uninstalled. User draft was opened without edits and closed.
+
+Residuals: fonts/icons/system chrome, header/card proportions and extra preserved fields differ from references; no 100% pixel-perfect claim. External share target/full unrelated instrumentation not tested. This PO verification does not certify the earlier whole-ERP audit or backup/restore work below. This checkpoint accompanies the six-reference PO implementation commit; verify remote tracking with git status when resuming. Do not touch preexisting untracked `.antigem/`.
+
+
 > ২০ নভেম্বরের আপডেট ও যাচাইয়ের ফল [পরবর্তী অডিটে](docs/ui-refinement/2026-11-19/premium/resume-audit.md) আছে। নিচের অংশটি ১৯ নভেম্বরের চেকপয়েন্ট।
 
 **Saved at the user's request on 2026-11-19 (Asia/Dhaka), before uninstall/reinstall of their development/chat app.**

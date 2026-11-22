@@ -45,6 +45,13 @@ fun AdvanceErpNavGraph(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
+    androidx.compose.runtime.CompositionLocalProvider(com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate provides { destination ->
+        navController.navigate(destination.route) {
+            popUpTo(navController.graph.startDestinationId) { saveState=true }
+            launchSingleTop=true
+            restoreState=true
+        }
+    }) {
     NavHost(
         navController = navController,
         startDestination = Destinations.DASHBOARD,
@@ -119,5 +126,6 @@ fun AdvanceErpNavGraph(
         composable(Destinations.SETTINGS) {
             SettingsScreen(viewModel = hiltViewModel())
         }
+    }
     }
 }

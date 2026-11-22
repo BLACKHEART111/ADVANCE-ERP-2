@@ -159,6 +159,7 @@ fun ImportManagementScreen(
     val selectedShipment = uiState.shipments.find { it.id == uiState.selectedShipmentId }
         ?: uiState.shipments.firstOrNull()
 
+    PoReferenceTheme {
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -166,6 +167,8 @@ fun ImportManagementScreen(
                 .background(ERPBackground)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            var showModuleNavigation by rememberSaveable {mutableStateOf(false)}
+            if(selectedTab!=ImportModuleTab.PURCHASE_ORDERS || showModuleNavigation) {
             // Module Header Banner
             ERPCard(
                 backgroundColor = DeepNavy,
@@ -247,6 +250,7 @@ fun ImportManagementScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            }
             // Pre-calculate filtered orders outside LazyColumn
             val supplierMap = remember(uiState.suppliers) { uiState.suppliers.associateBy { it.id } }
             val filteredOrders = remember(uiState.purchaseOrders, uiState.searchQuery, uiState.poStatusFilter, uiState.poSupplierFilter, uiState.shipments) {
@@ -467,176 +471,9 @@ fun ImportManagementScreen(
                 // TAB 1: PURCHASE ORDERS
                 // ==========================================
                 if (selectedTab == ImportModuleTab.PURCHASE_ORDERS) {
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            PremiumPoHero(
-                                title = if (isBangla) "ক্রয়াদেশ" else "Purchase Orders",
-                                subtitle = if (isBangla) "সরবরাহকারী থেকে পণ্য ক্রয়ের অর্ডার" else "Supplier orders, packing and landed cost",
-                                badge = "${uiState.purchaseOrders.size} ${if (isBangla) "টি" else "POs"}"
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Button(
-                                    onClick = { showCreatePoDialog = true },
-                                    modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(16.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
-                                ) {
-                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(if (isBangla) "নতুন ক্রয়াদেশ" else "New purchase order", fontWeight = FontWeight.Bold)
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        preselectedOrderIdForPayment = null
-                                        preselectedSupplierIdForPayment = null
-                                        showRecordPaymentDialog = true
-                                    },
-                                    modifier = Modifier.heightIn(min = 50.dp),
-                                    shape = RoundedCornerShape(16.dp),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
-                                    Icon(Icons.Outlined.Payments, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(5.dp))
-                                    Text(if (isBangla) "পেমেন্ট" else "Payment", color = SecondaryTeal, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                PremiumPoMetric(
-                                    if (isBangla) "মোট অর্ডার" else "Total orders",
-                                    uiState.purchaseOrders.size.toString(),
-                                    Icons.Outlined.ShoppingCart,
-                                    Modifier.weight(1f)
-                                )
-                                PremiumPoMetric(
-                                    if (isBangla) "খসড়া" else "Drafts",
-                                    uiState.purchaseOrders.count { it.status == PurchaseOrderStatus.DRAFT.name }.toString(),
-                                    Icons.Outlined.Inventory2,
-                                    Modifier.weight(1f)
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                PremiumPoMetric(
-                                    if (isBangla) "চলমান" else "In progress",
-                                    uiState.purchaseOrders.count { it.status in setOf(PurchaseOrderStatus.CONFIRMED.name, PurchaseOrderStatus.PARTIALLY_PAID.name, PurchaseOrderStatus.PAID.name, PurchaseOrderStatus.SHIPPED.name, PurchaseOrderStatus.PARTIALLY_RECEIVED.name) }.toString(),
-                                    Icons.Outlined.LocalShipping,
-                                    Modifier.weight(1f)
-                                )
-                                PremiumPoMetric(
-                                    if (isBangla) "সম্পন্ন" else "Completed",
-                                    uiState.purchaseOrders.count { it.status in setOf(PurchaseOrderStatus.RECEIVED.name, PurchaseOrderStatus.COMPLETED.name) }.toString(),
-                                    Icons.Outlined.FactCheck,
-                                    Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-
-                    // Search & Filter Box
-                    item {
-                        OutlinedTextField(
-                            value = uiState.searchQuery,
-                            onValueChange = { viewModel.setSearchQuery(it) },
-                            placeholder = { Text(if (isBangla) "PO নম্বর বা সাপ্লায়ার খুঁজুন..." else "Search by PO # or Supplier...") },
-                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = TextMuted) },
-                            trailingIcon = {
-                                if (uiState.searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                        Icon(Icons.Outlined.Clear, contentDescription = "Clear", tint = TextMuted)
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    }
-
-                    // Status Filter Chips
-                    item {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            contentPadding = PaddingValues(vertical = 2.dp)
-                        ) {
-                            val allOption = null
-                            item {
-                                FilterChipView(
-                                    label = if (isBangla) "সকল (${uiState.purchaseOrders.size})" else "All (${uiState.purchaseOrders.size})",
-                                    isSelected = uiState.poStatusFilter == null,
-                                    onClick = { viewModel.setPoStatusFilter(null) }
-                                )
-                            }
-                            items(PurchaseOrderStatus.entries) { st ->
-                                val count = uiState.purchaseOrders.count { it.status == st.name }
-                                val label = if (isBangla) "${st.labelBn} ($count)" else "${st.labelEn} ($count)"
-                                FilterChipView(
-                                    label = label,
-                                    isSelected = uiState.poStatusFilter == st,
-                                    onClick = {
-                                        viewModel.setPoStatusFilter(if (uiState.poStatusFilter == st) null else st)
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    if (filteredOrders.isEmpty()) {
-                        item {
-                            ERPCard(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                contentPadding = 24.dp
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .background(PrimaryPurple.copy(alpha = 0.1f), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Outlined.ShoppingCart, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(28.dp))
-                                    }
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        text = if (isBangla) "কোনো ক্রয়াদেশ পাওয়া যায়নি" else "No Purchase Orders Found",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = if (isBangla) "অনুসন্ধান বা ফিল্টার পরিবর্তন করুন অথবা নতুন ক্রয়াদেশ তৈরি করুন।" else "Adjust your search filter or create a new purchase order.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextSecondary,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        items(filteredOrders) { po ->
-                            val supplier = supplierMap[po.supplierId]
-                            LivePurchaseOrderCard(
-                                order = po,
-                                supplierName = supplier?.companyName ?: "China Factory",
-                                language = uiState.language,
-                                onClick = {
-                                    viewModel.selectPurchaseOrder(po)
-                                },
-                                onConfirmOrder = { orderId ->
-                                    viewModel.confirmPurchaseOrder(orderId)
-                                },
-                                onSharePdf = {
-                                    poToShare = po
-                                }
-                            )
-                        }
-                    }
+                    poReferenceListItems(uiState.purchaseOrders,uiState.suppliers,filteredOrders,uiState.language,uiState.searchQuery,uiState.poStatusFilter,uiState.poSupplierFilter,
+                        viewModel::setSearchQuery,viewModel::setPoStatusFilter,viewModel::setPoSupplierFilter,
+                        onCreate={showCreatePoDialog=true},onPayment={preselectedOrderIdForPayment=null;preselectedSupplierIdForPayment=null;showRecordPaymentDialog=true},onOpen={viewModel.selectPurchaseOrder(it)},onTools={showModuleNavigation=!showModuleNavigation})
                 }
 
                 if (selectedTab == ImportModuleTab.SHIPMENTS) {
@@ -777,6 +614,7 @@ fun ImportManagementScreen(
             products = uiState.products,
             variants = uiState.productVariants,
             categories = uiState.categories,
+            resolveProductImage = viewModel::resolvePurchaseProductImage,
             isBangla = isBangla,
             onDismiss = { showCreatePoDialog = false },
             isSaving = uiState.isSavingPurchaseOrder,
@@ -837,6 +675,7 @@ fun ImportManagementScreen(
                 products = uiState.products,
                 variants = uiState.productVariants,
                 categories = uiState.categories,
+            resolveProductImage = viewModel::resolvePurchaseProductImage,
                 isBangla = isBangla,
                 editingOrder = currentEditingPo,
                 metadataOnly = currentEditingPo.isActualCostFinalized || currentEditingPo.paidAmountMinor > 0 ||
@@ -1266,6 +1105,7 @@ fun ImportManagementScreen(
             onDismiss = { poToShare = null }
         )
     }
+    } // PO palette
 }
 
 @Composable
@@ -1300,160 +1140,7 @@ private fun LivePurchaseOrderCard(
     onConfirmOrder: (String) -> Unit = {},
     onSharePdf: () -> Unit = {}
 ) {
-    val isBangla = language == AppLanguage.BANGLA
-    ERPCard(
-        shape = RoundedCornerShape(20.dp),
-        elevation = 3.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
-        contentPadding = 14.dp,
-        modifier = Modifier.clickable(onClick = onClick)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(PrimaryPurple.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Outlined.Inventory2, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(22.dp))
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = order.poNumber,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = supplierName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    IconButton(
-                        onClick = onSharePdf,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Share,
-                            contentDescription = "Share PDF",
-                            tint = SecondaryTeal,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                val statusColor = when (order.status) {
-                    "PAID", "COMPLETED" -> StatusSuccess
-                    "PARTIALLY_PAID", "CONFIRMED" -> SecondaryTeal
-                    "SHIPPED" -> PrimaryPurple
-                    "DRAFT" -> StatusWarning
-                    "CANCELLED" -> StatusError
-                    else -> StatusWarning
-                }
-                Box(
-                    modifier = Modifier
-                        .background(statusColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    val statusLabel = if (isBangla) {
-                        when (order.status) {
-                            "DRAFT" -> "খসড়া"
-                            "CONFIRMED" -> "নিশ্চিতকৃত"
-                            "PARTIALLY_PAID" -> "আংশিক পরিশোধিত"
-                            "PAID" -> "পরিশোধিত"
-                            "SHIPPED" -> "জাহাজীকরণ সম্পন্ন"
-                            "COMPLETED" -> "সম্পন্ন"
-                            "CANCELLED" -> "বাতিল"
-                            else -> order.status
-                        }
-                    } else order.status
-                    Text(
-                        text = statusLabel,
-                        color = statusColor,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = ERPDivider)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("Total (${order.currency})", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                    Text("${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}", fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("BDT Equivalent", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                    Text(
-                        Formatters.formatMoney(order.totalBdtAmountMinor, CurrencyCode.BDT, language),
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryPurple
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = ERPDivider.copy(alpha = 0.5f))
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = onSharePdf,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SecondaryTeal),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Outlined.Share, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isBangla) "শেয়ার ও এক্সপোর্ট" else "Share PO",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SecondaryTeal
-                    )
-                }
-
-                if (order.status == "DRAFT") {
-                    Button(
-                        onClick = { onConfirmOrder(order.id) },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isBangla) "PO নিশ্চিত করুন" else "Confirm PO",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-    }
+    PoCompactOrderCard(order,supplierName,language,onClick)
 }
 
 @Composable

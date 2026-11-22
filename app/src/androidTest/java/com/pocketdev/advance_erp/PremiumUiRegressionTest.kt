@@ -117,11 +117,8 @@ class PremiumUiRegressionTest {
                 // The editor is a lazy vertical form. After state restoration the saved
                 // scroll offset returns to the top, so bring the tagged field back into
                 // composition before asserting its value.
-                repeat(4) {
-                    compose.onAllNodes(hasScrollAction()).onFirst()
-                        .performTouchInput { swipeUp() }
-                    compose.waitForIdle()
-                }
+                compose.onNodeWithTag("po_exchange_rate", useUnmergedTree = true).performScrollTo()
+                compose.waitForIdle()
             }
             scrollToExchangeRate()
             compose.onNodeWithTag("po_exchange_rate", useUnmergedTree = true)
