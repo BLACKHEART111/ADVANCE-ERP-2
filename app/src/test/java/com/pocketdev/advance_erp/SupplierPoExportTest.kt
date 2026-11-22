@@ -39,10 +39,23 @@ class SupplierPoExportTest {
 
         val localMark = PoNotesMetadataParser.buildShippingMark("My Business", "PO-2026-BD-001", isLocalOrder = true)
         assertEquals("My Business / PO-2026-BD-001", localMark)
+        val customNotes = PoNotesMetadataParser.serialize(
+            paymentTermLabel = "50% Advance + 50% On Delivery",
+            forwarderAddress = "Yiwu International Port Warehouse 88",
+            userNotes = "Please inspect packing quality",
+            defaultShippingMark = "TUKTAK BD / {CTN}",
+            cartonShippingMarks = mapOf("CTN-001" to "FRAGILE {CTN}")
+        )
+        val parsedCustom = PoNotesMetadataParser.parse(customNotes)
+        assertEquals("50% Advance + 50% On Delivery", parsedCustom.rawTermsText)
+        assertEquals("Yiwu International Port Warehouse 88", parsedCustom.forwarderAddress)
+        assertEquals("Please inspect packing quality", parsedCustom.userNotes)
+        assertEquals("TUKTAK BD / {CTN}", parsedCustom.defaultShippingMark)
+        assertEquals(mapOf("CTN-001" to "FRAGILE {CTN}"), parsedCustom.cartonShippingMarks)
     }
 
     @Test
-    fun supplierExcelIncludes8ColumnsVariantsPhotosDeliverySectionsAndMixedCartons() {
+    fun supplierExcelIncludesApproved4SheetsVariantsPhotosCartonNumbersAndFormulas() {
         val product = Product(
             id = "prod-1",
             categoryId = "cat-1",
@@ -154,6 +167,10 @@ class SupplierPoExportTest {
 
         ZipFile(outFile).use { zip ->
             val sheetXml = zip.getInputStream(zip.getEntry("xl/worksheets/sheet1.xml")).readBytes().toString(StandardCharsets.UTF_8)
+            val sheet2Xml = zip.getInputStream(zip.getEntry("xl/worksheets/sheet2.xml")).readBytes().toString(StandardCharsets.UTF_8)
+            val sheet3Xml = zip.getInputStream(zip.getEntry("xl/worksheets/sheet3.xml")).readBytes().toString(StandardCharsets.UTF_8)
+            val sheet4Xml = zip.getInputStream(zip.getEntry("xl/worksheets/sheet4.xml")).readBytes().toString(StandardCharsets.UTF_8)
+            val workbookXml = zip.getInputStream(zip.getEntry("xl/workbook.xml")).readBytes().toString(StandardCharsets.UTF_8)
             val contentTypesXml = zip.getInputStream(zip.getEntry("[Content_Types].xml")).readBytes().toString(StandardCharsets.UTF_8)
             val drawingEntry = zip.getEntry("xl/drawings/drawing1.xml")
             val mediaEntry = zip.getEntry("xl/media/image1.jpg")
@@ -161,37 +178,40 @@ class SupplierPoExportTest {
             assertTrue("Drawing XML missing", drawingEntry != null)
             assertTrue("Embedded image1.jpg missing", mediaEntry != null)
             assertTrue("Content types should register jpg", contentTypesXml.contains("Extension=\"jpg\""))
+            assertTrue("Workbook missing 4 sheets", workbookXml.contains("Purchase Order") && workbookXml.contains("Packing List (Carton Wise)") && workbookXml.contains("Carton Summary") && workbookXml.contains("Shipping Mark"))
 
             val drawingXml = zip.getInputStream(drawingEntry).readBytes().toString(StandardCharsets.UTF_8)
-            assertTrue(drawingXml.contains("<xdr:col>1</xdr:col>"))
+            assertTrue(drawingXml.contains("<xdr:col>3</xdr:col>"))
             assertTrue(drawingXml.contains("r:embed=\"rId1\""))
 
-            // 8 Columns check
-            listOf("PRODUCT NAME", "PRODUCT PHOTO", "COLOUR", "SIZE", "PACKING", "QUANTITY", "UNIT PRICE (CNY)", "TOTAL (CNY)").forEach { header ->
+            // 10-Column Reference Header check
+            listOf("Product Name", "SKU", "Photo", "Color", "Size", "CTN", "Qty (pcs)", "Unit (CNY)", "Total (CNY)").forEach { header ->
                 assertTrue("Missing header: $header", sheetXml.contains(header))
             }
 
-            // Variant info & SKU check
-            assertTrue(sheetXml.contains("SKU: SAB-DOC-001-BRN-40"))
+            // Variant info, SKU, Formula & actual CTN-001 mapping check
+            assertTrue(sheetXml.contains("SAB-DOC-001-BRN-40"))
             assertTrue(sheetXml.contains("Brown"))
             assertTrue(sheetXml.contains("Black"))
-            assertTrue(sheetXml.contains("1 CTN (400/ctn)"))
+            assertTrue(sheetXml.contains("CTN-001 (200)"))
+            assertTrue(sheetXml.contains("<f>H"))
             assertTrue(sheetXml.contains("<drawing r:id=\"rId1\"/>"))
 
             // Clean Bottom Info sections & no raw tags
             assertFalse(sheetXml.contains("[Terms:"))
             assertFalse(sheetXml.contains("[Forwarder:"))
             assertFalse(sheetXml.contains("[My Business]"))
-            assertTrue(sheetXml.contains("DELIVERY INFO"))
+            assertTrue(sheetXml.contains("DELIVERY &amp; COMMERCIAL TERMS"))
             assertTrue(sheetXml.contains("China Warehouse Address"))
             assertTrue(sheetXml.contains("Guangzhou Baiyun Cargo Terminal"))
             assertTrue(sheetXml.contains("My Business / PO-2026-CN-003 / CTG PORT"))
-            assertTrue(sheetXml.contains("PAYMENT TERMS"))
+            assertTrue(sheetXml.contains("Payment Terms"))
             assertTrue(sheetXml.contains("30% Advance + 70% Balance"))
-            assertTrue(sheetXml.contains("NOTE"))
+            assertTrue(sheetXml.contains("Note"))
             assertTrue(sheetXml.contains("Pack double bubble wrap"))
-            assertTrue(sheetXml.contains("MIXED CARTON PACKING BREAKDOWN"))
-            assertTrue(sheetXml.contains("Carton #1"))
+            assertTrue(sheet2Xml.contains("CTN-001") && sheet2Xml.contains("Mixed"))
+            assertTrue(sheet3Xml.contains("CTN-001"))
+            assertTrue(sheet4Xml.contains("My Business / PO-2026-CN-003 / CTG PORT"))
         }
     }
 
@@ -243,11 +263,9 @@ class SupplierPoExportTest {
 
         ZipFile(outFile).use { zip ->
             val sheetXml = zip.getInputStream(zip.getEntry("xl/worksheets/sheet1.xml")).readBytes().toString(StandardCharsets.UTF_8)
-            assertFalse(sheetXml.contains("Total Cartons"))
-            assertFalse(sheetXml.contains("TOTAL CARTONS"))
-            assertFalse(sheetXml.contains("Est. Gross Weight"))
-            assertFalse(sheetXml.contains("GROSS WEIGHT:"))
-            assertFalse(sheetXml.contains("MIXED CARTON PACKING BREAKDOWN"))
+            val sheet2Xml = zip.getInputStream(zip.getEntry("xl/worksheets/sheet2.xml")).readBytes().toString(StandardCharsets.UTF_8)
+            assertTrue(sheetXml.contains("0 pcs"))
+            assertFalse(sheet2Xml.contains("CTN-001"))
             assertTrue(sheetXml.contains("Delivery Address"))
         }
     }

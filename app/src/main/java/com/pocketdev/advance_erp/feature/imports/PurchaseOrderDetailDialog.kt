@@ -100,6 +100,7 @@ import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
+import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.CostCategory
 import com.pocketdev.advance_erp.data.entity.DamageRecord
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
@@ -107,6 +108,9 @@ import com.pocketdev.advance_erp.data.entity.ImportShipment
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.PurchaseCompletionRecord
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
+import com.pocketdev.advance_erp.core.engine.PoPackingEngine
+import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
+import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
@@ -157,7 +161,9 @@ fun PurchaseOrderDetailDialog(
     onUpdatePacking: ((cartons: Int, grossWeight: String, netWeight: String, cbm: String) -> Unit)? = null,
     onUpdatePoItem: ((itemId: String, quantity: Int, unitPriceMinor: Long, cartonQuantity: Int, grossWeightKg: String) -> Unit)? = null,
     onDeletePoItem: ((itemId: String) -> Unit)? = null,
-    freightRates: List<ShipmentFreightRate> = emptyList()
+    freightRates: List<ShipmentFreightRate> = emptyList(),
+    variants: List<ProductVariant> = emptyList(),
+    businessProfile: BusinessProfile? = null
 ) {
     var detailTab by rememberSaveable { mutableStateOf(0) }
     var showLifecycleActions by rememberSaveable { mutableStateOf(false) }
@@ -872,22 +878,60 @@ fun PurchaseOrderDetailDialog(
 
                                 if (cartons.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        text = if (isBangla) "যুক্তকৃত কার্টন (${recordedCartonsCount} CTN • ${cartons.size} আইটেম):" else "Entered Cartons (${recordedCartonsCount} CTN • ${cartons.size} items):",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextSecondary
-                                    )
+                                    val parsedNotesMeta = remember(order.notes) { PoNotesMetadataParser.parse(order.notes, defaultForwarder = "") }
+                                    val defaultMarkText = parsedNotesMeta.defaultShippingMark.ifBlank {
+                                        PoNotesMetadataParser.buildShippingMark(businessProfile?.companyName, order.poNumber, order.currency == "BDT")
+                                    }
+                                    val groupedCartons = remember(cartons) {
+                                        cartons.groupBy { it.cartonNumber }
+                                            .entries
+                                            .sortedWith(compareBy<Map.Entry<String, List<ShipmentCarton>>> { PoPackingEngine.cartonSortKey(it.key) }.thenBy { it.key })
+                                    }
+                                    val variantMap = remember(variants) { variants.associateBy { it.id } }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isBangla) "যুক্তকৃত কার্টন (${groupedCartons.size} CTN • ${cartons.size} লাইন):" else "Entered Cartons (${groupedCartons.size} CTN • ${cartons.size} allocations):",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextSecondary
+                                        )
+                                        TextButton(onClick = { onSharePdf(order) }) {
+                                            Text(
+                                                text = if (isBangla) "CTN লেবেল ও এক্সপোর্ট" else "CTN Labels & Export",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = PrimaryPurple
+                                            )
+                                        }
+                                    }
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        cartons.forEach { c ->
-                                            val p = productMap[c.productId]
-                                            val pName = if (isBangla && !p?.nameBn.isNullOrBlank()) p?.nameBn!! else p?.nameEn ?: c.productId
-                                            CartonItemCard(
-                                                carton = c,
-                                                productName = pName,
+                                        groupedCartons.forEachIndexed { idx, (rawCtnNo, cLines) ->
+                                            val displayCtnNo = PoPackingEngine.formatCartonNumber(idx + 1)
+                                            val customMark = parsedNotesMeta.cartonShippingMarks[rawCtnNo]
+                                                ?: parsedNotesMeta.cartonShippingMarks[displayCtnNo]
+                                            val resolvedMark = PoPackingEngine.resolveShippingMark(defaultMarkText, customMark, displayCtnNo)
+                                            val lineSummaries = cLines.map { row ->
+                                                val p = productMap[row.productId]
+                                                val v = variantMap[row.variantId]
+                                                val pName = if (isBangla && !p?.nameBn.isNullOrBlank()) p?.nameBn!! else p?.nameEn ?: row.productId
+                                                val vSpec = v?.let { listOfNotNull(it.color, it.size).joinToString("/") }.orEmpty()
+                                                val label = if (vSpec.isNotBlank()) "$pName ($vSpec)" else pName
+                                                "$label × ${row.quantity} pcs"
+                                            }
+                                            GroupedCartonCard(
+                                                displayNumber = displayCtnNo,
+                                                cartonRows = cLines,
+                                                lineSummaries = lineSummaries,
+                                                shippingMark = resolvedMark,
+                                                isCustomMark = !customMark.isNullOrBlank(),
                                                 onDelete = if (order.status != PurchaseOrderStatus.COMPLETED.name && order.status != PurchaseOrderStatus.CANCELLED.name) {
-                                                    { deletingCartonNumber = c.cartonNumber }
+                                                    { deletingCartonNumber = rawCtnNo }
                                                 } else null
                                             )
                                         }
@@ -2217,15 +2261,28 @@ private fun CostItemCard(
 }
 
 @Composable
-private fun CartonItemCard(
-    carton: ShipmentCarton,
-    productName: String,
+private fun GroupedCartonCard(
+    displayNumber: String,
+    cartonRows: List<ShipmentCarton>,
+    lineSummaries: List<String>,
+    shippingMark: String,
+    isCustomMark: Boolean,
     onDelete: (() -> Unit)? = null
 ) {
+    val first = cartonRows.firstOrNull() ?: return
+    val isMixed = cartonRows.size > 1 || cartonRows.any { it.isMixedCarton }
+    val totalQty = cartonRows.sumOf { it.quantity }
+    val cartonGross = first.cartonGrossWeightKg.toBigDecimalOrNull()?.takeIf { it > BigDecimal.ZERO }
+        ?: cartonRows.fold(BigDecimal.ZERO) { acc, r -> acc + (r.grossWeightKg.toBigDecimalOrNull() ?: BigDecimal.ZERO) }
+    val cartonNet = cartonRows.fold(BigDecimal.ZERO) { acc, r -> acc + (r.netWeightKg.toBigDecimalOrNull() ?: BigDecimal.ZERO) }
+    val dims = listOf(first.lengthCm, first.widthCm, first.heightCm)
+        .mapNotNull { it.toBigDecimalOrNull()?.takeIf { d -> d > BigDecimal.ZERO }?.stripTrailingZeros()?.toPlainString() }
+    val dimText = if (dims.size == 3) "${dims.joinToString("×")} cm" else "-"
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
@@ -2239,31 +2296,31 @@ private fun CartonItemCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = carton.cartonNumber,
+                        text = displayNumber,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
+                        color = PrimaryPurple,
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
                             .background(
-                                if (carton.isMixedCarton) SecondaryTeal.copy(alpha = 0.15f) else PrimaryPurple.copy(alpha = 0.15f),
+                                if (isMixed) SecondaryTeal.copy(alpha = 0.15f) else PrimaryPurple.copy(alpha = 0.15f),
                                 RoundedCornerShape(4.dp)
                             )
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (carton.isMixedCarton) "MIXED CARTON" else "SINGLE PRODUCT",
+                            text = if (isMixed) "MIXED CARTON (${cartonRows.size})" else "SINGLE PRODUCT",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (carton.isMixedCarton) SecondaryTeal else PrimaryPurple
+                            color = if (isMixed) SecondaryTeal else PrimaryPurple
                         )
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "${carton.quantity} units",
+                        text = "$totalQty pcs",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -2272,24 +2329,33 @@ private fun CartonItemCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         IconButton(
                             onClick = onDelete,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
                                 contentDescription = "Delete Carton",
                                 tint = StatusError,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+            lineSummaries.forEach { line ->
+                Text(
+                    text = "• $line",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = productName,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
+                text = "${if (isCustomMark) "Custom Mark" else "Shipping Mark"}: ${shippingMark.replace("\n", " | ")}",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isCustomMark) SecondaryTeal else TextMuted
             )
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -2302,14 +2368,14 @@ private fun CartonItemCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Gross: ${carton.grossWeightKg} KG • Net: ${carton.netWeightKg} KG",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "G.W: ${cartonGross.stripTrailingZeros().toPlainString()} KG • N.W: ${cartonNet.stripTrailingZeros().toPlainString()} KG • Dim: $dimText",
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = PrimaryPurple
                 )
                 Text(
-                    text = "${carton.cbm} CBM",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "${first.cbm} CBM",
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = SecondaryTeal
                 )

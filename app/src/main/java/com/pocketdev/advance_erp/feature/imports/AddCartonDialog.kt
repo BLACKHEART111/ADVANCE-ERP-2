@@ -84,6 +84,7 @@ import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
 import com.pocketdev.advance_erp.core.engine.CbmCalculator
 import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
+import com.pocketdev.advance_erp.core.engine.PoPackingEngine
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.data.entity.ImportShipment
 import com.pocketdev.advance_erp.data.entity.Product
@@ -126,10 +127,12 @@ fun AddCartonDialog(
     val isBangla = language == AppLanguage.BANGLA
     var isMixedTab by rememberSaveable { mutableStateOf(false) }
 
-    var cartonNumber by rememberSaveable { mutableStateOf(String.format(java.util.Locale.ROOT, "CTN-%03d", packedCartonCount + 1)) }
+    var cartonNumber by rememberSaveable { mutableStateOf(PoPackingEngine.formatCartonNumber(packedCartonCount + 1)) }
     var singleProductId by rememberSaveable { mutableStateOf(products.firstOrNull()?.id ?: "") }
     var singleVariantId by rememberSaveable { mutableStateOf<String?>(null) }
     var singleQuantityStr by rememberSaveable { mutableStateOf("50") }
+    var showCatalogPickerForSingle by remember { mutableStateOf(false) }
+    var catalogPickerForMixedIdx by remember { mutableStateOf<Int?>(null) }
 
     var lengthStr by rememberSaveable { mutableStateOf("50") }
     var widthStr by rememberSaveable { mutableStateOf("40") }
@@ -264,6 +267,7 @@ fun AddCartonDialog(
     ERPFullScreenEditor(
         onDismissRequest = requestClose
     ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -460,34 +464,46 @@ fun AddCartonDialog(
                             ) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(
-                                        text = if (isBangla) "পণ্য নির্বাচন করুন:" else "Select Product:",
+                                        text = if (isBangla) "পণ্য ও ভ্যারিয়েন্ট নির্বাচন:" else "Selected Product & Variant:",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = TextPrimary
                                     )
-
-                                    products.forEach { prod ->
-                                        val isSelected = prod.id == singleProductId
-                                        val name = if (isBangla && !prod.nameBn.isNullOrBlank()) prod.nameBn else prod.nameEn
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
-                                                .border(1.dp, if (isSelected) PrimaryPurple else ERPDivider, RoundedCornerShape(8.dp))
-                                                .clickable { singleProductId = prod.id; singleVariantId = null }
-                                                .padding(10.dp)
-                                        ) {
+                                    val chosenProd = productsMap[singleProductId]
+                                    val chosenVar = variants.find { it.id == singleVariantId }
+                                    val varSummary = chosenVar?.let {
+                                        listOfNotNull(it.color?.takeIf { c -> c.isNotBlank() }, it.size?.takeIf { s -> s.isNotBlank() })
+                                            .joinToString(" / ").ifBlank { it.sku }
+                                    } ?: (if (isBangla) "বেস পণ্য / ভ্যারিয়েন্ট ছাড়া" else "Base product")
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(ERPSurfaceVariant)
+                                            .border(1.dp, ERPDivider, RoundedCornerShape(10.dp))
+                                            .clickable { showCatalogPickerForSingle = true }
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = name,
+                                                text = chosenProd?.let { if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn }
+                                                    ?: if (isBangla) "পণ্য নির্বাচন করুন" else "Tap to select product",
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) PrimaryPurple else TextPrimary
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary
+                                            )
+                                            Text(
+                                                text = "$varSummary • SKU: ${chosenVar?.sku ?: chosenProd?.baseSku.orEmpty()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PrimaryPurple
                                             )
                                         }
+                                        TextButton(onClick = { showCatalogPickerForSingle = true }) {
+                                            Text(if (isBangla) "পরিবর্তন" else "Change", fontWeight = FontWeight.Bold)
+                                        }
                                     }
-
-                                    PackingVariantSelector(singleProductId, singleVariantId, variants, isBangla) { singleVariantId = it }
                                     OutlinedTextField(
                                         value = singleQuantityStr,
                                         onValueChange = { singleQuantityStr = it },
@@ -528,6 +544,8 @@ fun AddCartonDialog(
                         }
 
                         itemsIndexed(mixedLines) { index, line ->
+                            val lineProd = productsMap[line.productId]
+                            val lineVar = variants.find { it.id == line.variantId }
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 shape = RoundedCornerShape(10.dp),
@@ -552,31 +570,37 @@ fun AddCartonDialog(
                                         }
                                     }
 
-                                    // Product selection
-                                    LazyColumn(modifier = Modifier.height(80.dp)) {
-                                        itemsIndexed(products) { _, p ->
-                                            val isSel = p.id == line.productId
-                                            val name = if (isBangla && !p.nameBn.isNullOrBlank()) p.nameBn else p.nameEn
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 2.dp)
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(if (isSel) PrimaryPurple.copy(alpha = 0.15f) else ERPSurfaceVariant)
-                                                    .clickable { line.productId = p.id; line.variantId = null }
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                            ) {
-                                                Text(
-                                                    text = name,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                                    color = if (isSel) PrimaryPurple else TextPrimary
-                                                )
-                                            }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(ERPSurfaceVariant)
+                                            .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
+                                            .clickable { catalogPickerForMixedIdx = index }
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = lineProd?.let { if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn } ?: line.productId,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary
+                                            )
+                                            val vText = lineVar?.let {
+                                                listOfNotNull(it.color, it.size).joinToString("/").ifBlank { it.sku }
+                                            } ?: (if (isBangla) "বেস পণ্য" else "Base product")
+                                            Text(
+                                                text = "$vText • SKU: ${lineVar?.sku ?: lineProd?.baseSku.orEmpty()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PrimaryPurple
+                                            )
+                                        }
+                                        TextButton(onClick = { catalogPickerForMixedIdx = index }) {
+                                            Text(if (isBangla) "নির্বাচন" else "Pick", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-
-                                    PackingVariantSelector(line.productId, line.variantId, variants, isBangla) { line.variantId = it }
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -697,6 +721,38 @@ fun AddCartonDialog(
                     }
                 }
             }
+        }
+        if (showCatalogPickerForSingle || catalogPickerForMixedIdx != null) {
+            PoCatalogProductVariantPickerSheet(
+                products = products,
+                variants = variants,
+                categories = emptyList(),
+                currency = "",
+                isBangla = isBangla,
+                singleSelectMode = true,
+                onDismiss = {
+                    showCatalogPickerForSingle = false
+                    catalogPickerForMixedIdx = null
+                },
+                onConfirmSelection = { picks, _ ->
+                    val pick = picks.firstOrNull()
+                    if (pick != null) {
+                        if (showCatalogPickerForSingle) {
+                            singleProductId = pick.productId
+                            singleVariantId = pick.variantId
+                        } else {
+                            val idx = catalogPickerForMixedIdx
+                            if (idx != null && idx in mixedLines.indices) {
+                                mixedLines[idx].productId = pick.productId
+                                mixedLines[idx].variantId = pick.variantId
+                            }
+                        }
+                    }
+                    showCatalogPickerForSingle = false
+                    catalogPickerForMixedIdx = null
+                }
+            )
+        }
         }
     }
 }

@@ -92,7 +92,9 @@ data class PoMixedCartonDraft(
     val widthCm: BigDecimal = BigDecimal.ZERO,
     val heightCm: BigDecimal = BigDecimal.ZERO,
     val lines: List<MixedCartonLineDraft>,
-    val cbm: BigDecimal = BigDecimal.ZERO
+    val cbm: BigDecimal = BigDecimal.ZERO,
+    val cartonUid: String = java.util.UUID.randomUUID().toString(),
+    val shippingMark: String? = null
 )
 
 data class ReceiptItemDraft(

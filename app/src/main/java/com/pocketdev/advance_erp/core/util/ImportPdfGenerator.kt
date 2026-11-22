@@ -26,6 +26,7 @@ import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
+import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
 import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.data.entity.SupplierPayment
@@ -220,14 +221,14 @@ object ImportPdfGenerator {
         // Official White Logo (downsampled & recycled to avoid OOM crashes on repeated shares)
         val logoBitmap = try {
             val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-            BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white, opts)
+            BitmapFactory.decodeResource(context.resources, R.drawable.logo_monochrome_white, opts)
         } catch (_: Throwable) {
             null
         }
         if (logoBitmap != null) {
             try {
                 if (logoBitmap.height > 0 && logoBitmap.width > 0) {
-                    val logoH = 30f
+                    val logoH = 28f
                     val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
                     val logoDest = RectF(36f, 14f, (36f + logoW).coerceAtMost(330f), 14f + logoH)
                     canvas.drawBitmap(logoBitmap, null, logoDest, paint)
@@ -550,7 +551,7 @@ object ImportPdfGenerator {
         return file
     }
 
-    // Supplier Commercial Copy (Foreign currency or local supplier order, NO internal FX/profit rates)
+    // Supplier Commercial Copy (Approved Reference Design: Deep Navy + Purple/Teal, Actual CTN Mapping, Structured Carton Table)
     fun generateSupplierCommercialOrderPdf(
         context: Context,
         order: PurchaseOrder,
@@ -560,426 +561,607 @@ object ImportPdfGenerator {
         businessProfile: BusinessProfile?,
         variantsMap: Map<String, ProductVariant> = emptyMap(),
         itemImagePaths: Map<String, String> = emptyMap(),
-        cartons: List<ShipmentCarton> = emptyList()
+        cartons: List<ShipmentCarton> = emptyList(),
+        selectedCartonNumbers: Set<String>? = null
     ): File {
+        val exportData = PoExportDataBuilder.build(
+            order = order,
+            items = items,
+            productsMap = productsMap,
+            supplier = supplier,
+            businessProfile = businessProfile,
+            variantsMap = variantsMap,
+            itemImagePaths = itemImagePaths,
+            cartons = cartons,
+            selectedCartonNumbers = selectedCartonNumbers
+        )
+
         val document = PdfDocument()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
-        val marginX = 36f
-        val contentRight = PAGE_WIDTH - 36f
-        val maxContentBottom = PAGE_HEIGHT - 90f
-        val isLocalBdtOrder = order.currency.equals("BDT", ignoreCase = true)
-        val docTitle = if (isLocalBdtOrder) "SUPPLIER PURCHASE ORDER" else "SUPPLIER PURCHASE ORDER / 采购订单"
+        val marginX = 30f
+        val contentRight = PAGE_WIDTH - 30f
+        val contentW = contentRight - marginX
+        val maxContentBottom = PAGE_HEIGHT - 84f
+        val navyDark = Color.parseColor("#1B2A4A")
+        val purpleAccent = Color.parseColor("#792B87")
+        val tealAccent = Color.parseColor("#0D9488")
+        val docTitle = if (exportData.isLocalOrder) {
+            if (exportData.isPartialCartonExport) "SUPPLIER PO (PARTIAL CARTONS)" else "SUPPLIER PURCHASE ORDER"
+        } else {
+            "SUPPLIER PURCHASE ORDER / 采购订单"
+        }
 
-        fun drawSupplierTableHeader(canvas: Canvas, tableY: Float): Float {
-            paint.color = Color.parseColor("#EDF2F7")
-            canvas.drawRect(marginX, tableY, contentRight, tableY + 24f, paint)
-            paint.color = Color.parseColor("#2D3748")
-            paint.textSize = 7.8f
+        fun drawSupplierHeaderBanner(canvas: Canvas, pageLabel: String) {
+            paint.color = navyDark
+            canvas.drawRect(0f, 0f, PAGE_WIDTH.toFloat(), 106f, paint)
+
+            // Gradient-style dual accent bar
+            paint.color = purpleAccent
+            canvas.drawRect(0f, 106f, PAGE_WIDTH * 0.52f, 111f, paint)
+            paint.color = Color.parseColor("#299DB2")
+            canvas.drawRect(PAGE_WIDTH * 0.52f, 106f, PAGE_WIDTH.toFloat(), 111f, paint)
+
+            val logoBitmap = try {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                BitmapFactory.decodeResource(context.resources, R.drawable.logo_monochrome_white, opts)
+            } catch (_: Throwable) {
+                null
+            }
+            if (logoBitmap != null) {
+                try {
+                    if (logoBitmap.height > 0 && logoBitmap.width > 0) {
+                        val logoH = 28f
+                        val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
+                        val logoDest = RectF(marginX, 14f, (marginX + logoW).coerceAtMost(310f), 14f + logoH)
+                        canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+                    }
+                } finally {
+                    logoBitmap.recycle()
+                }
+            }
+
+            // Company info on Left
+            val leftMaxW = 305f
+            paint.color = Color.WHITE
+            paint.textSize = 12f
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            canvas.drawText("PRODUCT NAME", 40f, tableY + 15f, paint)
-            canvas.drawText("PHOTO", 182f, tableY + 15f, paint)
-            canvas.drawText("COLOUR", 220f, tableY + 15f, paint)
-            canvas.drawText("SIZE", 278f, tableY + 15f, paint)
-            canvas.drawText("PACKING", 326f, tableY + 15f, paint)
-            drawRightAlignedText(canvas, "QTY", 444f, tableY + 15f, paint, 48f)
-            drawRightAlignedText(canvas, "UNIT (${order.currency})", 498f, tableY + 15f, paint, 50f)
-            drawRightAlignedText(canvas, "TOTAL (${order.currency})", 555f, tableY + 15f, paint, 53f)
-            return tableY + 24f
+            canvas.drawText(fitSingleLineText(exportData.companyName, paint, leftMaxW), marginX, 58f, paint)
+
+            paint.textSize = 7.8f
+            paint.typeface = Typeface.DEFAULT
+            paint.color = Color.parseColor("#E2E8F0")
+            val compContactParts = buildList {
+                if (exportData.companyAddress.isNotBlank()) add(exportData.companyAddress)
+                if (exportData.companyPhone.isNotBlank()) add("Phone: ${exportData.companyPhone}")
+                if (exportData.companyBin.isNotBlank()) add("BIN: ${exportData.companyBin}")
+            }.joinToString("  |  ")
+            if (compContactParts.isNotBlank()) {
+                wrapText(compContactParts, paint, leftMaxW, maxLines = 2).forEachIndexed { idx, line ->
+                    canvas.drawText(line, marginX, 72f + idx * 10.5f, paint)
+                }
+            }
+
+            // Right PO title + Pill Badge
+            val rightMaxW = 210f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            paint.color = Color.parseColor("#67E8F9")
+            paint.textSize = 12.5f
+            val titleLines = wrapText(docTitle, paint, rightMaxW, maxLines = 2)
+            titleLines.forEachIndexed { idx, line ->
+                drawRightAlignedText(canvas, line, contentRight, 28f + idx * 14f, paint, rightMaxW)
+            }
+
+            val poBadgeText = if (pageLabel.isBlank()) "PO #: ${exportData.poNumber}" else "PO #: ${exportData.poNumber} ($pageLabel)"
+            paint.textSize = 9.2f
+            val badgeW = (paint.measureText(poBadgeText) + 18f).coerceAtMost(rightMaxW)
+            val badgeRect = RectF(contentRight - badgeW, 56f, contentRight, 75f)
+            paint.color = Color.parseColor("#0F172A")
+            canvas.drawRoundRect(badgeRect, 9f, 9f, paint)
+            paint.color = Color.WHITE
+            drawRightAlignedText(canvas, poBadgeText, contentRight - 9f, 69f, paint, badgeW - 14f)
+
+            paint.textSize = 8.4f
+            paint.typeface = Typeface.DEFAULT
+            paint.color = Color.parseColor("#CBD5E1")
+            drawRightAlignedText(canvas, "Date: ${exportData.orderDateFormatted}", contentRight, 91f, paint, rightMaxW)
+        }
+
+        // 9-Column Product Table Header
+        // Cols: #(30..50) Product(50..186) Photo(188..218) Color(220..268) Size(270..312) CTN(314..382) Qty(384..432) Unit(434..495) Total(497..565)
+        fun drawProductTableHeader(canvas: Canvas, y: Float, isPartialLabel: Boolean = false): Float {
+            var curY = y
+            // Navy section banner
+            paint.color = navyDark
+            canvas.drawRoundRect(RectF(marginX, curY, contentRight, curY + 20f), 4f, 4f, paint)
+            paint.color = Color.WHITE
+            paint.textSize = 8.8f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val secTitle = if (isPartialLabel) {
+                "PRODUCT ORDER DETAILS (CTN ALLOCATIONS FOR SELECTED ${exportData.exportedCartonCount} CARTONS)"
+            } else {
+                "PRODUCT ORDER DETAILS"
+            }
+            canvas.drawText(secTitle, marginX + 8f, curY + 13.5f, paint)
+            curY += 23f
+
+            paint.color = Color.parseColor("#EDF2F7")
+            canvas.drawRect(marginX, curY, contentRight, curY + 21f, paint)
+            paint.color = Color.parseColor("#1E293B")
+            paint.textSize = 7.4f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("#", marginX + 5f, curY + 13.5f, paint)
+            canvas.drawText("Product Name / SKU", 50f, curY + 13.5f, paint)
+            canvas.drawText("Photo", 189f, curY + 13.5f, paint)
+            canvas.drawText("Color", 222f, curY + 13.5f, paint)
+            canvas.drawText("Size", 271f, curY + 13.5f, paint)
+            canvas.drawText("CTN", 315f, curY + 13.5f, paint)
+            drawRightAlignedText(canvas, "Qty (pcs)", 432f, curY + 13.5f, paint, 48f)
+            drawRightAlignedText(canvas, "Unit (${exportData.currency})", 494f, curY + 13.5f, paint, 56f)
+            drawRightAlignedText(canvas, "Total (${exportData.currency})", contentRight - 4f, curY + 13.5f, paint, 64f)
+            return curY + 21f
+        }
+
+        // 6-Column Carton Packing Table Header
+        // Cols: CTN(30..92) Details(94..352) Qty(354..404) G.W.(406..452) Dim(454..522) CBM(524..565)
+        fun drawCartonTableHeader(canvas: Canvas, y: Float): Float {
+            var curY = y
+            paint.color = navyDark
+            canvas.drawRoundRect(RectF(marginX, curY, contentRight, curY + 20f), 4f, 4f, paint)
+            paint.color = Color.WHITE
+            paint.textSize = 8.8f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val title = if (exportData.isPartialCartonExport) {
+                "CARTON PACKING BREAKDOWN (SELECTED ${exportData.exportedCartonCount} OF ${exportData.allCartons.size} CTN)"
+            } else {
+                "CARTON PACKING BREAKDOWN (${exportData.exportedCartonCount} CTN)"
+            }
+            canvas.drawText(title, marginX + 8f, curY + 13.5f, paint)
+            curY += 23f
+
+            paint.color = Color.parseColor("#EDF2F7")
+            canvas.drawRect(marginX, curY, contentRight, curY + 20f, paint)
+            paint.color = Color.parseColor("#1E293B")
+            paint.textSize = 7.4f
+            canvas.drawText("CTN No.", marginX + 6f, curY + 13f, paint)
+            canvas.drawText("Packing Details (Product / Color / Size × Qty)", 94f, curY + 13f, paint)
+            drawRightAlignedText(canvas, "Qty (pcs)", 402f, curY + 13f, paint, 46f)
+            drawRightAlignedText(canvas, "G.W. (KG)", 450f, curY + 13f, paint, 46f)
+            drawRightAlignedText(canvas, "Dimension (cm)", 520f, curY + 13f, paint, 66f)
+            drawRightAlignedText(canvas, "CBM", contentRight - 4f, curY + 13f, paint, 40f)
+            return curY + 20f
         }
 
         var pageNumber = 1
         var page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
         var canvas = page.canvas
 
-        drawBrandHeader(
-            context, canvas, paint, businessProfile,
-            docTitle, order.poNumber, dateFormat.format(Date(order.orderDate))
-        )
+        drawSupplierHeaderBanner(canvas, "")
 
-        val boxY = 128f
-        val supLeftX = 48f
-        val supLeftMaxW = 285f
-        val supRightX = 348f
-        val supRightMaxW = contentRight - 12f - supRightX
+        // Side-by-side Supplier & Order Summary Cards
+        val boxY = 122f
+        val gap = 10f
+        val halfW = (contentW - gap) / 2f
+        val leftRight = marginX + halfW
+        val rightStart = leftRight + gap
 
-        paint.textSize = 11.5f
+        paint.textSize = 10.5f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        val supNameLines = wrapText(supplier?.companyName ?: "Supplier / Overseas Factory", paint, supLeftMaxW, maxLines = 2)
-
-        paint.textSize = 9f
+        val supNameLines = wrapText(exportData.supplierName, paint, halfW - 22f, maxLines = 2)
+        paint.textSize = 8.3f
         paint.typeface = Typeface.DEFAULT
-        val supContactLines = wrapText(
-            "Attn: ${supplier?.contactPerson ?: "Export Manager"}  |  Tel: ${supplier?.phone ?: "N/A"}",
-            paint, supLeftMaxW, maxLines = 2
-        )
-        val supAddressLines = wrapText(
-            "${supplier?.address ?: "Dhaka / Overseas"} • ${supplier?.country ?: ""}".trim(' ', '•'),
-            paint, supLeftMaxW, maxLines = 2
-        )
+        val supContactLine = "Attn: ${exportData.supplierContactPerson}  |  Tel: ${exportData.supplierPhone}"
+        val supAddrLines = wrapText(exportData.supplierAddress, paint, halfW - 22f, maxLines = 2)
+        val leftBoxH = 26f + supNameLines.size * 13f + 12f + supAddrLines.size * 11f + 10f
+        val summaryRowCount = if (exportData.isPartialCartonExport) 7 else 6
+        val rightBoxH = 26f + summaryRowCount * 14f + 10f
+        val cardsH = maxOf(leftBoxH, rightBoxH, 102f)
 
-        val hasGrossWeight = (order.totalGrossWeightKg.toDoubleOrNull() ?: 0.0) > 0.0
-        val rightMetaLines = buildList {
-            add("Commercial Currency: ${order.currency}")
-            if (order.totalCartons > 0) add("Total Cartons: ${order.totalCartons} CTN")
-            if (hasGrossWeight) add("Est. Gross Weight: ${order.totalGrossWeightKg} KG")
-        }
-
-        val leftCardHeight = 28f + supNameLines.size * 14f + supContactLines.size * 12f + supAddressLines.size * 12f + 10f
-        val rightCardHeight = 36f + rightMetaLines.size * 15f + 8f
-        val metaBoxHeight = maxOf(leftCardHeight, rightCardHeight, 84f)
-
+        // Left Card: Supplier
         paint.color = Color.parseColor("#F8FAFC")
-        canvas.drawRoundRect(RectF(marginX, boxY, contentRight, boxY + metaBoxHeight), 8f, 8f, paint)
+        canvas.drawRoundRect(RectF(marginX, boxY, leftRight, boxY + cardsH), 8f, 8f, paint)
         paint.style = Paint.Style.STROKE
-        paint.color = Color.parseColor("#E2E8F0")
-        canvas.drawRoundRect(RectF(marginX, boxY, contentRight, boxY + metaBoxHeight), 8f, 8f, paint)
+        paint.strokeWidth = 0.9f
+        paint.color = Color.parseColor("#CBD5E1")
+        canvas.drawRoundRect(RectF(marginX, boxY, leftRight, boxY + cardsH), 8f, 8f, paint)
         paint.style = Paint.Style.FILL
 
-        var ly = boxY + 17f
-        paint.color = Color.parseColor("#263849")
-        paint.textSize = 9.5f
+        var ly = boxY + 16f
+        paint.color = navyDark
+        paint.textSize = 8.4f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         canvas.drawText(
-            if (isLocalBdtOrder) "SUPPLIER / VENDOR:" else "SUPPLIER / OVERSEAS FACTORY:",
-            supLeftX, ly, paint
+            if (exportData.isLocalOrder) "SUPPLIER / LOCAL VENDOR" else "SUPPLIER / OVERSEAS FACTORY",
+            marginX + 10f, ly, paint
         )
-        ly += 16f
-
-        paint.color = Color.parseColor("#1A202C")
-        paint.textSize = 11.5f
+        ly += 14f
+        paint.color = Color.parseColor("#0F172A")
+        paint.textSize = 10.5f
         supNameLines.forEach { line ->
-            canvas.drawText(line, supLeftX, ly, paint)
-            ly += 14f
+            canvas.drawText(line, marginX + 10f, ly, paint)
+            ly += 13f
         }
-
-        paint.color = Color.parseColor("#718096")
-        paint.textSize = 9f
         paint.typeface = Typeface.DEFAULT
-        supContactLines.forEach { line ->
-            canvas.drawText(line, supLeftX, ly, paint)
-            ly += 12f
-        }
-        supAddressLines.forEach { line ->
-            canvas.drawText(line, supLeftX, ly, paint)
-            ly += 12f
+        paint.textSize = 8.2f
+        paint.color = Color.parseColor("#475569")
+        canvas.drawText(fitSingleLineText(supContactLine, paint, halfW - 20f), marginX + 10f, ly, paint)
+        ly += 12f
+        supAddrLines.forEach { line ->
+            canvas.drawText(line, marginX + 10f, ly, paint)
+            ly += 11f
         }
 
-        // Meta on Right (Commercial Currency, Packing Marks - STRICTLY NO Internal FX)
+        // Right Card: Order Summary
+        paint.color = Color.parseColor("#F8FAFC")
+        canvas.drawRoundRect(RectF(rightStart, boxY, contentRight, boxY + cardsH), 8f, 8f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.parseColor("#CBD5E1")
+        canvas.drawRoundRect(RectF(rightStart, boxY, contentRight, boxY + cardsH), 8f, 8f, paint)
+        paint.style = Paint.Style.FILL
+
+        var ry = boxY + 16f
+        paint.color = navyDark
+        paint.textSize = 8.4f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.color = Color.parseColor("#792B87")
-        paint.textSize = 9.5f
-        canvas.drawText(fitSingleLineText("PO STATUS: ${order.status}", paint, supRightMaxW), supRightX, boxY + 17f, paint)
-        paint.color = Color.parseColor("#2D3748")
-        paint.textSize = 9f
-        paint.typeface = Typeface.DEFAULT
-        rightMetaLines.forEachIndexed { idx, line ->
-            canvas.drawText(fitSingleLineText(line, paint, supRightMaxW), supRightX, boxY + 34f + idx * 15f, paint)
+        canvas.drawText("ORDER SUMMARY", rightStart + 10f, ry, paint)
+        ry += 14f
+
+        fun drawSummaryRow(label: String, value: String, boldValue: Boolean = false, pillColor: Int? = null) {
+            paint.typeface = Typeface.DEFAULT
+            paint.textSize = 8.2f
+            paint.color = Color.parseColor("#475569")
+            canvas.drawText(label, rightStart + 10f, ry, paint)
+            if (pillColor != null) {
+                paint.textSize = 7.6f
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                val pw = paint.measureText(value) + 12f
+                val pillRect = RectF(contentRight - 10f - pw, ry - 9.5f, contentRight - 10f, ry + 3f)
+                paint.color = pillColor
+                canvas.drawRoundRect(pillRect, 6f, 6f, paint)
+                paint.color = Color.WHITE
+                drawRightAlignedText(canvas, value, contentRight - 16f, ry, paint, pw)
+            } else {
+                paint.typeface = Typeface.create(Typeface.DEFAULT, if (boldValue) Typeface.BOLD else Typeface.NORMAL)
+                paint.color = if (boldValue) purpleAccent else Color.parseColor("#0F172A")
+                paint.textSize = if (boldValue) 8.8f else 8.2f
+                drawRightAlignedText(canvas, value, contentRight - 10f, ry, paint, halfW * 0.55f)
+            }
+            ry += 13.5f
         }
 
-        var currentY = drawSupplierTableHeader(canvas, boxY + metaBoxHeight + 14f)
+        val statusPillColor = when (exportData.status) {
+            PurchaseOrderStatus.DRAFT.name -> Color.parseColor("#D97706")
+            PurchaseOrderStatus.CANCELLED.name -> Color.parseColor("#DC2626")
+            else -> Color.parseColor("#16A34A")
+        }
+        drawSummaryRow("PO Status:", exportData.status, pillColor = statusPillColor)
+        drawSummaryRow("Currency:", exportData.currency, boldValue = true)
+        drawSummaryRow("Total Quantity:", "${Formatters.formatNumber(exportData.poTotalQuantity.toLong(), com.pocketdev.advance_erp.core.model.AppLanguage.ENGLISH)} pcs")
+        drawSummaryRow("Total Cartons:", if (exportData.poTotalCartons > 0) "${exportData.poTotalCartons} CTN" else "-")
+        val gwLabel = if (order.isActualCostFinalized) "Actual Gross Weight:" else "Est. Gross Weight:"
+        val gwValue = if (exportData.poTotalGrossWeightKg > java.math.BigDecimal.ZERO) {
+            "${exportData.poTotalGrossWeightKg.setScale(1, java.math.RoundingMode.HALF_UP)} KG"
+        } else "-"
+        drawSummaryRow(gwLabel, gwValue)
+        if (exportData.isPartialCartonExport) {
+            drawSummaryRow("Selected Export:", "${exportData.exportedCartonCount} CTN (${exportData.exportedPackedQuantity} pcs)", boldValue = true)
+        }
+        drawSummaryRow("Total Order Amount:", "${exportData.currency} ${Formatters.formatMinorUnit(exportData.poGrandTotalMinor)}", boldValue = true)
 
-        items.forEachIndexed { index, item ->
-            val product = productsMap[item.productId]
-            val variant = item.variantId?.let { variantsMap[it] }
-            val pName = product?.nameEn ?: item.productId
-            val resolvedSku = variant?.sku?.takeIf { it.isNotBlank() } ?: product?.baseSku ?: "SKU"
-            val colourStr = variant?.color?.takeIf { it.isNotBlank() } ?: "-"
-            val sizeStr = variant?.size?.takeIf { it.isNotBlank() } ?: "-"
+        var currentY = drawProductTableHeader(canvas, boxY + cardsH + 12f, isPartialLabel = exportData.isPartialCartonExport)
 
-            paint.textSize = 8.2f
+        // Render Product Rows with Pagination
+        exportData.items.forEach { row ->
+            paint.textSize = 7.8f
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            val descLines = wrapText("${index + 1}. $pName", paint, 136f, maxLines = 2).ifEmpty { listOf("${index + 1}. ${item.productId}") }
-
-            paint.textSize = 8f
+            val nameLines = wrapText(row.productName, paint, 134f, maxLines = 2).ifEmpty { listOf(row.item.productId) }
+            paint.textSize = 7.4f
             paint.typeface = Typeface.DEFAULT
-            val colourLines = wrapText(colourStr, paint, 54f, maxLines = 2).ifEmpty { listOf("-") }
-            val sizeLines = wrapText(sizeStr, paint, 44f, maxLines = 2).ifEmpty { listOf("-") }
+            val colorLines = wrapText(row.color, paint, 46f, maxLines = 2).ifEmpty { listOf("-") }
+            val sizeLines = wrapText(row.size, paint, 40f, maxLines = 2).ifEmpty { listOf("-") }
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val ctnLines = wrapText(row.cartonDisplay, paint, 66f, maxLines = 3).ifEmpty { listOf("-") }
 
-            val rowHeight = 44f
+            val dynamicH = maxOf(
+                38f,
+                nameLines.size * 9.5f + 16f,
+                ctnLines.size * 9.5f + 10f
+            )
 
-            if (currentY + rowHeight > maxContentBottom) {
+            if (currentY + dynamicH > maxContentBottom) {
                 document.finishPage(page)
                 pageNumber++
                 page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
                 canvas = page.canvas
-                drawBrandHeader(
-                    context, canvas, paint, businessProfile,
-                    docTitle, "${order.poNumber} (P.$pageNumber)", dateFormat.format(Date(order.orderDate))
-                )
-                currentY = drawSupplierTableHeader(canvas, 128f)
+                drawSupplierHeaderBanner(canvas, "P.$pageNumber")
+                currentY = drawProductTableHeader(canvas, 122f, isPartialLabel = exportData.isPartialCartonExport)
             }
 
-            if (index % 2 == 0) {
-                paint.color = Color.parseColor("#FAFAFA")
-                canvas.drawRect(marginX, currentY, contentRight, currentY + rowHeight, paint)
+            if (row.index % 2 == 0) {
+                paint.color = Color.parseColor("#F8FAFC")
+                canvas.drawRect(marginX, currentY, contentRight, currentY + dynamicH, paint)
             }
+            paint.color = Color.parseColor("#E2E8F0")
+            canvas.drawLine(marginX, currentY + dynamicH, contentRight, currentY + dynamicH, paint)
 
-            // Bottom hairline divider per item row
-            paint.color = Color.parseColor("#EDF2F7")
-            canvas.drawLine(marginX, currentY + rowHeight, contentRight, currentY + rowHeight, paint)
-
-            // 1. Product Name + small SKU subtitle
-            paint.color = Color.parseColor("#1A202C")
-            paint.textSize = 8.2f
+            // #
+            paint.color = Color.parseColor("#475569")
+            paint.textSize = 7.8f
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            var nameY = currentY + 14f
-            descLines.forEach { line ->
-                canvas.drawText(line, 40f, nameY, paint)
-                nameY += 10.5f
-            }
-            paint.color = Color.parseColor("#718096")
-            paint.textSize = 6.9f
-            paint.typeface = Typeface.DEFAULT
-            canvas.drawText(fitSingleLineText("SKU: $resolvedSku", paint, 136f), 40f, (nameY + 1f).coerceAtMost(currentY + rowHeight - 5f), paint)
+            canvas.drawText("${row.index}", marginX + 5f, currentY + 18f, paint)
 
-            // 2. Product Photo Thumbnail (32x32pt)
-            val thumbRect = RectF(182f, currentY + 6f, 214f, currentY + 38f)
-            val thumbBmp = loadSquareThumbnailBitmap(itemImagePaths[item.id], targetPx = 120)
+            // Product Name + SKU
+            paint.color = Color.parseColor("#0F172A")
+            var ny = currentY + 12f
+            nameLines.forEach { line ->
+                canvas.drawText(line, 50f, ny, paint)
+                ny += 9.5f
+            }
+            paint.color = Color.parseColor("#64748B")
+            paint.textSize = 6.6f
+            paint.typeface = Typeface.DEFAULT
+            canvas.drawText(fitSingleLineText("SKU: ${row.sku}", paint, 134f), 50f, (ny + 1f).coerceAtMost(currentY + dynamicH - 4f), paint)
+
+            // Thumbnail Photo (28x28)
+            val thumbTop = currentY + (dynamicH - 28f) / 2f
+            val thumbRect = RectF(189f, thumbTop, 217f, thumbTop + 28f)
+            val thumbBmp = loadSquareThumbnailBitmap(row.imagePath, targetPx = 120)
             if (thumbBmp != null) {
                 try {
-                    val srcRect = Rect(0, 0, thumbBmp.width, thumbBmp.height)
-                    canvas.drawBitmap(thumbBmp, srcRect, thumbRect, paint)
+                    canvas.drawBitmap(thumbBmp, Rect(0, 0, thumbBmp.width, thumbBmp.height), thumbRect, paint)
                 } finally {
                     thumbBmp.recycle()
                 }
             } else {
                 paint.color = Color.parseColor("#F1F5F9")
-                canvas.drawRoundRect(thumbRect, 4f, 4f, paint)
+                canvas.drawRoundRect(thumbRect, 3f, 3f, paint)
                 paint.color = Color.parseColor("#94A3B8")
-                paint.textSize = 7.5f
-                canvas.drawText("-", 196f, currentY + 24f, paint)
+                paint.textSize = 7f
+                canvas.drawText("-", 201f, thumbTop + 17f, paint)
             }
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 0.8f
-            paint.color = Color.parseColor("#CBD5E0")
+            paint.strokeWidth = 0.6f
+            paint.color = Color.parseColor("#CBD5E1")
             canvas.drawRoundRect(thumbRect, 3f, 3f, paint)
             paint.style = Paint.Style.FILL
 
-            // 3. Colour
-            paint.color = Color.parseColor("#2D3748")
-            paint.textSize = 8f
+            // Color & Size
+            paint.color = Color.parseColor("#1E293B")
+            paint.textSize = 7.5f
             paint.typeface = Typeface.DEFAULT
-            colourLines.forEachIndexed { idx, line ->
-                canvas.drawText(line, 220f, currentY + 18f + idx * 10.5f, paint)
-            }
+            colorLines.forEachIndexed { idx, line -> canvas.drawText(line, 222f, currentY + 15f + idx * 9.5f, paint) }
+            sizeLines.forEachIndexed { idx, line -> canvas.drawText(line, 271f, currentY + 15f + idx * 9.5f, paint) }
 
-            // 4. Size
-            sizeLines.forEachIndexed { idx, line ->
-                canvas.drawText(line, 278f, currentY + 18f + idx * 10.5f, paint)
-            }
-
-            // 5. Packing (CTN + pcs/ctn)
-            val ctnLabel = if (item.cartonQuantity > 0) "${item.cartonQuantity} CTN" else "-"
-            canvas.drawText(fitSingleLineText(ctnLabel, paint, 66f), 326f, currentY + 18f, paint)
-            if (item.pcsPerCarton > 0) {
-                paint.color = Color.parseColor("#718096")
-                paint.textSize = 7f
-                canvas.drawText(fitSingleLineText("(${item.pcsPerCarton}/ctn)", paint, 66f), 326f, currentY + 29f, paint)
-            }
-
-            // 6. Quantity
-            paint.color = Color.parseColor("#1A202C")
-            paint.textSize = 8.4f
-            drawRightAlignedText(canvas, "${item.quantity}", 444f, currentY + 23f, paint, 48f)
-
-            // 7. Unit Price
-            drawRightAlignedText(canvas, Formatters.formatMinorUnit(item.unitPriceMinor), 498f, currentY + 23f, paint, 50f)
-
-            // 8. Total
-            paint.color = Color.parseColor("#792B87")
+            // Actual CTN(s)
+            paint.color = purpleAccent
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            drawRightAlignedText(canvas, Formatters.formatMinorUnit(item.totalAmountMinor), 555f, currentY + 23f, paint, 53f)
+            paint.textSize = 7.4f
+            ctnLines.forEachIndexed { idx, line -> canvas.drawText(line, 315f, currentY + 15f + idx * 9.5f, paint) }
 
-            currentY += rowHeight
+            // Qty, Unit, Total
+            paint.color = Color.parseColor("#0F172A")
+            paint.textSize = 7.8f
+            paint.typeface = Typeface.DEFAULT
+            drawRightAlignedText(canvas, "${row.quantity}", 432f, currentY + 20f, paint, 48f)
+            drawRightAlignedText(canvas, Formatters.formatMinorUnit(row.unitPriceMinor), 494f, currentY + 20f, paint, 56f)
+            paint.color = purpleAccent
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            drawRightAlignedText(canvas, Formatters.formatMinorUnit(row.lineTotalMinor), contentRight - 4f, currentY + 20f, paint, 64f)
+
+            currentY += dynamicH
         }
 
-        // Commercial Totals & Clean Structured Instructions (DELIVERY INFO, PAYMENT TERMS, NOTE)
-        val defaultDeliveryAddr = if (isLocalBdtOrder) {
-            businessProfile?.address?.takeIf { it.isNotBlank() } ?: "Company Central Warehouse"
-        } else {
-            PoNotesMetadataParser.DEFAULT_CHINA_FORWARDER
-        }
-        val parsedNotes = PoNotesMetadataParser.parse(order.notes, defaultForwarder = defaultDeliveryAddr)
-        val shippingMark = PoNotesMetadataParser.buildShippingMark(businessProfile?.companyName, order.poNumber, isLocalBdtOrder)
-
-        paint.textSize = 8.2f
-        paint.typeface = Typeface.DEFAULT
-        val leftInstructMaxW = 296f // x=48..344, clear gap before Totals at x=362
-
-        val deliveryAddressLines = wrapText(
-            "${if (isLocalBdtOrder) "Delivery Address" else "China Warehouse Address"}: ${parsedNotes.forwarderAddress}",
-            paint, leftInstructMaxW, maxLines = 3
-        )
-        val shippingMarkLines = wrapText("Shipping Mark: $shippingMark", paint, leftInstructMaxW, maxLines = 2)
-        val paymentTermsLines = wrapText(parsedNotes.rawTermsText, paint, leftInstructMaxW, maxLines = 2)
-        val noteContent = parsedNotes.userNotes.ifBlank {
-            if (isLocalBdtOrder) "Please inspect item count and packaging before dispatch."
-            else "Please inspect packing quality before handover to logistics forwarder."
-        }
-        val noteLines = wrapText(noteContent, paint, leftInstructMaxW, maxLines = 3)
-
-        val leftContentHeight =
-            16f + // DELIVERY INFO heading
-                deliveryAddressLines.size * 11.5f +
-                shippingMarkLines.size * 11.5f +
-                10f + 13f + // spacing + PAYMENT TERMS heading
-                paymentTermsLines.size * 11.5f +
-                10f + 13f + // spacing + NOTE heading
-                noteLines.size * 11.5f +
-                14f
-        val boxHeight = maxOf(leftContentHeight, 112f)
-
-        var totalBoxY = currentY + 14f
-        if (totalBoxY + boxHeight > PAGE_HEIGHT - 80f) {
+        // Product Table Total Bar
+        if (currentY + 24f > maxContentBottom) {
             document.finishPage(page)
             pageNumber++
             page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
             canvas = page.canvas
-            drawBrandHeader(
-                context, canvas, paint, businessProfile,
-                docTitle, "${order.poNumber} (P.$pageNumber)", dateFormat.format(Date(order.orderDate))
-            )
-            totalBoxY = 132f
+            drawSupplierHeaderBanner(canvas, "P.$pageNumber")
+            currentY = 122f
         }
-
-        paint.color = Color.parseColor("#F1F5F9")
-        canvas.drawRoundRect(RectF(marginX, totalBoxY, contentRight, totalBoxY + boxHeight), 8f, 8f, paint)
-
-        var instY = totalBoxY + 18f
-        // * DELIVERY INFO
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.color = Color.parseColor("#263849")
-        paint.textSize = 8.8f
-        canvas.drawText("DELIVERY INFO", 48f, instY, paint)
-        instY += 13f
-
-        paint.typeface = Typeface.DEFAULT
+        paint.color = Color.parseColor("#FEF3C7")
+        canvas.drawRect(marginX, currentY, contentRight, currentY + 22f, paint)
+        paint.color = Color.parseColor("#0F172A")
         paint.textSize = 8.2f
-        paint.color = Color.parseColor("#4A5568")
-        deliveryAddressLines.forEach { line ->
-            canvas.drawText(line, 48f, instY, paint)
-            instY += 11.5f
-        }
-        shippingMarkLines.forEach { line ->
-            canvas.drawText(line, 48f, instY, paint)
-            instY += 11.5f
-        }
-
-        // * PAYMENT TERMS
-        instY += 6f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.color = Color.parseColor("#263849")
-        paint.textSize = 8.8f
-        canvas.drawText("PAYMENT TERMS", 48f, instY, paint)
-        instY += 13f
+        canvas.drawText("TOTAL PRODUCT ORDER", marginX + 8f, currentY + 14.5f, paint)
+        drawRightAlignedText(canvas, "${Formatters.formatNumber(exportData.poTotalQuantity.toLong(), com.pocketdev.advance_erp.core.model.AppLanguage.ENGLISH)} pcs", 432f, currentY + 14.5f, paint, 68f)
+        paint.color = purpleAccent
+        drawRightAlignedText(canvas, "${exportData.currency} ${Formatters.formatMinorUnit(exportData.poGrandTotalMinor)}", contentRight - 6f, currentY + 14.5f, paint, 115f)
+        currentY += 32f
 
-        paint.typeface = Typeface.DEFAULT
-        paint.textSize = 8.2f
-        paint.color = Color.parseColor("#4A5568")
-        paymentTermsLines.forEach { line ->
-            canvas.drawText(line, 48f, instY, paint)
-            instY += 11.5f
-        }
-
-        // * NOTE
-        instY += 6f
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.color = Color.parseColor("#263849")
-        paint.textSize = 8.8f
-        canvas.drawText("NOTE", 48f, instY, paint)
-        instY += 13f
-
-        paint.typeface = Typeface.DEFAULT
-        paint.textSize = 8.2f
-        paint.color = Color.parseColor("#4A5568")
-        noteLines.forEach { line ->
-            canvas.drawText(line, 48f, instY, paint)
-            instY += 11.5f
-        }
-
-        // Right Side: Grand Totals in Order Currency Only (x = 362f..547f)
-        val totalQty = items.sumOf { it.quantity }
-        var rightSumY = totalBoxY + 24f
-        paint.textSize = 9.2f
-        paint.color = Color.parseColor("#4A5568")
-        canvas.drawText("Total Qty:", 362f, rightSumY, paint)
-        drawRightAlignedText(canvas, "$totalQty pcs", contentRight - 12f, rightSumY, paint, 110f)
-        rightSumY += 18f
-
-        if (order.totalCartons > 0) {
-            canvas.drawText("Total Cartons:", 362f, rightSumY, paint)
-            drawRightAlignedText(canvas, "${order.totalCartons} CTN", contentRight - 12f, rightSumY, paint, 110f)
-            rightSumY += 22f
-        } else {
-            rightSumY += 6f
-        }
-
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        paint.color = Color.parseColor("#792B87")
-        paint.textSize = 11f
-        canvas.drawText("TOTAL (${order.currency}):", 362f, rightSumY, paint)
-        val origTotalStr = "${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}"
-        drawRightAlignedText(canvas, origTotalStr, contentRight - 12f, rightSumY, paint, 185f)
-
-        // Optional Mixed Carton Breakdown (if mixed cartons exist)
-        val mixedGroups = cartons
-            .groupBy { it.cartonNumber }
-            .filter { (_, rows) -> rows.size > 1 || rows.any { it.isMixedCarton } }
-        if (mixedGroups.isNotEmpty()) {
-            paint.textSize = 8f
-            paint.typeface = Typeface.DEFAULT
-            val breakdownLines = mixedGroups.entries.flatMap { (ctnNo, rows) ->
-                val summary = rows.joinToString(", ") { row ->
-                    val prodName = productsMap[row.productId]?.nameEn ?: row.productId
-                    val v = row.variantId?.let { variantsMap[it] }
-                    val spec = listOfNotNull(v?.color?.takeIf { it.isNotBlank() }, v?.size?.takeIf { it.isNotBlank() })
-                        .joinToString("/")
-                    if (spec.isNotBlank()) "$prodName ($spec) × ${row.quantity} pcs" else "$prodName × ${row.quantity} pcs"
-                }
-                wrapText("• $ctnNo: $summary", paint, contentRight - marginX - 24f, maxLines = 3)
-            }
-            val breakdownH = 30f + breakdownLines.size * 11.5f
-            var breakdownY = totalBoxY + boxHeight + 10f
-            if (breakdownY + breakdownH > PAGE_HEIGHT - 80f) {
+        // Section E: Structured Carton Packing Breakdown Table
+        if (exportData.exportedCartons.isNotEmpty()) {
+            if (currentY + 66f > maxContentBottom) {
                 document.finishPage(page)
                 pageNumber++
                 page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
                 canvas = page.canvas
-                drawBrandHeader(
-                    context, canvas, paint, businessProfile,
-                    docTitle, "${order.poNumber} (P.$pageNumber)", dateFormat.format(Date(order.orderDate))
-                )
-                breakdownY = 132f
+                drawSupplierHeaderBanner(canvas, "P.$pageNumber")
+                currentY = 122f
             }
-            paint.color = Color.parseColor("#F8FAFC")
-            canvas.drawRoundRect(RectF(marginX, breakdownY, contentRight, breakdownY + breakdownH), 8f, 8f, paint)
-            paint.style = Paint.Style.STROKE
-            paint.color = Color.parseColor("#E2E8F0")
-            canvas.drawRoundRect(RectF(marginX, breakdownY, contentRight, breakdownY + breakdownH), 8f, 8f, paint)
-            paint.style = Paint.Style.FILL
+            currentY = drawCartonTableHeader(canvas, currentY)
 
-            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            paint.color = Color.parseColor("#263849")
-            paint.textSize = 8.5f
-            canvas.drawText("MIXED CARTON PACKING BREAKDOWN", 48f, breakdownY + 17f, paint)
+            exportData.exportedCartons.forEachIndexed { idx, ctn ->
+                val detailSummary = ctn.lines.joinToString("; ") { l ->
+                    val spec = listOfNotNull(
+                        l.color.takeIf { it != "-" },
+                        l.size.takeIf { it != "-" }
+                    ).joinToString("/")
+                    val prodTitle = if (spec.isNotBlank()) "${l.productName} ($spec)" else l.productName
+                    "$prodTitle × ${l.quantity} pcs"
+                }
+                paint.textSize = 7.4f
+                paint.typeface = Typeface.DEFAULT
+                val detailLines = wrapText(detailSummary, paint, 254f, maxLines = maxOf(5, ctn.lines.size + 1)).ifEmpty { listOf("-") }
+                val ctnRowH = maxOf(22f, detailLines.size * 9.5f + 8f)
 
-            paint.typeface = Typeface.DEFAULT
-            paint.color = Color.parseColor("#4A5568")
+                if (currentY + ctnRowH > maxContentBottom) {
+                    document.finishPage(page)
+                    pageNumber++
+                    page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+                    canvas = page.canvas
+                    drawSupplierHeaderBanner(canvas, "P.$pageNumber")
+                    currentY = drawCartonTableHeader(canvas, 122f)
+                }
+
+                if (idx % 2 == 1) {
+                    paint.color = Color.parseColor("#F8FAFC")
+                    canvas.drawRect(marginX, currentY, contentRight, currentY + ctnRowH, paint)
+                }
+                paint.color = Color.parseColor("#E2E8F0")
+                canvas.drawLine(marginX, currentY + ctnRowH, contentRight, currentY + ctnRowH, paint)
+
+                paint.color = if (ctn.isMixed) tealAccent else purpleAccent
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                paint.textSize = 7.8f
+                canvas.drawText(ctn.cartonNumber, marginX + 6f, currentY + 13.5f, paint)
+
+                paint.color = Color.parseColor("#1E293B")
+                paint.typeface = Typeface.DEFAULT
+                paint.textSize = 7.4f
+                detailLines.forEachIndexed { lineIdx, dLine ->
+                    canvas.drawText(dLine, 94f, currentY + 12f + lineIdx * 9.5f, paint)
+                }
+
+                paint.color = Color.parseColor("#0F172A")
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                drawRightAlignedText(canvas, "${ctn.totalQty}", 402f, currentY + 13.5f, paint, 46f)
+                paint.typeface = Typeface.DEFAULT
+                val ctnGwStr = ctn.grossWeightKg.setScale(1, java.math.RoundingMode.HALF_UP).toPlainString()
+                drawRightAlignedText(canvas, ctnGwStr, 450f, currentY + 13.5f, paint, 46f)
+                drawRightAlignedText(canvas, ctn.dimensionsDisplay, 520f, currentY + 13.5f, paint, 66f)
+                val ctnCbmStr = ctn.cbm.setScale(3, java.math.RoundingMode.HALF_UP).toPlainString()
+                drawRightAlignedText(canvas, ctnCbmStr, contentRight - 4f, currentY + 13.5f, paint, 40f)
+
+                currentY += ctnRowH
+            }
+
+            // Carton Totals Row
+            val footerRows = if (exportData.isPartialCartonExport) 2 else 1
+            if (currentY + footerRows * 21f > maxContentBottom) {
+                document.finishPage(page)
+                pageNumber++
+                page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+                canvas = page.canvas
+                drawSupplierHeaderBanner(canvas, "P.$pageNumber")
+                currentY = 122f
+            }
+            paint.color = Color.parseColor("#FEF3C7")
+            canvas.drawRect(marginX, currentY, contentRight, currentY + 21f, paint)
+            paint.color = Color.parseColor("#0F172A")
             paint.textSize = 8f
-            var bLineY = breakdownY + 31f
-            breakdownLines.forEach { line ->
-                canvas.drawText(line, 48f, bLineY, paint)
-                bLineY += 11.5f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val totalLabel = if (exportData.isPartialCartonExport) "Selected Cartons Subtotal" else "Total Packing"
+            canvas.drawText(totalLabel, marginX + 8f, currentY + 14f, paint)
+            drawRightAlignedText(canvas, "${exportData.exportedCartonCount} CTN", 345f, currentY + 14f, paint, 60f)
+            drawRightAlignedText(canvas, "${exportData.exportedPackedQuantity}", 402f, currentY + 14f, paint, 46f)
+            drawRightAlignedText(canvas, exportData.exportedGrossWeightKg.setScale(1, java.math.RoundingMode.HALF_UP).toPlainString(), 450f, currentY + 14f, paint, 46f)
+            drawRightAlignedText(canvas, exportData.exportedCbm.setScale(3, java.math.RoundingMode.HALF_UP).toPlainString(), contentRight - 4f, currentY + 14f, paint, 42f)
+            currentY += 21f
+
+            if (exportData.isPartialCartonExport) {
+                paint.color = Color.parseColor("#F1F5F9")
+                canvas.drawRect(marginX, currentY, contentRight, currentY + 19f, paint)
+                paint.color = Color.parseColor("#475569")
+                paint.textSize = 7.4f
+                canvas.drawText("Complete PO Reference Total", marginX + 8f, currentY + 13f, paint)
+                drawRightAlignedText(canvas, "${exportData.poTotalCartons} CTN", 345f, currentY + 13f, paint, 60f)
+                drawRightAlignedText(canvas, "${exportData.poTotalQuantity}", 402f, currentY + 13f, paint, 46f)
+                drawRightAlignedText(canvas, exportData.poTotalGrossWeightKg.setScale(1, java.math.RoundingMode.HALF_UP).toPlainString(), 450f, currentY + 13f, paint, 46f)
+                drawRightAlignedText(canvas, exportData.poTotalCbm.setScale(3, java.math.RoundingMode.HALF_UP).toPlainString(), contentRight - 4f, currentY + 13f, paint, 42f)
+                currentY += 19f
             }
+            currentY += 12f
         }
+
+        // Section F: Side-by-Side DELIVERY INFO & PAYMENT TERMS + NOTE + Signatures
+        paint.textSize = 7.8f
+        paint.typeface = Typeface.DEFAULT
+        val addrLines = wrapText(
+            "${if (exportData.isLocalOrder) "Delivery Address" else "China Warehouse Address"}: ${exportData.deliveryAddress}",
+            paint, halfW - 18f, maxLines = 3
+        )
+        val markLines = wrapText(
+            "Shipping Mark: ${exportData.defaultShippingMark.replace("\n", " / ")}",
+            paint, halfW - 18f, maxLines = 3
+        )
+        val payLines = wrapText(exportData.paymentTerms, paint, halfW - 18f, maxLines = 3)
+        val delPayH = maxOf(
+            26f + addrLines.size * 10.5f + markLines.size * 10.5f + 8f,
+            26f + payLines.size * 10.5f + 12f,
+            58f
+        )
+
+        val defaultInstructions = listOf(
+            "• Please pack strictly according to the carton breakdown above.",
+            "• Ensure correct color, size, SKU, and quantity in every carton.",
+            exportData.userNotes.takeIf { it.isNotBlank() }?.let { "• $it" }
+        ).filterNotNull().joinToString("\n")
+        val noteLines = wrapText(defaultInstructions, paint, contentW - 24f, maxLines = 4)
+        val noteH = 22f + noteLines.size * 10.5f + 8f
+
+        val footerRequiredH = delPayH + 8f + noteH + 14f
+        if (currentY + footerRequiredH > PAGE_HEIGHT - 74f) {
+            document.finishPage(page)
+            pageNumber++
+            page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+            canvas = page.canvas
+            drawSupplierHeaderBanner(canvas, "P.$pageNumber")
+            currentY = 122f
+        }
+
+        // DELIVERY INFO card
+        paint.color = Color.parseColor("#F1F5F9")
+        canvas.drawRoundRect(RectF(marginX, currentY, leftRight, currentY + delPayH), 7f, 7f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = navyDark
+        paint.textSize = 8.4f
+        canvas.drawText("DELIVERY INFO", marginX + 10f, currentY + 15f, paint)
+        paint.typeface = Typeface.DEFAULT
+        paint.textSize = 7.8f
+        paint.color = Color.parseColor("#334155")
+        var dy = currentY + 27f
+        addrLines.forEach { line -> canvas.drawText(line, marginX + 10f, dy, paint); dy += 10.5f }
+        markLines.forEach { line -> canvas.drawText(line, marginX + 10f, dy, paint); dy += 10.5f }
+
+        // PAYMENT TERMS card
+        paint.color = Color.parseColor("#F1F5F9")
+        canvas.drawRoundRect(RectF(rightStart, currentY, contentRight, currentY + delPayH), 7f, 7f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = navyDark
+        paint.textSize = 8.4f
+        canvas.drawText("PAYMENT TERMS", rightStart + 10f, currentY + 15f, paint)
+        paint.typeface = Typeface.DEFAULT
+        paint.textSize = 7.8f
+        paint.color = Color.parseColor("#334155")
+        var py = currentY + 27f
+        payLines.forEach { line -> canvas.drawText(line, rightStart + 10f, py, paint); py += 10.5f }
+
+        val noteY = currentY + delPayH + 8f
+        paint.color = Color.parseColor("#FFFBEB")
+        canvas.drawRoundRect(RectF(marginX, noteY, contentRight, noteY + noteH), 7f, 7f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.parseColor("#FDE68A")
+        canvas.drawRoundRect(RectF(marginX, noteY, contentRight, noteY + noteH), 7f, 7f, paint)
+        paint.style = Paint.Style.FILL
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = Color.parseColor("#92400E")
+        paint.textSize = 8.2f
+        canvas.drawText("NOTE & SUPPLIER INSTRUCTIONS", marginX + 10f, noteY + 14f, paint)
+        paint.typeface = Typeface.DEFAULT
+        paint.color = Color.parseColor("#78350F")
+        paint.textSize = 7.6f
+        var ny2 = noteY + 26f
+        noteLines.forEach { line -> canvas.drawText(line, marginX + 10f, ny2, paint); ny2 += 10.5f }
 
         drawSignatures(canvas, paint, "Prepared by Purchasing", "Confirmed by Supplier")
 
         document.finishPage(page)
 
         val dir = File(context.cacheDir, "import_documents").apply { if (!exists()) mkdirs() }
-        val file = File(dir, "Supplier_${sanitizeFileName(order.poNumber)}.pdf")
+        val suffix = if (exportData.isPartialCartonExport) "_Selected_${exportData.exportedCartonCount}CTN" else ""
+        val file = File(dir, "Supplier_${sanitizeFileName(order.poNumber)}$suffix.pdf")
         try {
             FileOutputStream(file).use { out -> document.writeTo(out) }
         } finally {

@@ -1,43 +1,54 @@
 package com.pocketdev.advance_erp.feature.imports
 
-import com.pocketdev.advance_erp.core.designsystem.StatusInfoContainer
-import com.pocketdev.advance_erp.core.designsystem.StatusInfo
-import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
-import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
-import androidx.compose.runtime.saveable.rememberSaveable
-import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.content.Context
-import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import android.widget.Toast
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,34 +56,51 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.core.content.FileProvider
-import com.pocketdev.advance_erp.core.designsystem.DeepNavy
+import androidx.compose.ui.window.DialogProperties
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
+import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.StatusInfo
+import com.pocketdev.advance_erp.core.designsystem.StatusInfoContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
+import com.pocketdev.advance_erp.core.designsystem.StatusWarning
+import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import com.pocketdev.advance_erp.core.util.ControlCenterShareService
 import com.pocketdev.advance_erp.core.util.ImportExcelGenerator
 import com.pocketdev.advance_erp.core.util.ImportPdfGenerator
+import com.pocketdev.advance_erp.core.util.LabelPrintingEngine
 import com.pocketdev.advance_erp.core.util.PoAttachmentInfo
 import com.pocketdev.advance_erp.core.util.PoAttachmentKind
 import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
+import com.pocketdev.advance_erp.core.util.PoExportDataBuilder
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductVariant
@@ -80,7 +108,11 @@ import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
 import com.pocketdev.advance_erp.data.entity.Supplier
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.math.RoundingMode
 
 private fun shareFileToApp(
     context: Context,
@@ -140,6 +172,53 @@ fun PoShareDialog(
     var selectedPerspective by remember { mutableStateOf(PoExportPerspective.SUPPLIER_COPY) }
     var isExporting by rememberSaveable { mutableStateOf(false) }
     var exportError by remember { mutableStateOf<String?>(null) }
+    var previewPdfFile by remember { mutableStateOf<File?>(null) }
+    var previewPdfTitle by remember { mutableStateOf("") }
+    var exportSelectedOnly by rememberSaveable(order.id) { mutableStateOf(false) }
+
+    val baseExportPreview = remember(order, items, cartons, productsMap, variantsMap, supplier, businessProfile) {
+        PoExportDataBuilder.build(
+            order = order,
+            items = items,
+            productsMap = productsMap,
+            supplier = supplier,
+            businessProfile = businessProfile,
+            variantsMap = variantsMap,
+            itemImagePaths = emptyMap(),
+            cartons = cartons,
+            selectedCartonNumbers = null
+        )
+    }
+    val selectedCartonNumbers = remember(order.id, baseExportPreview.allCartons) {
+        mutableStateListOf<String>().apply {
+            addAll(baseExportPreview.allCartons.map { it.cartonNumber })
+        }
+    }
+
+    val activeCartonFilter: Set<String>? = if (
+        selectedPerspective == PoExportPerspective.SUPPLIER_COPY &&
+        exportSelectedOnly &&
+        baseExportPreview.allCartons.isNotEmpty()
+    ) {
+        selectedCartonNumbers.toSet()
+    } else {
+        null
+    }
+
+    val validatedExport = remember(order, items, cartons, productsMap, variantsMap, supplier, businessProfile, activeCartonFilter) {
+        PoExportDataBuilder.build(
+            order = order,
+            items = items,
+            productsMap = productsMap,
+            supplier = supplier,
+            businessProfile = businessProfile,
+            variantsMap = variantsMap,
+            itemImagePaths = emptyMap(),
+            cartons = cartons,
+            selectedCartonNumbers = activeCartonFilter
+        )
+    }
+
     val isLocalOrder = order.currency == "BDT"
     val attachmentInfos = remember(order.attachments) {
         PoAttachmentStorage.parseAttachments(order.attachments)
@@ -148,18 +227,69 @@ fun PoShareDialog(
     }
     var includeAttachments by rememberSaveable(order.id) { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    val canExportSupplier = selectedPerspective != PoExportPerspective.SUPPLIER_COPY || validatedExport.isValidForSupplierExport
+
+    suspend fun buildSupplierOrInternalPdf(): File = withContext(Dispatchers.IO) {
+        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+            val itemImagePaths = onResolveItemImages(items)
+            ImportPdfGenerator.generateSupplierCommercialOrderPdf(
+                context = context,
+                order = order,
+                items = items,
+                productsMap = productsMap,
+                supplier = supplier,
+                businessProfile = businessProfile,
+                variantsMap = variantsMap,
+                itemImagePaths = itemImagePaths,
+                cartons = cartons,
+                selectedCartonNumbers = activeCartonFilter
+            )
+        } else {
+            ImportPdfGenerator.generateCompanyInternalOrderPdf(
+                context, order, items, productsMap, supplier, businessProfile, isBangla
+            )
+        }
+    }
+
+    suspend fun buildSupplierOrInternalExcel(): File = withContext(Dispatchers.IO) {
+        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+            val itemImagePaths = onResolveItemImages(items)
+            ImportExcelGenerator.generateSupplierOrderExcel(
+                context = context,
+                order = order,
+                items = items,
+                productsMap = productsMap,
+                supplier = supplier,
+                businessProfile = businessProfile,
+                variantsMap = variantsMap,
+                itemImagePaths = itemImagePaths,
+                cartons = cartons,
+                selectedCartonNumbers = activeCartonFilter
+            )
+        } else {
+            ImportExcelGenerator.generateCompanyInternalOrderExcel(
+                context, order, items, productsMap, supplier, businessProfile
+            )
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp)),
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 760.dp)
+                .clip(RoundedCornerShape(18.dp)),
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(18.dp)
             ) {
                 // Header
                 Row(
@@ -167,7 +297,7 @@ fun PoShareDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (isBangla) "পারচেজ অর্ডার শেয়ার ও এক্সপোর্ট" else "Share & Export Purchase Order",
                             style = MaterialTheme.typography.titleMedium,
@@ -180,24 +310,23 @@ fun PoShareDialog(
                             color = TextSecondary
                         )
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Perspective Selector Tabs
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Supplier Copy Tab
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
                             PrimaryPurple.copy(alpha = 0.12f) else ERPSurfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(
+                        border = BorderStroke(
                             1.5.dp,
                             if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) PrimaryPurple else ERPDivider
                         ),
@@ -225,12 +354,11 @@ fun PoShareDialog(
                         }
                     }
 
-                    // Company Internal Copy Tab
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = if (selectedPerspective == PoExportPerspective.COMPANY_INTERNAL_COPY)
                             SecondaryTeal.copy(alpha = 0.12f) else ERPSurfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(
+                        border = BorderStroke(
                             1.5.dp,
                             if (selectedPerspective == PoExportPerspective.COMPANY_INTERNAL_COPY) SecondaryTeal else ERPDivider
                         ),
@@ -256,54 +384,194 @@ fun PoShareDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Detail Description Card based on selected perspective
+                // Perspective Info Box
                 if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
-                        shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusSuccessContainer)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.Lock, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (isLocalOrder)
-                                        (if (isBangla) "দেশীয় সরবরাহকারী / ভেন্ডরের জন্য তৈরি" else "Tailored for Local Supplier")
+                                        (if (isBangla) "দেশীয় সরবরাহকারী কপি (PDF ও ৪-শিট Excel একক ডেটা)" else "Local Supplier Copy (Unified PDF & 4-Sheet Excel)")
                                     else
-                                        (if (isBangla) "চীনা কারখানা / বৈদেশিক সরবরাহকারীর জন্য তৈরি" else "Tailored for Overseas Factory / Supplier"),
+                                        (if (isBangla) "ওভারসিজ কারখানা কপি (PDF ও ৪-শিট Excel একক ডেটা)" else "Overseas Supplier Copy (Unified PDF & 4-Sheet Excel)"),
                                     fontWeight = FontWeight.Bold,
                                     color = StatusSuccess,
-                                    fontSize = 12.sp
+                                    fontSize = 11.5.sp
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (isLocalOrder) {
-                                    if (isBangla)
-                                        "• বাণিজ্যিক গোপনীয়তা: কোনো অভ্যন্তরীণ পরিবহন, আনলোডিং খরচ বা কোম্পানির মুনাফা মার্জিন থাকবে না।\n• পণ্য, ভ্যারিয়েন্ট, পিস ও নির্ধারিত ক্রয়মূল্য (৳ BDT)।\n• ডেলিভারি ঠিকানা ও অর্ডার নোট অন্তর্ভুক্ত।"
-                                    else
-                                        "• Commercial Privacy: No internal transport, unloading or company profit margins.\n• Product specs, variants, pieces & contract price (৳ BDT).\n• Local delivery point & order instructions included."
-                                } else {
-                                    if (isBangla)
-                                        "• কঠোর তথ্য গোপনীয়তা: কোনো বাংলাদেশি টাকা (BDT), এক্সচেঞ্জ রেট বা স্থানীয় মার্জিন থাকবে না।\n• পণ্য মডেল, ভ্যারিয়েন্ট, কার্টন সংখ্যা, পিস ও বৈদেশিক মুদ্রা (${order.currency})।\n• পেমেন্ট শর্ত (Advance/Balance) ও চীনের ফরোয়ার্ডার গুদাম ডেলিভারি ঠিকানা অন্তর্ভুক্ত।"
-                                    else
-                                        "• Strict Privacy: Absolutely NO BDT amounts, FX rates, or local profit margins.\n• Product specs, variants, carton packing, pieces & currency (${order.currency}).\n• Payment terms & China forwarder warehouse handover instructions."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = StatusSuccess,
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp
-                            )
+                        }
+                    }
+
+                    // Phase 8 Validation Banner
+                    if (validatedExport.blockingErrors.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = StatusError.copy(alpha = 0.1f)),
+                            border = BorderStroke(1.dp, StatusError),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = StatusError, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isBangla) "এক্সপোর্ট ব্লক (গুরুত্বপূর্ণ অসঙ্গতি):" else "Export Blocked (Critical Validation Error):",
+                                        fontWeight = FontWeight.Bold,
+                                        color = StatusError,
+                                        fontSize = 11.5.sp
+                                    )
+                                }
+                                validatedExport.blockingErrors.forEach { err ->
+                                    Text("• $err", style = MaterialTheme.typography.bodySmall, color = StatusError, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    if (validatedExport.warnings.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = StatusWarningContainer),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = StatusWarning, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isBangla) "তথ্য সতর্কতা (${validatedExport.warnings.size}):" else "Data Warnings (${validatedExport.warnings.size}):",
+                                        fontWeight = FontWeight.Bold,
+                                        color = StatusWarning,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                validatedExport.warnings.take(4).forEach { warn ->
+                                    Text("• $warn", style = MaterialTheme.typography.labelSmall, color = StatusWarning)
+                                }
+                            }
+                        }
+                    }
+
+                    // Phase 9: Export All vs Selected Cartons
+                    if (baseExportPreview.allCartons.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = ERPSurfaceVariant),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, ERPDivider)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = if (isBangla) "কার্টন এক্সপোর্ট পরিসর (All / Selected Cartons):" else "Carton Export Scope (All / Selected Cartons):",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilterChip(
+                                        selected = !exportSelectedOnly,
+                                        onClick = { exportSelectedOnly = false },
+                                        label = { Text(if (isBangla) "সব কার্টন (${baseExportPreview.allCartons.size})" else "All Cartons (${baseExportPreview.allCartons.size})", fontSize = 11.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = PrimaryPurple, selectedLabelColor = MaterialTheme.colorScheme.onPrimary),
+                                        modifier = Modifier.weight(1f).testTag("export_all_cartons_chip")
+                                    )
+                                    FilterChip(
+                                        selected = exportSelectedOnly,
+                                        onClick = { exportSelectedOnly = true },
+                                        label = { Text(if (isBangla) "নির্বাচিত কার্টন" else "Selected Cartons", fontSize = 11.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = SecondaryTeal, selectedLabelColor = Color.White),
+                                        modifier = Modifier.weight(1f).testTag("export_selected_cartons_chip")
+                                    )
+                                }
+
+                                if (exportSelectedOnly) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                selectedCartonNumbers.clear()
+                                                selectedCartonNumbers.addAll(baseExportPreview.allCartons.map { it.cartonNumber })
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(if (isBangla) "সব নির্বাচন করুন" else "Select All", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        TextButton(
+                                            onClick = { selectedCartonNumbers.clear() },
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(if (isBangla) "সব বাদ দিন" else "Deselect All", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = StatusError)
+                                        }
+                                    }
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        baseExportPreview.allCartons.forEach { ctn ->
+                                            val checked = ctn.cartonNumber in selectedCartonNumbers
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(if (checked) SecondaryTeal.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface)
+                                                    .clickable {
+                                                        if (checked) selectedCartonNumbers.remove(ctn.cartonNumber)
+                                                        else selectedCartonNumbers.add(ctn.cartonNumber)
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Checkbox(
+                                                    checked = checked,
+                                                    onCheckedChange = { isChk ->
+                                                        if (isChk) {
+                                                            if (ctn.cartonNumber !in selectedCartonNumbers) selectedCartonNumbers.add(ctn.cartonNumber)
+                                                        } else {
+                                                            selectedCartonNumbers.remove(ctn.cartonNumber)
+                                                        }
+                                                    }
+                                                )
+                                                Text(
+                                                    text = "${ctn.cartonNumber} • ${ctn.totalQty} PCS • ${ctn.grossWeightKg.setScale(1, RoundingMode.HALF_UP)} KG",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal,
+                                                    color = TextPrimary
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Selected Cartons Live Summary
+                                    val gwSel = validatedExport.exportedGrossWeightKg.setScale(2, RoundingMode.HALF_UP)
+                                    val cbmSel = validatedExport.exportedCbm.setScale(3, RoundingMode.HALF_UP)
+                                    Surface(shape = RoundedCornerShape(8.dp), color = PrimaryPurple.copy(alpha = 0.1f)) {
+                                        Text(
+                                            text = if (isBangla)
+                                                "নির্বাচিত: ${validatedExport.exportedCartonCount} / ${validatedExport.allCartons.size} CTN • ${validatedExport.exportedPackedQuantity} PCS • $gwSel KG • $cbmSel CBM"
+                                            else
+                                                "Selected: ${validatedExport.exportedCartonCount} of ${validatedExport.allCartons.size} CTN • ${validatedExport.exportedPackedQuantity} PCS • $gwSel KG • $cbmSel CBM",
+                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = PrimaryPurple
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = StatusInfoContainer),
-                        shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StatusInfoContainer)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -316,33 +584,14 @@ fun PoShareDialog(
                                     fontSize = 12.sp
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (isLocalOrder) {
-                                    if (isBangla)
-                                        "• পণ্যের মোট ক্রয়মূল্য (BDT) এবং স্থানীয় পরিবহন ও লেবার খরচ।\n• ইউনিট প্রতি চূড়ান্ত ল্যান্ডেড কস্ট হিসাব।\n• গুদাম ভাড়া পরিচালন ব্যয় (OPEX) হিসেবে মাসিক লাভে সমন্বয়ের স্পষ্ট অডিট নোট।"
-                                    else
-                                        "• Complete BDT purchase total with local transport and labour costs.\n• Final landed cost per unit calculation.\n• Clear note on Warehouse Rent being classified as OPEX from Net Profit."
-                                } else {
-                                    if (isBangla)
-                                        "• বৈদেশিক মূল্যের সাথে নির্ধারিত বিনিময় হারে BDT সমমূল্য।\n• আন্তর্জাতিক ফ্রেইট, হ্যান্ডলিং খরচ ও স্যাম্পল খরচ ক্যাপিটালাইজড ল্যান্ডেড কস্ট।\n• গুদাম ভাড়া পরিচালন ব্যয় (OPEX) হিসেবে মাসিক লাভে সমন্বয়ের স্পষ্ট নোট।"
-                                    else
-                                        "• Complete BDT breakdown with applied foreign exchange rates.\n• Capitalized Landed Cost including freight, handling, and sample costs.\n• Clear note on Warehouse Rent being classified as OPEX from Net Profit."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = StatusInfo,
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp
-                            )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = ERPDivider)
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Action Buttons
                 if (attachmentInfos.isNotEmpty()) {
                     Row(
                         modifier = Modifier
@@ -353,90 +602,74 @@ fun PoShareDialog(
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Checkbox(
-                            checked = includeAttachments,
-                            onCheckedChange = { includeAttachments = it }
-                        )
+                        Checkbox(checked = includeAttachments, onCheckedChange = { includeAttachments = it })
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (isBangla)
-                                "PO-এর সংযুক্ত ফাইল/ছবিও একসাথে শেয়ার করুন (${attachmentInfos.size}টি)"
-                            else
-                                "Also share attached files/photos (${attachmentInfos.size})",
+                            text = if (isBangla) "PO-এর সংযুক্ত ফাইলও শেয়ার করুন (${attachmentInfos.size}টি)" else "Also share attached files (${attachmentInfos.size})",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Medium
+                            color = TextPrimary
                         )
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                Text(
-                    text = if (isBangla) "এক্সপোর্ট ও শেয়ারের মাধ্যম নির্বাচন করুন:" else "Select Export & Sharing Format:",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
                 if (exportError != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = exportError!!,
+                        color = StatusError,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-
+                // Action Buttons Row 1: Preview PDF, Share PDF, Print PDF
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Export PDF Button
+                    OutlinedButton(
+                        enabled = !isExporting && canExportSupplier,
+                        onClick = {
+                            if (isExporting) return@OutlinedButton
+                            isExporting = true
+                            exportError = null
+                            coroutineScope.launch {
+                                try {
+                                    val pdf = buildSupplierOrInternalPdf()
+                                    previewPdfTitle = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+                                        if (validatedExport.isPartialCartonExport) "${order.poNumber} (Selected ${validatedExport.exportedCartonCount} CTN)"
+                                        else "${order.poNumber} Supplier PO PDF"
+                                    } else "${order.poNumber} Internal Audit PDF"
+                                    previewPdfFile = pdf
+                                } catch (t: Throwable) {
+                                    exportError = t.message ?: t::class.java.simpleName
+                                } finally {
+                                    isExporting = false
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).testTag("po_preview_pdf_btn")
+                    ) {
+                        Icon(Icons.Outlined.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "প্রিভিউ" else "Preview", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+
                     Button(
-                        enabled = !isExporting,
+                        enabled = !isExporting && canExportSupplier,
                         onClick = {
                             if (isExporting) return@Button
                             isExporting = true
                             exportError = null
                             coroutineScope.launch {
                                 try {
-                                    val pdfFile = withContext(Dispatchers.IO) {
-                                        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
-                                            val itemImagePaths = onResolveItemImages(items)
-                                            ImportPdfGenerator.generateSupplierCommercialOrderPdf(
-                                                context = context,
-                                                order = order,
-                                                items = items,
-                                                productsMap = productsMap,
-                                                supplier = supplier,
-                                                businessProfile = businessProfile,
-                                                variantsMap = variantsMap,
-                                                itemImagePaths = itemImagePaths,
-                                                cartons = cartons
-                                            )
-                                        } else {
-                                            ImportPdfGenerator.generateCompanyInternalOrderPdf(
-                                                context, order, items, productsMap, supplier, businessProfile, isBangla
-                                            )
-                                        }
-                                    }
+                                    val pdfFile = buildSupplierOrInternalPdf()
                                     val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
-                                        "Share Supplier Commercial PO PDF"
-                                    else
-                                        "Share Internal Audit PO PDF"
-                                    shareFileToApp(
-                                        context = context,
-                                        file = pdfFile,
-                                        mimeType = "application/pdf",
-                                        chooserTitle = title,
-                                        includeAttachments = includeAttachments,
-                                        attachments = attachmentInfos
-                                    )
+                                        "Share Supplier Commercial PO PDF" else "Share Internal Audit PO PDF"
+                                    shareFileToApp(context, pdfFile, "application/pdf", title, includeAttachments, attachmentInfos)
                                 } catch (t: Throwable) {
-                                    val msg = t.message ?: t::class.java.simpleName
-                                    exportError = if (isBangla) "PDF তৈরি করতে সমস্যা হয়েছে: $msg" else "PDF export failed: $msg"
-                                    Toast.makeText(context, exportError, Toast.LENGTH_LONG).show()
+                                    exportError = t.message ?: t::class.java.simpleName
                                 } finally {
                                     isExporting = false
                                 }
@@ -444,71 +677,285 @@ fun PoShareDialog(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).testTag("po_share_pdf_btn")
                     ) {
                         Icon(Icons.Outlined.Description, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("PDF " + if (isBangla) "শেয়ার" else "Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "PDF শেয়ার" else "Share PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // Export Excel Button
                     OutlinedButton(
-                        enabled = !isExporting,
+                        enabled = !isExporting && canExportSupplier,
                         onClick = {
                             if (isExporting) return@OutlinedButton
                             isExporting = true
                             exportError = null
                             coroutineScope.launch {
                                 try {
-                                    val xlsxFile = withContext(Dispatchers.IO) {
-                                        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
-                                            val itemImagePaths = onResolveItemImages(items)
-                                            ImportExcelGenerator.generateSupplierOrderExcel(
-                                                context = context,
-                                                order = order,
-                                                items = items,
-                                                productsMap = productsMap,
-                                                supplier = supplier,
-                                                businessProfile = businessProfile,
-                                                variantsMap = variantsMap,
-                                                itemImagePaths = itemImagePaths,
-                                                cartons = cartons
-                                            )
-                                        } else {
-                                            ImportExcelGenerator.generateCompanyInternalOrderExcel(
-                                                context, order, items, productsMap, supplier, businessProfile
-                                            )
-                                        }
-                                    }
+                                    val pdf = buildSupplierOrInternalPdf()
+                                    ControlCenterShareService.printPdf(context, pdf, "PO_${order.poNumber}")
+                                } catch (t: Throwable) {
+                                    exportError = t.message ?: t::class.java.simpleName
+                                } finally {
+                                    isExporting = false
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(0.9f)
+                    ) {
+                        Icon(Icons.Outlined.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "প্রিন্ট" else "Print", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Action Row 2: Share Excel & Save to Device (PDF + XLSX)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        enabled = !isExporting && canExportSupplier,
+                        onClick = {
+                            if (isExporting) return@OutlinedButton
+                            isExporting = true
+                            exportError = null
+                            coroutineScope.launch {
+                                try {
+                                    val xlsxFile = buildSupplierOrInternalExcel()
                                     val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
-                                        "Share Supplier Commercial PO (Excel)"
-                                    else
-                                        "Share Internal Audit PO (Excel)"
+                                        "Share Supplier Commercial PO (Excel)" else "Share Internal Audit PO (Excel)"
                                     shareFileToApp(
-                                        context = context,
-                                        file = xlsxFile,
-                                        mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                        chooserTitle = title,
-                                        includeAttachments = includeAttachments,
-                                        attachments = attachmentInfos
+                                        context,
+                                        xlsxFile,
+                                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        title,
+                                        includeAttachments,
+                                        attachmentInfos
                                     )
                                 } catch (t: Throwable) {
-                                    val msg = t.message ?: t::class.java.simpleName
-                                    exportError = if (isBangla) "Excel তৈরি করতে সমস্যা হয়েছে: $msg" else "Excel export failed: $msg"
-                                    Toast.makeText(context, exportError, Toast.LENGTH_LONG).show()
+                                    exportError = t.message ?: t::class.java.simpleName
                                 } finally {
                                     isExporting = false
                                 }
                             }
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = SecondaryTeal),
+                        border = BorderStroke(1.3.dp, SecondaryTeal),
                         shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, SecondaryTeal),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).testTag("po_share_excel_btn")
                     ) {
                         Icon(Icons.Outlined.TableChart, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "Excel শেয়ার" else "Share Excel", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        enabled = !isExporting && canExportSupplier,
+                        onClick = {
+                            if (isExporting) return@OutlinedButton
+                            isExporting = true
+                            exportError = null
+                            coroutineScope.launch {
+                                try {
+                                    val pdf = buildSupplierOrInternalPdf()
+                                    val xlsx = buildSupplierOrInternalExcel()
+                                    val savedPdf = withContext(Dispatchers.IO) { ControlCenterShareService.saveToDownloads(context, pdf) }
+                                    val savedXlsx = withContext(Dispatchers.IO) { ControlCenterShareService.saveToDownloads(context, xlsx) }
+                                    val msg = if (isBangla)
+                                        "সংরক্ষিত: ${savedPdf?.name ?: pdf.name} ও ${savedXlsx?.name ?: xlsx.name}"
+                                    else
+                                        "Saved: ${savedPdf?.name ?: pdf.name} & ${savedXlsx?.name ?: xlsx.name}"
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                } catch (t: Throwable) {
+                                    exportError = t.message ?: t::class.java.simpleName
+                                } finally {
+                                    isExporting = false
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).testTag("po_save_both_btn")
+                    ) {
+                        Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "সেভ PDF+XLSX" else "Save PDF+XLSX", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // CTN Labels Preview / Print / Share (Phase 5.3)
+                if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY && validatedExport.exportedCartons.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        enabled = !isExporting && canExportSupplier,
+                        onClick = {
+                            if (isExporting) return@Button
+                            isExporting = true
+                            exportError = null
+                            coroutineScope.launch {
+                                try {
+                                    val labelsPdf = withContext(Dispatchers.IO) {
+                                        LabelPrintingEngine.generatePoCartonLabelsPdf(context, validatedExport)
+                                    }
+                                    previewPdfTitle = "${order.poNumber} CTN Labels (${validatedExport.exportedCartonCount} CTN)"
+                                    previewPdfFile = labelsPdf
+                                } catch (t: Throwable) {
+                                    exportError = t.message ?: t::class.java.simpleName
+                                } finally {
+                                    isExporting = false
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("po_ctn_labels_btn")
+                    ) {
+                        Icon(Icons.Outlined.Label, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Excel " + if (isBangla) "শেয়ার" else "Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (isBangla)
+                                "কার্টন লেবেল ও শিপিং মার্ক প্রিভিউ/প্রিন্ট (${validatedExport.exportedCartonCount} CTN)"
+                            else
+                                "CTN Labels & Shipping Marks Preview / Print (${validatedExport.exportedCartonCount} CTN)",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // In-App Multi-Page PDF Preview Dialog (Phase 10)
+    val fileToPreview = previewPdfFile
+    if (fileToPreview != null) {
+        InAppPdfPreviewDialog(
+            pdfFile = fileToPreview,
+            title = previewPdfTitle,
+            isBangla = isBangla,
+            onShare = {
+                shareFileToApp(context, fileToPreview, "application/pdf", previewPdfTitle, includeAttachments, attachmentInfos)
+            },
+            onPrint = {
+                ControlCenterShareService.printPdf(context, fileToPreview, previewPdfTitle)
+            },
+            onSave = {
+                ControlCenterShareService.saveToDownloads(context, fileToPreview)
+            },
+            onDismiss = { previewPdfFile = null }
+        )
+    }
+}
+
+@Composable
+private fun InAppPdfPreviewDialog(
+    pdfFile: File,
+    title: String,
+    isBangla: Boolean,
+    onShare: () -> Unit,
+    onPrint: () -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val pageBitmaps = remember(pdfFile.absolutePath, pdfFile.lastModified()) {
+        val rendered = mutableListOf<Bitmap>()
+        runCatching {
+            ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    val maxPages = minOf(renderer.pageCount, 20)
+                    for (i in 0 until maxPages) {
+                        renderer.openPage(i).use { page ->
+                            val scale = 2
+                            val bmp = Bitmap.createBitmap(page.width * scale, page.height * scale, Bitmap.Config.ARGB_8888)
+                            bmp.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            rendered += bmp
+                        }
+                    }
+                }
+            }
+        }
+        rendered
+    }
+
+    DisposableEffect(pageBitmaps) {
+        onDispose {
+            pageBitmaps.forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.96f).fillMaxHeight(0.92f).clip(RoundedCornerShape(16.dp)),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "${pdfFile.name} • ${pageBitmaps.size} ${if (isBangla) "পৃষ্ঠা" else "page(s)"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close Preview")
+                    }
+                }
+                HorizontalDivider(color = ERPDivider)
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFE2E8F0)),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(pageBitmaps) { bmp ->
+                        Card(shape = RoundedCornerShape(8.dp), elevation = CardDefaults.cardElevation(4.dp)) {
+                            Image(
+                                bitmap = bmp.asImageBitmap(),
+                                contentDescription = "PDF Page",
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.FillWidth
+                            )
+                        }
+                    }
+                }
+
+                Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(onClick = onSave, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isBangla) "সেভ" else "Save", fontSize = 12.sp)
+                        }
+                        OutlinedButton(onClick = onPrint, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Outlined.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isBangla) "প্রিন্ট" else "Print", fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = onShare,
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isBangla) "শেয়ার" else "Share", fontSize = 12.sp)
+                        }
                     }
                 }
             }

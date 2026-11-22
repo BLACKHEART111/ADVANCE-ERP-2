@@ -10,6 +10,8 @@ import com.pocketdev.advance_erp.core.engine.LandedCostAllocationEngine
 import com.pocketdev.advance_erp.core.engine.LandingCostEngine
 import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
 import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
+import com.pocketdev.advance_erp.core.engine.PoPackingEngine
+import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
 import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import com.pocketdev.advance_erp.data.dao.CustomerDao
 import com.pocketdev.advance_erp.data.dao.ImportCostDao
@@ -2501,17 +2503,57 @@ class ImportRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun renumberOrderCartonsContinuously(orderId: String) {
+        val current = importShipmentDao.getCartonsForOrderSync(orderId)
+        if (current.isEmpty()) return
+        val grouped = current
+            .groupBy { it.cartonNumber }
+            .entries
+            .sortedWith(compareBy<Map.Entry<String, List<ShipmentCarton>>> { PoPackingEngine.cartonSortKey(it.key) }.thenBy { it.key })
+
+        val oldToNew = LinkedHashMap<String, String>()
+        grouped.forEachIndexed { idx, (oldNumber, rows) ->
+            val newNumber = PoPackingEngine.formatCartonNumber(idx + 1)
+            oldToNew[oldNumber] = newNumber
+            if (oldNumber != newNumber) {
+                rows.forEach { row ->
+                    importShipmentDao.updateCartonNumber(row.id, newNumber)
+                }
+            }
+        }
+
+        val order = purchaseOrderDao.getOrderById(orderId) ?: return
+        val parsed = PoNotesMetadataParser.parse(order.notes, defaultForwarder = "")
+        if (parsed.cartonShippingMarks.isNotEmpty()) {
+            val remappedMarks = PoNotesMetadataParser.remapCartonShippingMarks(parsed.cartonShippingMarks, oldToNew)
+            if (remappedMarks != parsed.cartonShippingMarks) {
+                val updatedNotes = PoNotesMetadataParser.serialize(
+                    paymentTermLabel = parsed.rawTermsText,
+                    forwarderAddress = parsed.forwarderAddress,
+                    userNotes = parsed.userNotes,
+                    defaultShippingMark = parsed.defaultShippingMark,
+                    cartonShippingMarks = remappedMarks
+                )
+                purchaseOrderDao.updateOrder(order.copy(notes = updatedNotes, updatedAt = System.currentTimeMillis()))
+            }
+        }
+    }
+
     override suspend fun deleteCarton(cartonId: String) = database.withTransaction {
         val carton = importShipmentDao.getCartonById(cartonId) ?: return@withTransaction
         carton.purchaseOrderId?.let { requirePackingEditableOrder(it) }
         importShipmentDao.deleteCartonById(cartonId)
-        carton.purchaseOrderId?.let { refreshOrderPacking(it) }
+        carton.purchaseOrderId?.let {
+            renumberOrderCartonsContinuously(it)
+            refreshOrderPacking(it)
+        }
         Unit
     }
 
     override suspend fun deleteCartonByNumber(orderId: String, cartonNumber: String) = database.withTransaction {
         requirePackingEditableOrder(orderId)
         importShipmentDao.deleteCartonByNumber(orderId, cartonNumber)
+        renumberOrderCartonsContinuously(orderId)
         refreshOrderPacking(orderId)
     }
 
@@ -2886,6 +2928,12 @@ class ImportRepositoryImpl @Inject constructor(
         val item = purchaseOrderDao.getItemById(itemId) ?: return@withTransaction
         val po = purchaseOrderDao.getOrderById(item.purchaseOrderId) ?: return@withTransaction
         requireEditableOrder(po.id)
+        val packedForVariant = importShipmentDao.getCartonsForOrderSync(po.id)
+            .filter { it.productId == item.productId && it.variantId == item.variantId }
+            .sumOf { it.quantity }
+        require(quantity >= packedForVariant) {
+            "This variant already has $packedForVariant PCS allocated to cartons. Please adjust the carton packing before reducing the PO quantity."
+        }
         require(quantity > 0 && unitPriceMinor > 0 && cartonQuantity >= 0 && BigDecimal(grossWeightKg) >= BigDecimal.ZERO) { "Invalid item quantity, price or packing" }
         val rateBd = BigDecimal(po.exchangeRateToBdt.ifBlank { "17.00" })
         val totalAmountMinor = quantity.toLong() * unitPriceMinor

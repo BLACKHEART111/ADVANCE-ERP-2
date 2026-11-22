@@ -1,5 +1,13 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Latest PO Smart Packing & Premium Export Checkpoint — 2026-11-22
+
+Implemented and verified the complete Purchase Order workflow overhaul across Searchable Product/Variant Selection (`PoCatalogProductVariantPickerSheet`, `PoCartonVariantPickerSheet`, `BulkCreateCartonsDialog`), Smart Carton Packing & Validation (`PoPackingEngine`), Continuous `CTN-001` Carton Numbering (`renumberOrderCartonsContinuously`), Option A PO quantity reduction guards, Default & Individual `{CTN}` Shipping Marks, CTN Labels (`LabelPrintingEngine.generatePoCartonLabelsPdf`), Approved-Reference Supplier PDF (`ImportPdfGenerator`), 4-Sheet OOXML Supplier Excel (`ImportExcelGenerator`), Shared Single-Source-of-Truth Export Builder (`PoExportDataBuilder`), and `All` vs `Selected Cartons` Share/Preview/Print/Save workflows (`PoShareDialog`), preserving Room v13 schema and existing records (`PO-2026-001`..`PO-2026-004`). [Full verification report & screenshots](docs/ui-refinement/2026-11-22/po-smart-packing-export/report.md).
+
+Verified on `adev` + live ADB device (`com.pocketdev.advance_erp2`, APK SHA-256 `8dad73803ee84dee0f2e98123d0a1661851860e917a4d0a3278c6524d10f91cd`):
+- `git diff --check` passed; `:app:assembleDebug :app:testDebugUnitTest` -> **BUILD SUCCESSFUL**; **389/389** JVM tests passed across 73 files (0 failures, 0 errors, 0 skipped), including `PoSmartPackingAndExportTest` & `SupplierPoExportTest`.
+- Real-device ADB verification (`localhost:45453`, `CPH2745`): Mandatory Tests **1–14** executed with 15 captured screenshots (`01`..`15`), read-only export inspection of live `PO-2026-004` (full + `Selected_2CTN` PDF & 4-sheet `.xlsx` with 14 images & live Excel formulas), `PO-2026-005` (`CONFIRMED`, `5 CTN`, `400 pcs`, `75.0 KG`) persistence after `am force-stop` cold restart, SQLite verification, and clean Logcat (`0` crashes).
+
 ## Latest E2E Phase 0–3 Bugfix & Resume Checkpoint — 2026-11-22
 
 Real-device E2E verification progressed through **Phases 0–3** on `com.pocketdev.advance_erp2`, followed by fixes for all discovered Phase 0–3 bugs across Add Product, Product Catalog, PO/Import landed cost & freight rate, Shipments filtering, Sales invoice localization, Inventory `flatMapLatest` search/layout, Contacts title sync/validation, and Bangla localization (27 modified Kotlin files + `E2eBugFixesRegressionTest.kt`). [Full E2E checkpoint & Phase 4–6 resume plan](docs/e2e-verification/2026-11-22/checkpoint.md).

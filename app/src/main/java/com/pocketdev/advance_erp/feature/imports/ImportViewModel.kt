@@ -570,6 +570,35 @@ class ImportViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
+                val items = importRepository.getItemsForOrderSync(orderId)
+                val cartons = importRepository.getCartonsForOrderSync(orderId)
+                val orderLines = items.map {
+                    com.pocketdev.advance_erp.core.engine.PackingOrderLine(
+                        com.pocketdev.advance_erp.core.engine.VariantKey(it.productId, it.variantId),
+                        it.quantity
+                    )
+                }
+                val cartonLines = cartons.map {
+                    com.pocketdev.advance_erp.core.engine.PackingCartonLine(
+                        it.cartonNumber,
+                        com.pocketdev.advance_erp.core.engine.VariantKey(it.productId, it.variantId),
+                        it.quantity
+                    )
+                }
+                val blockers = com.pocketdev.advance_erp.core.engine.PoPackingEngine.confirmBlockers(orderLines, cartonLines)
+                if (blockers.isNotEmpty()) {
+                    val unallocated = com.pocketdev.advance_erp.core.engine.PoPackingEngine.unallocatedQuantity(orderLines, cartonLines)
+                    val isBn = _uiState.value.language == AppLanguage.BANGLA
+                    val msg = if (blockers.any { it.type == com.pocketdev.advance_erp.core.engine.PackingIssueType.OVERPACKED }) {
+                        if (isBn) "কার্টনে অর্ডারের চেয়ে বেশি পণ্য প্যাক করা আছে। নিশ্চিত করার আগে প্যাকিং ঠিক করুন।"
+                        else "Overpacked carton allocation detected. Adjust carton packing before confirming."
+                    } else {
+                        if (isBn) "প্যাকিং অসম্পূর্ণ। এখনও $unallocated PCS কার্টনে বণ্টন বাকি আছে। কনফার্ম করতে সব পণ্য কার্টনে প্যাক করুন।"
+                        else "Packing incomplete. $unallocated PCS remain unallocated. Allocate all variants to cartons before confirming."
+                    }
+                    _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                    return@launch
+                }
                 importRepository.updatePurchaseOrderStatus(orderId, PurchaseOrderStatus.CONFIRMED)
                 val updatedPo = importRepository.getPurchaseOrderById(orderId)
                 if (updatedPo != null && _uiState.value.selectedPo?.id == orderId) {
