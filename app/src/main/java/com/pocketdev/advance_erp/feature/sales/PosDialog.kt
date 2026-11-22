@@ -91,11 +91,12 @@ fun PosDialog(
     var cashTenderedText by rememberSaveable { mutableStateOf("") }
     var autoPrintReceipt by rememberSaveable { mutableStateOf(true) }
     var isCheckingOut by rememberSaveable { mutableStateOf(false) }
+    var checkoutError by rememberSaveable { mutableStateOf<String?>(null) }
     var lastCreatedReceiptNote by remember { mutableStateOf<String?>(null) }
 
     // Computations
     val subtotalMinor = cartItems.sumOf { it.lineTotalMinor }
-    val discountVal = overallDiscountText.toLongOrNull() ?: 0L
+    val discountVal = Formatters.normalizeAsciiNumberInput(overallDiscountText).toLongOrNull() ?: 0L
     val invoiceDiscountMinor = if (overallDiscountPercent) {
         val pct = discountVal.coerceIn(0L, 100L)
         (subtotalMinor * pct) / 100L
@@ -103,10 +104,16 @@ fun PosDialog(
         (discountVal * 100L).coerceAtMost(subtotalMinor)
     }
     val netTotalMinor = (subtotalMinor - invoiceDiscountMinor).coerceAtLeast(0L)
-    val tenderedMinor = ((cashTenderedText.toDoubleOrNull() ?: 0.0) * 100).toLong().coerceAtLeast(0L)
+    val tenderedMinor = Formatters.normalizeAsciiNumberInput(cashTenderedText)
+        .toBigDecimalOrNull()
+        ?.multiply(java.math.BigDecimal("100"))
+        ?.setScale(0, java.math.RoundingMode.HALF_UP)
+        ?.toLong()
+        ?.coerceAtLeast(0L) ?: 0L
     val changeDueMinor = (tenderedMinor - netTotalMinor).coerceAtLeast(0L)
 
     fun addOrIncrementBarcode(rawCode: String) {
+        checkoutError = null
         val code = rawCode.trim()
         if (code.isBlank()) return
 
@@ -330,6 +337,7 @@ fun PosDialog(
                                     }
                                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         IconButton(onClick = {
+                                            checkoutError = null
                                             val idx = cartItems.indexOf(item)
                                             if (idx >= 0) { if (item.quantity > 1) cartItems[idx] = item.copy(quantity = item.quantity - 1) else cartItems.removeAt(idx) }
                                         }, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Remove, contentDescription = "Decrease") }
@@ -337,7 +345,8 @@ fun PosDialog(
                                         OutlinedTextField(
                                             value = item.quantity.toString(),
                                             onValueChange = { t ->
-                                                val q = t.filter { it.isDigit() }.toIntOrNull()
+                                                checkoutError = null
+                                                val q = Formatters.normalizeAsciiNumberInput(t).filter { it.isDigit() }.toIntOrNull()
                                                 val idx = cartItems.indexOf(item)
                                                 if (idx >= 0 && q != null && q > 0) cartItems[idx] = item.copy(quantity = q)
                                             },
@@ -346,6 +355,7 @@ fun PosDialog(
                                             modifier = Modifier.width(80.dp)
                                         )
                                         IconButton(onClick = {
+                                            checkoutError = null
                                             val idx = cartItems.indexOf(item)
                                             if (idx >= 0) cartItems[idx] = item.copy(quantity = item.quantity + 1)
                                         }, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Add, contentDescription = "Increase") }
@@ -354,8 +364,9 @@ fun PosDialog(
                                         OutlinedTextField(
                                             value = priceText,
                                             onValueChange = { t ->
+                                                checkoutError = null
                                                 priceText = t
-                                                val v = t.toDoubleOrNull()
+                                                val v = Formatters.normalizeAsciiNumberInput(t).toDoubleOrNull()
                                                 val idx = cartItems.indexOf(item)
                                                 if (idx >= 0 && v != null && v >= 0) cartItems[idx] = item.copy(unitPriceMinor = Math.round(v * 100))
                                             },
@@ -465,7 +476,10 @@ fun PosDialog(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("Exact" to (netTotalMinor / 100.0), "৳500" to 500.0, "৳1000" to 1000.0, "৳2000" to 2000.0).forEach { (btnLabel, amt) ->
                             Button(
-                                onClick = { cashTenderedText = "%.0f".format(amt) },
+                                onClick = {
+                                    checkoutError = null
+                                    cashTenderedText = String.format(java.util.Locale.US, "%.0f", amt)
+                                },
                                 modifier = Modifier.weight(1f),
                                 contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -474,7 +488,10 @@ fun PosDialog(
                     }
                     OutlinedTextField(
                         value = cashTenderedText,
-                        onValueChange = { cashTenderedText = it },
+                        onValueChange = {
+                            checkoutError = null
+                            cashTenderedText = it
+                        },
                         label = { Text("Cash Received / গৃহীত টাকা (৳)") },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
@@ -503,6 +520,17 @@ fun PosDialog(
                         Text("Auto-print Thermal Receipt", style = MaterialTheme.typography.bodySmall)
                     }
                     lastCreatedReceiptNote?.let { Text(it, color = StatusSuccess, fontWeight = FontWeight.SemiBold) }
+                    checkoutError?.let { errMsg ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(StatusErrorContainer, RoundedCornerShape(8.dp))
+                                .border(1.dp, StatusError, RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        ) {
+                            Text(errMsg, color = StatusError, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -510,6 +538,7 @@ fun PosDialog(
                     onClick = {
                         val wh = selectedWarehouse ?: return@Button
                         if (!canCheckout) return@Button
+                        checkoutError = null
                         isCheckingOut = true
                         val itemDrafts = cartItems.map {
                             InvoiceItemDraft(
@@ -531,14 +560,22 @@ fun PosDialog(
                         )
                         val changeNow = changeDueMinor
                         val dueNow = dueMinor
-                        salesViewModel.createAndConfirmInvoice(draft) {
-                            isCheckingOut = false
-                            cartItems.clear()
-                            cashTenderedText = ""
-                            overallDiscountText = "0"
-                            lastCreatedReceiptNote = if (dueNow > 0L) "Sale saved. Due: ৳${Formatters.formatMinorUnit(dueNow)}"
-                                else "Sale completed! Change: ৳${Formatters.formatMinorUnit(changeNow)}"
-                        }
+                        salesViewModel.createAndConfirmInvoice(
+                            draft = draft,
+                            onSuccess = {
+                                isCheckingOut = false
+                                checkoutError = null
+                                cartItems.clear()
+                                cashTenderedText = ""
+                                overallDiscountText = "0"
+                                lastCreatedReceiptNote = if (dueNow > 0L) "Sale saved. Due: ৳${Formatters.formatMinorUnit(dueNow)}"
+                                    else "Sale completed! Change: ৳${Formatters.formatMinorUnit(changeNow)}"
+                            },
+                            onError = { errMsg ->
+                                isCheckingOut = false
+                                checkoutError = errMsg
+                            }
+                        )
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     enabled = canCheckout,

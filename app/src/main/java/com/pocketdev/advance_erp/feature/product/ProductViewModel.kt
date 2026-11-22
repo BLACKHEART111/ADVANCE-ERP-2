@@ -66,6 +66,7 @@ data class ProductUiState(
     val selectedProductForDetail: ProductWithDetails? = null,
     val selectedProductVariants: List<ProductVariant> = emptyList(),
     val selectedProductImages: List<ProductImage> = emptyList(),
+    val selectedProductVariantImages: Map<String, List<ProductImage>> = emptyMap(),
     val preSelectedVariantId: String? = null,
     val variantStockMap: Map<String, Int> = emptyMap(),
     val showAddDialog: Boolean = false,
@@ -92,6 +93,7 @@ class ProductViewModel @Inject constructor(
     private val _selectedProduct = MutableStateFlow<ProductWithDetails?>(null)
     private val _selectedVariants = MutableStateFlow<List<ProductVariant>>(emptyList())
     private val _selectedProductImages = MutableStateFlow<List<ProductImage>>(emptyList())
+    private val _selectedVariantImages = MutableStateFlow<Map<String, List<ProductImage>>>(emptyMap())
     private val _preSelectedVariantId = MutableStateFlow<String?>(null)
     private val _variantStockMap = MutableStateFlow<Map<String, Int>>(emptyMap())
     private val _showAddDialog = MutableStateFlow(false)
@@ -119,8 +121,14 @@ class ProductViewModel @Inject constructor(
         val dialogFlow = combine(_showAddDialog, _showEditDialog, _userMessage) { showAdd, showEdit, msg ->
             Triple(showAdd, showEdit, msg)
         }
-        val detailFlow = combine(_selectedProduct, _selectedVariants, _selectedProductImages, _preSelectedVariantId, _variantStockMap) { selProd, selVars, selImgs, preVarId, varStock ->
-            ProductDetailUiState(selProd, selVars, selImgs, preVarId, varStock)
+        val detailFlow = combine(
+            _selectedProduct,
+            combine(_selectedVariants, _selectedVariantImages) { vars, varImgs -> vars to varImgs },
+            _selectedProductImages,
+            _preSelectedVariantId,
+            _variantStockMap
+        ) { selProd, (selVars, selVarImgs), selImgs, preVarId, varStock ->
+            ProductDetailUiState(selProd, selVars, selImgs, selVarImgs, preVarId, varStock)
         }
 
         combine(
@@ -140,6 +148,7 @@ class ProductViewModel @Inject constructor(
                 selectedProductForDetail = detail.selectedProduct,
                 selectedProductVariants = detail.selectedVariants,
                 selectedProductImages = detail.selectedProductImages,
+                selectedProductVariantImages = detail.selectedProductVariantImages,
                 preSelectedVariantId = detail.preSelectedVariantId,
                 variantStockMap = detail.variantStockMap,
                 showAddDialog = dialog.first,
@@ -167,6 +176,13 @@ class ProductViewModel @Inject constructor(
         viewModelScope.launch {
             productRepository.getVariantsForProduct(product.id).collect {
                 _selectedVariants.value = it
+                _selectedVariantImages.value = it.associate { v ->
+                    v.id to try {
+                        productRepository.getImagesForVariantSync(v.id)
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
                 _variantStockMap.value = try {
                     productRepository.getVariantStockMap(product.id)
                 } catch (_: Exception) {
@@ -185,6 +201,7 @@ class ProductViewModel @Inject constructor(
         _selectedProduct.value = null
         _selectedVariants.value = emptyList()
         _selectedProductImages.value = emptyList()
+        _selectedVariantImages.value = emptyMap()
         _variantStockMap.value = emptyMap()
         _preSelectedVariantId.value = null
     }
@@ -482,24 +499,27 @@ class ProductViewModel @Inject constructor(
 
                 val newImages = mutableListOf<ProductImage>()
                 for ((idx, draft) in productPhotos.withIndex()) {
-                    if (draft.id.startsWith("draft-")) {
-                        val localPath = try {
+                    val isNewDraft = draft.id.startsWith("draft-")
+                    val localPath = if (isNewDraft) {
+                        try {
                             imageStorage.saveImageFromUri(Uri.parse(draft.uriString))
                         } catch (_: Exception) {
                             draft.uriString
                         }
-                        newImages.add(
-                            ProductImage(
-                                id = UUID.randomUUID().toString(),
-                                productId = productId,
-                                variantId = null,
-                                imageUri = localPath,
-                                isPrimary = draft.isPrimary,
-                                sortOrder = idx,
-                                createdAt = System.currentTimeMillis()
-                            )
-                        )
+                    } else {
+                        draft.uriString
                     }
+                    newImages.add(
+                        ProductImage(
+                            id = if (isNewDraft) UUID.randomUUID().toString() else draft.id,
+                            productId = productId,
+                            variantId = null,
+                            imageUri = localPath,
+                            isPrimary = draft.isPrimary,
+                            sortOrder = idx,
+                            createdAt = System.currentTimeMillis()
+                        )
+                    )
                 }
 
                 val variantAddedStock = mutableMapOf<String, Int>()
@@ -511,24 +531,27 @@ class ProductViewModel @Inject constructor(
                         variantAddedStock[variantId] = v.initialStock
                     }
                     for ((vIdx, vDraft) in v.photos.withIndex()) {
-                        if (vDraft.id.startsWith("draft-") || !v.isExistingVariant) {
-                            val vLocalPath = try {
+                        val isNewVariantDraft = vDraft.id.startsWith("draft-") || !v.isExistingVariant
+                        val vLocalPath = if (isNewVariantDraft) {
+                            try {
                                 imageStorage.saveImageFromUri(Uri.parse(vDraft.uriString))
                             } catch (_: Exception) {
                                 vDraft.uriString
                             }
-                            newImages.add(
-                                ProductImage(
-                                    id = UUID.randomUUID().toString(),
-                                    productId = productId,
-                                    variantId = variantId,
-                                    imageUri = vLocalPath,
-                                    isPrimary = vDraft.isPrimary,
-                                    sortOrder = vIdx,
-                                    createdAt = System.currentTimeMillis()
-                                )
-                            )
+                        } else {
+                            vDraft.uriString
                         }
+                        newImages.add(
+                            ProductImage(
+                                id = if (isNewVariantDraft) UUID.randomUUID().toString() else vDraft.id,
+                                productId = productId,
+                                variantId = variantId,
+                                imageUri = vLocalPath,
+                                isPrimary = vDraft.isPrimary,
+                                sortOrder = vIdx,
+                                createdAt = System.currentTimeMillis()
+                            )
+                        )
                     }
                     ProductVariant(
                         id = variantId,
@@ -569,6 +592,19 @@ class ProductViewModel @Inject constructor(
                 // Refresh selected product if currently opened
                 productRepository.getProductWithDetailsById(productId)?.let {
                     _selectedProduct.value = it
+                    val freshVariants = try {
+                        productRepository.getVariantsForProductSync(productId)
+                    } catch (_: Exception) {
+                        _selectedVariants.value
+                    }
+                    _selectedVariants.value = freshVariants
+                    _selectedVariantImages.value = freshVariants.associate { v ->
+                        v.id to try {
+                            productRepository.getImagesForVariantSync(v.id)
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                    }
                     _variantStockMap.value = try {
                         productRepository.getVariantStockMap(productId)
                     } catch (_: Exception) {
@@ -610,6 +646,7 @@ private data class ProductDetailUiState(
     val selectedProduct: ProductWithDetails?,
     val selectedVariants: List<ProductVariant>,
     val selectedProductImages: List<ProductImage>,
+    val selectedProductVariantImages: Map<String, List<ProductImage>> = emptyMap(),
     val preSelectedVariantId: String?,
     val variantStockMap: Map<String, Int> = emptyMap()
 )

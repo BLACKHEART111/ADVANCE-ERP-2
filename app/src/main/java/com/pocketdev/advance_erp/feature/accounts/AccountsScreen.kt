@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1173,7 +1175,7 @@ fun AccountsScreen(
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             ERPSectionHeader(
@@ -1184,11 +1186,17 @@ fun AccountsScreen(
                             if (canPostJournals) Button(
                                 onClick = { showNewJournalDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(stringResource(R.string.accounting_new_entry), fontSize = 12.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.accounting_new_entry),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
@@ -1244,51 +1252,147 @@ fun AccountsScreen(
                     } else {
                         items(filteredJournalEntries, key = { it.id }) { entry ->
                             FinanceCard(contentPadding = 14.dp) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Top Row: Entry number + badges (left) & Reverse button (right)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(entry.entryNumber, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                                if (entry.isReversed) {
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .background(StatusErrorContainer, RoundedCornerShape(4.dp))
-                                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    ) {
-                                                        Text("REVERSED", color = StatusError, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                                    }
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = entry.entryNumber,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(
+                                                        if (entry.isPosted) StatusSuccess.copy(alpha = 0.14f)
+                                                        else MaterialTheme.colorScheme.surfaceVariant,
+                                                        RoundedCornerShape(6.dp)
+                                                    )
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (entry.isPosted) {
+                                                        if (isBangla) "পোস্ট হয়েছে" else "Posted"
+                                                    } else {
+                                                        if (isBangla) "খসড়া" else "Draft"
+                                                    },
+                                                    color = if (entry.isPosted) StatusSuccess else TextMuted,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                            if (entry.isReversed) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(StatusErrorContainer, RoundedCornerShape(6.dp))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "REVERSED",
+                                                        color = StatusError,
+                                                        fontSize = 9.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1
+                                                    )
                                                 }
                                             }
-                                            Text(if (isBangla && entry.descriptionBn.isNotBlank()) entry.descriptionBn else entry.descriptionEn, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
-                                            Text("Ref: ${entry.referenceType} • ${Formatters.formatDate(entry.entryDate, uiState.language)}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
-                                            Text(if (entry.isPosted) { if (isBangla) "পোস্ট হয়েছে" else "Posted" } else { if (isBangla) "খসড়া" else "Draft" }, style = MaterialTheme.typography.labelSmall, color = if (entry.isPosted) StatusSuccess else TextMuted)
                                         }
 
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                "Dr ${Formatters.formatMoney(entry.totalDebitMinor, CurrencyCode.BDT, uiState.language)}",
-                                                fontWeight = FontWeight.Bold,
-                                                color = PrimaryPurple
-                                            )
-                                            Text("Cr ${Formatters.formatMoney(entry.totalCreditMinor, CurrencyCode.BDT, uiState.language)}", fontWeight = FontWeight.Bold, color = SecondaryTeal)
-                                            if (!entry.isReversed && entry.referenceType != "REVERSAL") {
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                OutlinedButton(
-                                                    onClick = { entryToReverse = entry },
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                                                    modifier = Modifier.height(26.dp)
-                                                ) {
-                                                    Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(12.dp))
-                                                    Spacer(modifier = Modifier.width(2.dp))
-                                                    Text("Reverse", fontSize = 10.sp)
-                                                }
+                                        if (!entry.isReversed && entry.referenceType != "REVERSAL") {
+                                            OutlinedButton(
+                                                onClick = { entryToReverse = entry },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier.heightIn(min = 30.dp)
+                                            ) {
+                                                Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(13.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (isBangla) "রিভার্স" else "Reverse",
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
                                             }
+                                        }
+                                    }
+
+                                    // Description (full width, clean line height)
+                                    Text(
+                                        text = if (isBangla && entry.descriptionBn.isNotBlank()) entry.descriptionBn else entry.descriptionEn,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextPrimary,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    // Reference & Date
+                                    Text(
+                                        text = "Ref: ${entry.referenceType}  •  ${Formatters.formatDate(entry.entryDate, uiState.language)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    // Balanced Debit / Credit Split Row
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(ERPSurfaceVariant.copy(alpha = 0.65f))
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (isBangla) "ডেবিট (Dr)" else "Debit (Dr)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMuted,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                text = Formatters.formatMoney(entry.totalDebitMinor, CurrencyCode.BDT, uiState.language),
+                                                fontWeight = FontWeight.Bold,
+                                                color = PrimaryPurple,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.End
+                                        ) {
+                                            Text(
+                                                text = if (isBangla) "ক্রেডিট (Cr)" else "Credit (Cr)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMuted,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                text = Formatters.formatMoney(entry.totalCreditMinor, CurrencyCode.BDT, uiState.language),
+                                                fontWeight = FontWeight.Bold,
+                                                color = SecondaryTeal,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
                                     }
                                 }
@@ -1687,6 +1791,13 @@ fun AccountsScreen(
             onEdit = {
                 detailAccount = null
                 editingAccount = acc
+            },
+            onDeleteAccount = { onErr ->
+                viewModel.deleteLiquidAccount(
+                    account = acc,
+                    onSuccess = { detailAccount = null },
+                    onError = onErr
+                )
             }
         )
     }
@@ -2325,10 +2436,18 @@ private fun AccountTransferDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(16.dp)),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = 680.dp)
+                .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+                    .padding(18.dp)
+            ) {
                 Text(if (isBangla) "হিসাবের মধ্যে তহবিল স্থানান্তর" else "Inter-Account Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -2418,10 +2537,18 @@ private fun StartReconciliationDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(16.dp)),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = 680.dp)
+                .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+                    .padding(18.dp)
+            ) {
                 Text(if (isBangla) "ব্যাংক সমন্বয় শুরু করুন" else "Start Bank Reconciliation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -2499,10 +2626,18 @@ private fun CreateBackupDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(16.dp)),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = 680.dp)
+                .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+                    .padding(18.dp)
+            ) {
                 Text(if (isBangla) "অফলাইন নিরাপত্তা ব্যাকআপ তৈরি" else "Create Offline Safety Backup", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -2558,10 +2693,18 @@ private fun NewJournalEntryDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(16.dp)),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .heightIn(max = 680.dp)
+                .clip(RoundedCornerShape(16.dp)),
             color = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
+                    .padding(18.dp)
+            ) {
                 Text(if (isBangla) "নতুন ডাবল-এন্ট্রি জাবেদা" else "New Double-Entry Journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 

@@ -116,6 +116,7 @@ fun DashboardScreen(
         onSelectNextDay = viewModel::selectNextDay,
         onSelectToday = viewModel::selectToday,
         onSelectDate = viewModel::selectDate,
+        onSelectDateRange = viewModel::selectDateRange,
         onGenerateDailySnapshotPdf = { viewModel.generateDailySnapshotPdf(context) },
         onGenerateMonthlyPerformancePdf = { viewModel.generateMonthlyPerformancePdf(context) },
         onClearGeneratedPdf = viewModel::clearGeneratedPdf,
@@ -135,6 +136,7 @@ internal fun DashboardContent(
     onSelectNextDay: () -> Unit,
     onSelectToday: () -> Unit,
     onSelectDate: (Long) -> Unit,
+    onSelectDateRange: (Long, Long) -> Unit = { _, _ -> },
     onGenerateDailySnapshotPdf: () -> Unit,
     onGenerateMonthlyPerformancePdf: () -> Unit,
     onClearGeneratedPdf: () -> Unit,
@@ -174,7 +176,9 @@ internal fun DashboardContent(
         isFabExpanded = false
     }
 
-    val selectedDateText = rememberFormattedDashboardDate(state.selectedDateMillis, language)
+    val startDateFormatted = rememberFormattedDashboardDate(state.selectedDateMillis, language)
+    val endDateFormatted = rememberFormattedDashboardDate(state.selectedEndDateMillis, language)
+    val selectedDateText = if (state.isCustomRange) "$startDateFormatted – $endDateFormatted" else startDateFormatted
 
     val fabActions = listOf(
         DashboardFabAction(
@@ -237,6 +241,8 @@ internal fun DashboardContent(
                         formattedDate = selectedDateText,
                         language = language,
                         selectedDateMillis = state.selectedDateMillis,
+                        endDateMillis = state.selectedEndDateMillis,
+                        isCustomRange = state.isCustomRange,
                         showCalendarPicker = showCalendarPicker,
                         tokens = tokens,
                         onSelectPreviousDay = onSelectPreviousDay,
@@ -245,6 +251,10 @@ internal fun DashboardContent(
                         onToggleCalendarPicker = { showCalendarPicker = !showCalendarPicker },
                         onDateSelected = { millis ->
                             onSelectDate(millis)
+                            showCalendarPicker = false
+                        },
+                        onDateRangeSelected = { startMillis, endMillis ->
+                            onSelectDateRange(startMillis, endMillis)
                             showCalendarPicker = false
                         },
                         modifier = Modifier
@@ -282,8 +292,11 @@ internal fun DashboardContent(
                 ) {
                     CollapsibleSectionHeader(
                         icon = Icons.Outlined.BarChart,
-                        title = if (isBangla) "$selectedDateText এর ব্যবসায়িক তথ্য" else "Business Metrics for $selectedDateText",
-                        subtitle = if (isBangla) {
+                        title = if (isBangla) "$selectedDateText এর ব্যবসায়িক তথ্য" else "Business Metrics ($selectedDateText)",
+                        subtitle = if (state.isCustomRange) {
+                            if (isBangla) "নির্বাচিত সময়সীমার মোট ক্রয়, বিক্রয়, নগদ প্রবাহ ও লাভ"
+                            else "Sales, procurement, net cash flow & profit for selected date range"
+                        } else if (isBangla) {
                             "নির্বাচিত দিনের মোট ক্রয়, বিক্রয়, নগদ প্রবাহ ও লাভ"
                         } else {
                             "Sales, procurement, net cash flow & daily profit"
@@ -307,16 +320,24 @@ internal fun DashboardContent(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 PremiumDashboardStatCard(
-                                    title = if (isBangla) "দিনের বিক্রয় আয়" else "Daily Sales Revenue",
+                                    title = if (state.isCustomRange) {
+                                        if (isBangla) "মোট বিক্রয় আয়" else "Range Sales Revenue"
+                                    } else {
+                                        if (isBangla) "দিনের বিক্রয় আয়" else "Daily Sales Revenue"
+                                    },
                                     value = Formatters.formatMoney(dateMetrics?.totalSales?.minorUnits ?: 0L, state.currency, language),
                                     icon = Icons.Outlined.PointOfSale,
                                     accentColor = tokens.accentPurple,
-                                    badgeText = if (isBangla) "বিক্রয়" else "Day Sales",
+                                    badgeText = if (isBangla) "বিক্রয়" else "Sales",
                                     tokens = tokens,
                                     modifier = Modifier.weight(1f)
                                 )
                                 PremiumDashboardStatCard(
-                                    title = if (isBangla) "দিনের ক্রয় মূল্য" else "Daily Purchase Value",
+                                    title = if (state.isCustomRange) {
+                                        if (isBangla) "মোট ক্রয় মূল্য" else "Range Purchase Value"
+                                    } else {
+                                        if (isBangla) "দিনের ক্রয় মূল্য" else "Daily Purchase Value"
+                                    },
                                     value = Formatters.formatMoney(dateMetrics?.totalPurchases?.minorUnits ?: 0L, state.currency, language),
                                     icon = Icons.Outlined.ShoppingCart,
                                     accentColor = tokens.accentBlue,
@@ -453,11 +474,12 @@ internal fun DashboardContent(
                 }
             }
 
-            // Item 3: Report Shortcut Pills (Daily PDF Snapshot & Monthly Performance Review)
+            // Item 3: Report Shortcut Pills (Daily/Range PDF Snapshot & Monthly Performance Review)
             item {
                 DashboardPdfShortcutsRow(
                     isBangla = isBangla,
                     tokens = tokens,
+                    isCustomRange = state.isCustomRange,
                     onGenerateDailySnapshotPdf = onGenerateDailySnapshotPdf,
                     onGenerateMonthlyPerformancePdf = onGenerateMonthlyPerformancePdf,
                     modifier = Modifier.padding(horizontal = 16.dp)

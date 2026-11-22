@@ -1770,7 +1770,7 @@ object CentralizedPdfReportRegistry {
     // 5. DASHBOARD REPORTS (37-42)
     // ==========================================
 
-    /** Report 37: Daily Business Snapshot */
+    /** Report 37: Daily or Custom Date Range Business Snapshot */
     fun buildDailyBusinessSnapshotReport(
         dateMillis: Long,
         totalSalesMinor: Long,
@@ -1785,22 +1785,30 @@ object CentralizedPdfReportRegistry {
         closingApMinor: Long,
         closingInventoryMinor: Long,
         isBangla: Boolean = false,
-        includeProfit: Boolean = true
+        includeProfit: Boolean = true,
+        endDateMillis: Long? = null
     ): CentralizedPdfReport {
+        val startStr = dateFormat.format(Date(dateMillis))
+        val endStr = endDateMillis?.let { dateFormat.format(Date(it)) }
+        val isRange = endStr != null && endStr != startStr
         val columns = listOf(
-            PdfReportColumn("Daily Metric Indicator", "দৈনিক সূচক", widthWeight = 4.0f),
+            PdfReportColumn(
+                if (isRange) "Period Metric Indicator" else "Daily Metric Indicator",
+                if (isRange) "নির্ধারিত সময়ের সূচক" else "দৈনিক সূচক",
+                widthWeight = 4.0f
+            ),
             PdfReportColumn("Amount (BDT)", "টাকা", widthWeight = 2.5f, isRightAligned = true)
         )
 
         val rows = buildList {
-            add(PdfReportRow(listOf("Daily Sales Revenue / দৈনিক বিক্রয় আয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor))))
-            add(PdfReportRow(listOf("Daily Purchase Commitment / দৈনিক ক্রয়", "৳" + Formatters.formatMinorUnit(totalPurchasesMinor))))
+            add(PdfReportRow(listOf(if (isRange) "Sales Revenue / বিক্রয় আয়" else "Daily Sales Revenue / দৈনিক বিক্রয় আয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor))))
+            add(PdfReportRow(listOf(if (isRange) "Purchase Commitment / মোট ক্রয়" else "Daily Purchase Commitment / দৈনিক ক্রয়", "৳" + Formatters.formatMinorUnit(totalPurchasesMinor))))
             add(PdfReportRow(listOf("Customer Collections Received / গ্রাহক আদায়", "৳" + Formatters.formatMinorUnit(totalCollectionsMinor))))
             add(PdfReportRow(listOf("Supplier Payments Disbursed / সরবরাহকারী পরিশোধ", "-৳" + Formatters.formatMinorUnit(totalPaymentsMinor))))
             add(PdfReportRow(listOf("Operating Expenses Paid / পরিচালন খরচ", "-৳" + Formatters.formatMinorUnit(totalExpensesMinor))))
             add(PdfReportRow(listOf("Net Operating Cash Flow / নিট নগদ প্রবাহ", "৳" + Formatters.formatMinorUnit(netCashFlowMinor)), isSummary = true))
             if (includeProfit) {
-                add(PdfReportRow(listOf("Daily Gross Profit / দৈনিক মোট লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor)), isSummary = true))
+                add(PdfReportRow(listOf(if (isRange) "Period Gross Profit / মোট লাভ" else "Daily Gross Profit / দৈনিক মোট লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor)), isSummary = true))
             }
             add(PdfReportRow(listOf("HISTORICAL CLOSING BALANCES / সমাপনী জের", ""), isEmphasized = true))
             add(PdfReportRow(listOf("  • Closing Cash & Bank Balance / নগদ ও ব্যাংক সমাপনী জের", "৳" + Formatters.formatMinorUnit(closingCashBankMinor))))
@@ -1810,19 +1818,19 @@ object CentralizedPdfReportRegistry {
         }
 
         val kpiBadges = buildList {
-            add(PdfKpiBadge("Daily Sales", "দৈনিক বিক্রয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor)))
+            add(PdfKpiBadge(if (isRange) "Period Sales" else "Daily Sales", if (isRange) "মোট বিক্রয়" else "দৈনিক বিক্রয়", "৳" + Formatters.formatMinorUnit(totalSalesMinor)))
             add(PdfKpiBadge("Net Cash Flow", "নিট নগদ প্রবাহ", "৳" + Formatters.formatMinorUnit(netCashFlowMinor)))
             if (includeProfit) {
-                add(PdfKpiBadge("Daily Profit", "দৈনিক লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor)))
+                add(PdfKpiBadge(if (isRange) "Period Profit" else "Daily Profit", if (isRange) "মোট লাভ" else "দৈনিক লাভ", "৳" + Formatters.formatMinorUnit(dailyProfitMinor)))
             }
         }
 
         return CentralizedPdfReport(
-            reportId = "RPT-37-DAILY-SNAPSHOT",
+            reportId = if (isRange) "RPT-37-RANGE-SNAPSHOT" else "RPT-37-DAILY-SNAPSHOT",
             category = "Dashboard",
-            titleEn = "Daily Executive Business Snapshot",
-            titleBn = "দৈনিক কার্যনির্বাহী ব্যবসায়িক চিত্র",
-            dateRangeText = "Selected Date: ${dateFormat.format(Date(dateMillis))}",
+            titleEn = if (isRange) "Custom Range Business Snapshot" else "Daily Executive Business Snapshot",
+            titleBn = if (isRange) "নির্ধারিত সময়ের ব্যবসায়িক চিত্র" else "দৈনিক কার্যনির্বাহী ব্যবসায়িক চিত্র",
+            dateRangeText = if (isRange) "Period: $startStr – $endStr" else "Selected Date: $startStr",
             kpiBadges = kpiBadges,
             sections = listOf(PdfReportSection(columns = columns, rows = rows)),
             isBangla = isBangla

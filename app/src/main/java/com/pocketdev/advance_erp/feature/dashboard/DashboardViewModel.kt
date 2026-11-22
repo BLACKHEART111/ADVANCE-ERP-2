@@ -35,6 +35,8 @@ import javax.inject.Inject
 data class DashboardUiState(
     val summary: DashboardSummary? = null,
     val selectedDateMillis: Long = System.currentTimeMillis(),
+    val selectedEndDateMillis: Long = selectedDateMillis,
+    val isCustomRange: Boolean = false,
     val language: AppLanguage = AppLanguage.BANGLA,
     val currency: CurrencyCode = CurrencyCode.BDT,
     val generatedPdf: File? = null,
@@ -42,6 +44,12 @@ data class DashboardUiState(
     val canViewProfit: Boolean = true,
     val isLoading: Boolean = true,
     val companyName: String = "My Business"
+)
+
+private data class DashboardDateSelection(
+    val startMillis: Long,
+    val endMillis: Long,
+    val isCustomRange: Boolean = false
 )
 
 internal fun maskDashboardSummaryForRole(
@@ -66,12 +74,18 @@ class DashboardViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
-    private val _selectedDateMillis = MutableStateFlow(System.currentTimeMillis())
+    private val _dateSelection = MutableStateFlow(
+        System.currentTimeMillis().let { DashboardDateSelection(it, it, isCustomRange = false) }
+    )
     private val _generatedPdf = MutableStateFlow<File?>(null)
     private val _generatedPdfTitle = MutableStateFlow("")
 
-    private val _streamA = _selectedDateMillis.flatMapLatest { dateMillis ->
-        dashboardRepository.getDashboardSummaryForDate(dateMillis)
+    private val _streamA = _dateSelection.flatMapLatest { sel ->
+        if (sel.isCustomRange) {
+            dashboardRepository.getDashboardSummaryForRange(sel.startMillis, sel.endMillis)
+        } else {
+            dashboardRepository.getDashboardSummaryForDate(sel.startMillis)
+        }
     }
 
     private val _streamB = combine(
@@ -86,10 +100,10 @@ class DashboardViewModel @Inject constructor(
 
     val uiState: StateFlow<DashboardUiState> = combine(
         _streamA,
-        _selectedDateMillis,
+        _dateSelection,
         _streamB,
         businessProfileDao.getProfile().onStart { emit(null) }
-    ) { rawSummary, selectedDate, extra, businessProfile ->
+    ) { rawSummary, dateSel, extra, businessProfile ->
         val lang = extra[0] as AppLanguage
         val curr = extra[1] as CurrencyCode
         val role = extra[2] as com.pocketdev.advance_erp.core.security.UserRole
@@ -105,7 +119,9 @@ class DashboardViewModel @Inject constructor(
 
         DashboardUiState(
             summary = safeSummary,
-            selectedDateMillis = selectedDate,
+            selectedDateMillis = dateSel.startMillis,
+            selectedEndDateMillis = dateSel.endMillis,
+            isCustomRange = dateSel.isCustomRange,
             language = lang,
             currency = curr,
             generatedPdf = pdf,
@@ -121,27 +137,36 @@ class DashboardViewModel @Inject constructor(
     )
 
     fun selectDate(millis: Long) {
-        _selectedDateMillis.value = millis
+        _dateSelection.value = DashboardDateSelection(millis, millis, isCustomRange = false)
+    }
+
+    fun selectDateRange(startMillis: Long, endMillis: Long) {
+        val s = minOf(startMillis, endMillis)
+        val e = maxOf(startMillis, endMillis)
+        _dateSelection.value = DashboardDateSelection(s, e, isCustomRange = true)
     }
 
     fun selectPreviousDay() {
         val cal = Calendar.getInstance().apply {
-            timeInMillis = _selectedDateMillis.value
+            timeInMillis = _dateSelection.value.startMillis
             add(Calendar.DAY_OF_YEAR, -1)
         }
-        _selectedDateMillis.value = cal.timeInMillis
+        val day = cal.timeInMillis
+        _dateSelection.value = DashboardDateSelection(day, day, isCustomRange = false)
     }
 
     fun selectNextDay() {
         val cal = Calendar.getInstance().apply {
-            timeInMillis = _selectedDateMillis.value
+            timeInMillis = _dateSelection.value.startMillis
             add(Calendar.DAY_OF_YEAR, 1)
         }
-        _selectedDateMillis.value = cal.timeInMillis
+        val day = cal.timeInMillis
+        _dateSelection.value = DashboardDateSelection(day, day, isCustomRange = false)
     }
 
     fun selectToday() {
-        _selectedDateMillis.value = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        _dateSelection.value = DashboardDateSelection(now, now, isCustomRange = false)
     }
 
     fun clearGeneratedPdf() {
@@ -176,11 +201,16 @@ class DashboardViewModel @Inject constructor(
                 closingApMinor = closing?.supplierOutstanding?.minorUnits ?: summary.totalPayable.minorUnits,
                 closingInventoryMinor = closing?.inventoryValuation?.minorUnits ?: summary.stockValuation.minorUnits,
                 isBangla = isBangla,
-                includeProfit = currentState.canViewProfit
+                includeProfit = currentState.canViewProfit,
+                endDateMillis = if (currentState.isCustomRange) currentState.selectedEndDateMillis else null
             )
 
             val file = CentralizedPdfEngine.generatePdf(context, report, profile)
-            _generatedPdfTitle.value = if (isBangla) "দৈনিক ব্যবসায়িক চিত্র প্রতিবেদন" else "Daily Business Snapshot"
+            _generatedPdfTitle.value = if (currentState.isCustomRange) {
+                if (isBangla) "নির্ধারিত সময়ের ব্যবসায়িক চিত্র" else "Range Business Snapshot"
+            } else {
+                if (isBangla) "দৈনিক ব্যবসায়িক চিত্র প্রতিবেদন" else "Daily Business Snapshot"
+            }
             _generatedPdf.value = file
         }
     }

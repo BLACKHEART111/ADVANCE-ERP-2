@@ -35,9 +35,12 @@ import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.WarningAmber
+import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -1153,7 +1156,8 @@ fun AccountDetailDialog(
     trialItem: TrialBalanceItem?,
     language: AppLanguage,
     onDismiss: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onDeleteAccount: ((onError: (String) -> Unit) -> Unit)? = null
 ) {
     val isBangla = language == AppLanguage.BANGLA
     val netBalanceMinor = if (account.normalBalance == NormalBalance.DEBIT.name) {
@@ -1161,6 +1165,13 @@ fun AccountDetailDialog(
     } else {
         (trialItem?.totalCreditMinor ?: 0L) - (trialItem?.totalDebitMinor ?: 0L)
     }
+    val canDeleteAccount = onDeleteAccount != null &&
+        account.isLiquid &&
+        account.id != AccountingRepositoryImpl.MAIN_CASH_ACCOUNT_ID &&
+        account.id !in AccountingRepositoryImpl.PROTECTED_ACCOUNT_IDS
+
+    var deleteErrorBanner by remember(account.id) { mutableStateOf<String?>(null) }
+    var showDeleteConfirm by remember(account.id) { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -1246,20 +1257,124 @@ fun AccountDetailDialog(
                     if (account.isActive) (if (isBangla) "সক্রিয়" else "Active") else (if (isBangla) "নিষ্ক্রিয়" else "Inactive")
                 )
 
+                if (deleteErrorBanner != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StatusErrorContainer,
+                        border = BorderStroke(1.dp, StatusError.copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.WarningAmber,
+                                contentDescription = null,
+                                tint = StatusError,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = deleteErrorBanner ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusError,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                if (showDeleteConfirm) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = StatusErrorContainer,
+                        border = BorderStroke(1.dp, StatusError.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = if (isBangla)
+                                    "এই হিসাবটি স্থায়ীভাবে ডিলিট/সরাতে চান? (ব্যালেন্স ৳০.০০)"
+                                else
+                                    "Delete this account permanently? (Balance is ৳0.00)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusError,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { showDeleteConfirm = false }) {
+                                    Text(if (isBangla) "বাতিল" else "Cancel")
+                                }
+                                Button(
+                                    onClick = {
+                                        showDeleteConfirm = false
+                                        onDeleteAccount?.invoke { err ->
+                                            deleteErrorBanner = err
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = StatusError)
+                                ) {
+                                    Text(if (isBangla) "হ্যাঁ, ডিলিট করুন" else "Confirm Delete")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) {
-                        Text(if (isBangla) "বন্ধ করুন" else "Close")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (canDeleteAccount) {
+                        OutlinedButton(
+                            onClick = {
+                                if (netBalanceMinor != 0L) {
+                                    val balFmt = Formatters.formatMoney(kotlin.math.abs(netBalanceMinor), CurrencyCode.BDT, language)
+                                    deleteErrorBanner = if (isBangla) {
+                                        "⚠️ এই অ্যাকাউন্টে বর্তমানে $balFmt রয়েছে। অ্যাকাউন্ট ফাঁকা (৳০.০০) না হওয়া পর্যন্ত ডিলিট করা যাবে না। আগে ফান্ড ট্রান্সফার করুন।"
+                                    } else {
+                                        "⚠️ Account still holds $balFmt. Empty the balance (৳0.00) before deleting."
+                                    }
+                                    showDeleteConfirm = false
+                                } else {
+                                    deleteErrorBanner = null
+                                    showDeleteConfirm = true
+                                }
+                            },
+                            border = BorderStroke(1.dp, StatusError.copy(alpha = 0.6f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusError),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Outlined.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isBangla) "ডিলিট" else "Delete", fontSize = 12.sp)
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = onEdit,
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
-                    ) {
-                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = onDismiss) {
+                            Text(if (isBangla) "বন্ধ করুন" else "Close")
+                        }
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (isBangla) "সম্পাদনা করুন" else "Edit")
+                        Button(
+                            onClick = onEdit,
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
+                        ) {
+                            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (isBangla) "সম্পাদনা" else "Edit")
+                        }
                     }
                 }
             }

@@ -39,6 +39,9 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun formatDocumentNumber(prefix: String, datePart: String, sequence: Int): String =
+    String.format(Locale.US, "%s-%s-%04d", prefix, datePart, sequence)
+
 @Singleton
 class FinancialRepositoryImpl @Inject constructor(
     private val database: AdvanceErpDatabase,
@@ -84,7 +87,7 @@ class FinancialRepositoryImpl @Inject constructor(
 
         val count = expenseDao.getExpenseCount()
         val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(voucherDate))
-        val voucherNumber = "EXP-$dateFormat-%04d".format(count + 1)
+        val voucherNumber = formatDocumentNumber("EXP", dateFormat, count + 1)
         val voucherId = "exp-${UUID.randomUUID()}"
 
         // Create balanced journal entry: Debit Expense Account, Credit Payment Account
@@ -186,7 +189,7 @@ class FinancialRepositoryImpl @Inject constructor(
 
         val count = cashBankDao.getTransferCount()
         val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(transferDate))
-        val transferNumber = "TRF-$dateFormat-%04d".format(count + 1)
+        val transferNumber = formatDocumentNumber("TRF", dateFormat, count + 1)
         val transferId = "trf-${UUID.randomUUID()}"
 
         // Balanced journal entry: Debit Destination Account, Credit Source Account
@@ -315,7 +318,7 @@ class FinancialRepositoryImpl @Inject constructor(
     ): String {
         val count = cashBankDao.getReconciliationCount()
         val dateFormat = SimpleDateFormat("yyyyMM", Locale.US).format(Date(endDate))
-        val recNumber = "BRC-$dateFormat-%04d".format(count + 1)
+        val recNumber = formatDocumentNumber("BRC", dateFormat, count + 1)
         val recId = "brc-${UUID.randomUUID()}"
 
         val allLines = accountingDao.getActivePostedLines().filter { it.accountId == bankAccountId }

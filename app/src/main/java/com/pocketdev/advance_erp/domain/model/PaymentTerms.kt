@@ -26,6 +26,8 @@ object PaymentTermsCalculator {
 
     /**
      * Calculates the scheduled payment tranches based on the selected PaymentTermType.
+     * Supports fixed-amount custom advance ([customAdvanceAmountMinor]) for [PaymentTermType.CUSTOM_PARTIAL],
+     * automatically computing the exact remaining balance installment.
      * Guarantees that:
      * 1. sum of amountMinor == totalAmountMinor exactly.
      * 2. sum of bdtAmountMinor == totalBdtAmountMinor exactly.
@@ -34,9 +36,55 @@ object PaymentTermsCalculator {
         termType: PaymentTermType,
         totalAmountMinor: Long,
         exchangeRateToBdt: BigDecimal,
-        customInstallmentPercentages: List<BigDecimal> = emptyList()
+        customInstallmentPercentages: List<BigDecimal> = emptyList(),
+        customAdvanceAmountMinor: Long? = null
     ): List<PaymentScheduleInstallment> {
         if (totalAmountMinor <= 0L) return emptyList()
+
+        val totalBdtAmountMinor = BigDecimal(totalAmountMinor)
+            .multiply(exchangeRateToBdt)
+            .setScale(0, RoundingMode.HALF_UP)
+            .longValueExact()
+
+        if (termType == PaymentTermType.CUSTOM_PARTIAL && customAdvanceAmountMinor != null && customAdvanceAmountMinor > 0L) {
+            val advMinor = customAdvanceAmountMinor.coerceIn(0L, totalAmountMinor)
+            val remMinor = (totalAmountMinor - advMinor).coerceAtLeast(0L)
+            val totalBd = BigDecimal(totalAmountMinor)
+            val advPct = BigDecimal(advMinor)
+                .multiply(HUNDRED)
+                .divide(totalBd, 1, RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+            val remPct = (HUNDRED - advPct).max(BigDecimal.ZERO).stripTrailingZeros()
+
+            val advBdtMinor = BigDecimal(advMinor)
+                .multiply(exchangeRateToBdt)
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact()
+                .coerceIn(0L, totalBdtAmountMinor)
+            val remBdtMinor = (totalBdtAmountMinor - advBdtMinor).coerceAtLeast(0L)
+
+            val list = mutableListOf(
+                PaymentScheduleInstallment(
+                    installmentNumber = 1,
+                    titleEn = "Advance Now (${advPct.toPlainString()}%)",
+                    titleBn = "অগ্রিম পরিশোধ (${advPct.toPlainString()}%)",
+                    percentage = advPct,
+                    amountMinor = advMinor,
+                    bdtAmountMinor = advBdtMinor
+                )
+            )
+            if (remMinor > 0L) {
+                list += PaymentScheduleInstallment(
+                    installmentNumber = 2,
+                    titleEn = "Remaining Balance (${remPct.toPlainString()}%)",
+                    titleBn = "পরবর্তী অবশিষ্ট পেমেন্ট (${remPct.toPlainString()}%)",
+                    percentage = remPct,
+                    amountMinor = remMinor,
+                    bdtAmountMinor = remBdtMinor
+                )
+            }
+            return list
+        }
 
         val percentages: List<Pair<String, Pair<String, BigDecimal>>> = when (termType) {
             PaymentTermType.HUNDRED_PERCENT_ADVANCE -> listOf(
@@ -88,11 +136,6 @@ object PaymentTermsCalculator {
             remainder--
             i++
         }
-
-        val totalBdtAmountMinor = BigDecimal(totalAmountMinor)
-            .multiply(exchangeRateToBdt)
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
 
         var sumBdtMinor = 0L
         val provisionalBdt = provisional.map { (_, _, pair) ->

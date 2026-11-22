@@ -145,6 +145,28 @@ class AccountingRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun deleteLiquidAccount(accountId: String) {
+        val existing = accountingDao.getAccountById(accountId)
+            ?: throw IllegalArgumentException("Account not found: $accountId")
+        require(existing.isLiquid) { "Only Cash / Bank / MFS accounts can be deleted here." }
+        require(existing.id != MAIN_CASH_ACCOUNT_ID && existing.id !in PROTECTED_ACCOUNT_IDS) {
+            "নগদ তহবিল (${existing.nameEn}) মূল হিসাব হওয়ায় ডিলিট করা যাবে না।"
+        }
+        val netBalanceMinor = accountingDao.getNetDebitBalanceForAccount(existing.accountCode)
+        if (netBalanceMinor != 0L) {
+            val absFormatted = com.pocketdev.advance_erp.core.util.Formatters.formatMinorUnit(kotlin.math.abs(netBalanceMinor))
+            throw IllegalStateException(
+                "এই অ্যাকাউন্টে বর্তমানে ৳$absFormatted ব্যালেন্স রয়েছে। অ্যাকাউন্ট ফাঁকা (৳0.00) না হওয়া পর্যন্ত ডিলিট করা যাবে না।"
+            )
+        }
+        val hasJournalHistory = accountingDao.getLineCountForAccount(existing.id) > 0
+        if (!hasJournalHistory) {
+            val hardDeleted = runCatching { accountingDao.deleteAccountById(existing.id) }.isSuccess
+            if (hardDeleted) return
+        }
+        accountingDao.updateAccount(existing.copy(isActive = false))
+    }
+
     override suspend fun suggestNextAccountCode(type: AccountType, kind: LiquidAccountKind?): String {
         val used = accountingDao.getAllAccountsSync().map { it.accountCode }.toSet()
         val start = when (kind) {
@@ -168,10 +190,11 @@ class AccountingRepositoryImpl @Inject constructor(
 
     companion object {
         const val OWNER_CAPITAL_ACCOUNT_ID = "coa-3010"
+        const val MAIN_CASH_ACCOUNT_ID = "coa-1010"
 
-        /** Accounts referenced directly by posting logic – must stay active. */
+        /** Accounts referenced directly by posting logic – must stay active (coa-1010 main Cash is also protected). */
         val PROTECTED_ACCOUNT_IDS = setOf(
-            "coa-1010", "coa-1020", "coa-1040", "coa-1050", "coa-1210", "coa-1220",
+            "coa-1010", "coa-1210", "coa-1220",
             "coa-2010", "coa-2020", "coa-2030", "coa-3010", "coa-3020",
             "coa-4010", "coa-4020", "coa-4030",
             "coa-5010", "coa-5020", "coa-5030", "coa-5040", "coa-5050", "coa-5090",

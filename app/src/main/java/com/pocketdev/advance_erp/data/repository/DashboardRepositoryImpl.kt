@@ -49,22 +49,40 @@ class DashboardRepositoryImpl @Inject constructor(
         return getDashboardSummaryForDate(System.currentTimeMillis())
     }
 
-    override fun getDashboardSummaryForDate(dateMillis: Long): Flow<DashboardSummary> {
-        val calendar = Calendar.getInstance()
-        calendar.timeInMillis = dateMillis
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        val startOfDay = calendar.timeInMillis
+    override fun getDashboardSummaryForDate(dateMillis: Long): Flow<DashboardSummary> =
+        getDashboardSummaryForRange(dateMillis, dateMillis)
 
-        calendar.set(Calendar.HOUR_OF_DAY, 23)
-        calendar.set(Calendar.MINUTE, 59)
-        calendar.set(Calendar.SECOND, 59)
-        calendar.set(Calendar.MILLISECOND, 999)
-        val endOfDay = calendar.timeInMillis
+    override fun getDashboardSummaryForRange(startDateMillis: Long, endDateMillis: Long): Flow<DashboardSummary> {
+        val rawStart = minOf(startDateMillis, endDateMillis)
+        val rawEnd = maxOf(startDateMillis, endDateMillis)
 
-        val monthCalendar = Calendar.getInstance().apply { timeInMillis = dateMillis }
+        val startCal = Calendar.getInstance().apply {
+            timeInMillis = rawStart
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startOfDay = startCal.timeInMillis
+
+        val endCal = Calendar.getInstance().apply {
+            timeInMillis = rawEnd
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }
+        val endOfDay = endCal.timeInMillis
+
+        val todayStartCal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val todayStart = todayStartCal.timeInMillis
+
+        val monthCalendar = Calendar.getInstance().apply { timeInMillis = rawEnd }
         monthCalendar.set(Calendar.DAY_OF_MONTH, 1)
         monthCalendar.set(Calendar.HOUR_OF_DAY, 0)
         monthCalendar.set(Calendar.MINUTE, 0)
@@ -74,6 +92,8 @@ class DashboardRepositoryImpl @Inject constructor(
         monthCalendar.add(Calendar.MONTH, 1)
         monthCalendar.add(Calendar.MILLISECOND, -1)
         val endOfMonth = monthCalendar.timeInMillis
+
+        val dateMillis = rawStart
 
         val financialsFlow = combine(
             inventoryCostLayerDao.getTotalInventoryValuationMinor(),
@@ -180,7 +200,9 @@ class DashboardRepositoryImpl @Inject constructor(
                 stockOutUnits = stockOut,
                 netCashFlow = Money.ofMinor(netCashFlowMinor, CurrencyCode.BDT),
                 dailyGrossProfit = Money.ofMinor(dailyGrossProfit, CurrencyCode.BDT),
-                transactionCount = transactionCount
+                transactionCount = transactionCount,
+                startDateMillis = rawStart,
+                endDateMillis = rawEnd
             )
 
             // 3. Historical Closing Balances up to endOfDay
@@ -199,16 +221,16 @@ class DashboardRepositoryImpl @Inject constructor(
             val closingCashBankMinor = cashBankLines.filter { it.isDebit }.sumOf { it.amountMinor } -
                     cashBankLines.filter { !it.isDebit }.sumOf { it.amountMinor }
 
-            // AR & AP balances up to endOfDay
+            // AR & AP balances: always match canonical customer/supplier due for current/future dates
             val arLines = activeLinesUpTo.filter { it.accountId == "coa-1040" }
-            val closingArMinor = if (arLines.isNotEmpty()) {
+            val closingArMinor = if (endOfDay < todayStart && arLines.isNotEmpty()) {
                 arLines.filter { it.isDebit }.sumOf { it.amountMinor } - arLines.filter { !it.isDebit }.sumOf { it.amountMinor }
             } else {
                 receivableMinor
             }
 
             val apLines = activeLinesUpTo.filter { it.accountId == "coa-2010" }
-            val closingApMinor = if (apLines.isNotEmpty()) {
+            val closingApMinor = if (endOfDay < todayStart && apLines.isNotEmpty()) {
                 apLines.filter { !it.isDebit }.sumOf { it.amountMinor } - apLines.filter { it.isDebit }.sumOf { it.amountMinor }
             } else {
                 payableMinor

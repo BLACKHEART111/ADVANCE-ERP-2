@@ -292,6 +292,7 @@ class SalesRepositoryImpl @Inject constructor(
             if (items.isEmpty()) {
                 return Result.failure(IllegalStateException("Invoice has no items"))
             }
+            val customerBalanceBaseline = captureCustomerBalanceBaseline(invoice.customerId)
 
             // 1. Stock availability validation (sellable stock = quantity - reservedQuantity)
             for (item in items) {
@@ -595,8 +596,8 @@ class SalesRepositoryImpl @Inject constructor(
                 )
             }
 
-            // 4. Update Customer Outstanding Balance
-            recalculateCustomerBalance(invoice.customerId)
+            // 4. Update Customer Outstanding Balance preserving genuine opening balance
+            updateCustomerBalanceFromBaseline(invoice.customerId, customerBalanceBaseline)
 
             Result.success(Unit)
         } catch (e: Exception) {
@@ -611,10 +612,7 @@ class SalesRepositoryImpl @Inject constructor(
             val customer = customerDao.getCustomerById(draft.customerId)
                 ?: throw IllegalArgumentException("Customer not found: ${draft.customerId}")
 
-            val netBefore = salesDao.getInvoicesForCustomerSync(draft.customerId)
-                .filter { it.isPosted && it.status != "CANCELLED" }.sumOf { it.totalAmountMinor } -
-                customerPaymentDao.getPaymentsForCustomerSync(draft.customerId).filter { it.isPosted && !it.isVoided }.sumOf { it.amountMinor } -
-                salesReturnDao.getReturnsForCustomerSync(draft.customerId).filter { it.isPosted && it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }.sumOf { it.totalReturnAmountMinor }
+            val netBefore = computeCustomerTransactionNet(draft.customerId)
             val allocationInvoices = draft.allocations.associate { allocation ->
                 allocation.invoiceId to requireNotNull(salesDao.getInvoiceById(allocation.invoiceId)) { "Invoice no longer exists" }
             }
@@ -747,6 +745,7 @@ class SalesRepositoryImpl @Inject constructor(
             if (!invoice.isPosted) {
                 throw IllegalStateException("Cannot return items on an unposted invoice")
             }
+            val customerBalanceBaseline = captureCustomerBalanceBaseline(invoice.customerId)
 
             val returnId = UUID.randomUUID().toString()
             val returnNumber = generateReturnNumber()
@@ -1002,7 +1001,7 @@ class SalesRepositoryImpl @Inject constructor(
                 )
             }
 
-            recalculateCustomerBalance(invoice.customerId)
+            updateCustomerBalanceFromBaseline(invoice.customerId, customerBalanceBaseline)
             returnId
         }
     }
@@ -1165,6 +1164,38 @@ class SalesRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun computeCustomerTransactionNet(customerId: String): Long {
+        val postedInvoices = salesDao.getInvoicesForCustomerSync(customerId)
+            .filter { it.isPosted && it.status != InvoiceStatus.CANCELLED.name }
+            .sumOf { it.totalAmountMinor }
+        val activePayments = customerPaymentDao.getPaymentsForCustomerSync(customerId)
+            .filter { it.isPosted && !it.isVoided }
+            .sumOf { it.amountMinor }
+        val creditReturns = salesReturnDao.getReturnsForCustomerSync(customerId)
+            .filter { it.isPosted && it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }
+            .sumOf { it.totalReturnAmountMinor }
+        return postedInvoices - activePayments - creditReturns
+    }
+
+    private suspend fun captureCustomerBalanceBaseline(customerId: String): Pair<Long, Long> {
+        val customer = customerDao.getCustomerById(customerId)
+        return (customer?.outstandingBalanceMinor ?: 0L) to computeCustomerTransactionNet(customerId)
+    }
+
+    private suspend fun updateCustomerBalanceFromBaseline(
+        customerId: String,
+        baseline: Pair<Long, Long>
+    ): Long {
+        val netAfter = computeCustomerTransactionNet(customerId)
+        val updated = com.pocketdev.advance_erp.core.engine.PaymentAllocationValidation.outstandingAfterTransaction(
+            masterDueBefore = baseline.first,
+            transactionNetBefore = baseline.second,
+            transactionNetAfter = netAfter
+        )
+        customerDao.updateOutstandingBalance(customerId, updated)
+        return updated
+    }
+
     override suspend fun recalculateCustomerBalance(customerId: String): Long {
         val ledger = getCustomerLedger(customerId)
         val outstandingMinor = ledger.lastOrNull()?.runningBalanceMinor ?: 0L
@@ -1245,6 +1276,7 @@ class SalesRepositoryImpl @Inject constructor(
 
     override suspend fun getCustomerWiseSalesReport(fromMillis: Long, toMillis: Long): List<CustomerWiseSalesItem> {
         val invoices = salesDao.getPostedInvoicesInRange(fromMillis, toMillis)
+        val customersById = customerDao.getLedgerCustomersSync().associateBy { it.id }
         val customerMap = invoices.groupBy { it.customerId }
 
         return customerMap.map { (custId, invList) ->
@@ -1252,14 +1284,15 @@ class SalesRepositoryImpl @Inject constructor(
             val totalPurchased = invList.sumOf { it.totalAmountMinor }
             val totalPaid = invList.sumOf { it.paidAmountMinor }
             val totalDue = invList.sumOf { it.dueAmountMinor }
+            val canonicalDue = customersById[custId]?.outstandingBalanceMinor ?: totalDue
             CustomerWiseSalesItem(
                 customerId = custId,
-                customerName = first.customerName,
-                customerPhone = first.customerPhone ?: "",
+                customerName = customersById[custId]?.name ?: first.customerName,
+                customerPhone = customersById[custId]?.phone ?: (first.customerPhone ?: ""),
                 invoiceCount = invList.size,
                 totalPurchasedMinor = totalPurchased,
                 totalPaidMinor = totalPaid,
-                outstandingBalanceMinor = totalDue
+                outstandingBalanceMinor = canonicalDue
             )
         }.sortedByDescending { it.totalPurchasedMinor }
     }
@@ -1804,6 +1837,7 @@ class SalesRepositoryImpl @Inject constructor(
 
             db.withTransaction {
                 val now = System.currentTimeMillis()
+                val customerBalanceBaseline = captureCustomerBalanceBaseline(payment.customerId)
 
                 // 1. Reverse payment allocations and recalculate invoices
                 val allocations = customerPaymentDao.getAllocationsForPayment(paymentId)
@@ -1880,8 +1914,8 @@ class SalesRepositoryImpl @Inject constructor(
                 )
                 customerPaymentDao.updatePayment(updatedPayment)
 
-                // 4. Restore customer balance in database
-                recalculateCustomerBalance(payment.customerId)
+                // 4. Restore customer balance in database preserving genuine opening balance
+                updateCustomerBalanceFromBaseline(payment.customerId, customerBalanceBaseline)
 
                 // 5. Audit trail
                 db.auditLogDao().insertAuditLog(
@@ -1949,6 +1983,7 @@ class SalesRepositoryImpl @Inject constructor(
 
             db.withTransaction {
                 val now = System.currentTimeMillis()
+                val customerBalanceBaseline = captureCustomerBalanceBaseline(invoice.customerId)
 
                 // 1. Stock Restoration & FIFO Cost Layer Recovery
                 val items = salesDao.getItemsForInvoice(invoiceId)
@@ -2147,8 +2182,8 @@ class SalesRepositoryImpl @Inject constructor(
                 )
                 salesDao.updateInvoice(cancelledInvoice)
 
-                // 5. Restore Customer Balance
-                recalculateCustomerBalance(invoice.customerId)
+                // 5. Restore Customer Balance preserving genuine opening balance
+                updateCustomerBalanceFromBaseline(invoice.customerId, customerBalanceBaseline)
 
                 // 6. Audit Trail
                 db.auditLogDao().insertAuditLog(

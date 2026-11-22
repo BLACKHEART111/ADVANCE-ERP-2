@@ -151,6 +151,7 @@ private fun shareFileToApp(
 
 enum class PoExportPerspective {
     SUPPLIER_COPY,
+    FREIGHT_FORWARDER_PACKING_LIST,
     COMPANY_INTERNAL_COPY
 }
 
@@ -196,7 +197,7 @@ fun PoShareDialog(
     }
 
     val activeCartonFilter: Set<String>? = if (
-        selectedPerspective == PoExportPerspective.SUPPLIER_COPY &&
+        selectedPerspective != PoExportPerspective.COMPANY_INTERNAL_COPY &&
         exportSelectedOnly &&
         baseExportPreview.allCartons.isNotEmpty()
     ) {
@@ -227,49 +228,89 @@ fun PoShareDialog(
     }
     var includeAttachments by rememberSaveable(order.id) { mutableStateOf(false) }
 
-    val canExportSupplier = selectedPerspective != PoExportPerspective.SUPPLIER_COPY || validatedExport.isValidForSupplierExport
+    val canExportSupplier = when (selectedPerspective) {
+        PoExportPerspective.SUPPLIER_COPY -> validatedExport.isValidForSupplierExport
+        PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST -> validatedExport.blockingErrors.isEmpty() && (!exportSelectedOnly || selectedCartonNumbers.isNotEmpty())
+        PoExportPerspective.COMPANY_INTERNAL_COPY -> true
+    }
 
     suspend fun buildSupplierOrInternalPdf(): File = withContext(Dispatchers.IO) {
-        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
-            val itemImagePaths = onResolveItemImages(items)
-            ImportPdfGenerator.generateSupplierCommercialOrderPdf(
-                context = context,
-                order = order,
-                items = items,
-                productsMap = productsMap,
-                supplier = supplier,
-                businessProfile = businessProfile,
-                variantsMap = variantsMap,
-                itemImagePaths = itemImagePaths,
-                cartons = cartons,
-                selectedCartonNumbers = activeCartonFilter
-            )
-        } else {
-            ImportPdfGenerator.generateCompanyInternalOrderPdf(
-                context, order, items, productsMap, supplier, businessProfile, isBangla
-            )
+        when (selectedPerspective) {
+            PoExportPerspective.SUPPLIER_COPY -> {
+                val itemImagePaths = onResolveItemImages(items)
+                ImportPdfGenerator.generateSupplierCommercialOrderPdf(
+                    context = context,
+                    order = order,
+                    items = items,
+                    productsMap = productsMap,
+                    supplier = supplier,
+                    businessProfile = businessProfile,
+                    variantsMap = variantsMap,
+                    itemImagePaths = itemImagePaths,
+                    cartons = cartons,
+                    selectedCartonNumbers = activeCartonFilter
+                )
+            }
+            PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST -> {
+                val itemImagePaths = onResolveItemImages(items)
+                ImportPdfGenerator.generateFreightForwarderPackingListPdf(
+                    context = context,
+                    order = order,
+                    items = items,
+                    productsMap = productsMap,
+                    supplier = supplier,
+                    businessProfile = businessProfile,
+                    variantsMap = variantsMap,
+                    itemImagePaths = itemImagePaths,
+                    cartons = cartons,
+                    selectedCartonNumbers = activeCartonFilter
+                )
+            }
+            PoExportPerspective.COMPANY_INTERNAL_COPY -> {
+                ImportPdfGenerator.generateCompanyInternalOrderPdf(
+                    context, order, items, productsMap, supplier, businessProfile, isBangla
+                )
+            }
         }
     }
 
     suspend fun buildSupplierOrInternalExcel(): File = withContext(Dispatchers.IO) {
-        if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
-            val itemImagePaths = onResolveItemImages(items)
-            ImportExcelGenerator.generateSupplierOrderExcel(
-                context = context,
-                order = order,
-                items = items,
-                productsMap = productsMap,
-                supplier = supplier,
-                businessProfile = businessProfile,
-                variantsMap = variantsMap,
-                itemImagePaths = itemImagePaths,
-                cartons = cartons,
-                selectedCartonNumbers = activeCartonFilter
-            )
-        } else {
-            ImportExcelGenerator.generateCompanyInternalOrderExcel(
-                context, order, items, productsMap, supplier, businessProfile
-            )
+        when (selectedPerspective) {
+            PoExportPerspective.SUPPLIER_COPY -> {
+                val itemImagePaths = onResolveItemImages(items)
+                ImportExcelGenerator.generateSupplierOrderExcel(
+                    context = context,
+                    order = order,
+                    items = items,
+                    productsMap = productsMap,
+                    supplier = supplier,
+                    businessProfile = businessProfile,
+                    variantsMap = variantsMap,
+                    itemImagePaths = itemImagePaths,
+                    cartons = cartons,
+                    selectedCartonNumbers = activeCartonFilter
+                )
+            }
+            PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST -> {
+                val itemImagePaths = onResolveItemImages(items)
+                ImportExcelGenerator.generateFreightForwarderPackingListExcel(
+                    context = context,
+                    order = order,
+                    items = items,
+                    productsMap = productsMap,
+                    supplier = supplier,
+                    businessProfile = businessProfile,
+                    variantsMap = variantsMap,
+                    itemImagePaths = itemImagePaths,
+                    cartons = cartons,
+                    selectedCartonNumbers = activeCartonFilter
+                )
+            }
+            PoExportPerspective.COMPANY_INTERNAL_COPY -> {
+                ImportExcelGenerator.generateCompanyInternalOrderExcel(
+                    context, order, items, productsMap, supplier, businessProfile
+                )
+            }
         }
     }
 
@@ -320,7 +361,7 @@ fun PoShareDialog(
                 // Perspective Selector Tabs
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -333,23 +374,57 @@ fun PoShareDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clickable { selectedPerspective = PoExportPerspective.SUPPLIER_COPY }
-                            .padding(vertical = 8.dp, horizontal = 10.dp)
+                            .padding(vertical = 8.dp, horizontal = 6.dp)
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = (if (isLocalOrder) "🇧🇩 " else "🇨🇳 ") + if (isBangla) "সরবরাহকারী কপি" else "Supplier Copy",
+                                text = (if (isLocalOrder) "🇧🇩 " else "🇨🇳 ") + if (isBangla) "সরবরাহকারী" else "Supplier Copy",
                                 fontWeight = FontWeight.Bold,
                                 color = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) PrimaryPurple else TextPrimary,
-                                fontSize = 12.sp
+                                fontSize = 11.sp,
+                                maxLines = 1
                             )
                             Text(
                                 text = if (isLocalOrder)
-                                    (if (isBangla) "(নো অভ্যন্তরীণ মার্জিন)" else "(No Internal Margin)")
+                                    (if (isBangla) "(মার্জিন বাদ)" else "(No Margin)")
                                 else
-                                    (if (isBangla) "(গোপনীয় - নো BDT)" else "(Factory Confidential)"),
+                                    (if (isBangla) "(ফ্যাক্টরি কপি)" else "(No BDT)"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextMuted,
-                                fontSize = 10.sp
+                                fontSize = 9.5.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (selectedPerspective == PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST)
+                            Color(0xFF0D9488).copy(alpha = 0.12f) else ERPSurfaceVariant,
+                        border = BorderStroke(
+                            1.5.dp,
+                            if (selectedPerspective == PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST) Color(0xFF0D9488) else ERPDivider
+                        ),
+                        modifier = Modifier
+                            .weight(1.05f)
+                            .clickable { selectedPerspective = PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST }
+                            .padding(vertical = 8.dp, horizontal = 6.dp)
+                            .testTag("po_forwarder_tab")
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "🚢 " + if (isBangla) "ফরওয়ার্ডার" else "Forwarder",
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedPerspective == PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST) Color(0xFF0D9488) else TextPrimary,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = if (isBangla) "(প্যাকিং + ছবি)" else "(Packing + Photo)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMuted,
+                                fontSize = 9.5.sp,
+                                maxLines = 1
                             )
                         }
                     }
@@ -365,20 +440,22 @@ fun PoShareDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clickable { selectedPerspective = PoExportPerspective.COMPANY_INTERNAL_COPY }
-                            .padding(vertical = 8.dp, horizontal = 10.dp)
+                            .padding(vertical = 8.dp, horizontal = 6.dp)
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "🏢 " + if (isBangla) "কোম্পানি অডিট কপি" else "Internal Audit",
+                                text = "🏢 " + if (isBangla) "অডিট কপি" else "Internal Audit",
                                 fontWeight = FontWeight.Bold,
                                 color = if (selectedPerspective == PoExportPerspective.COMPANY_INTERNAL_COPY) SecondaryTeal else TextPrimary,
-                                fontSize = 12.sp
+                                fontSize = 11.sp,
+                                maxLines = 1
                             )
                             Text(
-                                text = if (isBangla) "(পূর্ণাঙ্গ কস্টিং ও অডিট)" else "(Full Costing & Audit)",
+                                text = if (isBangla) "(পূর্ণ কস্টিং)" else "(Full Audit)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextMuted,
-                                fontSize = 10.sp
+                                fontSize = 9.5.sp,
+                                maxLines = 1
                             )
                         }
                     }
@@ -387,22 +464,34 @@ fun PoShareDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Perspective Info Box
-                if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
+                if (selectedPerspective != PoExportPerspective.COMPANY_INTERNAL_COPY) {
+                    val isForwarder = selectedPerspective == PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = StatusSuccessContainer),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isForwarder) Color(0xFFCCFBF1) else StatusSuccessContainer
+                        ),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.Lock, contentDescription = null, tint = StatusSuccess, modifier = Modifier.size(16.dp))
+                                Icon(
+                                    Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    tint = if (isForwarder) Color(0xFF0F766E) else StatusSuccess,
+                                    modifier = Modifier.size(16.dp)
+                                )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (isLocalOrder)
-                                        (if (isBangla) "দেশীয় সরবরাহকারী কপি (PDF ও ৪-শিট Excel একক ডেটা)" else "Local Supplier Copy (Unified PDF & 4-Sheet Excel)")
-                                    else
-                                        (if (isBangla) "ওভারসিজ কারখানা কপি (PDF ও ৪-শিট Excel একক ডেটা)" else "Overseas Supplier Copy (Unified PDF & 4-Sheet Excel)"),
+                                    text = when {
+                                        isForwarder && isBangla -> "ফ্রেইট ফরওয়ার্ডার প্যাকিং লিস্ট (ছবি, ওজন, মাপ ও CBM — দাম ও রঙ গোপন)"
+                                        isForwarder -> "Freight Forwarder Packing List (Photos, Weight, L×W×H & CBM — No Color or Prices)"
+                                        isLocalOrder && isBangla -> "দেশীয় সরবরাহকারী কপি (PDF ও ৪-শিট Excel একক ডেটা)"
+                                        isLocalOrder -> "Local Supplier Copy (Unified PDF & 4-Sheet Excel)"
+                                        isBangla -> "ওভারসিজ কারখানা কপি (PDF ও ৪-শিট Excel একক ডেটা)"
+                                        else -> "Overseas Supplier Copy (Unified PDF & 4-Sheet Excel)"
+                                    },
                                     fontWeight = FontWeight.Bold,
-                                    color = StatusSuccess,
+                                    color = if (isForwarder) Color(0xFF0F766E) else StatusSuccess,
                                     fontSize = 11.5.sp
                                 )
                             }
@@ -636,10 +725,15 @@ fun PoShareDialog(
                             coroutineScope.launch {
                                 try {
                                     val pdf = buildSupplierOrInternalPdf()
-                                    previewPdfTitle = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY) {
-                                        if (validatedExport.isPartialCartonExport) "${order.poNumber} (Selected ${validatedExport.exportedCartonCount} CTN)"
-                                        else "${order.poNumber} Supplier PO PDF"
-                                    } else "${order.poNumber} Internal Audit PDF"
+                                    previewPdfTitle = when (selectedPerspective) {
+                                        PoExportPerspective.SUPPLIER_COPY ->
+                                            if (validatedExport.isPartialCartonExport) "${order.poNumber} (Selected ${validatedExport.exportedCartonCount} CTN)"
+                                            else "${order.poNumber} Supplier PO PDF"
+                                        PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST ->
+                                            "${order.poNumber} Forwarder Packing List"
+                                        PoExportPerspective.COMPANY_INTERNAL_COPY ->
+                                            "${order.poNumber} Internal Audit PDF"
+                                    }
                                     previewPdfFile = pdf
                                 } catch (t: Throwable) {
                                     exportError = t.message ?: t::class.java.simpleName
@@ -665,8 +759,11 @@ fun PoShareDialog(
                             coroutineScope.launch {
                                 try {
                                     val pdfFile = buildSupplierOrInternalPdf()
-                                    val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
-                                        "Share Supplier Commercial PO PDF" else "Share Internal Audit PO PDF"
+                                    val title = when (selectedPerspective) {
+                                        PoExportPerspective.SUPPLIER_COPY -> "Share Supplier Commercial PO PDF"
+                                        PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST -> "Share Freight Forwarder Packing List PDF"
+                                        PoExportPerspective.COMPANY_INTERNAL_COPY -> "Share Internal Audit PO PDF"
+                                    }
                                     shareFileToApp(context, pdfFile, "application/pdf", title, includeAttachments, attachmentInfos)
                                 } catch (t: Throwable) {
                                     exportError = t.message ?: t::class.java.simpleName
@@ -726,8 +823,11 @@ fun PoShareDialog(
                             coroutineScope.launch {
                                 try {
                                     val xlsxFile = buildSupplierOrInternalExcel()
-                                    val title = if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY)
-                                        "Share Supplier Commercial PO (Excel)" else "Share Internal Audit PO (Excel)"
+                                    val title = when (selectedPerspective) {
+                                        PoExportPerspective.SUPPLIER_COPY -> "Share Supplier Commercial PO (Excel)"
+                                        PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST -> "Share Freight Forwarder Packing List (Excel)"
+                                        PoExportPerspective.COMPANY_INTERNAL_COPY -> "Share Internal Audit PO (Excel)"
+                                    }
                                     shareFileToApp(
                                         context,
                                         xlsxFile,
@@ -787,7 +887,7 @@ fun PoShareDialog(
                 }
 
                 // CTN Labels Preview / Print / Share (Phase 5.3)
-                if (selectedPerspective == PoExportPerspective.SUPPLIER_COPY && validatedExport.exportedCartons.isNotEmpty()) {
+                if (selectedPerspective != PoExportPerspective.COMPANY_INTERNAL_COPY && validatedExport.exportedCartons.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         enabled = !isExporting && canExportSupplier,

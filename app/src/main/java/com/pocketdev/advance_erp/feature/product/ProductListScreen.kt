@@ -499,9 +499,11 @@ fun ProductListScreen(
             product = state.selectedProductForDetail!!,
             initialVariants = state.selectedProductVariants,
             initialImages = state.selectedProductImages,
+            initialVariantImages = state.selectedProductVariantImages,
             categories = state.categories,
             language = state.language,
             initialVariantStock = state.variantStockMap,
+            onLoadVariantImages = { variantId -> viewModel.loadVariantImages(variantId) },
             onDismiss = { viewModel.setEditDialogVisible(false) },
             onGenerateSku = { catId, nameEn ->
                 viewModel.generateBaseSku(catId, nameEn)

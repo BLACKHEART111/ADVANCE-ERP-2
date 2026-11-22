@@ -10,7 +10,8 @@ data class ParsedPoNotes(
     val userNotes: String,
     val rawTermsText: String = paymentTerm.labelEn,
     val defaultShippingMark: String = "",
-    val cartonShippingMarks: Map<String, String> = emptyMap()
+    val cartonShippingMarks: Map<String, String> = emptyMap(),
+    val customAdvanceMinor: Long? = null
 )
 
 /**
@@ -22,6 +23,7 @@ object PoNotesMetadataParser {
 
     const val DEFAULT_CHINA_FORWARDER = "Guangzhou Baiyun Cargo Terminal / Yiwu Port Warehouse, China"
     private val TERMS_REGEX = Regex("""\[Terms:\s*([^\]]+)]""")
+    private val CUSTOM_ADV_REGEX = Regex("""\[CustomAdvanceMinor:\s*([0-9]+)]""")
     private val FORWARDER_REGEX = Regex("""\[Forwarder:\s*([^\]]+)]""")
     private val SHIPPING_MARK_REGEX = Regex("""\[ShippingMark:\s*([^\]]*)]""")
     private val CARTON_MARKS_REGEX = Regex("""\[CartonMarks:\s*([A-Za-z0-9+/=_-]+)]""")
@@ -63,8 +65,11 @@ object PoNotesMetadataParser {
             ?.let(::decodeCartonMarksBase64)
             ?: emptyMap()
 
+        val resolvedCustomAdvance = CUSTOM_ADV_REGEX.find(rawNotes)?.groupValues?.getOrNull(1)?.toLongOrNull()
+
         val cleanUserNotes = rawNotes
             .replace(TERMS_REGEX, "")
+            .replace(CUSTOM_ADV_REGEX, "")
             .replace(FORWARDER_REGEX, "")
             .replace(SHIPPING_MARK_REGEX, "")
             .replace(CARTON_MARKS_REGEX, "")
@@ -79,8 +84,25 @@ object PoNotesMetadataParser {
             userNotes = cleanUserNotes,
             rawTermsText = termsText.ifBlank { resolvedTerm.labelEn },
             defaultShippingMark = resolvedShippingMark,
-            cartonShippingMarks = resolvedCartonMarks
+            cartonShippingMarks = resolvedCartonMarks,
+            customAdvanceMinor = resolvedCustomAdvance
         )
+    }
+
+    fun formatCustomPaymentTermsLabel(
+        currency: String,
+        totalAmountMinor: Long,
+        customAdvanceMinor: Long
+    ): String {
+        val advMinor = customAdvanceMinor.coerceAtLeast(0L).let { if (totalAmountMinor > 0L) it.coerceAtMost(totalAmountMinor) else it }
+        val remMinor = if (totalAmountMinor > 0L) (totalAmountMinor - advMinor).coerceAtLeast(0L) else 0L
+        val advText = Formatters.formatMinorUnit(advMinor)
+        val remText = Formatters.formatMinorUnit(remMinor)
+        return if (totalAmountMinor > 0L) {
+            "Custom Partial: Advance $currency $advText + Balance $currency $remText"
+        } else {
+            "Custom Partial: Advance $currency $advText"
+        }
     }
 
     fun serialize(
@@ -88,12 +110,16 @@ object PoNotesMetadataParser {
         forwarderAddress: String,
         userNotes: String,
         defaultShippingMark: String = "",
-        cartonShippingMarks: Map<String, String> = emptyMap()
+        cartonShippingMarks: Map<String, String> = emptyMap(),
+        customAdvanceMinor: Long? = null
     ): String {
         val parts = mutableListOf<String>()
         val cleanTerms = paymentTermLabel.trim()
         if (cleanTerms.isNotEmpty()) {
             parts += "[Terms: ${sanitizeBracketValue(cleanTerms)}]"
+        }
+        if (customAdvanceMinor != null && customAdvanceMinor > 0L) {
+            parts += "[CustomAdvanceMinor: $customAdvanceMinor]"
         }
         val cleanForwarder = forwarderAddress.trim()
         if (cleanForwarder.isNotEmpty()) {

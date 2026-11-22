@@ -65,11 +65,19 @@ object LedgerReportEngine {
             opening, balanced.reversed(), balanced.sumMoney { it.ledgerDebitMinor ?: 0 },
             balanced.sumMoney { it.ledgerCreditMinor ?: 0 }, running) }
         val cashOpening = all.filter { it.date < from && it.accountingPosted }.sumMoney(::cashDelta)
+        val totalReceivable = when {
+            party != null && party.type == "CUSTOMER" -> statement!!.closingBalanceMinor.coerceAtLeast(0L)
+            else -> posted.filter { type(it) == "INVOICE" && it.effectSign > 0 && it.status != "CANCELLED" }.sumMoney { it.secondaryAmountMinor ?: 0 }
+        }
+        val totalPayable = when {
+            party != null && party.type == "SUPPLIER" -> statement!!.closingBalanceMinor.coerceAtLeast(0L)
+            else -> posted.filter { type(it) == "PURCHASE" && it.effectSign > 0 }.sumMoney { (it.secondaryAmountMinor ?: 0).coerceAtLeast(0) }
+        }
         val summary = BusinessSummaryDashboardData(
             totalSalesMinor = sales, totalPurchaseMinor = sum("PURCHASE"), totalReceivedMinor = sum("PAYMENT"),
             totalPaidMinor = sum("SUPPLIER_PAYMENT"), totalExpensesMinor = expenses, totalSalesReturnMinor = returns,
-            totalOutstandingReceivableMinor = posted.filter { type(it) == "INVOICE" && it.effectSign > 0 && it.status != "CANCELLED" }.sumMoney { it.secondaryAmountMinor ?: 0 },
-            totalOutstandingPayableMinor = posted.filter { type(it) == "PURCHASE" && it.effectSign > 0 }.sumMoney { (it.secondaryAmountMinor ?: 0).coerceAtLeast(0) },
+            totalOutstandingReceivableMinor = totalReceivable,
+            totalOutstandingPayableMinor = totalPayable,
             grossProfitMinor = gross, netProfitMinor = Math.subtractExact(gross, expenses),
             totalTransactionsCount = visible.size,
             totalDeliveryCount = posted.count { it.status in setOf("DELIVERED", "PARTIALLY_DELIVERED") },

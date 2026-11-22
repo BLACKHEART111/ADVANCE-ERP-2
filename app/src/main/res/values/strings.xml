@@ -15,9 +15,9 @@
     <string name="nav_customers">Customers</string>
     <string name="nav_suppliers">Suppliers</string>
     <string name="nav_ledger">Central Ledger</string>
-    <string name="nav_reports">Business Control Center</string>
-    <string name="business_control_center">Business Control Center</string>
-    <string name="centralized_ledger_reports">Centralized Business Ledger, Reports &amp; Export</string>
+    <string name="nav_reports">Reports &amp; Control Center</string>
+    <string name="business_control_center">Reports &amp; Control Center</string>
+    <string name="centralized_ledger_reports">Centralized Business Reports, Ledgers &amp; Custom PDF</string>
     <string name="nav_settings">Settings</string>
     <string name="more_modules_title">All Modules &amp; Tools</string>
     <string name="more_modules_subtitle">Business tools for everyday operations</string>
@@ -30,7 +30,7 @@
     <string name="more_customers_subtitle">Customer profiles and balances</string>
     <string name="more_suppliers_subtitle">Supplier profiles and balances</string>
     <string name="more_ledger_subtitle">Customer and supplier ledgers</string>
-    <string name="more_reports_subtitle">Reports and business summaries</string>
+    <string name="more_reports_subtitle">Part-by-part business reports &amp; custom PDF</string>
     <string name="more_settings_subtitle">Language, currency and backup</string>
 
     <!-- Drawer Menu Items & Header -->

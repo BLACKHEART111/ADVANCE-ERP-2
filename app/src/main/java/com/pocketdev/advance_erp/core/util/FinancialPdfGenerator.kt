@@ -209,13 +209,19 @@ object FinancialPdfGenerator {
         paint.color = Color.parseColor("#299DB2") // Secondary Teal
         canvas.drawRect(PAGE_WIDTH.toFloat() * 0.5f, 110f, PAGE_WIDTH.toFloat(), 115f, paint)
 
-        // Draw Official Logo on Banner
-        val logoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white)
+        // Draw Uploaded Company Logo (or Fallback) on Banner
+        val logoBitmap = CompanyBrandingHelper.loadCompanyLogoBitmap(context, businessProfile)
         if (logoBitmap != null) {
-            val logoH = 32f
-            val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
-            val logoDest = RectF(36f, 16f, 36f + logoW, 16f + logoH)
-            canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+            try {
+                if (logoBitmap.height > 0 && logoBitmap.width > 0) {
+                    val logoH = 32f
+                    val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
+                    val logoDest = RectF(36f, 16f, (36f + logoW).coerceAtMost(280f), 16f + logoH)
+                    canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+                }
+            } finally {
+                logoBitmap.recycle()
+            }
         }
 
         // Company Details

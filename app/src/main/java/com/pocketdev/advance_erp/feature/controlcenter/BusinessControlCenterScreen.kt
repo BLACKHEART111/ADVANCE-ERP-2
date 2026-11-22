@@ -31,8 +31,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
@@ -63,6 +65,7 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -70,6 +73,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -119,6 +123,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
@@ -139,6 +145,7 @@ import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.pdf.PdfViewerDialog
 import com.pocketdev.advance_erp.core.security.SecurityManager
 import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
+import com.pocketdev.advance_erp.core.util.CustomReportPdfConfig
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.domain.model.FinancialMetricFilter
 import com.pocketdev.advance_erp.domain.model.ReportCategory
@@ -186,7 +193,8 @@ private data class LedgerFabAction(
 fun BusinessControlCenterScreen(
     modifier: Modifier = Modifier,
     viewModel: BusinessControlCenterViewModel = hiltViewModel(),
-    initialCategory: ReportCategory? = null
+    initialCategory: ReportCategory? = null,
+    initialTab: CentralLedgerTab = CentralLedgerTab.SUMMARY
 ) {
     val context = LocalContext.current
     val filterState by viewModel.filterState.collectAsState()
@@ -227,11 +235,12 @@ fun BusinessControlCenterScreen(
     val exportVisibility = rememberBiometricCostVisibility("ledger-export", SecurityManager.canViewCost(userRole), isBn)
     val profitFilterLocked = filterState.financialMetric in setOf(FinancialMetricFilter.PROFIT, FinancialMetricFilter.LOSS) && !canViewProfit
 
-    var selectedTab by rememberSaveable { mutableStateOf(CentralLedgerTab.SUMMARY) }
+    var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
     var visibleCount by remember(filterState) { mutableIntStateOf(100) }
 
     var showFilterDrawer by rememberSaveable { mutableStateOf(false) }
     var showExportSheet by rememberSaveable { mutableStateOf(false) }
+    var showCustomReportDialog by rememberSaveable { mutableStateOf(false) }
     var showPresetsMenu by rememberSaveable { mutableStateOf(false) }
     var showSortMenu by rememberSaveable { mutableStateOf(false) }
     var showSearchField by rememberSaveable { mutableStateOf(false) }
@@ -279,12 +288,14 @@ fun BusinessControlCenterScreen(
         }
     }
 
-    LaunchedEffect(initialCategory) {
+    LaunchedEffect(initialCategory, initialTab) {
         if (initialCategory != null) {
             viewModel.selectCategory(initialCategory)
             if (initialCategory in setOf(ReportCategory.CUSTOMER_LEDGER, ReportCategory.SUPPLIER_LEDGER)) {
                 selectedTab = CentralLedgerTab.STATEMENTS
             }
+        } else {
+            selectedTab = initialTab
         }
     }
 
@@ -752,8 +763,49 @@ fun BusinessControlCenterScreen(
                         contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Collapsible Summary Cards (Summary tab only)
+                        // Collapsible Summary Cards & Part-by-Part Custom Report Studio (Summary tab)
                         if (showSummaryCards && ready && !profitFilterLocked) {
+                            item(key = "custom_report_studio_banner") {
+                                Surface(
+                                    onClick = { showCustomReportDialog = true },
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = PrimaryPurple.copy(alpha = 0.08f),
+                                    border = BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth().testTag("open_custom_report_studio_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(PrimaryPurple),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Outlined.Tune, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp))
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (isBn) "পার্ট-বাই-পার্ট কাস্টম রিপোর্ট ও PDF সেভ" else "Part-by-Part Custom Report Builder (PDF)",
+                                                style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
+                                                fontWeight = FontWeight.Bold,
+                                                color = PrimaryPurple
+                                            )
+                                            Text(
+                                                text = if (isBn) "বিক্রয়, ক্রয়, বকেয়া, স্টক ও লেনদেন আলাদা অংশ বাছাই করে PDF সেভ করুন" else "Pick specific business report modules & save custom PDF",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            }
                             item(key = "summary_cards") {
                                 AnimatedVisibility(
                                     visible = !isSummaryAutoCollapsed,
@@ -1609,6 +1661,17 @@ fun BusinessControlCenterScreen(
                 }
 
                 ExportActionItem(
+                    title = if (isBn) "কাস্টম পার্ট-বাই-পার্ট রিপোর্ট তৈরি করুন" else "Build Custom Part-by-Part PDF Report",
+                    subtitle = if (isBn) "প্রয়োজনীয় সেকশন বাছাই করে কাস্টম PDF প্রিভিউ ও সেভ" else "Select specific report modules to preview, save & share",
+                    icon = Icons.Outlined.Tune,
+                    iconColor = SecondaryTeal,
+                    onClick = {
+                        showExportSheet = false
+                        showCustomReportDialog = true
+                    }
+                )
+
+                ExportActionItem(
                     title = if (isBn) "পিডিএফ প্রিভিউ দেখুন (Preview PDF)" else "Preview PDF Report",
                     subtitle = if (isBn) "প্রিভিউ দেখে শেয়ার বা সংরক্ষণ করুন" else "Open preview before saving or sharing",
                     icon = Icons.Outlined.Visibility,
@@ -1664,8 +1727,19 @@ fun BusinessControlCenterScreen(
                 )
 
                 ExportActionItem(
-                    title = if (isBn) "ডিভাইসে সংরক্ষণ করুন (Save PDF & XLSX)" else "Save PDF & XLSX to Downloads",
-                    subtitle = if (isBn) "ফোনের Downloads ফোল্ডারে সেভ করুন" else "Save PDF & XLSX to device Downloads",
+                    title = if (isBn) "পিডিএফ ডাউনলোড / সংরক্ষণ করুন (Save PDF)" else "Save PDF Report to Downloads",
+                    subtitle = if (isBn) "সরাসরি ফোনের Downloads ফোল্ডারে PDF সেভ করুন" else "Save A4 PDF report directly to Downloads",
+                    icon = Icons.Outlined.PictureAsPdf,
+                    iconColor = StatusError,
+                    onClick = {
+                        showExportSheet = false
+                        viewModel.savePdfToStorage(context, exportSensitive)
+                    }
+                )
+
+                ExportActionItem(
+                    title = if (isBn) "পিডিএফ ও এক্সেল একসাথে সেভ (Save PDF + XLSX)" else "Save Both PDF & XLSX to Downloads",
+                    subtitle = if (isBn) "ফোনের Downloads ফোল্ডারে দুটি ফাইলই সেভ করুন" else "Save PDF & XLSX to device Downloads",
                     icon = Icons.Outlined.Download,
                     iconColor = StatusWarning,
                     onClick = {
@@ -1676,6 +1750,231 @@ fun BusinessControlCenterScreen(
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
+            }
+        }
+    }
+
+    if (showCustomReportDialog) {
+        val exportSensitive = if (isOwnerAdmin) profitVisibility.isVisible else exportVisibility.isVisible
+        CustomReportPdfDialog(
+            isBangla = isBn,
+            canViewProfit = canViewProfit,
+            onDismiss = { showCustomReportDialog = false },
+            onPreview = { config ->
+                showCustomReportDialog = false
+                viewModel.previewCustomReportPdf(context, config, exportSensitive)
+            },
+            onSavePdf = { config ->
+                showCustomReportDialog = false
+                viewModel.saveCustomReportPdf(context, config, exportSensitive)
+            },
+            onSharePdf = { config ->
+                showCustomReportDialog = false
+                viewModel.shareCustomReportPdf(context, config, exportSensitive)
+            }
+        )
+    }
+}
+
+private data class ReportModuleToggle(
+    val label: String,
+    val checked: Boolean,
+    val onChanged: (Boolean) -> Unit
+)
+
+@Composable
+private fun CustomReportPdfDialog(
+    isBangla: Boolean,
+    canViewProfit: Boolean,
+    onDismiss: () -> Unit,
+    onPreview: (CustomReportPdfConfig) -> Unit,
+    onSavePdf: (CustomReportPdfConfig) -> Unit,
+    onSharePdf: (CustomReportPdfConfig) -> Unit
+) {
+    var reportTitle by rememberSaveable {
+        mutableStateOf(if (isBangla) "কাস্টমায়িজড বিজনেস রিপোর্ট" else "Custom Modular Business Report")
+    }
+    var incKpis by rememberSaveable { mutableStateOf(true) }
+    var incSalesPurchase by rememberSaveable { mutableStateOf(true) }
+    var incCustomerDues by rememberSaveable { mutableStateOf(true) }
+    var incSupplierDues by rememberSaveable { mutableStateOf(true) }
+    var incExpenseProfit by rememberSaveable { mutableStateOf(true) }
+    var incInventory by rememberSaveable { mutableStateOf(true) }
+    var incTransactions by rememberSaveable { mutableStateOf(true) }
+    var incSignature by rememberSaveable { mutableStateOf(true) }
+
+    fun buildConfig() = CustomReportPdfConfig(
+        title = reportTitle,
+        includeExecutiveKpis = incKpis,
+        includeSalesPurchaseSummary = incSalesPurchase,
+        includeCustomerDues = incCustomerDues,
+        includeSupplierDues = incSupplierDues,
+        includeExpensesAndProfit = incExpenseProfit,
+        includeInventorySummary = incInventory,
+        includeTransactionsTable = incTransactions,
+        includeAuthorizedSignature = incSignature
+    )
+
+    val anySelected = incKpis || incSalesPurchase || incCustomerDues || incSupplierDues || incExpenseProfit || incInventory || incTransactions
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 720.dp)
+                .clip(RoundedCornerShape(18.dp)),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isBangla) "কাস্টম পার্ট-বাই-পার্ট রিপোর্ট" else "Custom Part-by-Part Report",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (isBangla) "রিপোর্টের প্রয়োজনীয় অংশগুলো বাছাই করে PDF তৈরি ও সংরক্ষণ করুন" else "Select report modules to include and export as PDF",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close")
+                    }
+                }
+
+                OutlinedTextField(
+                    value = reportTitle,
+                    onValueChange = { reportTitle = it },
+                    label = { Text(if (isBangla) "রিপোর্টের শিরোনাম" else "Report Title") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                val toggles = listOf(
+                    ReportModuleToggle(
+                        label = if (isBangla) "১. মূল ব্যবসায়িক সূচক (KPI Summary)" else "1. Executive KPI Summary",
+                        checked = incKpis,
+                        onChanged = { v -> incKpis = v }
+                    ),
+                    ReportModuleToggle(
+                        label = if (isBangla) "২. বিক্রয়, ক্রয় ও আমদানি সারসংক্ষেপ" else "2. Sales, Purchase & Import Overview",
+                        checked = incSalesPurchase,
+                        onChanged = { v -> incSalesPurchase = v }
+                    ),
+                    ReportModuleToggle(
+                        label = if (isBangla) "৩. কাস্টমার বকেয়া তালিকা (কেন্দ্রীয় একক ব্যালেন্স)" else "3. Customer Due Ledger (Centralized Balances)",
+                        checked = incCustomerDues,
+                        onChanged = { v -> incCustomerDues = v }
+                    ),
+                    ReportModuleToggle(
+                        label = if (isBangla) "৪. সাপ্লায়ার দেনা তালিকা" else "4. Supplier Payable Ledger",
+                        checked = incSupplierDues,
+                        onChanged = { v -> incSupplierDues = v }
+                    ),
+                    ReportModuleToggle(
+                        label = if (isBangla) {
+                            if (canViewProfit) "৫. ব্যয়, নগদ জের ও লাভ/ক্ষতি" else "৫. ব্যয় ও নগদ জের (লাভ অ্যাডমিন সীমাবদ্ধ)"
+                        } else {
+                            if (canViewProfit) "5. Expenses, Cash Position & Profit" else "5. Expenses & Cash Position"
+                        },
+                        checked = incExpenseProfit,
+                        onChanged = { v -> incExpenseProfit = v }
+                    ),
+                    ReportModuleToggle(
+                        label = if (isBangla) "৬. পণ্য ও ইনভেন্টরি তালিকা" else "6. Inventory & Product Catalog Summary",
+                        checked = incInventory,
+                        onChanged = { v -> incInventory = v }
+                    ),
+                    ReportModuleToggle(
+                        label = if (isBangla) "৭. বিস্তারিত লেনদেনের তালিকা (Transactions Table)" else "7. Detailed Transaction Register",
+                        checked = incTransactions,
+                        onChanged = { v -> incTransactions = v }
+                    ),
+                    ReportModuleToggle(
+                        label = if (isBangla) "৮. অথরাইজড সিগনেচার ব্লক (সেটিংস থেকে)" else "8. Authorized Signature & Seal Block",
+                        checked = incSignature,
+                        onChanged = { v -> incSignature = v }
+                    )
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    toggles.forEach { (label, checked, onChanged) ->
+                        Surface(
+                            onClick = { onChanged(!checked) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (checked) PrimaryPurple.copy(alpha = 0.08f) else ERPBackground,
+                            border = BorderStroke(1.dp, if (checked) PrimaryPurple.copy(alpha = 0.35f) else ERPDivider),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(checked = checked, onCheckedChange = onChanged)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        enabled = anySelected,
+                        onClick = { onPreview(buildConfig()) },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Outlined.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "প্রিভিউ" else "Preview", fontSize = 11.5.sp, maxLines = 1)
+                    }
+                    Button(
+                        enabled = anySelected,
+                        onClick = { onSavePdf(buildConfig()) },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "সেভ PDF" else "Save PDF", fontSize = 11.5.sp, maxLines = 1)
+                    }
+                    OutlinedButton(
+                        enabled = anySelected,
+                        onClick = { onSharePdf(buildConfig()) },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isBangla) "শেয়ার" else "Share", fontSize = 11.5.sp, maxLines = 1)
+                    }
+                }
             }
         }
     }

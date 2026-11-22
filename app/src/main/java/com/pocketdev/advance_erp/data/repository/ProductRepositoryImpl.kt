@@ -285,6 +285,7 @@ class ProductRepositoryImpl @Inject constructor(
             for (oldVar in existingVariants) {
                 if (oldVar.id !in keptVariantIds) {
                     variantDao.updateVariant(oldVar.copy(isActive = false))
+                    imageDao.deleteImagesForVariant(oldVar.id)
                 }
             }
 

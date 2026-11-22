@@ -363,6 +363,14 @@ fun CreatePurchaseOrderDialog(
     var forwarderAddressStr by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.forwarderAddress) }
     var attachmentsList by rememberSaveable(editingOrder?.id) { mutableStateOf(PoAttachmentStorage.parseAttachments(editingOrder?.attachments)) }
     var selectedPaymentTerm by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.paymentTerm) }
+    var customAdvanceAmountStr by rememberSaveable(editingOrder?.id) {
+        mutableStateOf(
+            parsedNotes.customAdvanceMinor
+                ?.takeIf { it > 0L }
+                ?.let { BigDecimal(it).divide(BigDecimal("100"), 2, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString() }
+                ?: ""
+        )
+    }
     var defaultShippingMarkStr by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.defaultShippingMark) }
     var notes by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.userNotes) }
     var orderDateMillis by rememberSaveable(editingOrder?.id) { mutableStateOf(editingOrder?.orderDate ?: System.currentTimeMillis()) }
@@ -659,6 +667,29 @@ fun CreatePurchaseOrderDialog(
         return if (parts.isNotEmpty()) "${parts.joinToString(" / ")} (${v.sku})" else v.sku
     }
 
+    fun computeItemsTotalMinor(): Long = itemsList.sumOf { item ->
+        val q = item.quantityStr.toIntOrNull() ?: 0
+        val p = try {
+            (item.unitPriceStr.toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                .multiply(BigDecimal("100"))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact()
+        } catch (_: Exception) {
+            0L
+        }
+        q.toLong() * p
+    }
+
+    fun customAdvanceMinorOrZero(): Long = try {
+        (customAdvanceAmountStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
+            .multiply(BigDecimal("100"))
+            .setScale(0, RoundingMode.HALF_UP)
+            .longValueExact()
+            .coerceAtLeast(0L)
+    } catch (_: Exception) {
+        0L
+    }
+
     fun serializedNotes(): String {
         val customMarks = LinkedHashMap<String, String>()
         cartonBoxes.forEachIndexed { idx, box ->
@@ -667,12 +698,24 @@ fun CreatePurchaseOrderDialog(
                 customMarks[PoPackingEngine.formatCartonNumber(idx + 1)] = mark
             }
         }
+        val itemsTotalMinor = computeItemsTotalMinor()
+        val advMinor = if (selectedPaymentTerm == PaymentTermType.CUSTOM_PARTIAL) {
+            customAdvanceMinorOrZero().takeIf { it > 0L }
+        } else {
+            null
+        }
+        val termsLabel = if (advMinor != null) {
+            PoNotesMetadataParser.formatCustomPaymentTermsLabel(selectedCurrency, itemsTotalMinor, advMinor)
+        } else {
+            selectedPaymentTerm.labelEn
+        }
         return PoNotesMetadataParser.serialize(
-            paymentTermLabel = selectedPaymentTerm.labelEn,
+            paymentTermLabel = termsLabel,
             forwarderAddress = forwarderAddressStr,
             userNotes = notes,
             defaultShippingMark = defaultShippingMarkStr,
-            cartonShippingMarks = customMarks
+            cartonShippingMarks = customMarks,
+            customAdvanceMinor = advMinor
         )
     }
 
@@ -1034,6 +1077,42 @@ fun CreatePurchaseOrderDialog(
                                     items(PaymentTermType.values().toList()) { term ->
                                         FilterChip(selected=selectedPaymentTerm==term,onClick={selectedPaymentTerm=term},label={Text(if(isBangla)term.labelBn else term.labelEn)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=PrimaryPurple,selectedLabelColor=MaterialTheme.colorScheme.onPrimary))
                                     }
+                                }
+                                if (selectedPaymentTerm == PaymentTermType.CUSTOM_PARTIAL) {
+                                    val step0TotalMinor = computeItemsTotalMinor()
+                                    val step0AdvMinor = customAdvanceMinorOrZero().let {
+                                        if (step0TotalMinor > 0L) it.coerceAtMost(step0TotalMinor) else it
+                                    }
+                                    val step0RemMinor = (step0TotalMinor - step0AdvMinor).coerceAtLeast(0L)
+                                    OutlinedTextField(
+                                        value = customAdvanceAmountStr,
+                                        onValueChange = { customAdvanceAmountStr = it },
+                                        label = {
+                                            Text(
+                                                if (isBangla) "অগ্রিম পরিশোধের পরিমাণ ($selectedCurrency)"
+                                                else "Advance Payment Amount ($selectedCurrency)"
+                                            )
+                                        },
+                                        placeholder = { Text("2000") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(13.dp),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        supportingText = {
+                                            Text(
+                                                if (step0TotalMinor > 0L) {
+                                                    if (isBangla)
+                                                        "মোট: $selectedCurrency ${Formatters.formatMinorUnit(step0TotalMinor)} • বাকি থাকবে: $selectedCurrency ${Formatters.formatMinorUnit(step0RemMinor)}"
+                                                    else
+                                                        "Order Total: $selectedCurrency ${Formatters.formatMinorUnit(step0TotalMinor)} • Auto Balance: $selectedCurrency ${Formatters.formatMinorUnit(step0RemMinor)}"
+                                                } else {
+                                                    if (isBangla) "পণ্য যোগ করার পর মোট থেকে স্বয়ংক্রিয়ভাবে বাকি হিসাব হবে"
+                                                    else "Remaining balance will auto-calculate from item total"
+                                                },
+                                                color = SecondaryTeal
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth().testTag("po_custom_advance_step0")
+                                    )
                                 }
                                 OutlinedTextField(notes,{notes=it},label={Text(if(isBangla) "নোট / বিবরণ (ঐচ্ছিক)" else "Notes / reference (optional)")},modifier=Modifier.fillMaxWidth(),minLines=2,shape=RoundedCornerShape(13.dp))
                                 TextButton(onClick={shippingExpanded=!shippingExpanded},modifier=Modifier.fillMaxWidth()) { Text(if(isBangla) "ডেলিভারি, শিপিং ও অতিরিক্ত তথ্য" else "Delivery, shipping & additional information"); Icon(if(shippingExpanded)Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,null) }
@@ -2425,17 +2504,54 @@ fun CreatePurchaseOrderDialog(
                                 }
                             }
 
-                            val totalMinor = itemsList.sumOf { item ->
-                                val q = item.quantityStr.toIntOrNull() ?: 0
-                                val p = (item.unitPriceStr.toBigDecimalOrNull() ?: BigDecimal.ZERO)
-                                    .multiply(BigDecimal("100"))
-                                    .setScale(0, RoundingMode.HALF_UP)
-                                    .longValueExact()
-                                q * p
+                            val totalMinor = computeItemsTotalMinor()
+                            if (selectedPaymentTerm == PaymentTermType.CUSTOM_PARTIAL) {
+                                val cappedAdvMinor = customAdvanceMinorOrZero().let {
+                                    if (totalMinor > 0L) it.coerceAtMost(totalMinor) else it
+                                }
+                                val remainingMinor = (totalMinor - cappedAdvMinor).coerceAtLeast(0L)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = customAdvanceAmountStr,
+                                    onValueChange = { customAdvanceAmountStr = it },
+                                    label = {
+                                        Text(
+                                            if (isBangla) "অগ্রিম পরিশোধ ($selectedCurrency) *"
+                                            else "Advance Payment Amount ($selectedCurrency) *"
+                                        )
+                                    },
+                                    placeholder = { Text("2000") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    supportingText = {
+                                        if (totalMinor > 0L) {
+                                            Text(
+                                                text = if (isBangla)
+                                                    "মোট: $selectedCurrency ${Formatters.formatMinorUnit(totalMinor)} | অগ্রিম: $selectedCurrency ${Formatters.formatMinorUnit(cappedAdvMinor)} | অবশিষ্ট: $selectedCurrency ${Formatters.formatMinorUnit(remainingMinor)}"
+                                                else
+                                                    "Total: $selectedCurrency ${Formatters.formatMinorUnit(totalMinor)} | Advance: $selectedCurrency ${Formatters.formatMinorUnit(cappedAdvMinor)} | Remaining: $selectedCurrency ${Formatters.formatMinorUnit(remainingMinor)}",
+                                                color = SecondaryTeal,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().testTag("po_custom_advance_step3")
+                                )
+                            }
+                            val customAdvMinor = if (selectedPaymentTerm == PaymentTermType.CUSTOM_PARTIAL) {
+                                customAdvanceMinorOrZero().takeIf { it > 0L }
+                            } else {
+                                null
                             }
                             val rateBd = exchangeRateStr.trim().toBigDecimalOrNull() ?: BigDecimal.ONE
-                            val schedule = remember(selectedPaymentTerm, totalMinor, rateBd) {
-                                PaymentTermsCalculator.calculateSchedule(selectedPaymentTerm, totalMinor, rateBd)
+                            val schedule = remember(selectedPaymentTerm, totalMinor, rateBd, customAdvMinor) {
+                                PaymentTermsCalculator.calculateSchedule(
+                                    termType = selectedPaymentTerm,
+                                    totalAmountMinor = totalMinor,
+                                    exchangeRateToBdt = rateBd,
+                                    customAdvanceAmountMinor = customAdvMinor
+                                )
                             }
 
                             if (schedule.isNotEmpty()) {

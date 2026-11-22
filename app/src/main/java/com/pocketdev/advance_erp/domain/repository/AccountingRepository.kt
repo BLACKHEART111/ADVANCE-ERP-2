@@ -51,6 +51,9 @@ interface AccountingRepository {
     /** Updates editable fields (names, description, bank details, active flag). Code & type are immutable. */
     suspend fun updateAccount(account: ChartOfAccount)
 
+    /** Deletes a bank/MFS/secondary cash account if and only if its current balance is zero. */
+    suspend fun deleteLiquidAccount(accountId: String)
+
     /** Returns the next free 4-digit account code for a given account type / money kind. */
     suspend fun suggestNextAccountCode(type: AccountType, kind: LiquidAccountKind? = null): String
 

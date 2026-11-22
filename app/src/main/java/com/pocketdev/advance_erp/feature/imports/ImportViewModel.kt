@@ -193,9 +193,22 @@ class ImportViewModel @Inject constructor(
                 ordersShipmentsFlow,
                 productsReceiptsLayersFlow,
                 preferencesRepository.selectedLanguage,
-                businessProfileDao.getProfile()
-            ) { (orders, shipments, suppliers), (products, receipts, layers), lang, profile ->
+                businessProfileDao.getProfile(),
+                preferencesRepository.companyLogoPath
+            ) { (orders, shipments, suppliers), (products, receipts, layers), lang, profile, prefLogoPath ->
                 val activeShipmentId = _uiState.value.selectedShipmentId ?: shipments.firstOrNull()?.id
+                val effectiveProfile = when {
+                    profile != null && !prefLogoPath.isNullOrBlank() && profile.logoPath.isNullOrBlank() ->
+                        profile.copy(logoPath = prefLogoPath)
+                    profile != null -> profile
+                    !prefLogoPath.isNullOrBlank() -> BusinessProfile(
+                        companyName = "ADVANCE ERP",
+                        phone = "",
+                        address = "",
+                        logoPath = prefLogoPath
+                    )
+                    else -> null
+                }
                 _uiState.value.copy(
                     purchaseOrders = orders,
                     shipments = shipments,
@@ -204,7 +217,7 @@ class ImportViewModel @Inject constructor(
                     warehouseReceipts = receipts,
                     costLayers = layers,
                     selectedShipmentId = activeShipmentId,
-                    businessProfile = profile,
+                    businessProfile = effectiveProfile,
                     language = lang,
                     isLoading = false
                 )

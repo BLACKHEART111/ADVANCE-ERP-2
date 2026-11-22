@@ -42,6 +42,10 @@ fun DispatchDeliveryDialog(
             }
         }
     }
+    val allAlreadyDispatched = remember(remainingItems) {
+        remainingItems.isNotEmpty() && remainingItems.all { it.remainingQuantity <= 0 }
+    }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -158,6 +162,31 @@ fun DispatchDeliveryDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                if (allAlreadyDispatched) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "এই চালানের সকল পণ্য ইতিমধ্যেই ডেলিভারি করা হয়েছে। / All items on this invoice have already been dispatched.",
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                } else if (validationError != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = validationError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Actions
@@ -171,6 +200,7 @@ fun DispatchDeliveryDialog(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
+                        enabled = !allAlreadyDispatched,
                         onClick = {
                             val itemDrafts = remainingItems.mapNotNull { item ->
                                 val qty = dispatchQtyMap[item.invoiceItemId]?.toIntOrNull() ?: 0
@@ -184,7 +214,10 @@ fun DispatchDeliveryDialog(
                                 } else null
                             }
 
-                            if (itemDrafts.isNotEmpty()) {
+                            if (itemDrafts.isEmpty()) {
+                                validationError = "অন্তত ১টি পণ্যের ডেলিভারি পরিমাণ (০-এর বেশি) দিন।"
+                            } else {
+                                validationError = null
                                 onDispatch(
                                     DeliveryDispatchDraft(
                                         invoiceId = invoice.id,

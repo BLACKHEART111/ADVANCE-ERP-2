@@ -28,6 +28,7 @@ import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.core.util.ControlCenterExcelGenerator
 import com.pocketdev.advance_erp.core.util.ControlCenterPdfGenerator
 import com.pocketdev.advance_erp.core.util.ControlCenterShareService
+import com.pocketdev.advance_erp.core.util.CustomReportPdfConfig
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.ProductCategory
@@ -642,6 +643,103 @@ class BusinessControlCenterViewModel @Inject constructor(
             } catch (e: Exception) {
                 launch(Dispatchers.Main) {
                     Toast.makeText(context, "Save error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                _isExporting.value = false
+            }
+        }
+    }
+
+    fun previewCustomReportPdf(context: Context, config: CustomReportPdfConfig, includeSensitive: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isExporting.value = true
+            try {
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value) && config.includeExpensesAndProfit
+                val isBn = appLanguage.value == AppLanguage.BANGLA
+                val file = ControlCenterPdfGenerator.generateCustomModularReportPdf(
+                    context = context,
+                    config = config,
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
+                    customers = customers.value,
+                    suppliers = suppliers.value,
+                    products = products.value,
+                    businessProfile = businessProfile.value,
+                    canViewProfit = canView,
+                    isBangla = isBn
+                )
+                _previewPdfFile.value = file to config.title.ifBlank {
+                    if (isBn) "কাস্টম বিজনেস রিপোর্ট" else "Custom Modular Report"
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(context, "Custom PDF failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                _isExporting.value = false
+            }
+        }
+    }
+
+    fun saveCustomReportPdf(context: Context, config: CustomReportPdfConfig, includeSensitive: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isExporting.value = true
+            try {
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value) && config.includeExpensesAndProfit
+                val file = ControlCenterPdfGenerator.generateCustomModularReportPdf(
+                    context = context,
+                    config = config,
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
+                    customers = customers.value,
+                    suppliers = suppliers.value,
+                    products = products.value,
+                    businessProfile = businessProfile.value,
+                    canViewProfit = canView,
+                    isBangla = appLanguage.value == AppLanguage.BANGLA
+                )
+                launch(Dispatchers.Main) {
+                    ControlCenterShareService.saveToDownloads(context, file)
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(context, "Save Custom PDF failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                _isExporting.value = false
+            }
+        }
+    }
+
+    fun shareCustomReportPdf(context: Context, config: CustomReportPdfConfig, includeSensitive: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isExporting.value = true
+            try {
+                val snapshot = readyReport(includeSensitive)
+                val canView = includeSensitive && SecurityManager.canViewProfit(userRole.value) && config.includeExpensesAndProfit
+                val file = ControlCenterPdfGenerator.generateCustomModularReportPdf(
+                    context = context,
+                    config = config,
+                    filterState = snapshot.filter,
+                    summary = snapshot.summary,
+                    transactions = safeExportRows(snapshot, includeSensitive),
+                    customers = customers.value,
+                    suppliers = suppliers.value,
+                    products = products.value,
+                    businessProfile = businessProfile.value,
+                    canViewProfit = canView,
+                    isBangla = appLanguage.value == AppLanguage.BANGLA
+                )
+                launch(Dispatchers.Main) {
+                    ControlCenterShareService.shareFile(context, file, "application/pdf", "Share Custom Report PDF")
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(context, "Share Custom PDF failed: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 _isExporting.value = false

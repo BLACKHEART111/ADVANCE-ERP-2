@@ -249,7 +249,11 @@ class SalesViewModel @Inject constructor(
         }
     }
 
-    fun createAndConfirmInvoice(draft: SalesInvoiceDraft, onSuccess: () -> Unit = {}) {
+    fun createAndConfirmInvoice(
+        draft: SalesInvoiceDraft,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
         viewModelScope.launch {
             val result = salesRepository.createAndPostInvoice(draft)
             result.onSuccess { newInvoiceId ->
@@ -257,7 +261,9 @@ class SalesViewModel @Inject constructor(
                 loadDefaultReport()
                 onSuccess()
             }.onFailure { err ->
-                _uiState.update { it.copy(userMessage = "Failed to confirm sale: ${err.message}") }
+                val message = err.message ?: "Failed to confirm sale"
+                _uiState.update { it.copy(userMessage = "Failed to confirm sale: $message") }
+                onError(message)
             }
         }
     }

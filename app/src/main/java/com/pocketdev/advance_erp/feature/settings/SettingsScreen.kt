@@ -1,13 +1,21 @@
 package com.pocketdev.advance_erp.feature.settings
 
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Path as AndroidPath
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +67,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,9 +76,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +111,8 @@ import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.security.BiometricHelper
 import com.pocketdev.advance_erp.core.util.AppMediaStorage
+import com.pocketdev.advance_erp.core.util.CompanyBrandingHelper
+import androidx.compose.material.icons.outlined.Draw
 import com.pocketdev.advance_erp.feature.settings.components.BackupManagementSection
 import com.pocketdev.advance_erp.feature.settings.components.ChangePinDialog
 import com.pocketdev.advance_erp.feature.settings.components.DisablePinDialog
@@ -442,6 +460,153 @@ fun SettingsScreen(
                                     )
                                 }
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Authorized Signature Section (Drawn on Mobile, used across PDFs)
+                        var signatureRevision by remember { mutableStateOf(0) }
+                        var showSignaturePadDialog by rememberSaveable { mutableStateOf(false) }
+                        val signatureBitmap = remember(signatureRevision) {
+                            CompanyBrandingHelper.loadAuthorizedSignatureBitmap(context)
+                        }
+
+                        Text(
+                            text = if (isBn) "অথরাইজড স্বাক্ষর (ইনভয়েস, পিও ও রসিদে ব্যবহৃত হবে)" else "Authorized Signature (Visible on Invoices, POs & Receipts)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = tokens.titleText
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = tokens.innerPanelBg,
+                            border = BorderStroke(1.dp, tokens.innerPanelBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(104.dp)
+                                        .height(64.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color.White)
+                                        .border(1.dp, PrimaryPurple.copy(alpha = 0.35f), RoundedCornerShape(10.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (signatureBitmap != null && !signatureBitmap.isRecycled) {
+                                        Image(
+                                            bitmap = signatureBitmap.asImageBitmap(),
+                                            contentDescription = "Authorized Signature",
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(6.dp)
+                                        )
+                                    } else {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                Icons.Outlined.Draw,
+                                                contentDescription = null,
+                                                tint = TextMuted,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                            Text(
+                                                text = if (isBn) "স্বাক্ষর নেই" else "No Signature",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMuted,
+                                                fontSize = 9.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    OutlinedButton(
+                                        onClick = { showSignaturePadDialog = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Draw,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = PrimaryPurple
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (signatureBitmap != null) {
+                                                if (isBn) "স্বাক্ষর পরিবর্তন করুন" else "Redraw Signature"
+                                            } else {
+                                                if (isBn) "মোবাইলে স্বাক্ষর করুন" else "Sign on Mobile"
+                                            },
+                                            fontSize = 12.5.sp,
+                                            color = PrimaryPurple,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+
+                                    if (signatureBitmap != null) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        OutlinedButton(
+                                            onClick = {
+                                                CompanyBrandingHelper.clearAuthorizedSignature(context)
+                                                signatureRevision++
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar(
+                                                        if (isBn) "স্বাক্ষর সরানো হয়েছে।" else "Authorized signature removed."
+                                                    )
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.DeleteOutline,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isBn) "স্বাক্ষর মুছুন" else "Remove Signature",
+                                                fontSize = 12.5.sp,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = if (isBn) "সংরক্ষিত স্বাক্ষর সকল Authorized Signature স্থানে স্বয়ংক্রিয়ভাবে বসবে।" else "Automatically printed above Authorized Signature lines in PDFs.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = tokens.subtitleText
+                                    )
+                                }
+                            }
+                        }
+
+                        if (showSignaturePadDialog) {
+                            AuthorizedSignaturePadDialog(
+                                isBn = isBn,
+                                onDismiss = { showSignaturePadDialog = false },
+                                onSave = { bmp ->
+                                    CompanyBrandingHelper.saveAuthorizedSignatureBitmap(context, bmp)
+                                    signatureRevision++
+                                    showSignaturePadDialog = false
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            if (isBn) "অথরাইজড স্বাক্ষর সংরক্ষিত হয়েছে।" else "Authorized signature saved."
+                                        )
+                                    }
+                                }
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
@@ -929,4 +1094,139 @@ private fun SystemInfoRow(label: String, value: String) {
             modifier = Modifier.weight(0.58f)
         )
     }
+}
+
+@Composable
+private fun AuthorizedSignaturePadDialog(
+    isBn: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (Bitmap) -> Unit
+) {
+    val strokes = remember { mutableStateListOf<List<Offset>>() }
+    var activeStroke by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    var canvasWidthPx by remember { mutableStateOf(1f) }
+    var canvasHeightPx by remember { mutableStateOf(1f) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = if (isBn) "অথরাইজড স্বাক্ষর আঁকুন" else "Draw Authorized Signature",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = if (isBn) "নিচের সাদা বক্সে আঙুল দিয়ে আপনার স্বাক্ষর দিন:" else "Sign inside the white box below using your finger:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(210.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White)
+                        .border(1.5.dp, PrimaryPurple.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectDragGestures(
+                                    onDragStart = { start ->
+                                        activeStroke = listOf(start)
+                                    },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        activeStroke = activeStroke + change.position
+                                    },
+                                    onDragEnd = {
+                                        if (activeStroke.size >= 2) {
+                                            strokes.add(activeStroke)
+                                        }
+                                        activeStroke = emptyList()
+                                    },
+                                    onDragCancel = {
+                                        activeStroke = emptyList()
+                                    }
+                                )
+                            }
+                    ) {
+                        canvasWidthPx = size.width.coerceAtLeast(1f)
+                        canvasHeightPx = size.height.coerceAtLeast(1f)
+
+                        fun drawPointList(pts: List<Offset>) {
+                            if (pts.size < 2) return
+                            val path = Path().apply {
+                                moveTo(pts.first().x, pts.first().y)
+                                for (i in 1 until pts.size) {
+                                    lineTo(pts[i].x, pts[i].y)
+                                }
+                            }
+                            drawPath(
+                                path = path,
+                                color = Color(0xFF0F172A),
+                                style = Stroke(width = 6f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                            )
+                        }
+
+                        strokes.forEach { drawPointList(it) }
+                        drawPointList(activeStroke)
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(
+                    onClick = {
+                        strokes.clear()
+                        activeStroke = emptyList()
+                    }
+                ) {
+                    Text(if (isBn) "মুছুন" else "Clear")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(if (isBn) "বাতিল" else "Cancel")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = strokes.isNotEmpty(),
+                onClick = {
+                    val outW = 600
+                    val outH = 240
+                    val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+                    val c = AndroidCanvas(bmp)
+                    val p = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                        color = android.graphics.Color.parseColor("#0F172A")
+                        style = AndroidPaint.Style.STROKE
+                        strokeWidth = 6.5f
+                        strokeCap = AndroidPaint.Cap.ROUND
+                        strokeJoin = AndroidPaint.Join.ROUND
+                    }
+                    val scaleX = outW.toFloat() / canvasWidthPx
+                    val scaleY = outH.toFloat() / canvasHeightPx
+                    strokes.forEach { pts ->
+                        if (pts.size >= 2) {
+                            val ap = AndroidPath().apply {
+                                moveTo(pts.first().x * scaleX, pts.first().y * scaleY)
+                                for (i in 1 until pts.size) {
+                                    lineTo(pts[i].x * scaleX, pts[i].y * scaleY)
+                                }
+                            }
+                            c.drawPath(ap, p)
+                        }
+                    }
+                    onSave(bmp)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
+            ) {
+                Text(if (isBn) "সংরক্ষণ করুন" else "Save Signature")
+            }
+        }
+    )
 }

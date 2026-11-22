@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -200,13 +201,13 @@ fun CustomerLedgerDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("DATE / TXN", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1.2f))
-                    Text("DEBIT (৳)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1f))
-                    Text("CREDIT (৳)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1f))
-                    Text("BALANCE (৳)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1.1f))
+                    Text("DATE / TXN", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1.45f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    Text("DEBIT (৳)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(0.95f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    Text("CREDIT (৳)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(0.95f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    Text("BALANCE (৳)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1.05f), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
 
                 LazyColumn(
@@ -240,46 +241,61 @@ fun CustomerLedgerDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1.2f)) {
+                                Column(modifier = Modifier.weight(1.45f)) {
                                     Text(
                                         text = dateFormat.format(Date(entry.date)),
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = TextMuted
+                                        color = TextMuted,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = entry.referenceNumber,
                                         fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextPrimary
+                                        fontSize = 11.5.sp,
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
 
                                 Text(
                                     text = if (entry.debitMinor > 0) "৳" + Formatters.formatMinorUnit(entry.debitMinor) else "-",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.5.sp,
                                     color = if (entry.debitMinor > 0) StatusError else TextMuted,
                                     fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f)
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(0.95f)
                                 )
 
                                 Text(
                                     text = if (entry.creditMinor > 0) "৳" + Formatters.formatMinorUnit(entry.creditMinor) else "-",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.5.sp,
                                     color = if (entry.creditMinor > 0) StatusSuccess else TextMuted,
                                     fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f)
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(0.95f)
                                 )
 
                                 Text(
                                     text = "৳" + Formatters.formatMinorUnit(entry.runningBalanceMinor),
-                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (entry.runningBalanceMinor > 0) StatusError else PrimaryPurple,
-                                    modifier = Modifier.weight(1.1f)
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1.05f)
                                 )
                             }
                         }
@@ -288,42 +304,64 @@ fun CustomerLedgerDialog(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = DeepNavy.copy(alpha = 0.1f))
 
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         if (customer.outstandingBalanceMinor > 0) {
                             Button(
                                 onClick = { onSendDueReminder(customer) },
+                                modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                             ) {
-                                Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
-                                    if (isBangla) "ভদ্র তাগাদা (WhatsApp)" else "Due Reminder (WhatsApp)",
+                                    if (isBangla) "ভদ্র তাগাদা" else "Due Reminder",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
                         Button(
                             onClick = { onShareWhatsAppStatement(customer) },
+                            modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF128C7E)),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                         ) {
-                            Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (isBangla) "WhatsApp স্টেটমেন্ট" else "WhatsApp Statement", fontSize = 12.sp)
+                            Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                if (isBangla) "WA স্টেটমেন্ট" else "WA Statement",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
 
-                    TextButton(onClick = onDismiss) {
-                        Text(if (isBangla) "বন্ধ করুন" else "Close", color = TextSecondary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = onDismiss) {
+                            Text(if (isBangla) "বন্ধ করুন" else "Close", color = TextSecondary)
+                        }
                     }
                 }
             }

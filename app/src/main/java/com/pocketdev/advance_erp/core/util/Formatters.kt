@@ -38,6 +38,10 @@ object Formatters {
         return sb.toString()
     }
 
+    /** Normalizes Bangla/ASCII numeric strings for safe BigDecimal/Double parsing. */
+    fun normalizeAsciiNumberInput(raw: String): String =
+        toEnglishDigits(raw).replace(",", "").replace(" ", "").trim()
+
     fun formatMoney(money: Money, language: AppLanguage): String {
         return formatMoney(money.minorUnits, money.currency, language)
     }

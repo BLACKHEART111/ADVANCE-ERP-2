@@ -38,13 +38,16 @@ interface AccountingDao {
 
     /** Cash, bank and mobile-banking accounts (money accounts), ordered by kind then code. */
     @Query("""
-        SELECT * FROM chart_of_accounts WHERE accountSubType IS NOT NULL
+        SELECT * FROM chart_of_accounts WHERE accountSubType IS NOT NULL AND isActive = 1
         ORDER BY CASE accountSubType WHEN 'CASH' THEN 0 WHEN 'BANK' THEN 1 ELSE 2 END, accountCode ASC
     """)
     fun getLiquidAccounts(): Flow<List<ChartOfAccount>>
 
-    @Query("SELECT * FROM chart_of_accounts WHERE accountSubType IS NOT NULL ORDER BY accountCode ASC")
+    @Query("SELECT * FROM chart_of_accounts WHERE accountSubType IS NOT NULL AND isActive = 1 ORDER BY accountCode ASC")
     suspend fun getLiquidAccountsSync(): List<ChartOfAccount>
+
+    @Query("DELETE FROM chart_of_accounts WHERE id = :accountId")
+    suspend fun deleteAccountById(accountId: String)
 
     @Query("SELECT COUNT(*) FROM journal_lines WHERE accountId = :accountId")
     suspend fun getLineCountForAccount(accountId: String): Int

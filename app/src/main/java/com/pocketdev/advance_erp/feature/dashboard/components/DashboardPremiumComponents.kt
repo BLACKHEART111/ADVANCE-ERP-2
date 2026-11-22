@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Groups
@@ -48,6 +49,8 @@ import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,7 +59,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -330,13 +337,20 @@ fun CompactDateSelectorCard(
     onSelectToday: () -> Unit,
     onToggleCalendarPicker: () -> Unit,
     onDateSelected: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    endDateMillis: Long = selectedDateMillis,
+    isCustomRange: Boolean = false,
+    onDateRangeSelected: (Long, Long) -> Unit = { _, _ -> }
 ) {
     val isBangla = language == AppLanguage.BANGLA
     val shape = RoundedCornerShape(16.dp)
     val borderBrush = Brush.horizontalGradient(
         listOf(tokens.dateCardBorderStart, tokens.dateCardBorderEnd)
     )
+    var rangeMode by rememberSaveable(isCustomRange) { mutableStateOf(isCustomRange) }
+    var draftStartMillis by rememberSaveable(selectedDateMillis, showCalendarPicker) { mutableStateOf(selectedDateMillis) }
+    var draftEndMillis by rememberSaveable(endDateMillis, showCalendarPicker) { mutableStateOf(endDateMillis) }
+    var pickingEndDate by rememberSaveable { mutableStateOf(false) }
 
     Surface(
         modifier = modifier
@@ -384,16 +398,21 @@ fun CompactDateSelectorCard(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.CalendarMonth,
+                            imageVector = if (isCustomRange) Icons.Outlined.DateRange else Icons.Outlined.CalendarMonth,
                             contentDescription = "Calendar",
                             tint = tokens.dateArrowTint,
                             modifier = Modifier.size(17.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isBangla) "তারিখ: $formattedDate" else "Date: $formattedDate",
+                            text = when {
+                                isCustomRange && isBangla -> "রেঞ্জ: $formattedDate"
+                                isCustomRange -> "Range: $formattedDate"
+                                isBangla -> "তারিখ: $formattedDate"
+                                else -> "Date: $formattedDate"
+                            },
                             color = tokens.dateTextColor,
-                            fontSize = 12.5.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false,
@@ -410,6 +429,38 @@ fun CompactDateSelectorCard(
                             contentDescription = "Next Day",
                             tint = tokens.dateArrowTint,
                             modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Surface(
+                    onClick = {
+                        rangeMode = true
+                        if (!showCalendarPicker) onToggleCalendarPicker()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isCustomRange) tokens.accentPurple.copy(alpha = 0.14f) else tokens.todayBtnBg,
+                    border = BorderStroke(1.dp, if (isCustomRange) tokens.accentPurple else tokens.todayBtnBorder),
+                    modifier = Modifier.heightIn(min = 34.dp).testTag("dashboard_range_chip")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.DateRange,
+                            contentDescription = null,
+                            tint = if (isCustomRange) tokens.accentPurple else tokens.todayBtnContent,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = if (isBangla) "রেঞ্জ" else "Range",
+                            color = if (isCustomRange) tokens.accentPurple else tokens.todayBtnContent,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -449,15 +500,182 @@ fun CompactDateSelectorCard(
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                Column {
-                    Spacer(modifier = Modifier.height(10.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(modifier = Modifier.height(6.dp))
                     HorizontalDivider(color = tokens.dividerColor)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    ERPCalendar(
-                        language = language,
-                        selectedTimestamp = selectedDateMillis,
-                        onDateSelected = onDateSelected
-                    )
+
+                    // Mode toggle: Single Day vs Custom Date Range
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            onClick = { rangeMode = false },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (!rangeMode) tokens.accentPurple.copy(alpha = 0.14f) else Color.Transparent,
+                            border = BorderStroke(1.dp, if (!rangeMode) tokens.accentPurple else tokens.dividerColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = if (isBangla) "নির্দিষ্ট দিন" else "Single Day",
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!rangeMode) tokens.accentPurple else tokens.dateTextColor
+                            )
+                        }
+                        Surface(
+                            onClick = { rangeMode = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (rangeMode) tokens.accentPurple.copy(alpha = 0.14f) else Color.Transparent,
+                            border = BorderStroke(1.dp, if (rangeMode) tokens.accentPurple else tokens.dividerColor),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = if (isBangla) "কাস্টম তারিখ রেঞ্জ" else "Custom Date Range",
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (rangeMode) tokens.accentPurple else tokens.dateTextColor
+                            )
+                        }
+                    }
+
+                    if (!rangeMode) {
+                        ERPCalendar(
+                            language = language,
+                            selectedTimestamp = selectedDateMillis,
+                            onDateSelected = onDateSelected
+                        )
+                    } else {
+                        // Quick range presets
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                (if (isBangla) "গত ৭ দিন" else "Last 7 Days") to 6,
+                                (if (isBangla) "গত ১৫ দিন" else "Last 15 Days") to 14,
+                                (if (isBangla) "গত ৩০ দিন" else "Last 30 Days") to 29
+                            ).forEach { (label, daysBack) ->
+                                Surface(
+                                    onClick = {
+                                        val endNow = System.currentTimeMillis()
+                                        val start = Calendar.getInstance().apply {
+                                            timeInMillis = endNow
+                                            add(Calendar.DAY_OF_YEAR, -daysBack)
+                                        }.timeInMillis
+                                        onDateRangeSelected(start, endNow)
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = tokens.todayBtnBg,
+                                    border = BorderStroke(1.dp, tokens.todayBtnBorder),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = tokens.todayBtnContent,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+
+                        // Start & End selector pills
+                        val startFmt = rememberFormattedDashboardDate(draftStartMillis, language)
+                        val endFmt = rememberFormattedDashboardDate(draftEndMillis, language)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                onClick = { pickingEndDate = false },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (!pickingEndDate) tokens.accentTeal.copy(alpha = 0.14f) else Color.Transparent,
+                                border = BorderStroke(1.2.dp, if (!pickingEndDate) tokens.accentTeal else tokens.dividerColor),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                    Text(
+                                        text = if (isBangla) "শুরুর তারিখ (From)" else "Start Date",
+                                        fontSize = 10.sp,
+                                        color = if (!pickingEndDate) tokens.accentTeal else tokens.dateTextColor.copy(alpha = 0.7f),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = startFmt,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = tokens.dateTextColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Surface(
+                                onClick = { pickingEndDate = true },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (pickingEndDate) tokens.accentPurple.copy(alpha = 0.14f) else Color.Transparent,
+                                border = BorderStroke(1.2.dp, if (pickingEndDate) tokens.accentPurple else tokens.dividerColor),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                    Text(
+                                        text = if (isBangla) "শেষের তারিখ (To)" else "End Date",
+                                        fontSize = 10.sp,
+                                        color = if (pickingEndDate) tokens.accentPurple else tokens.dateTextColor.copy(alpha = 0.7f),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = endFmt,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = tokens.dateTextColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        key(pickingEndDate) {
+                            ERPCalendar(
+                                language = language,
+                                selectedTimestamp = if (pickingEndDate) draftEndMillis else draftStartMillis,
+                                onDateSelected = { picked ->
+                                    if (!pickingEndDate) {
+                                        draftStartMillis = picked
+                                        if (draftEndMillis < picked) draftEndMillis = picked
+                                        pickingEndDate = true
+                                    } else {
+                                        draftEndMillis = picked
+                                        if (draftStartMillis > picked) draftStartMillis = picked
+                                    }
+                                }
+                            )
+                        }
+
+                        Button(
+                            onClick = { onDateRangeSelected(draftStartMillis, draftEndMillis) },
+                            colors = ButtonDefaults.buttonColors(containerColor = tokens.accentPurple),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("dashboard_apply_range_btn")
+                        ) {
+                            Text(
+                                text = if (isBangla) "নির্বাচিত রেঞ্জ প্রয়োগ করুন ($startFmt – $endFmt)" else "Apply Range ($startFmt – $endFmt)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1259,14 +1477,19 @@ fun DashboardPdfShortcutsRow(
     tokens: DashboardColorTokens,
     onGenerateDailySnapshotPdf: () -> Unit,
     onGenerateMonthlyPerformancePdf: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isCustomRange: Boolean = false
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         PdfShortcutPillButton(
-            label = if (isBangla) "দৈনিক পিডিএফ চিত্র" else "Daily PDF Snapshot",
+            label = if (isCustomRange) {
+                if (isBangla) "নির্বাচিত সময়ের পিডিএফ" else "Range PDF Snapshot"
+            } else {
+                if (isBangla) "দৈনিক পিডিএফ চিত্র" else "Daily PDF Snapshot"
+            },
             iconTint = if (tokens.isDark) tokens.accentPurple else tokens.accentTeal,
             tokens = tokens,
             onClick = onGenerateDailySnapshotPdf,

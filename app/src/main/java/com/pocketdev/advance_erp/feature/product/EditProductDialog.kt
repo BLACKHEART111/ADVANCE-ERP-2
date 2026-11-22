@@ -33,6 +33,11 @@ import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.pocketdev.advance_erp.core.designsystem.rememberImageModel
 import java.util.UUID
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
@@ -89,9 +94,11 @@ fun EditProductDialog(
     product: ProductWithDetails,
     initialVariants: List<ProductVariant>,
     initialImages: List<ProductImage>,
+    initialVariantImages: Map<String, List<ProductImage>> = emptyMap(),
     categories: List<ProductCategory>,
     language: AppLanguage,
     initialVariantStock: Map<String, Int> = emptyMap(),
+    onLoadVariantImages: (suspend (variantId: String) -> List<ProductImage>)? = null,
     onDismiss: () -> Unit,
     onGenerateSku: suspend (categoryId: String, nameEn: String) -> String,
     onGenerateBarcode: suspend () -> String,
@@ -134,7 +141,7 @@ fun EditProductDialog(
 
     val productPhotos = remember {
         mutableStateListOf<GalleryItemDraft>().apply {
-            addAll(initialImages.map {
+            addAll(initialImages.filter { it.variantId == null }.map {
                 GalleryItemDraft(it.id, it.imageUri, it.isPrimary, it.sortOrder)
             })
         }
@@ -144,6 +151,9 @@ fun EditProductDialog(
     val variants = remember {
         mutableStateListOf<NewVariantDraft>().apply {
             addAll(initialVariants.map {
+                val initVarPhotos = initialVariantImages[it.id].orEmpty().map { img ->
+                    GalleryItemDraft(img.id, img.imageUri, img.isPrimary, img.sortOrder)
+                }
                 NewVariantDraft(
                     id = it.id,
                     sku = it.sku,
@@ -153,10 +163,33 @@ fun EditProductDialog(
                     priceMinor = it.variantPriceMinor,
                     barcode = it.barcode,
                     qrCode = it.qrCode,
+                    photos = initVarPhotos,
                     existingStock = initialVariantStock[it.id] ?: 0,
                     isExistingVariant = true
                 )
             })
+        }
+    }
+
+    LaunchedEffect(product.id, initialVariants) {
+        if (onLoadVariantImages != null) {
+            initialVariants.forEach { v ->
+                val idx = variants.indexOfFirst { it.id == v.id }
+                if (idx in variants.indices && variants[idx].photos.isEmpty()) {
+                    val fetched = try {
+                        onLoadVariantImages(v.id)
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    if (fetched.isNotEmpty() && idx in variants.indices) {
+                        variants[idx] = variants[idx].copy(
+                            photos = fetched.map { img ->
+                                GalleryItemDraft(img.id, img.imageUri, img.isPrimary, img.sortOrder)
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -174,6 +207,7 @@ fun EditProductDialog(
     var varCostStr by rememberSaveable { mutableStateOf("") }
     var varPriceStr by rememberSaveable { mutableStateOf("") }
     var varStockStr by rememberSaveable { mutableStateOf("") }
+    var varPhotos by remember { mutableStateOf<List<GalleryItemDraft>>(emptyList()) }
 
     fun resetVariantForm() {
         editingVariantIndex = null
@@ -184,6 +218,7 @@ fun EditProductDialog(
         varCostStr = purchasePriceStr
         varPriceStr = sellingPriceStr
         varStockStr = ""
+        varPhotos = emptyList()
     }
 
     LaunchedEffect(varColor, varSize, baseSku) {
@@ -554,9 +589,37 @@ fun EditProductDialog(
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val varThumb = (v.photos.firstOrNull { it.isPrimary } ?: v.photos.firstOrNull())?.uriString
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surface)
+                                            .border(1.dp, ERPDivider, RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (!varThumb.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                                    .data(rememberImageModel(varThumb))
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = v.sku,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Outlined.PhotoLibrary,
+                                                contentDescription = null,
+                                                tint = TextMuted,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
                                     Column(modifier = Modifier.weight(1f)) {
                                         val labelParts = listOfNotNull(
                                             v.color.takeIf { it.isNotBlank() },
@@ -584,29 +647,33 @@ fun EditProductDialog(
                                             fontWeight = FontWeight.SemiBold,
                                             color = PrimaryPurple
                                         )
-                                        if (v.existingStock > 0 || v.initialStock > 0) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                modifier = Modifier.padding(top = 2.dp)
-                                            ) {
-                                                if (v.existingStock > 0) {
-                                                    Text(
-                                                        text = if (language == AppLanguage.BANGLA) "মজুদ: ${v.existingStock} $unit" else "Stock: ${v.existingStock} $unit",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = SecondaryTeal,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                                if (v.initialStock > 0) {
-                                                    Text(
-                                                        text = if (language == AppLanguage.BANGLA) "(+${v.initialStock} $unit যোগ হবে)" else "(+${v.initialStock} $unit to add)",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = PrimaryPurple,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        ) {
+                                            if (v.existingStock > 0) {
+                                                Text(
+                                                    text = if (language == AppLanguage.BANGLA) "মজুদ: ${v.existingStock} $unit" else "Stock: ${v.existingStock} $unit",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = SecondaryTeal,
+                                                    fontWeight = FontWeight.Bold
+                                                )
                                             }
+                                            if (v.initialStock > 0) {
+                                                Text(
+                                                    text = if (language == AppLanguage.BANGLA) "(+${v.initialStock} $unit যোগ হবে)" else "(+${v.initialStock} $unit to add)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = PrimaryPurple,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Text(
+                                                text = if (language == AppLanguage.BANGLA) "ছবি: ${v.photos.size}টি" else "Photos: ${v.photos.size}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (v.photos.isNotEmpty()) SecondaryTeal else TextMuted,
+                                                fontWeight = FontWeight.Medium
+                                            )
                                         }
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -620,6 +687,7 @@ fun EditProductDialog(
                                                 varCostStr = (v.costMinor / 100.0).toString()
                                                 varPriceStr = (v.priceMinor / 100.0).toString()
                                                 varStockStr = if (v.initialStock > 0) v.initialStock.toString() else ""
+                                                varPhotos = v.photos
                                                 showVariantForm = true
                                             }
                                         ) {
@@ -631,6 +699,11 @@ fun EditProductDialog(
                                         }
                                         IconButton(
                                             onClick = {
+                                                v.photos.filter { !it.id.startsWith("draft-") }.forEach { img ->
+                                                    if (!deletedImageIds.contains(img.id)) {
+                                                        deletedImageIds.add(img.id)
+                                                    }
+                                                }
                                                 if (editingVariantIndex == idx) {
                                                     showVariantForm = false
                                                     resetVariantForm()
@@ -834,6 +907,24 @@ fun EditProductDialog(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
+                        PhotoGalleryPicker(
+                            title = if (language == AppLanguage.BANGLA) "ভ্যারিয়েন্টের ছবি (সর্বোচ্চ ৫টি)" else "Variant Photos (Max 5)",
+                            photos = varPhotos,
+                            maxPhotos = 5,
+                            isBangla = language == AppLanguage.BANGLA,
+                            onPhotosChanged = { updated ->
+                                val keptIds = updated.map { it.id }.toSet()
+                                varPhotos.filter { !it.id.startsWith("draft-") && it.id !in keptIds }.forEach { removed ->
+                                    if (!deletedImageIds.contains(removed.id)) {
+                                        deletedImageIds.add(removed.id)
+                                    }
+                                }
+                                varPhotos = updated
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End
@@ -871,6 +962,7 @@ fun EditProductDialog(
                                                 costMinor = cMinor,
                                                 priceMinor = pMinor,
                                                 barcode = varBarcode.trim().ifBlank { null },
+                                                photos = varPhotos,
                                                 initialStock = stockInput
                                             )
                                         } else {
@@ -883,6 +975,7 @@ fun EditProductDialog(
                                                     costMinor = cMinor,
                                                     priceMinor = pMinor,
                                                     barcode = varBarcode.trim().ifBlank { null },
+                                                    photos = varPhotos,
                                                     initialStock = stockInput
                                                 )
                                             )

@@ -10,6 +10,18 @@ object PaymentAllocationValidation {
         return Math.subtractExact(signedBefore, payment).coerceAtLeast(0L)
     }
 
+    /** Preserves genuine opening balance while isolating current ledger transaction net. */
+    fun computePreservedOpeningBalance(masterDueBefore: Long, transactionNetBefore: Long): Long =
+        if (masterDueBefore > 0L) (masterDueBefore - transactionNetBefore).coerceAtLeast(0L) else 0L
+
+    /** Recomputes customer master due after posting, returning, voiding, or cancelling. */
+    fun outstandingAfterTransaction(
+        masterDueBefore: Long,
+        transactionNetBefore: Long,
+        transactionNetAfter: Long
+    ): Long = (computePreservedOpeningBalance(masterDueBefore, transactionNetBefore) + transactionNetAfter)
+        .coerceAtLeast(0L)
+
     fun validate(draft: CustomerPaymentDraft, invoices: Map<String, SalesInvoice>) {
         require(draft.amountMinor > 0) { "Payment amount must be positive" }
         require(draft.allocations.map { it.invoiceId }.distinct().size == draft.allocations.size) { "Duplicate invoice allocation" }

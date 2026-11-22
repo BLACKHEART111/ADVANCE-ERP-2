@@ -52,13 +52,19 @@ object InvoicePdfGenerator {
         paint.color = Color.parseColor("#299DB2") // Secondary Teal
         canvas.drawRect(PAGE_WIDTH.toFloat() * 0.5f, 110f, PAGE_WIDTH.toFloat(), 115f, paint)
 
-        // Draw Official Logo on Banner
-        val logoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white)
+        // Draw Uploaded Company Logo (or Default Fallback) on Banner
+        val logoBitmap = CompanyBrandingHelper.loadCompanyLogoBitmap(context, businessProfile)
         if (logoBitmap != null) {
-            val logoH = 32f
-            val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
-            val logoDest = RectF(36f, 16f, 36f + logoW, 16f + logoH)
-            canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+            try {
+                if (logoBitmap.height > 0 && logoBitmap.width > 0) {
+                    val logoH = 32f
+                    val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
+                    val logoDest = RectF(36f, 16f, (36f + logoW).coerceAtMost(280f), 16f + logoH)
+                    canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+                }
+            } finally {
+                logoBitmap.recycle()
+            }
         }
 
         // Company Name / Business Identity
@@ -249,6 +255,14 @@ object InvoicePdfGenerator {
 
         // 5. Signature Footer
         val footerY = PAGE_HEIGHT - 65f
+        CompanyBrandingHelper.drawAuthorizedSignature(
+            context = context,
+            canvas = canvas,
+            lineStartX = PAGE_WIDTH - 190f,
+            lineEndX = PAGE_WIDTH - 48f,
+            lineY = footerY,
+            paint = paint
+        )
         paint.color = Color.parseColor("#A0AEC0")
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1f
@@ -307,13 +321,19 @@ object InvoicePdfGenerator {
         paint.color = Color.parseColor("#299DB2") // Secondary Teal
         canvas.drawRect(PAGE_WIDTH.toFloat() * 0.5f, 110f, PAGE_WIDTH.toFloat(), 115f, paint)
 
-        // Draw Official Logo on Banner
-        val logoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white)
+        // Draw Uploaded Company Logo (or Default Fallback) on Banner
+        val logoBitmap = CompanyBrandingHelper.loadCompanyLogoBitmap(context, businessProfile)
         if (logoBitmap != null) {
-            val logoH = 32f
-            val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
-            val logoDest = RectF(36f, 16f, 36f + logoW, 16f + logoH)
-            canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+            try {
+                if (logoBitmap.height > 0 && logoBitmap.width > 0) {
+                    val logoH = 32f
+                    val logoW = logoH * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
+                    val logoDest = RectF(36f, 16f, (36f + logoW).coerceAtMost(280f), 16f + logoH)
+                    canvas.drawBitmap(logoBitmap, null, logoDest, paint)
+                }
+            } finally {
+                logoBitmap.recycle()
+            }
         }
 
         // Title
@@ -397,6 +417,14 @@ object InvoicePdfGenerator {
 
         // Signatures
         val footerY = PAGE_HEIGHT - 70f
+        CompanyBrandingHelper.drawAuthorizedSignature(
+            context = context,
+            canvas = canvas,
+            lineStartX = PAGE_WIDTH - 190f,
+            lineEndX = PAGE_WIDTH - 48f,
+            lineY = footerY,
+            paint = paint
+        )
         paint.color = Color.parseColor("#CBD5E0")
         paint.style = Paint.Style.STROKE
         canvas.drawLine(48f, footerY, 190f, footerY, paint)

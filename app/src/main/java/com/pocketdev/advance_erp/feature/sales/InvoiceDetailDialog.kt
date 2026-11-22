@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -52,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -463,67 +465,109 @@ fun InvoiceDetailDialog(
                     }
                 }
 
-                // Bottom Action Buttons
-                Row(
+                // Bottom Action Buttons (2 balanced rows to prevent text clipping in narrow portrait widths)
+                val showPostAction = !invoice.isPosted && invoice.status != "QUOTATION" && invoice.status != "SALES_ORDER" && invoice.status != "CANCELLED"
+                val showPostedActions = invoice.isPosted && invoice.status != "CANCELLED"
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Share PDF
-                    OutlinedButton(
-                        onClick = { onSharePdf(context) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isBangla) "PDF" else "PDF")
-                    }
-
-                    // Thermal Receipt
-                    OutlinedButton(
-                        onClick = { onPrintThermalReceipt(context) },
-                        modifier = Modifier.weight(1.1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isBangla) "রশিদ (Thermal)" else "Receipt")
-                    }
-
-                    // Post or Pay or Return
-                    if (!invoice.isPosted && invoice.status != "QUOTATION" && invoice.status != "SALES_ORDER" && invoice.status != "CANCELLED") {
-                        Button(
-                            onClick = onPostInvoice,
-                            modifier = Modifier.weight(1.4f),
-                            colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(Icons.Outlined.AssignmentTurnedIn, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (isBangla) "পোস্ট করুন" else "Post Invoice")
-                        }
-                    } else if (invoice.isPosted && invoice.status != "CANCELLED") {
-                        if (invoice.dueAmountMinor > 0) {
-                            Button(
-                                onClick = onRecordPayment,
-                                modifier = Modifier.weight(1.2f),
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Icon(Icons.Outlined.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(if (isBangla) "পেমেন্ট" else "Pay")
-                            }
-                        }
                         OutlinedButton(
-                            onClick = onProcessReturn,
+                            onClick = { onSharePdf(context) },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                         ) {
-                            Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (isBangla) "ফেরত" else "Return")
+                            Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "PDF",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { onPrintThermalReceipt(context) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isBangla) "রশিদ (Thermal)" else "Receipt",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    if (showPostAction || showPostedActions) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (showPostAction) {
+                                Button(
+                                    onClick = onPostInvoice,
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                                ) {
+                                    Icon(Icons.Outlined.AssignmentTurnedIn, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isBangla) "পোস্ট করুন" else "Post Invoice",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            } else if (showPostedActions) {
+                                if (invoice.dueAmountMinor > 0) {
+                                    Button(
+                                        onClick = onRecordPayment,
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                                    ) {
+                                        Icon(Icons.Outlined.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isBangla) "পেমেন্ট" else "Pay",
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = onProcessReturn,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isBangla) "ফেরত" else "Return",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     }
                 }

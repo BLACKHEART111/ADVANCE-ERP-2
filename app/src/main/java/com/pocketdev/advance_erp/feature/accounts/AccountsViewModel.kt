@@ -100,7 +100,7 @@ class AccountsViewModel @Inject constructor(
                 financialRepository.getAllReconciliations()
             ) { accounts, entries, expenses, transfers, reconciliations ->
                 val liquid = accounts
-                    .filter { it.liquidKind != null }
+                    .filter { it.liquidKind != null && it.isActive }
                     .sortedWith(compareBy({ it.liquidKind?.ordinal ?: 99 }, { it.accountCode }))
                 _uiState.value.copy(
                     accounts = accounts,
@@ -543,6 +543,38 @@ class AccountsViewModel @Inject constructor(
                 onSuccess?.invoke()
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = "Update Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun deleteLiquidAccount(
+        account: ChartOfAccount,
+        onSuccess: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                accountingRepository.deleteLiquidAccount(account.id)
+                val nextBookId = _uiState.value.liquidAccounts
+                    .firstOrNull { it.id != account.id && it.isActive }
+                    ?.id ?: "coa-1010"
+                refreshTrialBalance()
+                loadFinancialStatements()
+                if (_uiState.value.selectedBankAccountId == account.id) {
+                    selectBankAccountForBook(nextBookId)
+                }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "হিসাব মুছে ফেলা হয়েছে: ${account.nameEn}"
+                    )
+                }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                val msg = e.message ?: "অ্যাকাউন্ট ডিলিট করা যায়নি"
+                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                onError?.invoke(msg)
             }
         }
     }

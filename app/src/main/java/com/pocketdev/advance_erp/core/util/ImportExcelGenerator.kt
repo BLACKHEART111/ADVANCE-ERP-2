@@ -242,6 +242,159 @@ $drawingOverrideXml</Types>"""
     }
 
     /**
+     * Freight Forwarder Packing List Excel (.xlsx, 3 sheets).
+     * Includes embedded product photos, quantity (pcs), carton L×W×H (cm), gross/net weight (KG),
+     * CBM (m³), and shipping marks — strictly excluding Color column, Unit Prices, Total Money, and Payment Terms.
+     */
+    fun generateFreightForwarderPackingListExcel(
+        context: Context,
+        order: PurchaseOrder,
+        items: List<PurchaseOrderItem>,
+        productsMap: Map<String, Product>,
+        supplier: Supplier?,
+        businessProfile: BusinessProfile?,
+        variantsMap: Map<String, ProductVariant> = emptyMap(),
+        itemImagePaths: Map<String, String> = emptyMap(),
+        cartons: List<ShipmentCarton> = emptyList(),
+        selectedCartonNumbers: Set<String>? = null
+    ): File {
+        val isPartial = selectedCartonNumbers != null && cartons.isNotEmpty()
+        val suffix = if (isPartial) "_Selected_${selectedCartonNumbers!!.size}CTN" else ""
+        val file = File(
+            getExcelDir(context),
+            "Forwarder_PackingList_${ImportPdfGenerator.sanitizeFileName(order.poNumber)}$suffix.xlsx"
+        )
+        return generateFreightForwarderPackingListExcelToFile(
+            file = file,
+            order = order,
+            items = items,
+            productsMap = productsMap,
+            supplier = supplier,
+            businessProfile = businessProfile,
+            variantsMap = variantsMap,
+            itemImagePaths = itemImagePaths,
+            cartons = cartons,
+            selectedCartonNumbers = selectedCartonNumbers
+        )
+    }
+
+    internal fun generateFreightForwarderPackingListExcelToFile(
+        file: File,
+        order: PurchaseOrder,
+        items: List<PurchaseOrderItem>,
+        productsMap: Map<String, Product>,
+        supplier: Supplier?,
+        businessProfile: BusinessProfile?,
+        variantsMap: Map<String, ProductVariant> = emptyMap(),
+        itemImagePaths: Map<String, String> = emptyMap(),
+        cartons: List<ShipmentCarton> = emptyList(),
+        thumbnailBytesProvider: (String) -> ByteArray? = { path ->
+            ImportPdfGenerator.loadSquareThumbnailJpegBytes(path, targetPx = 120)
+        },
+        selectedCartonNumbers: Set<String>? = null
+    ): File {
+        val exportData = PoExportDataBuilder.build(
+            order = order,
+            items = items,
+            productsMap = productsMap,
+            supplier = supplier,
+            businessProfile = businessProfile,
+            variantsMap = variantsMap,
+            itemImagePaths = itemImagePaths,
+            cartons = cartons,
+            selectedCartonNumbers = selectedCartonNumbers
+        )
+
+        val (sheet1Xml, embeddedImages) = buildForwarderPackingSheetXml(exportData, thumbnailBytesProvider)
+        val sheet2Xml = buildForwarderCartonSummarySheetXml(exportData)
+        val sheet3Xml = buildForwarderDeliverySheetXml(exportData)
+        val hasImages = embeddedImages.isNotEmpty()
+
+        ZipOutputStream(FileOutputStream(file)).use { zos ->
+            val jpgDefaultXml = if (hasImages) "  <Default Extension=\"jpg\" ContentType=\"image/jpeg\"/>\n" else ""
+            val drawingOverrideXml = if (hasImages) {
+                "  <Override PartName=\"/xl/drawings/drawing1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawing+xml\"/>\n"
+            } else ""
+
+            val contentTypesXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-officedocument.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+$jpgDefaultXml  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+$drawingOverrideXml</Types>"""
+            writeZipEntry(zos, "[Content_Types].xml", contentTypesXml)
+
+            val rootRelsXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>"""
+            writeZipEntry(zos, "_rels/.rels", rootRelsXml)
+
+            val wbRelsXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>"""
+            writeZipEntry(zos, "xl/_rels/workbook.xml.rels", wbRelsXml)
+
+            val workbookXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Packing List" sheetId="1" r:id="rId1"/>
+    <sheet name="Carton Summary" sheetId="2" r:id="rId2"/>
+    <sheet name="Forwarder &amp; Delivery" sheetId="3" r:id="rId3"/>
+  </sheets>
+</workbook>"""
+            writeZipEntry(zos, "xl/workbook.xml", workbookXml)
+
+            writeZipEntry(zos, "xl/styles.xml", buildSupplierStylesXml())
+            writeZipEntry(zos, "xl/worksheets/sheet1.xml", sheet1Xml)
+            writeZipEntry(zos, "xl/worksheets/sheet2.xml", sheet2Xml)
+            writeZipEntry(zos, "xl/worksheets/sheet3.xml", sheet3Xml)
+
+            if (hasImages) {
+                val sheetRelsXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>"""
+                writeZipEntry(zos, "xl/worksheets/_rels/sheet1.xml.rels", sheetRelsXml)
+
+                val uniqueMedia = LinkedHashMap<String, Pair<String, ByteArray>>()
+                embeddedImages.forEach { img ->
+                    if (!uniqueMedia.containsKey(img.mediaName)) {
+                        val relId = "rId${uniqueMedia.size + 1}"
+                        uniqueMedia[img.mediaName] = relId to img.jpegBytes
+                    }
+                }
+
+                val drawingRelsSb = StringBuilder()
+                drawingRelsSb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+""")
+                uniqueMedia.forEach { (mediaName, relPair) ->
+                    drawingRelsSb.append("  <Relationship Id=\"${relPair.first}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/$mediaName\"/>\n")
+                }
+                drawingRelsSb.append("</Relationships>")
+                writeZipEntry(zos, "xl/drawings/_rels/drawing1.xml.rels", drawingRelsSb.toString())
+
+                uniqueMedia.forEach { (mediaName, relPair) ->
+                    writeZipBinaryEntry(zos, "xl/media/$mediaName", relPair.second)
+                }
+
+                val drawingXml = buildSupplierDrawingXml(embeddedImages, uniqueMedia.mapValues { it.value.first })
+                writeZipEntry(zos, "xl/drawings/drawing1.xml", drawingXml)
+            }
+        }
+        return file
+    }
+
+    /**
      * Style table indices:
      * 0: Default left wrap
      * 1: Bold left wrap
@@ -399,7 +552,7 @@ $drawingOverrideXml</Types>"""
         // Row 1: Deep Navy Title Banner
         emitRow(
             listOf(
-                inlineStrCell(0, row, "ADVANCE ERP • ${exportData.companyName}", 2),
+                inlineStrCell(0, row, exportData.companyName, 2),
                 blankCell(1, row, 2),
                 blankCell(2, row, 2),
                 blankCell(3, row, 2),
@@ -1049,6 +1202,487 @@ $mergeXml  <autoFilter ref="A$headerRow:L$lastDataRow"/>
             )
         }
 
+        val lastDataRow = (row - 1).coerceAtLeast(headerRow)
+        val mergeXml = buildString {
+            append("  <mergeCells count=\"${merges.size}\">\n")
+            merges.forEach { append("    <mergeCell ref=\"$it\"/>\n") }
+            append("  </mergeCells>\n")
+        }
+
+        return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane ySplit="$headerRow" topLeftCell="A${headerRow + 1}" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="20"/>
+  <cols>
+    <col min="1" max="1" width="14" customWidth="1"/>
+    <col min="2" max="2" width="18" customWidth="1"/>
+    <col min="3" max="3" width="38" customWidth="1"/>
+    <col min="4" max="4" width="46" customWidth="1"/>
+  </cols>
+  <sheetData>
+$sb  </sheetData>
+$mergeXml  <autoFilter ref="A$headerRow:D$lastDataRow"/>
+  <pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>
+</worksheet>"""
+    }
+
+    private fun buildForwarderPackingSheetXml(
+        exportData: ValidatedSupplierPoExport,
+        thumbnailBytesProvider: (String) -> ByteArray?
+    ): Pair<String, List<EmbeddedSheetImage>> {
+        val sb = StringBuilder()
+        val merges = mutableListOf<String>()
+        val embeddedImages = mutableListOf<EmbeddedSheetImage>()
+        val pathToMediaName = LinkedHashMap<String, String>()
+        var row = 1
+
+        fun emitRow(cells: List<String>, heightPt: Int = 20) {
+            sb.append("    <row r=\"$row\" ht=\"$heightPt\" customHeight=\"1\">")
+            cells.forEach { sb.append(it) }
+            sb.append("</row>\n")
+            row++
+        }
+
+        // Row 1: Title Banner (13 columns A..M, no monetary fields)
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, exportData.companyName, 2),
+                blankCell(1, row, 2), blankCell(2, row, 2), blankCell(3, row, 2), blankCell(4, row, 2),
+                blankCell(5, row, 2), blankCell(6, row, 2),
+                inlineStrCell(7, row, "FREIGHT FORWARDER PACKING LIST", 3),
+                blankCell(8, row, 3), blankCell(9, row, 3), blankCell(10, row, 3), blankCell(11, row, 3), blankCell(12, row, 3)
+            ),
+            heightPt = 28
+        )
+        merges += "A1:G1"
+        merges += "H1:M1"
+
+        val refText = if (exportData.isPartialCartonExport) {
+            "Ref #: ${exportData.poNumber} | Date: ${exportData.orderDateFormatted} | SELECTED ${exportData.exportedCartonCount} OF ${exportData.allCartons.size} CTN"
+        } else {
+            "Ref #: ${exportData.poNumber} | Date: ${exportData.orderDateFormatted}"
+        }
+        emitRow(
+            listOf(inlineStrCell(0, row, refText, 3)) + (1..12).map { blankCell(it, row, 3) },
+            heightPt = 20
+        )
+        merges += "A2:M2"
+
+        val showQty = if (exportData.exportedCartons.isNotEmpty()) exportData.exportedPackedQuantity else exportData.poTotalQuantity
+        val showCtn = if (exportData.exportedCartons.isNotEmpty()) exportData.exportedCartonCount else exportData.poTotalCartons
+        val showGw = if (exportData.exportedCartons.isNotEmpty()) exportData.exportedGrossWeightKg else exportData.poTotalGrossWeightKg
+        val showNw = if (exportData.exportedCartons.isNotEmpty()) exportData.exportedNetWeightKg else exportData.poTotalNetWeightKg
+        val showCbm = if (exportData.exportedCartons.isNotEmpty()) exportData.exportedCbm else exportData.poTotalCbm
+
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, "Forwarder Warehouse", 19),
+                inlineStrCell(1, row, exportData.deliveryAddress, 6),
+                blankCell(2, row, 6), blankCell(3, row, 6), blankCell(4, row, 6), blankCell(5, row, 6),
+                inlineStrCell(6, row, "Total Cartons", 19),
+                inlineStrCell(7, row, "$showCtn CTN", 8),
+                inlineStrCell(8, row, "Total Qty", 19),
+                inlineStrCell(9, row, "$showQty pcs", 13),
+                inlineStrCell(10, row, "Total CBM", 19),
+                inlineStrCell(11, row, "${showCbm.setScale(4, RoundingMode.HALF_UP)} m³", 13),
+                blankCell(12, row, 13)
+            ),
+            heightPt = 26
+        )
+        merges += "B3:F3"
+        merges += "L3:M3"
+
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, "Shipper / Origin", 19),
+                inlineStrCell(1, row, "${exportData.supplierName} (${exportData.supplierPhone}) — ${exportData.supplierAddress}", 6),
+                blankCell(2, row, 6), blankCell(3, row, 6), blankCell(4, row, 6), blankCell(5, row, 6),
+                inlineStrCell(6, row, "Total G.W.", 19),
+                inlineStrCell(7, row, "${showGw.setScale(3, RoundingMode.HALF_UP)} KG", 13),
+                inlineStrCell(8, row, "Total N.W.", 19),
+                inlineStrCell(9, row, "${showNw.setScale(3, RoundingMode.HALF_UP)} KG", 13),
+                inlineStrCell(10, row, "Shipping Mark", 19),
+                inlineStrCell(11, row, exportData.defaultShippingMark.replace("\n", " | "), 6),
+                blankCell(12, row, 6)
+            ),
+            heightPt = 26
+        )
+        merges += "B4:F4"
+        merges += "L4:M4"
+
+        emitRow(listOf(blankCell(0, row)), heightPt = 8)
+
+        // 13-Column Forwarder Table Header (NO Color, NO Unit Price / Total Money)
+        // A: CTN No., B: Photo, C: Product Name, D: SKU, E: Size, F: Qty (pcs),
+        // G: Gross Wt (KG), H: Net Wt (KG), I: Length (cm), J: Width (cm), K: Height (cm), L: CBM (m³), M: Shipping Mark
+        val headerRow = row
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, "CTN No.", 5),
+                inlineStrCell(1, row, "Photo", 5),
+                inlineStrCell(2, row, "Product Name", 5),
+                inlineStrCell(3, row, "SKU", 5),
+                inlineStrCell(4, row, "Size", 5),
+                inlineStrCell(5, row, "Qty (pcs)", 5),
+                inlineStrCell(6, row, "Gross Wt (KG)", 5),
+                inlineStrCell(7, row, "Net Wt (KG)", 5),
+                inlineStrCell(8, row, "Length (cm)", 5),
+                inlineStrCell(9, row, "Width (cm)", 5),
+                inlineStrCell(10, row, "Height (cm)", 5),
+                inlineStrCell(11, row, "CBM (m³)", 5),
+                inlineStrCell(12, row, "Shipping Mark", 5)
+            ),
+            heightPt = 24
+        )
+
+        val firstDataRow = row
+        if (exportData.exportedCartons.isNotEmpty()) {
+            exportData.exportedCartons.forEach { ctn ->
+                ctn.lines.forEachIndexed { lIdx, line ->
+                    val currentZeroRow = row - 1
+                    val imagePath = line.imagePath
+                    val imgBytes = if (!imagePath.isNullOrBlank()) thumbnailBytesProvider(imagePath) else null
+                    val hasPhoto = imgBytes != null && imgBytes.isNotEmpty()
+                    if (hasPhoto && !imagePath.isNullOrBlank()) {
+                        val mediaName = pathToMediaName.getOrPut(imagePath) { "image${pathToMediaName.size + 1}.jpg" }
+                        embeddedImages += EmbeddedSheetImage(
+                            zeroBasedRow = currentZeroRow,
+                            zeroBasedCol = 1, // Column B = Photo
+                            mediaName = mediaName,
+                            jpegBytes = imgBytes!!
+                        )
+                    }
+
+                    val zebra = ctn.sequence % 2 == 0
+                    val ls = if (zebra) 20 else 6
+                    val cs = if (zebra) 21 else 7
+                    val qs = if (zebra) 22 else 9
+                    val cbmCell = if (lIdx == 0) {
+                        numberCell(11, row, ctn.cbm.setScale(4, RoundingMode.HALF_UP).toPlainString(), 12)
+                    } else {
+                        blankCell(11, row, cs)
+                    }
+                    val lenCell = if (lIdx == 0 && ctn.lengthCm > BigDecimal.ZERO) {
+                        numberCell(8, row, ctn.lengthCm.stripTrailingZeros().toPlainString(), cs)
+                    } else inlineStrCell(8, row, if (lIdx == 0) "-" else "", cs)
+                    val widCell = if (lIdx == 0 && ctn.widthCm > BigDecimal.ZERO) {
+                        numberCell(9, row, ctn.widthCm.stripTrailingZeros().toPlainString(), cs)
+                    } else inlineStrCell(9, row, if (lIdx == 0) "-" else "", cs)
+                    val heiCell = if (lIdx == 0 && ctn.heightCm > BigDecimal.ZERO) {
+                        numberCell(10, row, ctn.heightCm.stripTrailingZeros().toPlainString(), cs)
+                    } else inlineStrCell(10, row, if (lIdx == 0) "-" else "", cs)
+
+                    emitRow(
+                        listOf(
+                            inlineStrCell(0, row, if (lIdx == 0) ctn.cartonNumber else ctn.cartonNumber, 8),
+                            inlineStrCell(1, row, if (hasPhoto) "" else "No Photo", cs),
+                            inlineStrCell(2, row, line.productName, ls),
+                            inlineStrCell(3, row, line.sku, ls),
+                            inlineStrCell(4, row, line.size, cs),
+                            numberCell(5, row, line.quantity.toString(), qs),
+                            numberCell(6, row, line.allocatedGrossWeightKg.setScale(3, RoundingMode.HALF_UP).toPlainString(), 11),
+                            numberCell(7, row, line.allocatedNetWeightKg.setScale(3, RoundingMode.HALF_UP).toPlainString(), 11),
+                            lenCell,
+                            widCell,
+                            heiCell,
+                            cbmCell,
+                            inlineStrCell(12, row, if (lIdx == 0) ctn.shippingMark.replace("\n", " | ") else "", ls)
+                        ),
+                        heightPt = if (hasPhoto) 48 else 24
+                    )
+                }
+            }
+        } else {
+            exportData.items.forEachIndexed { idx, itemRow ->
+                val currentZeroRow = row - 1
+                val imagePath = itemRow.imagePath
+                val imgBytes = if (!imagePath.isNullOrBlank()) thumbnailBytesProvider(imagePath) else null
+                val hasPhoto = imgBytes != null && imgBytes.isNotEmpty()
+                if (hasPhoto && !imagePath.isNullOrBlank()) {
+                    val mediaName = pathToMediaName.getOrPut(imagePath) { "image${pathToMediaName.size + 1}.jpg" }
+                    embeddedImages += EmbeddedSheetImage(
+                        zeroBasedRow = currentZeroRow,
+                        zeroBasedCol = 1,
+                        mediaName = mediaName,
+                        jpegBytes = imgBytes!!
+                    )
+                }
+                val zebra = idx % 2 == 1
+                val ls = if (zebra) 20 else 6
+                val cs = if (zebra) 21 else 7
+                val qs = if (zebra) 22 else 9
+                val gwVal = (itemRow.item.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO).setScale(3, RoundingMode.HALF_UP).toPlainString()
+                val nwVal = (itemRow.item.netWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO).setScale(3, RoundingMode.HALF_UP).toPlainString()
+                emitRow(
+                    listOf(
+                        inlineStrCell(0, row, itemRow.cartonDisplay, 8),
+                        inlineStrCell(1, row, if (hasPhoto) "" else "No Photo", cs),
+                        inlineStrCell(2, row, itemRow.productName, ls),
+                        inlineStrCell(3, row, itemRow.sku, ls),
+                        inlineStrCell(4, row, itemRow.size, cs),
+                        numberCell(5, row, itemRow.quantity.toString(), qs),
+                        numberCell(6, row, gwVal, 11),
+                        numberCell(7, row, nwVal, 11),
+                        inlineStrCell(8, row, "-", cs),
+                        inlineStrCell(9, row, "-", cs),
+                        inlineStrCell(10, row, "-", cs),
+                        inlineStrCell(11, row, "-", cs),
+                        inlineStrCell(12, row, exportData.defaultShippingMark.replace("\n", " | "), ls)
+                    ),
+                    heightPt = if (hasPhoto) 48 else 24
+                )
+            }
+        }
+        val lastDataRow = (row - 1).coerceAtLeast(firstDataRow)
+        val hasRows = exportData.exportedCartons.isNotEmpty() || exportData.items.isNotEmpty()
+
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, "TOTAL", 13),
+                inlineStrCell(1, row, "$showCtn CTN", 13),
+                blankCell(2, row, 13),
+                blankCell(3, row, 13),
+                blankCell(4, row, 13),
+                numberCell(5, row, showQty.toString(), 14, formula = if (hasRows) "SUM(F$firstDataRow:F$lastDataRow)" else null),
+                numberCell(6, row, showGw.setScale(3, RoundingMode.HALF_UP).toPlainString(), 16, formula = if (hasRows) "SUM(G$firstDataRow:G$lastDataRow)" else null),
+                numberCell(7, row, showNw.setScale(3, RoundingMode.HALF_UP).toPlainString(), 16, formula = if (hasRows) "SUM(H$firstDataRow:H$lastDataRow)" else null),
+                blankCell(8, row, 13),
+                blankCell(9, row, 13),
+                blankCell(10, row, 13),
+                numberCell(11, row, showCbm.setScale(4, RoundingMode.HALF_UP).toPlainString(), 17, formula = if (hasRows) "SUM(L$firstDataRow:L$lastDataRow)" else null),
+                blankCell(12, row, 13)
+            ),
+            heightPt = 24
+        )
+        merges += "C${row - 1}:E${row - 1}"
+        merges += "I${row - 1}:K${row - 1}"
+
+        val mergeXml = buildString {
+            append("  <mergeCells count=\"${merges.size}\">\n")
+            merges.forEach { append("    <mergeCell ref=\"$it\"/>\n") }
+            append("  </mergeCells>\n")
+        }
+        val drawingXml = if (embeddedImages.isNotEmpty()) "  <drawing r:id=\"rId1\"/>\n" else ""
+
+        val fullXml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+  <sheetViews>
+    <sheetView tabSelected="1" workbookViewId="0">
+      <pane ySplit="$headerRow" topLeftCell="A${headerRow + 1}" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="20"/>
+  <cols>
+    <col min="1" max="1" width="12" customWidth="1"/>
+    <col min="2" max="2" width="12" customWidth="1"/>
+    <col min="3" max="3" width="30" customWidth="1"/>
+    <col min="4" max="4" width="22" customWidth="1"/>
+    <col min="5" max="5" width="11" customWidth="1"/>
+    <col min="6" max="6" width="12" customWidth="1"/>
+    <col min="7" max="7" width="15" customWidth="1"/>
+    <col min="8" max="8" width="15" customWidth="1"/>
+    <col min="9" max="9" width="12" customWidth="1"/>
+    <col min="10" max="10" width="12" customWidth="1"/>
+    <col min="11" max="11" width="12" customWidth="1"/>
+    <col min="12" max="12" width="14" customWidth="1"/>
+    <col min="13" max="13" width="32" customWidth="1"/>
+  </cols>
+  <sheetData>
+$sb  </sheetData>
+$mergeXml  <autoFilter ref="A$headerRow:M$lastDataRow"/>
+  <pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>
+$drawingXml</worksheet>"""
+        return fullXml to embeddedImages
+    }
+
+    private fun buildForwarderCartonSummarySheetXml(exportData: ValidatedSupplierPoExport): String {
+        val sb = StringBuilder()
+        val merges = mutableListOf<String>()
+        var row = 1
+        fun emitRow(cells: List<String>, heightPt: Int = 20) {
+            sb.append("    <row r=\"$row\" ht=\"$heightPt\" customHeight=\"1\">")
+            cells.forEach { sb.append(it) }
+            sb.append("</row>\n")
+            row++
+        }
+
+        val banner = if (exportData.isPartialCartonExport) {
+            "FORWARDER CARTON SUMMARY (SELECTED ${exportData.exportedCartonCount} OF ${exportData.allCartons.size} CTN) — ${exportData.poNumber}"
+        } else {
+            "FORWARDER CARTON SUMMARY — ${exportData.poNumber}"
+        }
+        emitRow(listOf(inlineStrCell(0, row, banner, 2)) + (1..11).map { blankCell(it, row, 2) }, heightPt = 26)
+        merges += "A1:L1"
+
+        val headerRow = row
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, "CTN Number", 5),
+                inlineStrCell(1, row, "Carton Type", 5),
+                inlineStrCell(2, row, "Contents (Product & Size / Qty)", 5),
+                inlineStrCell(3, row, "Qty (pcs)", 5),
+                inlineStrCell(4, row, "Gross Wt (KG)", 5),
+                inlineStrCell(5, row, "Net Wt (KG)", 5),
+                inlineStrCell(6, row, "Length (cm)", 5),
+                inlineStrCell(7, row, "Width (cm)", 5),
+                inlineStrCell(8, row, "Height (cm)", 5),
+                inlineStrCell(9, row, "Dimensions", 5),
+                inlineStrCell(10, row, "CBM (m³)", 5),
+                inlineStrCell(11, row, "Shipping Mark", 5)
+            ),
+            heightPt = 24
+        )
+
+        val firstDataRow = row
+        exportData.exportedCartons.forEachIndexed { idx, ctn ->
+            val zebra = idx % 2 == 1
+            val ls = if (zebra) 20 else 6
+            val cs = if (zebra) 21 else 7
+            val qs = if (zebra) 22 else 9
+            // Deliberately omits Color for freight forwarder privacy
+            val contentsSummary = ctn.lines.joinToString("; ") { l ->
+                val sizePart = l.size.takeIf { it != "-" }
+                val title = if (sizePart != null) "${l.productName} ($sizePart)" else l.productName
+                "$title × ${l.quantity} pcs"
+            }
+            emitRow(
+                listOf(
+                    inlineStrCell(0, row, ctn.cartonNumber, 8),
+                    inlineStrCell(1, row, if (ctn.isMixed) "Mixed" else "Single", cs),
+                    inlineStrCell(2, row, contentsSummary, ls),
+                    numberCell(3, row, ctn.totalQty.toString(), qs),
+                    numberCell(4, row, ctn.grossWeightKg.setScale(3, RoundingMode.HALF_UP).toPlainString(), 11),
+                    numberCell(5, row, ctn.netWeightKg.setScale(3, RoundingMode.HALF_UP).toPlainString(), 11),
+                    numberCell(6, row, ctn.lengthCm.stripTrailingZeros().toPlainString(), cs),
+                    numberCell(7, row, ctn.widthCm.stripTrailingZeros().toPlainString(), cs),
+                    numberCell(8, row, ctn.heightCm.stripTrailingZeros().toPlainString(), cs),
+                    inlineStrCell(9, row, ctn.dimensionsDisplay, cs),
+                    numberCell(10, row, ctn.cbm.setScale(4, RoundingMode.HALF_UP).toPlainString(), 12),
+                    inlineStrCell(11, row, ctn.shippingMark.replace("\n", " | "), ls)
+                ),
+                heightPt = 28
+            )
+        }
+        val lastDataRow = (row - 1).coerceAtLeast(firstDataRow)
+        val hasRows = exportData.exportedCartons.isNotEmpty()
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, "TOTAL", 13),
+                inlineStrCell(1, row, "${exportData.exportedCartonCount} CTN", 13),
+                inlineStrCell(2, row, "Freight Cargo Summary", 13),
+                numberCell(3, row, exportData.exportedPackedQuantity.toString(), 14, formula = if (hasRows) "SUM(D$firstDataRow:D$lastDataRow)" else null),
+                numberCell(4, row, exportData.exportedGrossWeightKg.setScale(3, RoundingMode.HALF_UP).toPlainString(), 16, formula = if (hasRows) "SUM(E$firstDataRow:E$lastDataRow)" else null),
+                numberCell(5, row, exportData.exportedNetWeightKg.setScale(3, RoundingMode.HALF_UP).toPlainString(), 16, formula = if (hasRows) "SUM(F$firstDataRow:F$lastDataRow)" else null),
+                blankCell(6, row, 13), blankCell(7, row, 13), blankCell(8, row, 13), blankCell(9, row, 13),
+                numberCell(10, row, exportData.exportedCbm.setScale(4, RoundingMode.HALF_UP).toPlainString(), 17, formula = if (hasRows) "SUM(K$firstDataRow:K$lastDataRow)" else null),
+                blankCell(11, row, 13)
+            ),
+            heightPt = 24
+        )
+        merges += "G${row - 1}:J${row - 1}"
+
+        val mergeXml = buildString {
+            append("  <mergeCells count=\"${merges.size}\">\n")
+            merges.forEach { append("    <mergeCell ref=\"$it\"/>\n") }
+            append("  </mergeCells>\n")
+        }
+
+        return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane ySplit="$headerRow" topLeftCell="A${headerRow + 1}" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="20"/>
+  <cols>
+    <col min="1" max="1" width="12" customWidth="1"/>
+    <col min="2" max="2" width="11" customWidth="1"/>
+    <col min="3" max="3" width="38" customWidth="1"/>
+    <col min="4" max="4" width="12" customWidth="1"/>
+    <col min="5" max="5" width="14" customWidth="1"/>
+    <col min="6" max="6" width="14" customWidth="1"/>
+    <col min="7" max="7" width="11" customWidth="1"/>
+    <col min="8" max="8" width="11" customWidth="1"/>
+    <col min="9" max="9" width="11" customWidth="1"/>
+    <col min="10" max="10" width="16" customWidth="1"/>
+    <col min="11" max="11" width="13" customWidth="1"/>
+    <col min="12" max="12" width="30" customWidth="1"/>
+  </cols>
+  <sheetData>
+$sb  </sheetData>
+$mergeXml  <autoFilter ref="A$headerRow:L$lastDataRow"/>
+  <pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>
+</worksheet>"""
+    }
+
+    private fun buildForwarderDeliverySheetXml(exportData: ValidatedSupplierPoExport): String {
+        val sb = StringBuilder()
+        val merges = mutableListOf<String>()
+        var row = 1
+        fun emitRow(cells: List<String>, heightPt: Int = 20) {
+            sb.append("    <row r=\"$row\" ht=\"$heightPt\" customHeight=\"1\">")
+            cells.forEach { sb.append(it) }
+            sb.append("</row>\n")
+            row++
+        }
+
+        emitRow(listOf(inlineStrCell(0, row, "FORWARDER PICKUP & SHIPPING MARK — ${exportData.poNumber}", 2), blankCell(1, row, 2), blankCell(2, row, 2), blankCell(3, row, 2)), heightPt = 26)
+        merges += "A1:D1"
+
+        emitRow(listOf(inlineStrCell(0, row, "Consignee / Company", 19), inlineStrCell(1, row, "${exportData.companyName} | Tel: ${exportData.companyPhone}", 6), blankCell(2, row, 6), blankCell(3, row, 6)), heightPt = 26)
+        merges += "B2:D2"
+
+        emitRow(listOf(inlineStrCell(0, row, "Forwarder Warehouse", 19), inlineStrCell(1, row, exportData.deliveryAddress, 6), blankCell(2, row, 6), blankCell(3, row, 6)), heightPt = 28)
+        merges += "B3:D3"
+
+        emitRow(listOf(inlineStrCell(0, row, "Pickup From Shipper", 19), inlineStrCell(1, row, "${exportData.supplierName} | Tel: ${exportData.supplierPhone} | ${exportData.supplierAddress}", 6), blankCell(2, row, 6), blankCell(3, row, 6)), heightPt = 28)
+        merges += "B4:D4"
+
+        emitRow(listOf(inlineStrCell(0, row, "Default Shipping Mark", 19), inlineStrCell(1, row, exportData.defaultShippingMark, 6), blankCell(2, row, 6), blankCell(3, row, 6)), heightPt = 32)
+        merges += "B5:D5"
+
+        emitRow(listOf(blankCell(0, row)), heightPt = 8)
+
+        val headerRow = row
+        emitRow(
+            listOf(
+                inlineStrCell(0, row, "CTN Number", 5),
+                inlineStrCell(1, row, "Mark Source", 5),
+                inlineStrCell(2, row, "Carton Shipping Mark", 5),
+                inlineStrCell(3, row, "Cargo Contents & Qty", 5)
+            ),
+            heightPt = 24
+        )
+
+        exportData.exportedCartons.forEachIndexed { idx, ctn ->
+            val zebra = idx % 2 == 1
+            val ls = if (zebra) 20 else 6
+            val cs = if (zebra) 21 else 7
+            val contents = ctn.lines.joinToString("; ") { l ->
+                val sz = l.size.takeIf { it != "-" }
+                if (sz != null) "${l.productName} ($sz) × ${l.quantity} pcs" else "${l.productName} × ${l.quantity} pcs"
+            }
+            emitRow(
+                listOf(
+                    inlineStrCell(0, row, ctn.cartonNumber, 8),
+                    inlineStrCell(1, row, if (ctn.isCustomShippingMark) "Custom Override" else "PO Default", cs),
+                    inlineStrCell(2, row, ctn.shippingMark, ls),
+                    inlineStrCell(3, row, contents, ls)
+                ),
+                heightPt = 34
+            )
+        }
         val lastDataRow = (row - 1).coerceAtLeast(headerRow)
         val mergeXml = buildString {
             append("  <mergeCells count=\"${merges.size}\">\n")

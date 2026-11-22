@@ -68,7 +68,7 @@ fun AdvanceErpNavGraph(
                 onNavigateToLedger = { navigateSingleTop(Destinations.LEDGER) },
                 onNavigateToImports = { navigateSingleTop(Destinations.PURCHASES) },
                 onNavigateToSales = { navigateSingleTop(Destinations.SALES) },
-                onNavigateToTransactions = { navigateSingleTop(Destinations.INVENTORY) }
+                onNavigateToTransactions = { navigateSingleTop("${Destinations.REPORTS}?tab=transactions") }
             )
         }
 
@@ -139,8 +139,19 @@ fun AdvanceErpNavGraph(
             )
         }
 
-        composable(Destinations.REPORTS) {
-            BusinessControlCenterScreen(viewModel = hiltViewModel())
+        composable(
+            route = "${Destinations.REPORTS}?tab={tab}",
+            arguments = listOf(navArgument("tab") { type = NavType.StringType; defaultValue = "" })
+        ) { entry ->
+            val initialTab = if (entry.arguments?.getString("tab") == "transactions") {
+                com.pocketdev.advance_erp.feature.controlcenter.CentralLedgerTab.TRANSACTIONS
+            } else {
+                com.pocketdev.advance_erp.feature.controlcenter.CentralLedgerTab.SUMMARY
+            }
+            BusinessControlCenterScreen(
+                viewModel = hiltViewModel(),
+                initialTab = initialTab
+            )
         }
 
         composable(Destinations.SETTINGS) {

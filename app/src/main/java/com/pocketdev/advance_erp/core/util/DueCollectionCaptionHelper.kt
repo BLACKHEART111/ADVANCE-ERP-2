@@ -66,13 +66,13 @@ object DueCollectionCaptionHelper {
                     append("• রেফারেন্স: ${data.referenceNote}\n")
                 }
                 append("────────────────────────\n")
-                append("💰 *পূর্বের মোট বকেয়া:* $previousDueStr\n")
-                append("📥 *আজকের জমার পরিমাণ:* $amountReceivedStr\n")
-                append("⚖️ *বর্তমান অবশিষ্ট বকেয়া:* $currentDueStr\n")
+                append("💰 *পূর্বের মোট বকেয়া: $previousDueStr*\n")
+                append("📥 *আজকের জমার পরিমাণ: $amountReceivedStr*\n")
+                append("⚖️ *বর্তমান অবশিষ্ট বকেয়া: $currentDueStr*\n")
 
                 when {
                     data.isAdvancePayment && data.advanceAmountMinor > 0L -> {
-                        append("⭐ *অ্যাডভান্স ব্যালেন্স:* $advanceStr\n")
+                        append("⭐ *অ্যাডভান্স ব্যালেন্স: $advanceStr*\n")
                         append("────────────────────────\n")
                         append("✨ *ধন্যবাদ! আপনার অতিরিক্ত জমা $advanceStr আপনার একাউন্ট ব্যালেন্সে অগ্রিম (Customer Advance) হিসেবে জমা রয়েছে।*\n")
                     }
@@ -86,7 +86,7 @@ object DueCollectionCaptionHelper {
                     }
                     else -> {
                         append("────────────────────────\n")
-                        append("⚠️ *অবশিষ্ট বকেয়া:* $currentDueStr\n")
+                        append("⚠️ *অবশিষ্ট বকেয়া: $currentDueStr*\n")
                         append("পরবর্তী নির্ধারিত তারিখের মধ্যে অবশিষ্ট বকেয়া পরিশোধ করার জন্য বিনীত অনুরোধ করা হলো।\n")
                     }
                 }
@@ -114,13 +114,13 @@ object DueCollectionCaptionHelper {
                     append("• Reference: ${data.referenceNote}\n")
                 }
                 append("────────────────────────\n")
-                append("💰 *Previous Total Due:* $previousDueStr\n")
-                append("📥 *Amount Received Today:* $amountReceivedStr\n")
-                append("⚖️ *Current Outstanding Due:* $currentDueStr\n")
+                append("💰 *Previous Total Due: $previousDueStr*\n")
+                append("📥 *Amount Received Today: $amountReceivedStr*\n")
+                append("⚖️ *Current Outstanding Due: $currentDueStr*\n")
 
                 when {
                     data.isAdvancePayment && data.advanceAmountMinor > 0L -> {
-                        append("⭐ *Advance Credit Balance:* $advanceStr\n")
+                        append("⭐ *Advance Credit Balance: $advanceStr*\n")
                         append("────────────────────────\n")
                         append("✨ *Thank you! Excess payment of $advanceStr is held securely as an advance credit on your account.*\n")
                     }
@@ -134,7 +134,7 @@ object DueCollectionCaptionHelper {
                     }
                     else -> {
                         append("────────────────────────\n")
-                        append("⚠️ *Remaining Outstanding Balance:* $currentDueStr\n")
+                        append("⚠️ *Remaining Outstanding Balance: $currentDueStr*\n")
                         append("Kindly arrange payment for the remaining balance at your earliest convenience.\n")
                     }
                 }

@@ -41,6 +41,7 @@ data class ValidatedCartonLine(
     val sku: String,
     val color: String,
     val size: String,
+    val imagePath: String? = null,
     val quantity: Int,
     val allocatedGrossWeightKg: BigDecimal,
     val allocatedNetWeightKg: BigDecimal
@@ -213,6 +214,8 @@ object PoExportDataBuilder {
                 if (r.quantity <= 0) {
                     blockingErrors += "$normalizedCtnNo has non-positive quantity for ${prod?.nameEn ?: r.productId}."
                 }
+                val resolvedLineImg = itemImagePaths["${r.productId}:${r.variantId.orEmpty()}"]
+                    ?: itemImagePaths[r.productId]
                 ValidatedCartonLine(
                     productId = r.productId,
                     variantId = r.variantId,
@@ -220,6 +223,7 @@ object PoExportDataBuilder {
                     sku = sku,
                     color = color,
                     size = size,
+                    imagePath = resolvedLineImg,
                     quantity = r.quantity,
                     allocatedGrossWeightKg = lineGw,
                     allocatedNetWeightKg = lineNw

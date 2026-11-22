@@ -31,6 +31,17 @@ object ControlCenterExcelGenerator {
         return File(context.cacheDir, "reports_excel").apply { if (!exists()) mkdirs() }
     }
 
+    /** Produces an ASCII-safe filename slug and falls back cleanly for non-Latin report titles. */
+    internal fun sanitizeExportFileSlug(reportTitle: String, fallback: String): String {
+        val slug = reportTitle
+            .lowercase(Locale.US)
+            .replace("[^a-z0-9]+".toRegex(), "_")
+            .trim('_')
+            .take(30)
+            .trim('_')
+        return slug.ifBlank { fallback }
+    }
+
     fun exportToXlsx(
         context: Context,
         reportTitle: String,
@@ -43,7 +54,8 @@ object ControlCenterExcelGenerator {
         canViewProfit: Boolean,
         statement: com.pocketdev.advance_erp.domain.model.PartyLedgerStatement? = null
     ): File {
-        val sanitizedTitle = reportTitle.lowercase().replace("[^a-z0-9]".toRegex(), "_").take(30)
+        val fallbackSlug = filterState.category.name.lowercase(Locale.US)
+        val sanitizedTitle = sanitizeExportFileSlug(reportTitle, fallbackSlug)
         val file = File(getExcelDir(context), "${sanitizedTitle}_${System.currentTimeMillis()}.xlsx")
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
         val dateOnlyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -373,7 +385,7 @@ object ControlCenterExcelGenerator {
         reportTitle: String,
         transactions: List<UnifiedTransactionItem>
     ): File {
-        val sanitizedTitle = reportTitle.lowercase().replace("[^a-z0-9]".toRegex(), "_").take(30)
+        val sanitizedTitle = sanitizeExportFileSlug(reportTitle, "advance_erp_report")
         val file = File(getExcelDir(context), "${sanitizedTitle}_${System.currentTimeMillis()}.csv")
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 

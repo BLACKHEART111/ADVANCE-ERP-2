@@ -228,16 +228,17 @@ object CentralizedPdfEngine {
 
             // Company Logo
             try {
-                val customLogoFile = businessProfile?.logoPath?.let { java.io.File(it) }
-                val logo = if (customLogoFile != null && customLogoFile.exists()) {
-                    BitmapFactory.decodeFile(customLogoFile.absolutePath)
-                } else {
-                    BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white)
-                }
+                val logo = com.pocketdev.advance_erp.core.util.CompanyBrandingHelper.loadCompanyLogoBitmap(context, businessProfile)
                 if (logo != null) {
-                    val logoH = 26f
-                    val logoW = logoH * (logo.width.toFloat() / logo.height.toFloat())
-                    canvas.drawBitmap(logo, null, RectF(MARGIN_X, 12f, MARGIN_X + logoW, 12f + logoH), paint)
+                    try {
+                        if (logo.height > 0 && logo.width > 0) {
+                            val logoH = 26f
+                            val logoW = logoH * (logo.width.toFloat() / logo.height.toFloat())
+                            canvas.drawBitmap(logo, null, RectF(MARGIN_X, 12f, (MARGIN_X + logoW).coerceAtMost(260f), 12f + logoH), paint)
+                        }
+                    } finally {
+                        logo.recycle()
+                    }
                 }
             } catch (_: Exception) {}
 

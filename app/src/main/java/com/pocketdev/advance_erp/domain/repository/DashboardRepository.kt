@@ -28,8 +28,12 @@ data class DateWiseMetrics(
     val stockOutUnits: Int,
     val netCashFlow: Money,
     val dailyGrossProfit: Money,
-    val transactionCount: Int
-)
+    val transactionCount: Int,
+    val startDateMillis: Long = selectedDateMillis,
+    val endDateMillis: Long = selectedDateMillis
+) {
+    val isRangeMode: Boolean get() = startDateMillis != endDateMillis
+}
 
 data class HistoricalClosingBalances(
     val asOfDateMillis: Long,
@@ -70,4 +74,6 @@ data class DashboardSummary(
 interface DashboardRepository {
     fun getDashboardSummary(): Flow<DashboardSummary>
     fun getDashboardSummaryForDate(dateMillis: Long): Flow<DashboardSummary>
+    fun getDashboardSummaryForRange(startDateMillis: Long, endDateMillis: Long): Flow<DashboardSummary> =
+        getDashboardSummaryForDate(endDateMillis)
 }

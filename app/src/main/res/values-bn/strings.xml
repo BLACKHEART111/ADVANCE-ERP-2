@@ -15,9 +15,9 @@
     <string name="nav_customers">গ্রাহকবৃন্দ</string>
     <string name="nav_suppliers">সরবরাহকারী</string>
     <string name="nav_ledger">কেন্দ্রীয় লেজার</string>
-    <string name="nav_reports">ব্যবসা নিয়ন্ত্রণ কেন্দ্র</string>
-    <string name="business_control_center">ব্যবসা নিয়ন্ত্রণ কেন্দ্র</string>
-    <string name="centralized_ledger_reports">কেন্দ্রীয় লেজার, হিসাব বিবরণী ও এক্সপোর্ট</string>
+    <string name="nav_reports">রিপোর্ট ও নিয়ন্ত্রণ কেন্দ্র</string>
+    <string name="business_control_center">রিপোর্ট ও ব্যবসা নিয়ন্ত্রণ কেন্দ্র</string>
+    <string name="centralized_ledger_reports">সকল সেন্ট্রালাইজড রিপোর্ট, লেজার ও কাস্টম PDF এক্সপোর্ট</string>
     <string name="nav_settings">সেটিংস</string>
     <string name="more_modules_title">সব মডিউল ও টুল</string>
     <string name="more_modules_subtitle">দৈনন্দিন ব্যবসা পরিচালনার টুল</string>
@@ -30,7 +30,7 @@
     <string name="more_customers_subtitle">গ্রাহক তথ্য ও বকেয়া</string>
     <string name="more_suppliers_subtitle">সরবরাহকারী তথ্য ও দেনা</string>
     <string name="more_ledger_subtitle">গ্রাহক ও সরবরাহকারী খতিয়ান</string>
-    <string name="more_reports_subtitle">রিপোর্ট ও ব্যবসার সারসংক্ষেপ</string>
+    <string name="more_reports_subtitle">সকল ব্যবসা রিপোর্ট, পার্ট-বাই-পার্ট কাস্টম PDF</string>
     <string name="more_settings_subtitle">ভাষা, মুদ্রা ও ব্যাকআপ</string>
 
     <!-- Drawer Menu Items & Header -->

@@ -12,6 +12,9 @@ import com.pocketdev.advance_erp.R
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
+import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.data.entity.Product
+import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.domain.model.BusinessSummaryDashboardData
 import com.pocketdev.advance_erp.domain.model.ControlCenterFilterState
 import com.pocketdev.advance_erp.domain.model.UnifiedTransactionItem
@@ -20,6 +23,18 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+data class CustomReportPdfConfig(
+    val title: String = "",
+    val includeExecutiveKpis: Boolean = true,
+    val includeSalesPurchaseSummary: Boolean = true,
+    val includeCustomerDues: Boolean = true,
+    val includeSupplierDues: Boolean = true,
+    val includeExpensesAndProfit: Boolean = true,
+    val includeInventorySummary: Boolean = true,
+    val includeTransactionsTable: Boolean = true,
+    val includeAuthorizedSignature: Boolean = true
+)
 
 object ControlCenterPdfGenerator {
 
@@ -156,11 +171,17 @@ object ControlCenterPdfGenerator {
 
         // Company Logo
         try {
-            val logo = BitmapFactory.decodeResource(context.resources, R.drawable.logo_compact_white)
+            val logo = CompanyBrandingHelper.loadCompanyLogoBitmap(context, businessProfile)
             if (logo != null) {
-                val h = 24f
-                val w = h * (logo.width.toFloat() / logo.height.toFloat())
-                canvas.drawBitmap(logo, null, RectF(MARGIN, 16f, MARGIN + w, 16f + h), paint)
+                try {
+                    if (logo.height > 0 && logo.width > 0) {
+                        val h = 24f
+                        val w = h * (logo.width.toFloat() / logo.height.toFloat())
+                        canvas.drawBitmap(logo, null, RectF(MARGIN, 16f, (MARGIN + w).coerceAtMost(240f), 16f + h), paint)
+                    }
+                } finally {
+                    logo.recycle()
+                }
             }
         } catch (_: Exception) {}
 
@@ -415,5 +436,252 @@ object ControlCenterPdfGenerator {
         val pageStr = "Page $page of $totalPages"
         val pw = paint.measureText(pageStr)
         canvas.drawText(pageStr, PAGE_WIDTH - MARGIN - pw, y, paint)
+    }
+
+    /**
+     * Generates a modular, part-by-part customizable PDF report inside the Reports Center
+     * using centralized single-source-of-truth customer/supplier balances and ledger aggregates.
+     */
+    fun generateCustomModularReportPdf(
+        context: Context,
+        config: CustomReportPdfConfig,
+        filterState: ControlCenterFilterState,
+        summary: BusinessSummaryDashboardData,
+        transactions: List<UnifiedTransactionItem>,
+        customers: List<Customer>,
+        suppliers: List<Supplier>,
+        products: List<Product>,
+        businessProfile: BusinessProfile?,
+        canViewProfit: Boolean,
+        isBangla: Boolean = false
+    ): File {
+        val pdfDir = File(context.cacheDir, "reports_pdf").apply { if (!exists()) mkdirs() }
+        val resolvedTitle = config.title.trim().ifBlank {
+            if (isBangla) "কাস্টমায়িজড বিজনেস রিপোর্ট" else "Custom Modular Business Report"
+        }
+        val safeName = resolvedTitle.lowercase().replace("[^a-z0-9]".toRegex(), "_").take(32).ifBlank { "custom_report" }
+        val file = File(pdfDir, "${safeName}_${System.currentTimeMillis()}.pdf")
+
+        val document = PdfDocument()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
+        val timeFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US)
+        val generatedAt = timeFormat.format(Date())
+
+        val (fromMillis, toMillis) = filterState.dateRangeOption.getBoundsMillis(filterState.customStartDate, filterState.customEndDate)
+        val periodText = if (filterState.dateRangeOption.name == "ALL_TIME" || fromMillis == 0L) {
+            if (isBangla) "সময়কাল: সকল সময়" else "Period: All Time"
+        } else {
+            val fromStr = dateFormat.format(Date(fromMillis))
+            val toStr = dateFormat.format(Date(minOf(toMillis, System.currentTimeMillis())))
+            if (isBangla) "সময়কাল: $fromStr – $toStr" else "Period: $fromStr - $toStr"
+        }
+
+        // Canonical due sources matching Customer/Supplier master & ledger everywhere in the app
+        val canonicalCustomerDues = customers.filter { it.isActive && it.outstandingBalanceMinor > 0L }
+            .sortedByDescending { it.outstandingBalanceMinor }
+        val canonicalSupplierDues = suppliers.filter { it.isActive && it.outstandingPayableMinor > 0L }
+            .sortedByDescending { it.outstandingPayableMinor }
+        val totalCanonicalCustomerDue = canonicalCustomerDues.sumOf { it.outstandingBalanceMinor }
+        val totalCanonicalSupplierDue = canonicalSupplierDues.sumOf { it.outstandingPayableMinor }
+        val activeProducts = products.filter { it.isActive }
+
+        var pageIndex = 1
+        var page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageIndex).create())
+        var canvas = page.canvas
+        drawHeaderBanner(context, canvas, paint, businessProfile, resolvedTitle, periodText)
+        var currentY = 112f
+
+        val maxBodyY = PAGE_HEIGHT - 44f
+        fun startNextPage() {
+            drawPageFooter(canvas, paint, generatedAt, pageIndex, pageIndex)
+            document.finishPage(page)
+            pageIndex++
+            page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageIndex).create())
+            canvas = page.canvas
+            drawSubsequentHeader(canvas, paint, resolvedTitle, periodText, pageIndex, pageIndex)
+            currentY = 48f
+        }
+
+        fun ensureSpace(neededHeight: Float) {
+            if (currentY + neededHeight > maxBodyY) {
+                startNextPage()
+            }
+        }
+
+        fun drawSectionTitle(title: String) {
+            ensureSpace(28f)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#1E293B")
+            canvas.drawRoundRect(RectF(MARGIN, currentY, PAGE_WIDTH - MARGIN, currentY + 18f), 4f, 4f, paint)
+            paint.color = Color.WHITE
+            paint.textSize = 8.2f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText(title, MARGIN + 8f, currentY + 12.5f, paint)
+            currentY += 23f
+        }
+
+        fun drawKeyValueLine(label: String, value: String, valueColorHex: String = "#0F172A", bold: Boolean = false) {
+            ensureSpace(16f)
+            paint.style = Paint.Style.FILL
+            paint.textSize = 8f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, if (bold) Typeface.BOLD else Typeface.NORMAL)
+            paint.color = Color.parseColor("#334155")
+            canvas.drawText(label.take(58), MARGIN + 6f, currentY + 10f, paint)
+            paint.color = Color.parseColor(valueColorHex)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val vw = paint.measureText(value)
+            canvas.drawText(value, PAGE_WIDTH - MARGIN - 6f - vw, currentY + 10f, paint)
+            paint.color = Color.parseColor("#E2E8F0")
+            paint.strokeWidth = 0.5f
+            canvas.drawLine(MARGIN, currentY + 14f, PAGE_WIDTH - MARGIN, currentY + 14f, paint)
+            currentY += 15f
+        }
+
+        // Part 1: Executive KPIs (uses canonical due totals for receivables & payables)
+        if (config.includeExecutiveKpis) {
+            ensureSpace(if (canViewProfit) 78f else 56f)
+            val syncedSummary = summary.copy(
+                totalOutstandingReceivableMinor = totalCanonicalCustomerDue,
+                totalOutstandingPayableMinor = totalCanonicalSupplierDue
+            )
+            drawSummaryCards(canvas, paint, syncedSummary, canViewProfit, currentY, isBangla)
+            currentY += (if (canViewProfit) 70f else 50f) + 10f
+        }
+
+        // Part 2: Sales & Purchase / Import Operations Summary
+        if (config.includeSalesPurchaseSummary) {
+            drawSectionTitle(if (isBangla) "বিক্রয় ও ক্রয় সারসংক্ষেপ (Sales & Procurement)" else "SALES & PROCUREMENT OVERVIEW")
+            drawKeyValueLine(if (isBangla) "মোট বিক্রয় (Sales)" else "Total Sales Revenue", "৳ ${Formatters.formatMinorUnit(summary.totalSalesMinor)}", "#16A34A", bold = true)
+            drawKeyValueLine(if (isBangla) "মোট ক্রয় ও আমদানি (Purchases & Import)" else "Total Purchases & Import", "৳ ${Formatters.formatMinorUnit(summary.totalPurchaseMinor)}", "#7C3AED")
+            drawKeyValueLine(if (isBangla) "গ্রাহক থেকে আদায় (Received)" else "Collections Received from Customers", "৳ ${Formatters.formatMinorUnit(summary.totalReceivedMinor)}", "#16A34A")
+            drawKeyValueLine(if (isBangla) "সরবরাহকারীকে পরিশোধ (Paid)" else "Supplier Payments Disbursed", "৳ ${Formatters.formatMinorUnit(summary.totalPaidMinor)}", "#0284C7")
+            drawKeyValueLine(if (isBangla) "বিক্রয় ফেরত (Sales Returns)" else "Total Sales Returns", "৳ ${Formatters.formatMinorUnit(summary.totalSalesReturnMinor)}", "#D97706")
+            currentY += 8f
+        }
+
+        // Part 3: Expenses & Profit Overview
+        if (config.includeExpensesAndProfit) {
+            drawSectionTitle(if (isBangla) "ব্যয়, নগদ ও মুনাফার হিসাব (Expenses & P&L)" else "EXPENSES, CASH POSITION & PROFITABILITY")
+            drawKeyValueLine(if (isBangla) "মোট পরিচালন ব্যয় (Operating Expenses)" else "Total Operating Expenses", "৳ ${Formatters.formatMinorUnit(summary.totalExpensesMinor)}", "#DC2626")
+            drawKeyValueLine(if (isBangla) "সমাপনী নগদ ও ব্যাংক ব্যালেন্স" else "Closing Cash & Period Balance", "৳ ${Formatters.formatMinorUnit(summary.closingBalanceMinor)}", "#0F172A", bold = true)
+            if (canViewProfit) {
+                drawKeyValueLine(if (isBangla) "মোট লাভ (Gross Profit)" else "Gross Profit", "৳ ${Formatters.formatMinorUnit(summary.grossProfitMinor)}", "#16A34A")
+                drawKeyValueLine(if (isBangla) "নিট মুনাফা (Net Profit)" else "Net Profit", "৳ ${Formatters.formatMinorUnit(summary.netProfitMinor)}", if (summary.netProfitMinor >= 0) "#16A34A" else "#DC2626", bold = true)
+            } else {
+                drawKeyValueLine(if (isBangla) "মুনাফা (শুধুমাত্র অ্যাডমিন)" else "Profit (Owner/Admin Restricted)", "Hidden", "#64748B")
+            }
+            currentY += 8f
+        }
+
+        // Part 4: Canonical Customer Dues (Single Source of Truth)
+        if (config.includeCustomerDues) {
+            drawSectionTitle(
+                if (isBangla) "কাস্টমার বকেয়া তালিকা (একক কেন্দ্রিক জের: ৳ ${Formatters.formatMinorUnit(totalCanonicalCustomerDue)})"
+                else "CUSTOMER RECEIVABLES (CENTRALIZED BALANCE: BDT ${Formatters.formatMinorUnit(totalCanonicalCustomerDue)})"
+            )
+            if (canonicalCustomerDues.isEmpty()) {
+                drawKeyValueLine(if (isBangla) "কোনো বকেয়াধারী কাস্টমার নেই" else "No customers with outstanding balance", "৳ 0.00", "#16A34A")
+            } else {
+                canonicalCustomerDues.forEachIndexed { idx, cust ->
+                    val phonePart = cust.phone.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
+                    drawKeyValueLine(
+                        label = "${idx + 1}. ${cust.name} [${cust.customerCode}]$phonePart",
+                        value = "৳ ${Formatters.formatMinorUnit(cust.outstandingBalanceMinor)}",
+                        valueColorHex = "#DC2626",
+                        bold = idx == 0
+                    )
+                }
+            }
+            currentY += 8f
+        }
+
+        // Part 5: Canonical Supplier Payables
+        if (config.includeSupplierDues) {
+            drawSectionTitle(
+                if (isBangla) "সরবরাহকারী দেনা তালিকা (মোট: ৳ ${Formatters.formatMinorUnit(totalCanonicalSupplierDue)})"
+                else "SUPPLIER PAYABLES (TOTAL: BDT ${Formatters.formatMinorUnit(totalCanonicalSupplierDue)})"
+            )
+            if (canonicalSupplierDues.isEmpty()) {
+                drawKeyValueLine(if (isBangla) "কোনো সরবরাহকারী বকেয়া নেই" else "No pending supplier payables", "৳ 0.00", "#16A34A")
+            } else {
+                canonicalSupplierDues.forEachIndexed { idx, sup ->
+                    val phonePart = sup.phone.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
+                    drawKeyValueLine(
+                        label = "${idx + 1}. ${sup.companyName} [${sup.supplierCode}]$phonePart",
+                        value = "৳ ${Formatters.formatMinorUnit(sup.outstandingPayableMinor)}",
+                        valueColorHex = "#EA580C"
+                    )
+                }
+            }
+            currentY += 8f
+        }
+
+        // Part 6: Inventory Summary
+        if (config.includeInventorySummary) {
+            drawSectionTitle(if (isBangla) "পণ্য ও ইনভেন্টরি সারসংক্ষেপ (Inventory Catalog)" else "INVENTORY & CATALOG OVERVIEW")
+            drawKeyValueLine(if (isBangla) "মোট সক্রিয় পণ্য সংখ্যা" else "Total Active Products", "${activeProducts.size} items", "#0F172A", bold = true)
+            activeProducts.take(15).forEachIndexed { idx, prod ->
+                drawKeyValueLine(
+                    label = "${idx + 1}. ${prod.nameEn} (${prod.baseSku}) • Min Alert: ${prod.minStockAlert} ${prod.unit}",
+                    value = "Sell: ৳ ${Formatters.formatMinorUnit(prod.sellingPriceMinor)}",
+                    valueColorHex = "#334155"
+                )
+            }
+            if (activeProducts.size > 15) {
+                drawKeyValueLine(if (isBangla) "... আরও ${activeProducts.size - 15}টি পণ্য" else "... and ${activeProducts.size - 15} more active products", "", "#64748B")
+            }
+            currentY += 8f
+        }
+
+        // Part 7: Detailed Transactions Table
+        if (config.includeTransactionsTable) {
+            drawSectionTitle(if (isBangla) "লেনদেনের বিস্তারিত বিবরণ (${transactions.size}টি)" else "TRANSACTION REGISTER (${transactions.size} ITEMS)")
+            ensureSpace(24f)
+            drawTableHeader(canvas, paint, currentY, isBangla)
+            currentY += 20f
+            transactions.forEachIndexed { idx, item ->
+                if (currentY + 22f > maxBodyY) {
+                    startNextPage()
+                    drawTableHeader(canvas, paint, currentY, isBangla)
+                    currentY += 20f
+                }
+                drawTransactionRow(canvas, paint, item, currentY, idx % 2 == 1, dateFormat)
+                currentY += 22f
+            }
+            ensureSpace(34f)
+            drawTotalsFooter(canvas, paint, summary, currentY + 6f, isBangla)
+            currentY += 36f
+        }
+
+        // Part 8: Authorized Signature Block (uses finger-drawn signature saved in Settings)
+        if (config.includeAuthorizedSignature) {
+            ensureSpace(64f)
+            val sigLineY = currentY + 40f
+            val sigStartX = PAGE_WIDTH - MARGIN - 165f
+            val sigEndX = PAGE_WIDTH - MARGIN - 8f
+            CompanyBrandingHelper.drawAuthorizedSignature(context, canvas, sigStartX, sigEndX, sigLineY, paint)
+            paint.color = Color.parseColor("#94A3B8")
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1f
+            canvas.drawLine(MARGIN + 8f, sigLineY, MARGIN + 170f, sigLineY, paint)
+            canvas.drawLine(sigStartX, sigLineY, sigEndX, sigLineY, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.parseColor("#475569")
+            paint.textSize = 7.8f
+            paint.typeface = Typeface.DEFAULT
+            canvas.drawText(if (isBangla) "প্রস্তুতকারী / অ্যাকাউন্টস" else "Prepared By / Accounts", MARGIN + 8f, sigLineY + 12f, paint)
+            val authText = if (isBangla) "অথরাইজড সিগনেচার ও সিল" else "Authorized Signature & Seal"
+            canvas.drawText(authText, sigEndX - paint.measureText(authText), sigLineY + 12f, paint)
+        }
+
+        drawPageFooter(canvas, paint, generatedAt, pageIndex, pageIndex)
+        document.finishPage(page)
+
+        FileOutputStream(file).use { out ->
+            document.writeTo(out)
+        }
+        document.close()
+        return file
     }
 }
