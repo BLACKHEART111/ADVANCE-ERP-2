@@ -68,19 +68,19 @@ class PurchaseOrderVisualTest {
                         isBangla=bn,onDismiss={},metadataOnly=metadataOnly,
                         onUpdateMetadata={ _,_ -> metadataSaved=true },editingOrder=PurchaseOrder("po","PO-UI-TEST","s",currency=currency,exchangeRateToBdt=if(currency=="BDT") "1" else "17",paidAmountMinor=if(metadataOnly) 100L else 0L),
                         initialEditingItems=items,initialEditingCartons=cartons,
-                        onUpdatePo={ _,_,_,_,lines,_,_,boxes,_,rates,_,_,_ -> savedItems=lines; savedCartons=boxes; savedRates=rates },
-                        onSavePo={ _,_,_,_,_,_,_,_,_,_,_,_ -> })
+                        onUpdatePo={ _,_,_,_,lines,_,_,boxes,_,rates,_,_,_,_,_,_ -> savedItems=lines; savedCartons=boxes; savedRates=rates },
+                        onSavePo={ _,_,_,_,_,_,_,_,_,_,_,_,_,_,_ -> })
                 }
             }
         }
         if(metadataOnly) {
-            compose.onNodeWithText("1. তথ্য").assertDoesNotExist()
+            compose.onNodeWithText("তথ্য").assertDoesNotExist()
             compose.onNodeWithText("আপডেট").performClick()
             compose.runOnIdle { assertTrue(metadataSaved); assertNull(savedItems) }
             return
         }
         val title=if(bn) "ক্রয়াদেশ সম্পাদনা" else "Edit purchase order"
-        val labels=if(bn) listOf("1. তথ্য","2. পণ্য","3. প্যাকিং","4. হিসাব") else listOf("1. Details","2. Items","3. Packing","4. Review")
+        val labels=if(bn) listOf("তথ্য","পণ্য","প্যাকিং","হিসাব") else listOf("Info","Items","Pack","Cost")
         val prefix = buildString {
             append(if (bn) "bn" else "en")
             append("-$fontScale-$currency")
@@ -148,8 +148,8 @@ class PurchaseOrderVisualTest {
             bitmap.recycle()
             assertTrue("Screenshot must contain rendered UI, not a blank inactive window",colors.size > 8)
         }
-        labels.forEachIndexed { index,label ->
-            compose.onNodeWithText(label).performClick()
+        labels.forEachIndexed { index,_ ->
+            compose.onNodeWithTag("po_step_$index").performClick()
             capture("step-${index+1}")
             if(index==1 || index==2 || index==3) {
                 val root=compose.onAllNodes(isRoot()).filter(hasAnyDescendant(hasText(title))).onFirst()

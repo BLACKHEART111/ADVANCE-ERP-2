@@ -16,6 +16,8 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        // Keep instrumentation installs isolated from stale test APKs on the development phone.
+        testApplicationId = "com.pocketdev.advance_erp2.premiumpoqa.test"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

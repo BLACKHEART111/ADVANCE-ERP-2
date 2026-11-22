@@ -137,7 +137,9 @@ interface ImportRepository {
         items: List<PurchaseOrderItemDraft>, notes: String?, status: PurchaseOrderStatus,
         cartons: List<PoMixedCartonDraft>, chinaDeliveryChargeMinor: Long,
         categoryFreightRatesBdtMinor: Map<String, Long>, handlingCostMinor: Long,
-        sampleCostMinor: Long, attachments: String?
+        sampleCostMinor: Long, attachments: String?,
+        orderDateMillis: Long = System.currentTimeMillis(), expectedArrivalDateMillis: Long? = null,
+        shippingMethod: String = ShippingMethod.SEA.name
     ): String
 
 
@@ -155,7 +157,10 @@ interface ImportRepository {
         items: List<PurchaseOrderItemDraft>,
         notes: String?,
         status: PurchaseOrderStatus = PurchaseOrderStatus.CONFIRMED,
-        attachments: String? = null
+        attachments: String? = null,
+        orderDateMillis: Long = System.currentTimeMillis(),
+        expectedArrivalDateMillis: Long? = null,
+        shippingMethod: String = ShippingMethod.SEA.name
     ): String
     suspend fun duplicatePurchaseOrder(orderId: String): String
     suspend fun updatePurchaseOrderStatus(orderId: String, status: PurchaseOrderStatus)
@@ -272,7 +277,11 @@ interface ImportRepository {
         categoryFreightRatesBdtMinor: Map<String, Long> = emptyMap(),
         handlingCostMinor: Long = 0L,
         sampleCostMinor: Long = 0L,
-        attachments: String? = null
+        attachments: String? = null,
+        orderDateMillis: Long? = null,
+        expectedArrivalDateMillis: Long? = null,
+        updateSchedule: Boolean = false,
+        shippingMethod: String? = null
     ): Result<Unit>
 
     suspend fun updatePurchaseOrderPacking(orderId: String, totalCartons: Int, grossWeightKg: String, netWeightKg: String, cbm: String)

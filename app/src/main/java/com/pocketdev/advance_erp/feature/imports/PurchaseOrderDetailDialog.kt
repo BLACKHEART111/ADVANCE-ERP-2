@@ -256,51 +256,27 @@ fun PurchaseOrderDetailDialog(
                     .fillMaxSize()
                     .background(ERPBackground)
             ) {
-                // Header Bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(DeepNavy)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PremiumPoHero(
+                        title = order.poNumber,
+                        subtitle = supplier?.companyName?.takeIf { it.isNotBlank() }
+                            ?: if (isBangla) "ক্রয়াদেশের বিস্তারিত ও কার্যক্রম" else "Purchase order details and actions"
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PoStatusBadge(statusStr = order.status, isBangla = isBangla)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = order.poNumber,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            PoStatusBadge(statusStr = order.status, isBangla = isBangla)
-                        }
-                        Text(
-                            text = if (isBangla) "চীন ক্রয়াদেশ • ব্যাচ ও ল্যান্ডেড কস্ট ব্যবস্থাপনা" else "China Purchase Order • Batch & Landed Cost Management",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { onSharePdf(order) }) {
-                            Icon(
-                                imageVector = Icons.Outlined.Share,
-                                contentDescription = "Share PO PDF",
-                                tint = SecondaryTeal
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                imageVector = Icons.Outlined.Close,
-                                contentDescription = "Close",
-                                tint = Color.White
-                            )
+                            TextButton(onClick = { onSharePdf(order) }) {
+                                Icon(Icons.Outlined.Share, contentDescription = null, tint = SecondaryTeal)
+                                Spacer(Modifier.width(4.dp))
+                                Text(if (isBangla) "PDF শেয়ার" else "Share PDF")
+                            }
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.Outlined.Close, contentDescription = if (isBangla) "বন্ধ করুন" else "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }

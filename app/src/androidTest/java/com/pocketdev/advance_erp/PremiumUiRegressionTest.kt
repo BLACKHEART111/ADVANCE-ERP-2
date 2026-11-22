@@ -109,24 +109,41 @@ class PremiumUiRegressionTest {
                     if (visible) CreatePurchaseOrderDialog(
                         suppliers = listOf(Supplier("s", "S", "TEST SUPPLIER", phone = "", address = "")),
                         products = emptyList(), editingOrder = order,
-                        onDismiss = { visible = false }, onSavePo = { _,_,_,_,_,_,_,_,_,_,_,_ -> fail("Editor draft must not post an order") }
+                        onDismiss = { visible = false }, onSavePo = { _,_,_,_,_,_,_,_,_,_,_,_,_,_,_ -> fail("Editor draft must not post an order") }
                     )
                 }
             }
-            compose.onNodeWithText("17.00").performTextReplacement("18.25")
+            fun scrollToExchangeRate() {
+                // The editor is a lazy vertical form. After state restoration the saved
+                // scroll offset returns to the top, so bring the tagged field back into
+                // composition before asserting its value.
+                repeat(4) {
+                    compose.onAllNodes(hasScrollAction()).onFirst()
+                        .performTouchInput { swipeUp() }
+                    compose.waitForIdle()
+                }
+            }
+            scrollToExchangeRate()
+            compose.onNodeWithTag("po_exchange_rate", useUnmergedTree = true)
+                .performTextReplacement("18.25")
             restoration.emulateSavedInstanceStateRestore()
-            compose.onNodeWithText("18.25").assertExists()
+            scrollToExchangeRate()
+            compose.onNodeWithTag("po_exchange_rate", useUnmergedTree = true)
+                .assertTextContains("18.25")
             compose.onNodeWithContentDescription("Close").performClick()
             compose.onNodeWithText("Save your changes?").assertExists()
             compose.onNodeWithText("Continue editing").performClick()
-            compose.onNodeWithText("18.25").assertExists()
+            compose.onNodeWithTag("po_exchange_rate", useUnmergedTree = true)
+                .assertTextContains("18.25")
             compose.onNodeWithContentDescription("Close").performClick()
             compose.onNodeWithText("Save draft").performClick()
             compose.waitUntil(5000) { !visible }
             assertEquals("18.25", store.read(key)!!.getString("rate"))
             compose.runOnIdle { visible = true }
             compose.onNodeWithText("Resumed saved draft").assertExists()
-            compose.onNodeWithText("18.25").assertExists()
+            scrollToExchangeRate()
+            compose.onNodeWithTag("po_exchange_rate", useUnmergedTree = true)
+                .assertTextContains("18.25")
         } finally { store.remove(key) }
     }
 

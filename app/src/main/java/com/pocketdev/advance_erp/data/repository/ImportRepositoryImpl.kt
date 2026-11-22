@@ -141,11 +141,16 @@ class ImportRepositoryImpl @Inject constructor(
         items: List<PurchaseOrderItemDraft>, notes: String?, status: PurchaseOrderStatus,
         cartons: List<PoMixedCartonDraft>, chinaDeliveryChargeMinor: Long,
         categoryFreightRatesBdtMinor: Map<String, Long>, handlingCostMinor: Long,
-        sampleCostMinor: Long, attachments: String?
+        sampleCostMinor: Long, attachments: String?, orderDateMillis: Long,
+        expectedArrivalDateMillis: Long?, shippingMethod: String
     ): String = database.withTransaction {
-        val id = orderId ?: createPurchaseOrder(supplierId, currency, exchangeRate, items, notes, status, attachments)
+        val id = orderId ?: createPurchaseOrder(
+            supplierId, currency, exchangeRate, items, notes, status, attachments,
+            orderDateMillis, expectedArrivalDateMillis, shippingMethod
+        )
         updatePurchaseOrder(id, supplierId, currency, exchangeRate, items, notes, status, cartons,
-            chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments).getOrThrow()
+            chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments,
+            orderDateMillis, expectedArrivalDateMillis, updateSchedule = true, shippingMethod = shippingMethod).getOrThrow()
         id
     }
 
@@ -156,7 +161,10 @@ class ImportRepositoryImpl @Inject constructor(
         items: List<PurchaseOrderItemDraft>,
         notes: String?,
         status: PurchaseOrderStatus,
-        attachments: String?
+        attachments: String?,
+        orderDateMillis: Long,
+        expectedArrivalDateMillis: Long?,
+        shippingMethod: String
     ): String {
         require(items.isNotEmpty()) { "Purchase order must contain at least 1 item" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive: $exchangeRate" }
@@ -220,7 +228,8 @@ class ImportRepositoryImpl @Inject constructor(
             totalBdtAmountMinor = totalBdtMinor,
             paidAmountMinor = 0L,
             paidBdtAmountMinor = 0L,
-            orderDate = System.currentTimeMillis(),
+            orderDate = orderDateMillis,
+            expectedArrivalDate = expectedArrivalDateMillis,
             notes = notes,
             attachments = attachments?.takeIf { it.isNotBlank() },
             isActualCostFinalized = false,
@@ -242,7 +251,7 @@ class ImportRepositoryImpl @Inject constructor(
             shipmentNumber = batchNumber,
             supplierId = supplierId,
             purchaseOrderId = orderId,
-            shippingMethod = ShippingMethod.SEA.name,
+            shippingMethod = shippingMethod,
             origin = "Guangzhou, China",
             destination = "Chattogram Port, Bangladesh",
             status = ShipmentStatus.DRAFT.name,
@@ -2520,7 +2529,11 @@ class ImportRepositoryImpl @Inject constructor(
         categoryFreightRatesBdtMinor: Map<String, Long>,
         handlingCostMinor: Long,
         sampleCostMinor: Long,
-        attachments: String?
+        attachments: String?,
+        orderDateMillis: Long?,
+        expectedArrivalDateMillis: Long?,
+        updateSchedule: Boolean,
+        shippingMethod: String?
     ): Result<Unit> = runCatching { database.withTransaction {
         require(items.isNotEmpty()) { "Purchase order must contain at least 1 item" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive: $exchangeRate" }
@@ -2606,6 +2619,8 @@ class ImportRepositoryImpl @Inject constructor(
         val updatedOrder = existingOrder.copy(
             supplierId = supplierId,
             status = if (existingOrder.status == PurchaseOrderStatus.DRAFT.name) status.name else existingOrder.status,
+            orderDate = if (updateSchedule) orderDateMillis ?: existingOrder.orderDate else existingOrder.orderDate,
+            expectedArrivalDate = if (updateSchedule) expectedArrivalDateMillis else existingOrder.expectedArrivalDate,
             currency = currency,
             exchangeRateToBdt = exchangeRate.toPlainString(),
             totalAmountMinor = totalOriginalMinor,
@@ -2642,6 +2657,7 @@ class ImportRepositoryImpl @Inject constructor(
             importShipmentDao.updateShipment(
                 batchShipment.copy(
                     supplierId = supplierId,
+                    shippingMethod = shippingMethod ?: batchShipment.shippingMethod,
                     totalCartons = totalCartonsSum,
                     totalQuantity = poItems.sumOf { it.quantity },
                     totalGrossWeightKg = totalGrossWeightSum.toPlainString(),

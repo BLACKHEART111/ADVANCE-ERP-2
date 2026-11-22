@@ -456,6 +456,9 @@ class ImportViewModel @Inject constructor(
         attachments: String? = null,
         handlingCostMinor: Long = 0L,
         sampleCostMinor: Long = 0L,
+        orderDateMillis: Long = System.currentTimeMillis(),
+        expectedArrivalDateMillis: Long? = null,
+        shippingMethod: String = ShippingMethod.SEA.name,
         onSaved: () -> Unit = {}
     ) {
         if (_uiState.value.isSavingPurchaseOrder) return
@@ -464,7 +467,8 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = true, isSavingPurchaseOrder = true, purchaseOrderSaveError = null) }
                 val orderId = importRepository.savePurchaseOrderDraft(
                     null, supplierId, currency, exchangeRate, items, notes, status, cartons,
-                    chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments
+                    chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments,
+                    orderDateMillis, expectedArrivalDateMillis, shippingMethod
                 )
                 importRepository.getShipmentsForOrderSync(orderId).firstOrNull()?.let { selectShipment(it.id) }
                 onSaved()
@@ -496,6 +500,10 @@ class ImportViewModel @Inject constructor(
         handlingCostMinor: Long = 0L,
         sampleCostMinor: Long = 0L,
         attachments: String? = null,
+        orderDateMillis: Long? = null,
+        expectedArrivalDateMillis: Long? = null,
+        updateSchedule: Boolean = false,
+        shippingMethod: String? = null,
         onSaved: () -> Unit = {}
     ) {
         if (_uiState.value.isSavingPurchaseOrder) return
@@ -515,7 +523,11 @@ class ImportViewModel @Inject constructor(
                     categoryFreightRatesBdtMinor = categoryFreightRatesBdtMinor,
                     handlingCostMinor = handlingCostMinor,
                     sampleCostMinor = sampleCostMinor,
-                    attachments = attachments
+                    attachments = attachments,
+                    orderDateMillis = orderDateMillis,
+                    expectedArrivalDateMillis = expectedArrivalDateMillis,
+                    updateSchedule = updateSchedule,
+                    shippingMethod = shippingMethod
                 ).getOrThrow()
 
                 val updatedPo = importRepository.getPurchaseOrderById(orderId)

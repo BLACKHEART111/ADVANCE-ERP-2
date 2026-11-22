@@ -2,6 +2,7 @@ package com.pocketdev.advance_erp.feature.imports
 
 import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.content.Context
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -466,48 +468,23 @@ fun ImportManagementScreen(
                 // ==========================================
                 if (selectedTab == ImportModuleTab.PURCHASE_ORDERS) {
                     item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(end = 8.dp)
-                            ) {
-                                Text(
-                                    text = if (isBangla) "ক্রয়াদেশ (চীন)" else "Purchase Orders",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "China Factory Orders",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextSecondary
-                                )
-                            }
-
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            PremiumPoHero(
+                                title = if (isBangla) "ক্রয়াদেশ" else "Purchase Orders",
+                                subtitle = if (isBangla) "সরবরাহকারী থেকে পণ্য ক্রয়ের অর্ডার" else "Supplier orders, packing and landed cost",
+                                badge = "${uiState.purchaseOrders.size} ${if (isBangla) "টি" else "POs"}"
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Button(
                                     onClick = { showCreatePoDialog = true },
+                                    modifier = Modifier.weight(1f).heightIn(min = 50.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                    shape = RoundedCornerShape(16.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
-                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isBangla) "নতুন PO" else "New PO",
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(if (isBangla) "নতুন ক্রয়াদেশ" else "New purchase order", fontWeight = FontWeight.Bold)
                                 }
                                 OutlinedButton(
                                     onClick = {
@@ -515,18 +492,42 @@ fun ImportManagementScreen(
                                         preselectedSupplierIdForPayment = null
                                         showRecordPaymentDialog = true
                                     },
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                    modifier = Modifier.heightIn(min = 50.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                                 ) {
-                                    Icon(Icons.Outlined.Payments, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = if (isBangla) "পরিশোধ" else "Pay",
-                                        fontSize = 12.sp,
-                                        color = SecondaryTeal,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                                    Icon(Icons.Outlined.Payments, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text(if (isBangla) "পেমেন্ট" else "Payment", color = SecondaryTeal, fontWeight = FontWeight.SemiBold)
                                 }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PremiumPoMetric(
+                                    if (isBangla) "মোট অর্ডার" else "Total orders",
+                                    uiState.purchaseOrders.size.toString(),
+                                    Icons.Outlined.ShoppingCart,
+                                    Modifier.weight(1f)
+                                )
+                                PremiumPoMetric(
+                                    if (isBangla) "খসড়া" else "Drafts",
+                                    uiState.purchaseOrders.count { it.status == PurchaseOrderStatus.DRAFT.name }.toString(),
+                                    Icons.Outlined.Inventory2,
+                                    Modifier.weight(1f)
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PremiumPoMetric(
+                                    if (isBangla) "চলমান" else "In progress",
+                                    uiState.purchaseOrders.count { it.status in setOf(PurchaseOrderStatus.CONFIRMED.name, PurchaseOrderStatus.PARTIALLY_PAID.name, PurchaseOrderStatus.PAID.name, PurchaseOrderStatus.SHIPPED.name, PurchaseOrderStatus.PARTIALLY_RECEIVED.name) }.toString(),
+                                    Icons.Outlined.LocalShipping,
+                                    Modifier.weight(1f)
+                                )
+                                PremiumPoMetric(
+                                    if (isBangla) "সম্পন্ন" else "Completed",
+                                    uiState.purchaseOrders.count { it.status in setOf(PurchaseOrderStatus.RECEIVED.name, PurchaseOrderStatus.COMPLETED.name) }.toString(),
+                                    Icons.Outlined.FactCheck,
+                                    Modifier.weight(1f)
+                                )
                             }
                         }
                     }
@@ -789,7 +790,7 @@ fun ImportManagementScreen(
             onValidateBarcode = viewModel::isBarcodeAvailable,
             onAddNewVariant = viewModel::addNewVariantFromPurchase,
             onAddNewCategory = viewModel::addNewCategory,
-            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments ->
+            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments, orderDateMillis, expectedArrivalDateMillis, shippingMethod ->
                 viewModel.createPurchaseOrder(
                     supplierId = supId,
                     currency = cur,
@@ -802,6 +803,9 @@ fun ImportManagementScreen(
                     categoryFreightRatesBdtMinor = catRatesMinor,
                     handlingCostMinor = handlingMinor,
                     sampleCostMinor = sampleMinor,
+                    orderDateMillis = orderDateMillis,
+                    expectedArrivalDateMillis = expectedArrivalDateMillis,
+                    shippingMethod = shippingMethod,
                     onSaved = { EditorDraftStore(context).remove("purchase:new"); showCreatePoDialog = false },
                     attachments = attachments
                 )
@@ -847,6 +851,7 @@ fun ImportManagementScreen(
                 initialEditingCartons = editCartons,
                 initialEditingCosts = editCosts,
                 initialEditingFreightRates = editFreightRates.associate { it.categoryId to it.appliedRatePerKgBdtMinor },
+                initialShippingMethod = uiState.shipments.firstOrNull { it.purchaseOrderId == orderId }?.shippingMethod ?: "SEA",
                 onDismiss = { editingPoId = null },
                 onAddNewSupplier = viewModel::addNewSupplierFromPurchase,
                 onCreateFullProduct = viewModel::createFullProductFromPurchase,
@@ -857,7 +862,7 @@ fun ImportManagementScreen(
                 onValidateBarcode = viewModel::isBarcodeAvailable,
                 onAddNewVariant = viewModel::addNewVariantFromPurchase,
                 onAddNewCategory = viewModel::addNewCategory,
-                onUpdatePo = { ordId, supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments ->
+                onUpdatePo = { ordId, supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments, orderDateMillis, expectedArrivalDateMillis, shippingMethod ->
                     viewModel.updatePurchaseOrder(
                         orderId = ordId,
                         supplierId = supId,
@@ -871,11 +876,15 @@ fun ImportManagementScreen(
                         categoryFreightRatesBdtMinor = catRatesMinor,
                         handlingCostMinor = handlingMinor,
                         sampleCostMinor = sampleMinor,
+                        orderDateMillis = orderDateMillis,
+                        expectedArrivalDateMillis = expectedArrivalDateMillis,
+                        updateSchedule = true,
+                        shippingMethod = shippingMethod,
                         onSaved = onOrderSaved,
                         attachments = attachments
                     )
                 },
-                onSavePo = { _, _, _, _, _, _, _, _, _, _, _, _ -> }
+                onSavePo = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
             )
         }
     }
@@ -1293,6 +1302,9 @@ private fun LivePurchaseOrderCard(
 ) {
     val isBangla = language == AppLanguage.BANGLA
     ERPCard(
+        shape = RoundedCornerShape(20.dp),
+        elevation = 3.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
         contentPadding = 14.dp,
         modifier = Modifier.clickable(onClick = onClick)
     ) {
@@ -1303,12 +1315,31 @@ private fun LivePurchaseOrderCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = order.poNumber,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(PrimaryPurple.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Outlined.Inventory2, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = order.poNumber,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = supplierName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Spacer(modifier = Modifier.width(6.dp))
                     IconButton(
                         onClick = onSharePdf,
@@ -1357,9 +1388,7 @@ private fun LivePurchaseOrderCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(supplierName, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Divider(color = ERPDivider)
             Spacer(modifier = Modifier.height(8.dp))
 
