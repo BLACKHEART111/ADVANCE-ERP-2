@@ -117,4 +117,12 @@ interface AccountingDao {
 
     @Query("SELECT * FROM journal_entries WHERE referenceType = :refType AND referenceId = :refId AND isReversed = 0")
     suspend fun getActiveEntriesForReference(refType: String, refId: String): List<JournalEntry>
+
+    @Query("""
+        SELECT * FROM journal_entries WHERE isPosted = 1 AND isReversed = 0
+        AND referenceType IN ('CUSTOMER_LEDGER_DEBIT_ADJUSTMENT', 'CUSTOMER_LEDGER_CREDIT_ADJUSTMENT')
+        AND (:customerId IS NULL OR referenceId = :customerId)
+        ORDER BY entryDate, createdAt, id
+    """)
+    suspend fun getCustomerLedgerAdjustments(customerId: String?): List<JournalEntry>
 }

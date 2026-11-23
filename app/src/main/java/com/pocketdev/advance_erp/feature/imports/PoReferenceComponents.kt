@@ -16,6 +16,142 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.*
 import com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme
+import java.math.BigDecimal
+import java.math.RoundingMode
+
+internal data class PoCategoryLandedInput(
+    val categoryId: String,
+    val categoryTitle: String,
+    val totalPcs: Int,
+    val grossWeightKg: BigDecimal,
+    val productCostBdt: BigDecimal,
+    val freightCostBdt: BigDecimal
+)
+
+internal data class PoCategoryLandedBreakdown(
+    val categoryId: String,
+    val categoryTitle: String,
+    val totalPcs: Int,
+    val grossWeightKg: BigDecimal,
+    val productCostBdt: BigDecimal,
+    val freightCostBdt: BigDecimal,
+    val allocatedOverheadBdt: BigDecimal,
+    val totalLandedCostBdt: BigDecimal,
+    val averagePerPcsBdt: BigDecimal
+)
+
+internal fun calculatePoCategoryLandedBreakdowns(
+    inputs: List<PoCategoryLandedInput>,
+    sharedOverheadBdt: BigDecimal,
+    expectedTotalProductBdt: BigDecimal? = null,
+    expectedTotalFreightBdt: BigDecimal? = null
+): List<PoCategoryLandedBreakdown> {
+    val active = inputs.filter {
+        it.totalPcs > 0 ||
+            it.grossWeightKg > BigDecimal.ZERO ||
+            it.productCostBdt > BigDecimal.ZERO ||
+            it.freightCostBdt > BigDecimal.ZERO
+    }
+    if (active.isEmpty()) return emptyList()
+
+    fun reconcileMinorList(rawValues: List<BigDecimal>, expectedTotal: BigDecimal?): List<Long> {
+        val minors = rawValues.map {
+            it.setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
+        }.toMutableList()
+        if (expectedTotal != null) {
+            val expectedMinor = expectedTotal.setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
+            val delta = expectedMinor - minors.sum()
+            if (delta != 0L) {
+                val targetIdx = minors.indexOfLast { it > 0L }.takeIf { it >= 0 } ?: minors.lastIndex
+                minors[targetIdx] = (minors[targetIdx] + delta).coerceAtLeast(0L)
+            }
+        }
+        return minors
+    }
+
+    val prodMinors = reconcileMinorList(active.map { it.productCostBdt }, expectedTotalProductBdt)
+    val freightMinors = reconcileMinorList(active.map { it.freightCostBdt }, expectedTotalFreightBdt)
+
+    val overheadMinor = sharedOverheadBdt.setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
+    val totalPcsSum = active.sumOf { it.totalPcs.coerceAtLeast(0).toLong() }
+    val totalWeightSum = active.fold(BigDecimal.ZERO) { acc, item -> acc.add(item.grossWeightKg.coerceAtLeast(BigDecimal.ZERO)) }
+    val totalProdSum = prodMinors.sum()
+
+    val weights: List<BigDecimal> = when {
+        totalPcsSum > 0L -> active.map { BigDecimal.valueOf(it.totalPcs.coerceAtLeast(0).toLong()) }
+        totalWeightSum > BigDecimal.ZERO -> active.map { it.grossWeightKg.coerceAtLeast(BigDecimal.ZERO) }
+        totalProdSum > 0L -> prodMinors.map { BigDecimal.valueOf(it.coerceAtLeast(0L)) }
+        else -> List(active.size) { BigDecimal.ONE }
+    }
+    val overheadMinors = allocateMinorProportionally(overheadMinor, weights)
+
+    return active.mapIndexed { index, item ->
+        val prodBdt = BigDecimal.valueOf(prodMinors[index], 2)
+        val freightBdt = BigDecimal.valueOf(freightMinors[index], 2)
+        val allocatedBdt = BigDecimal.valueOf(overheadMinors[index], 2)
+        val totalLandedBdt = prodBdt.add(freightBdt).add(allocatedBdt).setScale(2, RoundingMode.HALF_UP)
+        val avgPerPcsBdt = if (item.totalPcs > 0) {
+            totalLandedBdt.divide(BigDecimal(item.totalPcs), 2, RoundingMode.HALF_UP)
+        } else {
+            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+        }
+        PoCategoryLandedBreakdown(
+            categoryId = item.categoryId,
+            categoryTitle = item.categoryTitle,
+            totalPcs = item.totalPcs,
+            grossWeightKg = item.grossWeightKg.setScale(2, RoundingMode.HALF_UP),
+            productCostBdt = prodBdt,
+            freightCostBdt = freightBdt,
+            allocatedOverheadBdt = allocatedBdt,
+            totalLandedCostBdt = totalLandedBdt,
+            averagePerPcsBdt = avgPerPcsBdt
+        )
+    }
+}
+
+private fun allocateMinorProportionally(
+    totalMinor: Long,
+    weights: List<BigDecimal>
+): List<Long> {
+    if (weights.isEmpty() || totalMinor == 0L) return List(weights.size) { 0L }
+    val weightSum = weights.fold(BigDecimal.ZERO, BigDecimal::add)
+    if (weightSum <= BigDecimal.ZERO) return List(weights.size) { 0L }
+    val lastPositiveIdx = weights.indexOfLast { it > BigDecimal.ZERO }.takeIf { it >= 0 } ?: weights.lastIndex
+    var allocatedSoFar = 0L
+    return weights.indices.map { i ->
+        if (i == lastPositiveIdx) {
+            totalMinor - allocatedSoFar
+        } else {
+            val share = BigDecimal.valueOf(totalMinor)
+                .multiply(weights[i])
+                .divide(weightSum, 0, RoundingMode.DOWN)
+                .toLong()
+            allocatedSoFar += share
+            share
+        }
+    }
+}
+
+internal fun allocateAmountBdtAcrossCategoriesByWeight(
+    totalAmountMinor: Long,
+    weightsKg: List<BigDecimal>,
+    pcsList: List<Int>,
+    productMinors: List<Long>
+): List<BigDecimal> {
+    if (weightsKg.isEmpty() || totalAmountMinor == 0L) {
+        return List(weightsKg.size) { BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP) }
+    }
+    val totalWeight = weightsKg.fold(BigDecimal.ZERO) { acc, w -> acc.add(w.coerceAtLeast(BigDecimal.ZERO)) }
+    val totalPcs = pcsList.sumOf { it.coerceAtLeast(0).toLong() }
+    val totalProd = productMinors.sum()
+    val basis = when {
+        totalWeight > BigDecimal.ZERO -> weightsKg.map { it.coerceAtLeast(BigDecimal.ZERO) }
+        totalPcs > 0L -> pcsList.map { BigDecimal.valueOf(it.coerceAtLeast(0).toLong()) }
+        totalProd > 0L -> productMinors.map { BigDecimal.valueOf(it.coerceAtLeast(0L)) }
+        else -> List(weightsKg.size) { BigDecimal.ONE }
+    }
+    return allocateMinorProportionally(totalAmountMinor, basis).map { BigDecimal.valueOf(it, 2) }
+}
 
 /** Scoped PO palette: the global theme preference still determines light/dark. */
 @Composable internal fun PoReferenceTheme(content: @Composable () -> Unit) {
@@ -82,13 +218,58 @@ import com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme
     }
 }
 
-@Composable internal fun PoLandedHighlight(total:String,unit:String?=null,isBangla:Boolean) {
+@Composable internal fun PoLandedHighlight(
+    total:String,
+    unit:String?=null,
+    isBangla:Boolean,
+    categoryBreakdowns:List<PoCategoryLandedBreakdown> = emptyList()
+) {
     val dark=LocalIsDarkTheme.current
     Surface(shape=RoundedCornerShape(14.dp),color=if(dark) Color(0xFF343329) else Color(0xFFFFF4D8)) {
         Column(Modifier.fillMaxWidth().padding(13.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Outlined.Layers,null,Modifier.size(29.dp),tint=if(dark) Color(0xFFFFD27C) else Color(0xFF93600E))
                 Column(Modifier.weight(1f)) { Text(if(isBangla) "সর্বমোট ল্যান্ডিং কস্ট" else "Total landed cost",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge); Text(total,color=MaterialTheme.colorScheme.secondary,fontWeight=FontWeight.ExtraBold,style=MaterialTheme.typography.titleLarge) }
+            }
+            if (categoryBreakdowns.isNotEmpty()) {
+                HorizontalDivider(color=MaterialTheme.colorScheme.secondary.copy(alpha=.15f))
+                Text(
+                    text = if (isBangla) "ক্যাটাগরি অনুযায়ী গড় প্রতি পিস ল্যান্ডিং কস্ট:" else "Category-wise average per unit landed cost:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                categoryBreakdowns.forEach { cat ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = cat.categoryTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (isBangla) {
+                                    "${cat.totalPcs} PCS • ${cat.grossWeightKg} KG • মোট: ৳ ${cat.totalLandedCostBdt}"
+                                } else {
+                                    "${cat.totalPcs} PCS • ${cat.grossWeightKg} KG • Total: ৳ ${cat.totalLandedCostBdt}"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = (if (isBangla) "গড় প্রতি পিস: " else "Avg: ") + "৳ ${cat.averagePerPcsBdt} / PCS",
+                            color = MaterialTheme.colorScheme.secondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
             }
             unit?.let { HorizontalDivider(color=MaterialTheme.colorScheme.secondary.copy(alpha=.15f)); Text(it,color=MaterialTheme.colorScheme.secondary,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.Bold) }
         }

@@ -393,19 +393,19 @@ fun CreatePurchaseOrderDialog(
                 .filter { it.costCategory == CostCategory.CHINA_DOMESTIC_TRANSPORT.name }
                 .sumOf { it.amountMinor }
             if (chinaDel > 0L) {
-                chinaLocalDeliveryStr = "%.2f".format(chinaDel / 100.0)
+                chinaLocalDeliveryStr = String.format(java.util.Locale.ROOT, "%.2f", chinaDel / 100.0)
             }
             val handling = initialEditingCosts
                 .filter { it.description.contains("Handling", ignoreCase = true) }
                 .sumOf { it.amountMinor }
             if (handling > 0L) {
-                handlingCostStr = "%.2f".format(handling / 100.0)
+                handlingCostStr = String.format(java.util.Locale.ROOT, "%.2f", handling / 100.0)
             }
             val sample = initialEditingCosts
                 .filter { it.description.contains("Sample", ignoreCase = true) }
                 .sumOf { it.amountMinor }
             if (sample > 0L) {
-                sampleCostStr = "%.2f".format(sample / 100.0)
+                sampleCostStr = String.format(java.util.Locale.ROOT, "%.2f", sample / 100.0)
             }
             hasHydratedCosts = true
         }
@@ -451,7 +451,7 @@ fun CreatePurchaseOrderDialog(
         productId = productId,
         variantId = variantId,
         quantityStr = quantity.toString(),
-        unitPriceStr = "%.2f".format(unitPriceMinor / 100.0),
+        unitPriceStr = String.format(java.util.Locale.ROOT, "%.2f", unitPriceMinor / 100.0),
         cartonQuantityStr = cartonQuantity.toString(),
         pcsPerCartonStr = pcsPerCarton.toString(),
         grossWeightKgStr = grossWeightKg,
@@ -2204,6 +2204,20 @@ fun CreatePurchaseOrderDialog(
                             .setScale(2, RoundingMode.HALF_UP)
 
                         val rateBd = exchangeRateStr.trim().toBigDecimalOrNull() ?: BigDecimal.ONE
+                        val categoryPcsMap = mutableMapOf<String, Int>()
+                        val categoryProductForeignMap = mutableMapOf<String, BigDecimal>()
+                        itemsList.forEach { itm ->
+                            if (itm.productId.isNotBlank()) {
+                                val prod = products.find { it.id == itm.productId }
+                                val catId = prod?.categoryId ?: "uncategorized"
+                                val q = itm.quantityStr.trim().toIntOrNull() ?: 0
+                                val p = itm.unitPriceStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                                categoryPcsMap[catId] = (categoryPcsMap[catId] ?: 0) + q
+                                categoryProductForeignMap[catId] = (categoryProductForeignMap[catId] ?: BigDecimal.ZERO)
+                                    .add(BigDecimal(q).multiply(p))
+                            }
+                        }
+
                         val totalProductForeign = itemsList.fold(BigDecimal.ZERO) { acc, itm ->
                             val q = BigDecimal(itm.quantityStr.trim().toIntOrNull() ?: 0)
                             val p = itm.unitPriceStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
@@ -2225,8 +2239,8 @@ fun CreatePurchaseOrderDialog(
                         val sampleCostBdt = (sampleCostStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP)
 
                         val grandTotalEstimatedBdt = totalProductBdt
-                            .add(chinaDelivBdt)
-                            .add(totalCategoryFreightBdt)
+                            .add(if (isLocalPurchase) BigDecimal.ZERO else chinaDelivBdt)
+                            .add(if (isLocalPurchase) BigDecimal.ZERO else totalCategoryFreightBdt)
                             .add(handlingCostBdt)
                             .add(sampleCostBdt)
                             .setScale(2, RoundingMode.HALF_UP)
@@ -2234,6 +2248,40 @@ fun CreatePurchaseOrderDialog(
                         val avgUnitLandedBdt = if (totalOrderedPcs > 0) {
                             grandTotalEstimatedBdt.divide(BigDecimal(totalOrderedPcs), 2, RoundingMode.HALF_UP)
                         } else BigDecimal.ZERO
+
+                        val allCategoryIds = (categoryWeightMap.keys + categoryPcsMap.keys).distinct()
+                        val categoryInputs = allCategoryIds.map { catId ->
+                            val catObj = categories.find { it.id == catId }
+                            val catTitle = if (catObj != null) {
+                                if (isBangla && catObj.nameBn.isNotBlank()) catObj.nameBn else catObj.nameEn
+                            } else {
+                                if (isBangla) "অন্যান্য ক্যাটাগরি" else "Uncategorized"
+                            }
+                            val catWeightKg = categoryWeightMap[catId] ?: BigDecimal.ZERO
+                            val ratePerKg = categoryRateStrings[catId]?.trim()?.toBigDecimalOrNull() ?: BigDecimal.ZERO
+                            val catFreightBdt = if (isLocalPurchase) BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                            else catWeightKg.multiply(ratePerKg).setScale(2, RoundingMode.HALF_UP)
+                            val catProdForeign = (categoryProductForeignMap[catId] ?: BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP)
+                            val catProdBdt = catProdForeign.multiply(rateBd).setScale(2, RoundingMode.HALF_UP)
+                            PoCategoryLandedInput(
+                                categoryId = catId,
+                                categoryTitle = catTitle,
+                                totalPcs = categoryPcsMap[catId] ?: 0,
+                                grossWeightKg = catWeightKg,
+                                productCostBdt = catProdBdt,
+                                freightCostBdt = catFreightBdt
+                            )
+                        }
+                        val sharedOverheadBdt = (if (isLocalPurchase) BigDecimal.ZERO else chinaDelivBdt)
+                            .add(handlingCostBdt)
+                            .add(sampleCostBdt)
+                            .setScale(2, RoundingMode.HALF_UP)
+                        val categoryLandedBreakdowns = calculatePoCategoryLandedBreakdowns(
+                            inputs = categoryInputs,
+                            sharedOverheadBdt = sharedOverheadBdt,
+                            expectedTotalProductBdt = totalProductBdt,
+                            expectedTotalFreightBdt = if (isLocalPurchase) BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP) else totalCategoryFreightBdt
+                        )
 
                         Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
                         Text(if(isBangla) "ল্যান্ডিং কস্ট / আমদানি ব্যয়" else "Landed cost / import expenses",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.Bold)
@@ -2383,7 +2431,12 @@ fun CreatePurchaseOrderDialog(
                                 Spacer(modifier = Modifier.height(6.dp))
                                 HorizontalDivider(color = ERPDivider)
                                 Spacer(modifier = Modifier.height(6.dp))
-                                PoLandedHighlight("৳ $grandTotalEstimatedBdt",(if(isBangla) "গড় প্রতি পিস: " else "Average per unit: ")+"৳ $avgUnitLandedBdt / PCS",isBangla)
+                                PoLandedHighlight(
+                                    total = "৳ $grandTotalEstimatedBdt",
+                                    unit = (if (isBangla) "সর্বমোট গড় প্রতি পিস: " else "Overall average per unit: ") + "৳ $avgUnitLandedBdt / PCS",
+                                    isBangla = isBangla,
+                                    categoryBreakdowns = categoryLandedBreakdowns
+                                )
 
                                 Spacer(modifier = Modifier.height(8.dp))
                                 // Warehouse Rent OPEX Note

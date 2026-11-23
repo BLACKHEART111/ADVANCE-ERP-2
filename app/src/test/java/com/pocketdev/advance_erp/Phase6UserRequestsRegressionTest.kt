@@ -7,6 +7,7 @@ import com.pocketdev.advance_erp.core.util.CustomReportPdfConfig
 import com.pocketdev.advance_erp.core.util.DueCollectionCaptionHelper
 import com.pocketdev.advance_erp.core.util.DueCollectionStatementData
 import com.pocketdev.advance_erp.core.util.ImportExcelGenerator
+import com.pocketdev.advance_erp.core.util.PoExportDataBuilder
 import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.Product
@@ -25,6 +26,8 @@ import com.pocketdev.advance_erp.domain.model.PaymentTermsCalculator
 import com.pocketdev.advance_erp.domain.model.ReportCategory
 import com.pocketdev.advance_erp.domain.model.UnifiedTransactionItem
 import com.pocketdev.advance_erp.domain.repository.DateWiseMetrics
+import com.pocketdev.advance_erp.feature.imports.PoCategoryLandedInput
+import com.pocketdev.advance_erp.feature.imports.calculatePoCategoryLandedBreakdowns
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -259,5 +262,139 @@ class Phase6UserRequestsRegressionTest {
         val customConfig = CustomReportPdfConfig(title = "Weekly Audit", includeCustomerDues = true)
         assertTrue(customConfig.includeCustomerDues)
         assertTrue(customConfig.includeAuthorizedSignature)
+    }
+
+    @Test
+    fun categoryWisePoLandingCostComputesAccuratePerCategoryAveragePerPcsAndReconcilesGrandTotal() {
+        val inputs = listOf(
+            PoCategoryLandedInput(
+                categoryId = "cat-other",
+                categoryTitle = "Sneakers",
+                totalPcs = 1000,
+                grossWeightKg = BigDecimal("120.00"),
+                productCostBdt = BigDecimal("50000.00"),
+                freightCostBdt = BigDecimal("38400.00")
+            ),
+            PoCategoryLandedInput(
+                categoryId = "cat-4d",
+                categoryTitle = "4D Cloud Technology",
+                totalPcs = 942,
+                grossWeightKg = BigDecimal("70.00"),
+                productCostBdt = BigDecimal("45640.00"),
+                freightCostBdt = BigDecimal("22400.00")
+            )
+        )
+        // Shared overhead: China Local 6000 + Handling 2000 + Sample 5000 = 13000.00
+        val sharedOverhead = BigDecimal("13000.00")
+        val breakdowns = calculatePoCategoryLandedBreakdowns(
+            inputs = inputs,
+            sharedOverheadBdt = sharedOverhead,
+            expectedTotalProductBdt = BigDecimal("95640.00"),
+            expectedTotalFreightBdt = BigDecimal("60800.00")
+        )
+
+        assertEquals(2, breakdowns.size)
+        val totalSum = breakdowns.fold(BigDecimal.ZERO) { acc, item -> acc.add(item.totalLandedCostBdt) }
+        assertEquals(BigDecimal("169440.00"), totalSum)
+
+        val sneakers = breakdowns[0]
+        val cloud4d = breakdowns[1]
+        // Sneakers overhead share: 13000 * 1000 / 1942 = 6694.12 -> total 50000 + 38400 + 6694.12 = 95094.12 -> /1000 = 95.09
+        // 4D overhead share: 13000 - 6694.12 = 6305.88 -> total 45640 + 22400 + 6305.88 = 74345.88 -> /942 = 78.92
+        assertEquals(BigDecimal("95094.12"), sneakers.totalLandedCostBdt)
+        assertEquals(BigDecimal("95.09"), sneakers.averagePerPcsBdt)
+        assertEquals(BigDecimal("74345.88"), cloud4d.totalLandedCostBdt)
+        assertEquals(BigDecimal("78.92"), cloud4d.averagePerPcsBdt)
+    }
+
+    @Test
+    fun singleCategoryPoLandingCostMatchesOverallAveragePerPcs() {
+        val inputs = listOf(
+            PoCategoryLandedInput(
+                categoryId = "cat-4d",
+                categoryTitle = "4D Cloud Technology",
+                totalPcs = 1942,
+                grossWeightKg = BigDecimal("190.00"),
+                productCostBdt = BigDecimal("95640.00"),
+                freightCostBdt = BigDecimal("60800.00")
+            )
+        )
+        val breakdowns = calculatePoCategoryLandedBreakdowns(
+            inputs = inputs,
+            sharedOverheadBdt = BigDecimal("13000.00"),
+            expectedTotalProductBdt = BigDecimal("95640.00"),
+            expectedTotalFreightBdt = BigDecimal("60800.00")
+        )
+        assertEquals(1, breakdowns.size)
+        assertEquals(BigDecimal("169440.00"), breakdowns[0].totalLandedCostBdt)
+        assertEquals(BigDecimal("87.25"), breakdowns[0].averagePerPcsBdt)
+    }
+
+    @Test
+    fun forwarderPackingListResolvesCartonLineImagesEvenWhenKeyedByPoItemId() {
+        val product = Product(
+            id = "p-img-1", categoryId = "cat-1", nameEn = "EVA Height", nameBn = "ইভা হাইট",
+            baseSku = "HE-EVA-003", purchasePriceMinor = 100L, sellingPriceMinor = 200L
+        )
+        val v3940 = ProductVariant(
+            "v-3940", "p-img-1", "HE-EVA-003-BLA-3940", color = "Black", size = "39-40",
+            variantCostMinor = 100L, variantPriceMinor = 200L
+        )
+        val v4142 = ProductVariant(
+            "v-4142", "p-img-1", "HE-EVA-003-BLA-4142", color = "Black", size = "41-42",
+            variantCostMinor = 100L, variantPriceMinor = 200L
+        )
+        val order = PurchaseOrder(
+            id = "po-img-1", poNumber = "PO-2026-001", supplierId = "sup-1", status = PurchaseOrderStatus.CONFIRMED.name,
+            orderDate = 1_795_370_000_000L, currency = "CNY", exchangeRateToBdt = "20.0",
+            totalAmountMinor = 4_000L, totalBdtAmountMinor = 80_000L, totalCartons = 1,
+            totalGrossWeightKg = "5.000", totalNetWeightKg = "5.000", totalCbm = "0.050000"
+        )
+        val items = listOf(
+            PurchaseOrderItem("poi-1", "po-img-1", "p-img-1", "v-3940", 20, 100L, 2_000L, 40_000L),
+            PurchaseOrderItem("poi-2", "po-img-1", "p-img-1", "v-4142", 20, 100L, 2_000L, 40_000L)
+        )
+        val cartons = listOf(
+            ShipmentCarton("c-1", "shp-1", "CTN-001", "p-img-1", "v-3940", 20, "40", "30", "25", "2.500", "2.500", "0.030000", "po-img-1", isMixedCarton = true, totalCartonQuantity = 40, cartonGrossWeightKg = "5.000"),
+            ShipmentCarton("c-2", "shp-1", "CTN-001", "p-img-1", "v-4142", 20, "40", "30", "25", "2.500", "2.500", "0.030000", "po-img-1", isMixedCarton = true, totalCartonQuantity = 40, cartonGrossWeightKg = "5.000")
+        )
+        val profile = BusinessProfile(companyName = "TUKTAK BD", phone = "+8801639484547", address = "41 New Elephant Road, Dhaka")
+        // Simulate legacy caller passing only item.id keys
+        val itemKeyedImages = mapOf("poi-1" to "/fake/eva_3940.jpg")
+
+        val exportData = PoExportDataBuilder.build(
+            order = order,
+            items = items,
+            productsMap = mapOf(product.id to product),
+            supplier = null,
+            businessProfile = profile,
+            variantsMap = mapOf(v3940.id to v3940, v4142.id to v4142),
+            itemImagePaths = itemKeyedImages,
+            cartons = cartons
+        )
+
+        assertEquals(1, exportData.allCartons.size)
+        assertEquals("/fake/eva_3940.jpg", exportData.allCartons[0].lines[0].imagePath)
+        assertEquals("/fake/eva_3940.jpg", exportData.allCartons[0].lines[1].imagePath)
+
+        val fakeJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
+        val ffXlsx = tempFolder.newFile("forwarder_item_keyed_photos.xlsx")
+        ImportExcelGenerator.generateFreightForwarderPackingListExcelToFile(
+            file = ffXlsx,
+            order = order,
+            items = items,
+            productsMap = mapOf(product.id to product),
+            supplier = null,
+            businessProfile = profile,
+            variantsMap = mapOf(v3940.id to v3940, v4142.id to v4142),
+            itemImagePaths = itemKeyedImages,
+            cartons = cartons,
+            thumbnailBytesProvider = { fakeJpeg }
+        )
+
+        ZipFile(ffXlsx).use { zip ->
+            assertTrue(zip.getEntry("xl/media/image1.jpg") != null)
+            assertTrue(zip.getEntry("xl/drawings/drawing1.xml") != null)
+        }
     }
 }

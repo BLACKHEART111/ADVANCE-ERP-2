@@ -106,6 +106,9 @@ import com.pocketdev.advance_erp.data.entity.DamageRecord
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.ImportShipment
 import com.pocketdev.advance_erp.data.entity.Product
+import com.pocketdev.advance_erp.data.entity.ProductCategory
+import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
+import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
 import com.pocketdev.advance_erp.data.entity.PurchaseCompletionRecord
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.core.engine.PoPackingEngine
@@ -162,6 +165,7 @@ fun PurchaseOrderDetailDialog(
     onUpdatePoItem: ((itemId: String, quantity: Int, unitPriceMinor: Long, cartonQuantity: Int, grossWeightKg: String) -> Unit)? = null,
     onDeletePoItem: ((itemId: String) -> Unit)? = null,
     freightRates: List<ShipmentFreightRate> = emptyList(),
+    categories: List<ProductCategory> = emptyList(),
     variants: List<ProductVariant> = emptyList(),
     businessProfile: BusinessProfile? = null
 ) {
@@ -303,11 +307,162 @@ fun PurchaseOrderDetailDialog(
                                 val cat=runCatching {com.pocketdev.advance_erp.data.entity.CostCategory.valueOf(category)}.getOrNull()
                                 PremiumPoCostLine(cat?.let {if(isBangla)it.titleBn else it.titleEn} ?: category,"৳ ${Formatters.formatMinorUnit(costs.sumOf {it.bdtAmountMinor})}")
                             }
-                            val capitalCosts = costItems.filter {
+                            val freightCategoryNames = setOf(
+                                CostCategory.INTERNATIONAL_FREIGHT.name,
+                                CostCategory.AIR_FREIGHT.name,
+                                CostCategory.SEA_FREIGHT.name
+                            )
+                            val capitalizableCostItems = costItems.filter {
                                 (it.isCapitalizableCost || it.isCapitalized || it.costCategory == CostCategory.OTHER_CHARGES.name) &&
                                     it.costCategory != CostCategory.PRODUCT_PURCHASE.name
-                            }.sumOf { it.bdtAmountMinor }
-                            PoLandedHighlight("৳ ${Formatters.formatMinorUnit(order.totalBdtAmountMinor+capitalCosts)}",isBangla=isBangla)
+                            }
+                            val capitalCosts = capitalizableCostItems.sumOf { it.bdtAmountMinor }
+                            val explicitFreightCostMinor = capitalizableCostItems
+                                .filter { it.costCategory in freightCategoryNames }
+                                .sumOf { it.bdtAmountMinor }
+                            val hasAnyFreightCostItem = costItems.any { it.costCategory in freightCategoryNames }
+
+                            val catWeightMap = mutableMapOf<String, BigDecimal>()
+                            if (cartons.isNotEmpty()) {
+                                cartons.groupBy { it.cartonNumber }.values.forEach { cLines ->
+                                    val allLinesHaveWeight = cLines.all {
+                                        (it.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO
+                                    }
+                                    if (allLinesHaveWeight) {
+                                        cLines.forEach { line ->
+                                            val catId = productMap[line.productId]?.categoryId ?: line.categoryId ?: "uncategorized"
+                                            val w = line.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                                            catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(w)
+                                        }
+                                    } else {
+                                        val boxGw = cLines.firstOrNull()?.cartonGrossWeightKg?.trim()?.toBigDecimalOrNull()
+                                            ?.takeIf { it > BigDecimal.ZERO }
+                                            ?: cLines.fold(BigDecimal.ZERO) { acc, l ->
+                                                acc.add(l.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                                            }
+                                        val allocated = if (boxGw > BigDecimal.ZERO) {
+                                            runCatching {
+                                                CartonWeightAllocationEngine.allocateWeights(
+                                                    cartonGrossWeightKg = boxGw,
+                                                    lines = cLines.map { l ->
+                                                        MixedCartonLineInput(
+                                                            productId = l.productId,
+                                                            variantId = l.variantId,
+                                                            quantity = l.quantity.coerceAtLeast(1),
+                                                            manualGrossWeightKg = l.grossWeightKg.trim().toBigDecimalOrNull()?.takeIf { it > BigDecimal.ZERO }
+                                                        )
+                                                    }
+                                                )
+                                            }.getOrNull()
+                                        } else null
+                                        if (allocated != null) {
+                                            allocated.forEach { alloc ->
+                                                val catId = productMap[alloc.productId]?.categoryId ?: "uncategorized"
+                                                catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(alloc.allocatedGrossWeightKg)
+                                            }
+                                        } else {
+                                            cLines.forEach { line ->
+                                                val catId = productMap[line.productId]?.categoryId ?: line.categoryId ?: "uncategorized"
+                                                val w = line.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                                                catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(w)
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                items.forEach { itm ->
+                                    val catId = productMap[itm.productId]?.categoryId ?: "uncategorized"
+                                    val w = itm.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                                    catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(w)
+                                }
+                            }
+
+                            val catPcsMap = mutableMapOf<String, Int>()
+                            val catProdBdtMinorMap = mutableMapOf<String, Long>()
+                            items.forEach { itm ->
+                                val catId = productMap[itm.productId]?.categoryId ?: "uncategorized"
+                                catPcsMap[catId] = (catPcsMap[catId] ?: 0) + itm.quantity
+                                catProdBdtMinorMap[catId] = (catProdBdtMinorMap[catId] ?: 0L) + itm.totalBdtAmountMinor
+                            }
+
+                            val allCatIds = (catWeightMap.keys + catPcsMap.keys).distinct()
+                            val catWeights = allCatIds.map { catWeightMap[it] ?: BigDecimal.ZERO }
+                            val catPcsList = allCatIds.map { catPcsMap[it] ?: 0 }
+                            val catProdMinors = allCatIds.map { catProdBdtMinorMap[it] ?: 0L }
+
+                            var derivedRateFreightMinor = 0L
+                            val catFreightBdtList: List<BigDecimal> = if (explicitFreightCostMinor > 0L) {
+                                allocateAmountBdtAcrossCategoriesByWeight(
+                                    totalAmountMinor = explicitFreightCostMinor,
+                                    weightsKg = catWeights,
+                                    pcsList = catPcsList,
+                                    productMinors = catProdMinors
+                                )
+                            } else if (!hasAnyFreightCostItem && freightRates.isNotEmpty() &&
+                                (!order.currency.equals("BDT", ignoreCase = true) || freightRates.any { (it.overrideRatePerKgBdtMinor ?: 0L) > 0L })
+                            ) {
+                                val categoryMap = categories.associateBy { it.id }
+                                val rateByCat = freightRates.associateBy { it.categoryId }
+                                allCatIds.mapIndexed { idx, catId ->
+                                    val r = rateByCat[catId]
+                                    val appliedMinor = r?.overrideRatePerKgBdtMinor
+                                        ?: r?.appliedRatePerKgBdtMinor
+                                        ?: categoryMap[catId]?.defaultFreightRatePerKgBdtMinor
+                                        ?: 0L
+                                    val fMinor = if (appliedMinor > 0L && catWeights[idx] > BigDecimal.ZERO) {
+                                        catWeights[idx].multiply(BigDecimal(appliedMinor)).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                    } else 0L
+                                    derivedRateFreightMinor += fMinor
+                                    BigDecimal.valueOf(fMinor, 2)
+                                }
+                            } else {
+                                List(allCatIds.size) { BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP) }
+                            }
+
+                            if (!hasAnyFreightCostItem && derivedRateFreightMinor > 0L) {
+                                PremiumPoCostLine(
+                                    if (isBangla) "আন্তর্জাতিক ফ্রেইট (${displayGrossWeight} KG)" else "International Freight (${displayGrossWeight} KG)",
+                                    "৳ ${Formatters.formatMinorUnit(derivedRateFreightMinor)}"
+                                )
+                            }
+
+                            val totalLandedMinor = order.totalBdtAmountMinor + capitalCosts + derivedRateFreightMinor
+                            val totalLandedBdt = BigDecimal.valueOf(totalLandedMinor, 2)
+                            val sharedOverheadMinor = (capitalCosts - explicitFreightCostMinor).coerceAtLeast(0L)
+                            val categoryMap = categories.associateBy { it.id }
+                            val catInputs = allCatIds.mapIndexed { idx, catId ->
+                                val catObj = categoryMap[catId]
+                                val rateObj = freightRates.find { it.categoryId == catId }
+                                val catTitle = when {
+                                    catObj != null -> if (isBangla && catObj.nameBn.isNotBlank()) catObj.nameBn else catObj.nameEn
+                                    rateObj != null -> if (isBangla && rateObj.categoryNameBn.isNotBlank()) rateObj.categoryNameBn else rateObj.categoryNameEn
+                                    else -> if (isBangla) "অন্যান্য ক্যাটাগরি" else "Uncategorized"
+                                }
+                                PoCategoryLandedInput(
+                                    categoryId = catId,
+                                    categoryTitle = catTitle,
+                                    totalPcs = catPcsList[idx],
+                                    grossWeightKg = catWeights[idx],
+                                    productCostBdt = BigDecimal.valueOf(catProdMinors[idx], 2),
+                                    freightCostBdt = catFreightBdtList[idx]
+                                )
+                            }
+                            val categoryBreakdowns = calculatePoCategoryLandedBreakdowns(
+                                inputs = catInputs,
+                                sharedOverheadBdt = BigDecimal.valueOf(sharedOverheadMinor, 2),
+                                expectedTotalProductBdt = BigDecimal.valueOf(order.totalBdtAmountMinor, 2)
+                            )
+                            val overallAvgBdt = if (totalOrderedQuantity > 0) {
+                                totalLandedBdt.divide(BigDecimal(totalOrderedQuantity), 2, RoundingMode.HALF_UP)
+                            } else null
+                            PoLandedHighlight(
+                                total = "৳ ${Formatters.formatMinorUnit(totalLandedMinor)}",
+                                unit = overallAvgBdt?.let {
+                                    (if (isBangla) "সর্বমোট গড় প্রতি পিস: " else "Overall average per unit: ") + "৳ $it / PCS"
+                                },
+                                isBangla = isBangla,
+                                categoryBreakdowns = categoryBreakdowns
+                            )
                             Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                                 if(remainingBalanceMinor>0 && order.status!="CANCELLED") PoDetailAction(if(isBangla) "পেমেন্ট রেকর্ড" else "Payment",Icons.Outlined.Payment,Modifier.weight(1f)){onMakePayment(order)}
                                 if(order.status !in setOf("DRAFT","CANCELLED","COMPLETED")) PoDetailAction(if(isBangla) "রিসিভ করুন" else "Receive",Icons.Outlined.LocalShipping,Modifier.weight(1f)){onReceiveProducts(order)}

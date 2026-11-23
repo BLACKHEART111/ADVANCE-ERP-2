@@ -56,9 +56,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pocketdev.advance_erp.core.designsystem.ERPCard
@@ -84,16 +81,14 @@ fun BackupManagementSection(
     isFridayAutoBackupEnabled: Boolean,
     lastAutoBackupTime: Long?,
     backupFolderUri: String? = null,
-    backupPassphrase: String? = null,
     language: AppLanguage,
     onCreateBackup: (onFinished: () -> Unit) -> Unit,
-    onRestoreBackupFile: (file: File, passphrase: String?) -> Unit,
-    onRestoreFromUri: (uri: Uri, passphrase: String?) -> Unit,
-    onShareBackup: (file: File, passphrase: String) -> Unit,
+    onRestoreBackupFile: (file: File) -> Unit,
+    onRestoreFromUri: (uri: Uri) -> Unit,
+    onShareBackup: (file: File) -> Unit,
     onDeleteBackup: (recordId: String) -> Unit,
     onToggleFridayAutoBackup: (enabled: Boolean) -> Unit,
     onSelectBackupFolder: ((uri: Uri?) -> Unit)? = null,
-    onSetBackupPassphrase: ((String?) -> Unit)? = null,
     embeddedInAccordion: Boolean = false
 ) {
     val context = LocalContext.current
@@ -103,23 +98,14 @@ fun BackupManagementSection(
 
     var isCreatingBackup by rememberSaveable { mutableStateOf(false) }
     var backupToRestore by remember { mutableStateOf<BackupRecord?>(null) }
-    var restoreHistoryPassphrase by rememberSaveable { mutableStateOf("") }
     var backupToDelete by remember { mutableStateOf<BackupRecord?>(null) }
-    var backupToShare by remember { mutableStateOf<BackupRecord?>(null) }
-    var exportPassphrase by rememberSaveable { mutableStateOf("") }
-    var confirmExportPassphrase by rememberSaveable { mutableStateOf("") }
-    var restorePassphrase by rememberSaveable { mutableStateOf("") }
     var pendingUriToRestore by remember { mutableStateOf<Uri?>(null) }
-    var showPasswordDialog by rememberSaveable { mutableStateOf(false) }
-    var newPassphrase by rememberSaveable { mutableStateOf("") }
-    var confirmNewPassphrase by rememberSaveable { mutableStateOf("") }
 
     // File Picker Launcher for Restoring .zip
     val zipPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            restorePassphrase = backupPassphrase ?: ""
             pendingUriToRestore = uri
         }
     }
@@ -134,7 +120,7 @@ fun BackupManagementSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Main Actions Panel: Instant Backup + File Restore + Friday Auto Backup + Location + Encryption
+        // Main Actions Panel: Instant Backup + File Restore + Friday Auto Backup + Location
         val mainContent: @Composable () -> Unit = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // Instant Backup Block (full-width readable button below description)
@@ -356,78 +342,7 @@ fun BackupManagementSection(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = ERPDivider)
 
-                // Backup Encryption Password Section (5 to 10 characters)
-                val isPassSet = !backupPassphrase.isNullOrBlank()
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (isPassSet) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
-                                contentDescription = null,
-                                tint = if (isPassSet) StatusSuccess else PrimaryPurple,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = if (isBn) "ব্যাকআপ এনক্রিপশন পাসওয়ার্ড (৫-১০ অক্ষর)" else "Backup Encryption Password (5-10 chars)",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = if (isPassSet) {
-                                        if (isBn) "🔒 সক্রিয় • সকল অটো ও ম্যানুয়াল ব্যাকআপ এই পাসওয়ার্ড দিয়ে সুরক্ষিত"
-                                        else "🔒 Active • All auto & manual backups are encrypted with this password"
-                                    } else {
-                                        if (isBn) "🔓 সেট নেই • সাধারণ জিপ (.zip) হিসেবে ব্যাকআপ সংরক্ষণ হবে"
-                                        else "🔓 Not set • Backups are saved as plain unencrypted .zip"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isPassSet) StatusSuccess else TextSecondary,
-                                    fontWeight = if (isPassSet) FontWeight.SemiBold else FontWeight.Normal
-                                )
-                            }
-                        }
-                    }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            newPassphrase = ""
-                            confirmNewPassphrase = ""
-                            showPasswordDialog = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPassSet) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = if (isPassSet) StatusSuccess else PrimaryPurple
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (isPassSet) {
-                                if (isBn) "পাসওয়ার্ড পরিবর্তন বা বাতিল করুন" else "Change or Remove Password"
-                            } else {
-                                if (isBn) "পাসওয়ার্ড সেট করুন (৫-১০ অক্ষর)" else "Set Backup Password (5-10 chars)"
-                            },
-                            fontWeight = FontWeight.Bold,
-                            color = if (isPassSet) StatusSuccess else PrimaryPurple,
-                            fontSize = 11.5.sp
-                        )
-                    }
-                }
             }
         }
 
@@ -563,7 +478,7 @@ fun BackupManagementSection(
                                         IconButton(
                                             onClick = {
                                                 if (file.exists()) {
-                                                    backupToShare = bak
+                                                    onShareBackup(file)
                                                 } else {
                                                     Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
                                                 }
@@ -581,7 +496,6 @@ fun BackupManagementSection(
                                         IconButton(
                                             onClick = {
                                                 backupToRestore = bak
-                                                restoreHistoryPassphrase = backupPassphrase ?: ""
                                             },
                                             modifier = Modifier.size(34.dp)
                                         ) {
@@ -632,9 +546,8 @@ fun BackupManagementSection(
 
     // Confirmation Dialog for Restoring from History
     backupToRestore?.let { bak ->
-        val isEnc = bak.fileName.endsWith(".enc") || bak.notes?.contains("Encrypted") == true
         AlertDialog(
-            onDismissRequest = { backupToRestore = null; restoreHistoryPassphrase = "" },
+            onDismissRequest = { backupToRestore = null },
             icon = { Icon(Icons.Outlined.Restore, contentDescription = null, tint = SecondaryTeal) },
             title = {
                 Text(
@@ -648,42 +561,23 @@ fun BackupManagementSection(
                         text = if (isBn) "আপনি কি নিশ্চিত যে '${bak.fileName}' ফাইল থেকে ডাটা রিস্টোর করতে চান?\n\nরিস্টোরের পূর্বে বর্তমান ডাটার একটি সেফটি কপি তৈরি করা হবে এবং ব্যাকআপে থাকা সকল ছবি ও ডাটা পুনরুদ্ধার হবে।"
                         else "Are you sure you want to restore from '${bak.fileName}'?\n\nA safety backup of your active data will be created before restoring."
                     )
-                    if (isEnc) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (isBn) "🔒 এটি একটি এনক্রিপ্ট করা ব্যাকআপ। ব্যাকআপ পাসওয়ার্ড দিন:" else "🔒 This is an encrypted backup. Enter backup password:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryPurple
-                        )
-                        OutlinedTextField(
-                            value = restoreHistoryPassphrase,
-                            onValueChange = { restoreHistoryPassphrase = it },
-                            label = { Text(if (isBn) "ব্যাকআপ পাসওয়ার্ড" else "Backup Password") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         val file = File(bak.filePath)
-                        onRestoreBackupFile(file, restoreHistoryPassphrase.takeIf { it.isNotBlank() })
+                        onRestoreBackupFile(file)
                         backupToRestore = null
-                        restoreHistoryPassphrase = ""
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
-                    enabled = !isEnc || restoreHistoryPassphrase.isNotBlank()
                 ) {
                     Text(if (isBn) "হ্যাঁ, রিস্টোর করুন" else "Yes, Restore", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { backupToRestore = null; restoreHistoryPassphrase = "" }) {
+                TextButton(onClick = { backupToRestore = null }) {
                     Text(if (isBn) "বাতিল" else "Cancel")
                 }
             }
@@ -693,7 +587,7 @@ fun BackupManagementSection(
     // Confirmation Dialog for Restoring from picked Uri
     pendingUriToRestore?.let { uri ->
         AlertDialog(
-            onDismissRequest = { pendingUriToRestore = null; restorePassphrase = "" },
+            onDismissRequest = { pendingUriToRestore = null },
             icon = { Icon(Icons.Outlined.CloudDownload, contentDescription = null, tint = SecondaryTeal) },
             title = {
                 Text(
@@ -703,23 +597,15 @@ fun BackupManagementSection(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (isBn) "ফাইলটি যাচাই করে ডাটা ও ছবি রিস্টোর হবে। এনক্রিপ্ট করা ব্যাকআপ হলে পাসফ্রেজ দিন।" else "The backup will be verified before restore. Enter a passphrase for encrypted exports.")
-                    OutlinedTextField(
-                        value = restorePassphrase,
-                        onValueChange = { restorePassphrase = it },
-                        label = { Text(if (isBn) "ব্যাকআপ পাসফ্রেজ (ঐচ্ছিক)" else "Backup passphrase (optional)") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true
-                    )
+                    Text(if (isBn) "ফাইলটি যাচাই করে ডাটা ও ছবি রিস্টোর হবে। কোনো পাসওয়ার্ড লাগবে না।" else "The backup will be verified before restoring data and images. No password is needed.")
+
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        onRestoreFromUri(uri, restorePassphrase.takeIf { it.isNotBlank() })
+                        onRestoreFromUri(uri)
                         pendingUriToRestore = null
-                        restorePassphrase = ""
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
                 ) {
@@ -727,65 +613,14 @@ fun BackupManagementSection(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingUriToRestore = null; restorePassphrase = "" }) {
+                TextButton(onClick = { pendingUriToRestore = null }) {
                     Text(if (isBn) "বাতিল" else "Cancel")
                 }
             }
         )
     }
 
-    backupToShare?.let { backup ->
-        AlertDialog(
-            onDismissRequest = {
-                backupToShare = null
-                exportPassphrase = ""
-                confirmExportPassphrase = ""
-            },
-            icon = { Icon(Icons.Outlined.Share, contentDescription = null, tint = PrimaryPurple) },
-            title = { Text(if (isBn) "এনক্রিপ্ট করা ব্যাকআপ শেয়ার" else "Share encrypted backup", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (isBn) "কমপক্ষে ৮ অক্ষরের পাসফ্রেজ দিন। অন্য ডিভাইসে রিস্টোরের জন্য এটি আলাদা করে সংরক্ষণ করুন।" else "Set a passphrase of at least 8 characters. Keep it separately to restore this backup on another device.")
-                    OutlinedTextField(
-                        value = exportPassphrase,
-                        onValueChange = { exportPassphrase = it },
-                        label = { Text(if (isBn) "পাসফ্রেজ" else "Passphrase") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = confirmExportPassphrase,
-                        onValueChange = { confirmExportPassphrase = it },
-                        label = { Text(if (isBn) "পাসফ্রেজ নিশ্চিত করুন" else "Confirm passphrase") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        isError = confirmExportPassphrase.isNotEmpty() && confirmExportPassphrase != exportPassphrase
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    enabled = exportPassphrase.length >= 8 && exportPassphrase == confirmExportPassphrase,
-                    onClick = {
-                        onShareBackup(File(backup.filePath), exportPassphrase)
-                        backupToShare = null
-                        exportPassphrase = ""
-                        confirmExportPassphrase = ""
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
-                ) { Text(if (isBn) "এনক্রিপ্ট ও শেয়ার" else "Encrypt & Share") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    backupToShare = null
-                    exportPassphrase = ""
-                    confirmExportPassphrase = ""
-                }) { Text(if (isBn) "বাতিল" else "Cancel") }
-            }
-        )
-    }
+
 
     // Confirmation Dialog for Deleting
     backupToDelete?.let { bak ->
@@ -823,90 +658,5 @@ fun BackupManagementSection(
         )
     }
 
-    if (showPasswordDialog) {
-        val isValidLength = newPassphrase.length in 5..10
-        val isMatching = newPassphrase == confirmNewPassphrase
-        AlertDialog(
-            onDismissRequest = { showPasswordDialog = false },
-            icon = { Icon(Icons.Outlined.Lock, contentDescription = null, tint = PrimaryPurple) },
-            title = {
-                Text(
-                    text = if (isBn) "ব্যাকআপ পাসওয়ার্ড সেট করুন" else "Set Backup Password",
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = if (isBn)
-                            "৫ থেকে ১০ অক্ষরের মধ্যে পাসওয়ার্ড দিন। একবার সংরক্ষণ করলে সকল অটো ও ম্যানুয়াল ব্যাকআপ এই পাসওয়ার্ড দিয়ে অটো-এনক্রিপ্ট হয়ে সেভ হবে। রিস্টোরের সময় এই পাসওয়ার্ড লাগবে।"
-                        else
-                            "Enter a password between 5 and 10 characters. Once saved, all automatic and manual backups will be encrypted with this password.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                    OutlinedTextField(
-                        value = newPassphrase,
-                        onValueChange = { if (it.length <= 10) newPassphrase = it },
-                        label = { Text(if (isBn) "পাসওয়ার্ড (৫-১০ অক্ষর)" else "Password (5-10 chars)") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = newPassphrase.isNotEmpty() && !isValidLength,
-                        supportingText = {
-                            Text(
-                                text = "${newPassphrase.length}/10 ${if (!isValidLength && newPassphrase.isNotEmpty()) if (isBn) "(কমপক্ষে ৫ ও সর্বোচ্চ ১০ অক্ষর হতে হবে)" else "(Must be 5-10 chars)" else ""}",
-                                color = if (isValidLength) StatusSuccess else TextMuted
-                            )
-                        }
-                    )
-                    OutlinedTextField(
-                        value = confirmNewPassphrase,
-                        onValueChange = { if (it.length <= 10) confirmNewPassphrase = it },
-                        label = { Text(if (isBn) "পাসওয়ার্ড নিশ্চিত করুন" else "Confirm Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        isError = confirmNewPassphrase.isNotEmpty() && !isMatching,
-                        supportingText = {
-                            if (confirmNewPassphrase.isNotEmpty() && !isMatching) {
-                                Text(if (isBn) "পাসওয়ার্ড মিলছে না" else "Passwords do not match", color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onSetBackupPassphrase?.invoke(newPassphrase.trim())
-                        showPasswordDialog = false
-                    },
-                    enabled = isValidLength && isMatching,
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
-                ) {
-                    Text(if (isBn) "সংরক্ষণ করুন" else "Save Password", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (!backupPassphrase.isNullOrBlank()) {
-                        TextButton(
-                            onClick = {
-                                onSetBackupPassphrase?.invoke(null)
-                                showPasswordDialog = false
-                            }
-                        ) {
-                            Text(if (isBn) "পাসওয়ার্ড সরান" else "Remove", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                    TextButton(onClick = { showPasswordDialog = false }) {
-                        Text(if (isBn) "বাতিল" else "Cancel")
-                    }
-                }
-            }
-        )
-    }
+
 }

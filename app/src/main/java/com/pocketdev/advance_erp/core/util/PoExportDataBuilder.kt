@@ -214,8 +214,13 @@ object PoExportDataBuilder {
                 if (r.quantity <= 0) {
                     blockingErrors += "$normalizedCtnNo has non-positive quantity for ${prod?.nameEn ?: r.productId}."
                 }
+                val matchingExactItem = items.firstOrNull { it.productId == r.productId && it.variantId == r.variantId }
+                val matchingProductItem = items.firstOrNull { it.productId == r.productId }
                 val resolvedLineImg = itemImagePaths["${r.productId}:${r.variantId.orEmpty()}"]
+                    ?: r.variantId?.takeIf { it.isNotBlank() }?.let { itemImagePaths[it] }
+                    ?: matchingExactItem?.let { itemImagePaths[it.id] }
                     ?: itemImagePaths[r.productId]
+                    ?: matchingProductItem?.let { itemImagePaths[it.id] }
                 ValidatedCartonLine(
                     productId = r.productId,
                     variantId = r.variantId,
@@ -346,6 +351,7 @@ object PoExportDataBuilder {
 
             val resolvedImg = itemImagePaths[item.id]
                 ?: itemImagePaths["${item.productId}:${item.variantId.orEmpty()}"]
+                ?: item.variantId?.takeIf { it.isNotBlank() }?.let { itemImagePaths[it] }
                 ?: itemImagePaths[item.productId]
 
             ValidatedPoItemRow(

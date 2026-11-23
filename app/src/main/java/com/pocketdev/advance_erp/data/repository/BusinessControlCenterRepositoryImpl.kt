@@ -506,6 +506,20 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
             }
         }
         // Preserve imported/legacy opening balances without writing or inventing new transactions.
+        if (filterState.selectedSupplierId == null) {
+            for (adjustment in database.accountingDao().getCustomerLedgerAdjustments(filterState.selectedCustomerId)) {
+                val customer = adjustment.referenceId?.let { customerDao.getCustomerById(it) } ?: continue
+                val delta = com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(adjustment)
+                allList.add(UnifiedTransactionItem(
+                    id = adjustment.id, referenceNumber = adjustment.entryNumber, date = adjustment.entryDate,
+                    category = ReportCategory.CUSTOMER_LEDGER, primaryEntityName = customer.name,
+                    primaryEntityId = customer.id, particulars = adjustment.descriptionEn,
+                    amountMinor = kotlin.math.abs(delta), isInflow = delta > 0L, status = "POSTED",
+                    rawType = "CUSTOMER_ADJUSTMENT", effectSign = if (delta >= 0L) 1 else -1,
+                    createdAt = adjustment.createdAt
+                ))
+            }
+        }
         val customerNet = allList.filter { LedgerReportEngine.isCustomer(it) }.groupBy { it.primaryEntityId }
             .mapValues { (_, rows) -> rows.sumOf { LedgerReportEngine.delta(it) } }
         val supplierNet = allList.filter { LedgerReportEngine.isSupplier(it) }.groupBy { it.primaryEntityId }
@@ -550,6 +564,23 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
 
     override suspend fun getTransactionDetails(rawType: String, id: String): TransactionDetailRecord? {
         return when (rawType) {
+            "CUSTOMER_ADJUSTMENT" -> {
+                val entry = database.accountingDao().getJournalEntryById(id) ?: return null
+                if (entry.referenceType !in setOf(
+                        com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.DEBIT,
+                        com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.CREDIT)) return null
+                val customer = entry.referenceId?.let { customerDao.getCustomerById(it) } ?: return null
+                val delta = com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(entry)
+                TransactionDetailRecord(transaction = UnifiedTransactionItem(
+                    id = entry.id, referenceNumber = entry.entryNumber, date = entry.entryDate,
+                    category = ReportCategory.CUSTOMER_LEDGER, primaryEntityName = customer.name,
+                    primaryEntityId = customer.id, particulars = entry.descriptionEn,
+                    amountMinor = kotlin.math.abs(delta), isInflow = delta > 0L,
+                    status = if (entry.isReversed) "REVERSED" else if (entry.isPosted) "POSTED" else "DRAFT",
+                    rawType = "CUSTOMER_ADJUSTMENT", effectSign = if (delta >= 0L) 1 else -1,
+                    accountingPosted = entry.isPosted && !entry.isReversed, createdAt = entry.createdAt
+                ), referenceDocument = entry.entryNumber, auditTrailInfo = entry.descriptionEn)
+            }
             "INVOICE" -> {
                 val inv = salesDao.getInvoiceById(id) ?: return null
                 val items = salesDao.getItemsForInvoice(id)

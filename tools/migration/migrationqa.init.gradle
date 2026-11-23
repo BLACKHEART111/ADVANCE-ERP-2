@@ -1,0 +1,9 @@
+// Explicit opt-in isolated package for rehearsals. Never changes the production application ID.
+allprojects { p ->
+    p.plugins.withId('com.android.application') {
+        p.extensions.getByName('androidComponents').finalizeDsl { android ->
+            android.defaultConfig.applicationId = 'com.pocketdev.advance_erp2.migrationqa'
+            android.defaultConfig.testApplicationId = 'com.pocketdev.advance_erp2.migrationqa.test'
+        }
+    }
+}

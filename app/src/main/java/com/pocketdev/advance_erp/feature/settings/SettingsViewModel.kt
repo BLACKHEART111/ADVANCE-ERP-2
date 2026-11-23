@@ -39,7 +39,6 @@ data class SettingsUiState(
     val isFridayAutoBackupEnabled: Boolean = true,
     val lastAutoBackupTime: Long? = null,
     val backupFolderUri: String? = null,
-    val backupPassphrase: String? = null,
     val backupRecords: List<BackupRecord> = emptyList(),
     val userMessage: String? = null
 )
@@ -66,7 +65,6 @@ class SettingsViewModel @Inject constructor(
         preferencesRepository.isFridayAutoBackupEnabled,
         preferencesRepository.lastAutoBackupTime,
         preferencesRepository.backupFolderUri,
-        preferencesRepository.backupPassphrase,
         backupRepository.getAllBackupRecords(),
         _userMessage,
         preferencesRepository.selectedTheme
@@ -75,7 +73,7 @@ class SettingsViewModel @Inject constructor(
         val prefLogoPath = args[3] as? String
         val effectiveLogoPath = prefLogoPath ?: profile?.logoPath
         SettingsUiState(
-            themeMode = args[14] as String,
+            themeMode = args[13] as String,
             language = args[0] as AppLanguage,
             currency = args[1] as CurrencyCode,
             profile = profile?.copy(logoPath = effectiveLogoPath) ?: profile,
@@ -88,9 +86,8 @@ class SettingsViewModel @Inject constructor(
             isFridayAutoBackupEnabled = args[8] as Boolean,
             lastAutoBackupTime = args[9] as? Long,
             backupFolderUri = args[10] as? String,
-            backupPassphrase = args[11] as? String,
-            backupRecords = (args[12] as? List<*>)?.filterIsInstance<BackupRecord>() ?: emptyList(),
-            userMessage = args[13] as? String
+            backupRecords = (args[11] as? List<*>)?.filterIsInstance<BackupRecord>() ?: emptyList(),
+            userMessage = args[12] as? String
         )
     }.stateIn(
         scope = viewModelScope,
@@ -209,22 +206,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setBackupPassphrase(passphrase: String?) {
-        viewModelScope.launch {
-            if (!passphrase.isNullOrBlank()) {
-                val clean = passphrase.trim()
-                if (clean.length in 5..10) {
-                    preferencesRepository.setBackupPassphrase(clean)
-                    _userMessage.value = "ব্যাকআপ পাসওয়ার্ড সফলভাবে সংরক্ষিত হয়েছে! এখন থেকে সকল ব্যাকআপ এই পাসওয়ার্ড দিয়ে এনক্রিপ্ট হবে।"
-                } else {
-                    _userMessage.value = "পাসওয়ার্ড অবশ্যই ৫ থেকে ১০ অক্ষরের মধ্যে হতে হবে।"
-                }
-            } else {
-                preferencesRepository.setBackupPassphrase(null)
-                _userMessage.value = "ব্যাকআপ পাসওয়ার্ড মুছে ফেলা হয়েছে। ব্যাকআপ সাধারণ জিপ (.zip) হিসেবে সেভ হবে।"
-            }
-        }
-    }
+
 
     fun createInstantBackup(onFinished: () -> Unit) {
         viewModelScope.launch {
@@ -242,10 +224,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun restoreBackup(file: File, passphrase: String? = null) {
+    fun restoreBackup(file: File) {
         viewModelScope.launch {
             try {
-                val res = backupRepository.restoreBackup(file, passphrase)
+                val res = backupRepository.restoreBackup(file)
                 if (res.isSuccess) {
                     _userMessage.value = "ডাটাবেজ এবং ছবি সফলভাবে রিস্টোর করা হয়েছে!"
                 } else {
@@ -257,10 +239,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun restoreFromUri(uri: Uri, passphrase: String? = null) {
+    fun restoreFromUri(uri: Uri) {
         viewModelScope.launch {
             try {
-                val res = backupRepository.restoreFromUri(context, uri, passphrase)
+                val res = backupRepository.restoreFromUri(context, uri)
                 if (res.isSuccess) {
                     _userMessage.value = "নির্বাচিত জিপ ফাইল থেকে সফলভাবে রিস্টোর সম্পন্ন হয়েছে!"
                 } else {
@@ -272,10 +254,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun shareBackup(file: File, passphrase: String) {
+    fun shareBackup(file: File) {
         viewModelScope.launch {
             try {
-                backupRepository.shareBackup(context, file, passphrase)
+                backupRepository.shareBackup(context, file)
             } catch (e: Exception) {
                 _userMessage.value = "ফাইল শেয়ার ত্রুটি: ${e.localizedMessage}"
             }

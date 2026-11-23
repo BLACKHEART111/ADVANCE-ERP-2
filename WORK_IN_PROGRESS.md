@@ -1,5 +1,92 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Password-free backup/restore — 2026-11-23
+
+User requested removing backup encryption and all password prompts. Manual and
+automatic backups now always create ordinary ZIP files, regardless of any old
+saved backup key. Share exports a plain ZIP (or an existing raw SQLite backup)
+without a password dialog. Settings encryption controls and restore password fields
+were removed. Backup repository/UI interfaces no longer accept passphrases.
+Archive detection uses contents instead of filename, including picked/renamed files.
+
+Legacy encrypted archives are read-only compatible using an already saved key;
+that key is retained solely for old files, and is no longer exposed in Settings.
+An encrypted legacy archive without its key cannot be made password-free; it fails
+before changing active data and reports that it needs prior conversion to ZIP.
+Old backups are not deleted or rewritten. Four `PlainBackupExportTest` cases cover
+plain sharing, old saved-key compatibility, missing-key cleanup and renamed ZIPs.
+
+Verified with `adev` pinned Gradle 8.13: `assembleDebug`, `testDebugUnitTest`,
+`assembleDebugAndroidTest` **BUILD SUCCESSFUL**, **408 JVM tests passed** (0 failures,
+0 errors, 0 skipped), including four new plaintext/legacy-sharing tests.
+`git diff --check` passed. Production-package APK, build log and verification JSON:
+`$HOME/.local/share/advance-erp-artifacts/2026-11-23-password-free-backup/`.
+APK: `AdvanceERP-password-free-backup.apk`, SHA-256
+`bd4882477fa58f8b73ef55169f1c67f38c9d6346b58181347587aa93e37ae25d`.
+ADB is disconnected (old localhost:34729 refuses connection); user was asked to
+reconnect through AntiGem ADB Connect. **The production APK is NOT installed**;
+live restore and runtime backup UI checks were not executed. The separate migration
+QA APK was installed earlier, but its native fixture test did not run because ADB
+disconnected. Its test APK was preserved in the private history review directory as
+`migrationqa-test.apk` for resuming without rebuilding; verify package before use.
+
+## Tuktak migration preparation — 2026-11-23
+
+**Latest accepted decisions and history rehearsal:** user confirmed dated customer
+ledger entries for invoices/receipts with **no invoice allocations**, and actual
+SHOES INSOLE RETAIL ending stock **0**, including all six stale source variants.
+`tools/migration/rehearse_history.py` now produces an isolated v13 history candidate
+with 848 mapped records and 96 customer ledger events (32 invoices, 62 receipts,
+1 return, 1 explicit dated discount adjustment). All 8 customer closing balances,
+source document dates/amounts, stock, balanced journals and unchanged baseline rows
+passed SQLite verification. Full source archive stays intact. Native Sales/Control
+Center gained typed dated customer journal adjustments without Room schema changes.
+
+Latest private candidate/report/CSV:
+`$HOME/.local/share/advance-erp-migration/2026-11-23-history-review-verified/`.
+**Still NOT a live-import artifact**: legacy source account chart is separate,
+media paths are local rehearsal references, and original source GL inconsistencies
+remain. Posted AR exceeds source customer net due by 6560 BDT after the real -240
+discount (duplicate 5760 sale + orphaned 800 sale). Inventory GL exceeds remaining
+batch value by 469058 BDT (historical sales COGS not posted in source). **User
+declined additional correction entries**: preserve original source journals and
+show old accounting differences in the report. Do not add financial corrections.
+
+Build via `adev` pinned Gradle 8.13 succeeded with **404 JVM tests passing**.
+Nine Python safety/policy tests passed. A separate `.migrationqa` package build and
+optional `TuktakMigrationRehearsalTest` validate both native ledgers against the
+private history candidate; check the latest verification report for their outcome.
+The test refuses the production package and uses its own disposable Room DB.
+No live import/restore or production app install has occurred during this work.
+Reusable QA Gradle init script: `tools/migration/migrationqa.init.gradle`.
+
+The paragraphs below record the earlier master-only preparation stage; their
+"pending" stock/payment questions have been answered as described above.
+
+User requested merging installed `com.tuktak.erp` **including full history** into
+Advance while preserving current Advance records. Preparation only is implemented
+in `tools/migration/prepare_tuktak.py`; read its README before resuming. Six Python
+safety tests passed. Actual ADB snapshots (source v33, target v13) and a disposable
+master-only preview succeeded; all existing target rows, non-master tables and
+Room schema were verified unchanged. 25 mapped master records plus a fallback
+category were staged. **No live import, restore, app installation or Kotlin build
+was performed. Full history conversion is NOT implemented or certified.**
+
+Private SQLite archives, source media, checksums, mappings and report are outside
+Git: `$HOME/.local/share/advance-erp-migration/2026-11-23-preparation-verified/`.
+Never restore `masters-preview-not-for-restore.db`: it contains no imported
+transaction history or stock. Earlier first/validated rehearsal folders also exist.
+
+User answers pending: SHOES INSOLE RETAIL stock (product/batches 0 vs variants 240)
+and allocation policy for 62 payments without invoice IDs (oldest due first versus
+unallocated customer credit). Questions already presented. Source customer dues
+reconcile for all 8 parties when the 2800 BDT return and -240 BDT adjustment are
+included; preserve 2 archived customers and -400 BDT credit. Source major BDT
+requires x100 conversion. Financial account mapping, journal/subledger reconciliation,
+historical FIFO/return costing, warehouse assignment and native isolated validation
+remain required before any production merge. Do not infer readiness from the
+preparation tests or claim that full migration is complete.
+
 ## Latest PO Smart Packing & Premium Export Checkpoint — 2026-11-22
 
 Implemented and verified the complete Purchase Order workflow overhaul across Searchable Product/Variant Selection (`PoCatalogProductVariantPickerSheet`, `PoCartonVariantPickerSheet`, `BulkCreateCartonsDialog`), Smart Carton Packing & Validation (`PoPackingEngine`), Continuous `CTN-001` Carton Numbering (`renumberOrderCartonsContinuously`), Option A PO quantity reduction guards, Default & Individual `{CTN}` Shipping Marks, CTN Labels (`LabelPrintingEngine.generatePoCartonLabelsPdf`), Approved-Reference Supplier PDF (`ImportPdfGenerator`), 4-Sheet OOXML Supplier Excel (`ImportExcelGenerator`), Shared Single-Source-of-Truth Export Builder (`PoExportDataBuilder`), and `All` vs `Selected Cartons` Share/Preview/Print/Save workflows (`PoShareDialog`), preserving Room v13 schema and existing records (`PO-2026-001`..`PO-2026-004`). [Full verification report & screenshots](docs/ui-refinement/2026-11-22/po-smart-packing-export/report.md).

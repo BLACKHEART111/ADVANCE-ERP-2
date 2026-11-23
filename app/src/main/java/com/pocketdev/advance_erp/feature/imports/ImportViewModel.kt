@@ -10,6 +10,7 @@ import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.util.ImportPdfGenerator
 import com.pocketdev.advance_erp.core.util.ProductImageStorage
 import com.pocketdev.advance_erp.core.util.QrCodeGenerator
+import com.pocketdev.advance_erp.core.util.resolveVariantPhotoUris
 import com.pocketdev.advance_erp.data.entity.ProductImage
 import com.pocketdev.advance_erp.feature.product.GalleryItemDraft
 import com.pocketdev.advance_erp.feature.product.NewVariantDraft
@@ -332,31 +333,63 @@ class ImportViewModel @Inject constructor(
 
     fun getLandedCostSnapshots(shipmentId: String) = importRepository.getLandedCostSnapshots(shipmentId)
 
+    private data class ProductImageResolution(
+        val baseImageUri: String?,
+        val variantImageUris: Map<String, String?>
+    )
+
+    private suspend fun resolveProductImageSet(productId: String): ProductImageResolution {
+        val prodVariants = _uiState.value.productVariants
+            .filter { it.productId == productId }
+            .ifEmpty { productRepository.getVariantsForProductSync(productId) }
+        val directVariantPhotos = mutableMapOf<String, String>()
+        for (v in prodVariants) {
+            val uri = productRepository.getImagesForVariantSync(v.id)
+                .firstOrNull { imageStorage.doesImageExist(it.imageUri) }
+                ?.imageUri
+            if (!uri.isNullOrBlank()) {
+                directVariantPhotos[v.id] = uri
+            }
+        }
+        val resolvedVariantPhotos = resolveVariantPhotoUris(prodVariants, directVariantPhotos)
+        val baseUri = productRepository.getImagesForProductSync(productId)
+            .firstOrNull { imageStorage.doesImageExist(it.imageUri) }
+            ?.imageUri
+            ?: directVariantPhotos.values.firstOrNull()
+        return ProductImageResolution(baseUri, resolvedVariantPhotos)
+    }
+
     suspend fun resolvePurchaseProductImage(productId: String, variantId: String?): String? {
-        val variantImage = variantId?.let { productRepository.getImagesForVariantSync(it).firstOrNull { imageStorage.doesImageExist(it.imageUri) }?.imageUri }
-        return variantImage ?: productRepository.getImagesForProductSync(productId).firstOrNull { imageStorage.doesImageExist(it.imageUri) }?.imageUri
+        val resolved = resolveProductImageSet(productId)
+        val variantImage = variantId?.let { resolved.variantImageUris[it] }
+        return variantImage ?: resolved.baseImageUri
     }
 
     suspend fun resolveShareImagesForItems(items: List<PurchaseOrderItem>): Map<String, String> {
         if (items.isEmpty()) return emptyMap()
-        val variantCache = mutableMapOf<String, String?>()
-        val productCache = mutableMapOf<String, String?>()
+        val resolutionCache = mutableMapOf<String, ProductImageResolution>()
         val result = mutableMapOf<String, String>()
-        for (item in items) {
-            val varUri = item.variantId?.let { vid ->
-                variantCache.getOrPut(vid) {
-                    productRepository.getImagesForVariantSync(vid)
-                        .firstOrNull { imageStorage.doesImageExist(it.imageUri) }
-                        ?.imageUri
+        for (productId in items.map { it.productId }.distinct()) {
+            val resolved = resolutionCache.getOrPut(productId) { resolveProductImageSet(productId) }
+            resolved.baseImageUri?.takeIf { it.isNotBlank() }?.let { base ->
+                result[productId] = base
+            }
+            resolved.variantImageUris.forEach { (vid, uri) ->
+                if (!uri.isNullOrBlank()) {
+                    result["$productId:$vid"] = uri
+                    result[vid] = uri
                 }
             }
-            val resolvedUri = varUri ?: productCache.getOrPut(item.productId) {
-                productRepository.getImagesForProductSync(item.productId)
-                    .firstOrNull { imageStorage.doesImageExist(it.imageUri) }
-                    ?.imageUri
-            }
-            if (!resolvedUri.isNullOrBlank()) {
-                result[item.id] = resolvedUri
+        }
+        for (item in items) {
+            val resolved = resolutionCache[item.productId] ?: continue
+            val itemUri = item.variantId?.let { resolved.variantImageUris[it] } ?: resolved.baseImageUri
+            if (!itemUri.isNullOrBlank()) {
+                result[item.id] = itemUri
+                result["${item.productId}:${item.variantId.orEmpty()}"] = itemUri
+                if (!item.variantId.isNullOrBlank()) {
+                    result[item.variantId] = itemUri
+                }
             }
         }
         return result

@@ -120,23 +120,9 @@ class BackupRepositoryImpl @Inject constructor(
             zos.closeEntry()
         }
 
-        // Check if user has set a backup encryption passphrase (5 to 10 characters)
-        val savedPassphrase = try {
-            preferencesRepository.backupPassphrase.firstOrNull()?.trim()
-        } catch (_: Exception) {
-            null
-        }
-
-        val isEncrypted = !savedPassphrase.isNullOrBlank() && savedPassphrase.length in 5..10
-        val finalFileName = if (isEncrypted) "AdvanceERP_Backup_${timeStamp}.zip.enc" else fileName
-        val finalBackupFile = if (isEncrypted) {
-            val encFile = File(backupDir, finalFileName)
-            BackupEncryption.encrypt(zipBackupFile, encFile, savedPassphrase!!.toCharArray())
-            zipBackupFile.delete() // clean up unencrypted zip
-            encFile
-        } else {
-            zipBackupFile
-        }
+        // Manual and automatic backups always use a password-free ZIP.
+        val finalFileName = fileName
+        val finalBackupFile = zipBackupFile
 
         // Calculate final SHA-256
         val checksum = calculateSha256(finalBackupFile)
@@ -145,11 +131,10 @@ class BackupRepositoryImpl @Inject constructor(
         val exportedLocationDesc = exportBackupToPhoneFileManager(
             backupFile = finalBackupFile,
             fileName = finalFileName,
-            mimeType = if (isEncrypted) "application/octet-stream" else "application/zip"
+            mimeType = "application/zip"
         )
         val combinedNotes = buildString {
             if (!notes.isNullOrBlank()) append(notes).append(" • ")
-            if (isEncrypted) append("🔒 Encrypted • ")
             append("Saved to File Manager: $exportedLocationDesc")
         }
 
@@ -173,7 +158,7 @@ class BackupRepositoryImpl @Inject constructor(
                 recordType = "BACKUP",
                 recordId = record.id,
                 action = "BACKUP",
-                details = "Created comprehensive ${if (isEncrypted) "ENCRYPTED" else "ZIP"} backup $finalFileName (${record.fileSizeBytes / 1024} KB, ${imageFiles.size} images, schema v$schemaVersion, File Manager: $exportedLocationDesc, SHA-256: ${checksum.take(8)}...)"
+                details = "Created comprehensive ZIP backup $finalFileName (${record.fileSizeBytes / 1024} KB, ${imageFiles.size} images, schema v$schemaVersion, File Manager: $exportedLocationDesc, SHA-256: ${checksum.take(8)}...)"
             )
         )
 
@@ -182,7 +167,7 @@ class BackupRepositoryImpl @Inject constructor(
             context = context,
             fileName = finalFileName,
             locationDesc = exportedLocationDesc,
-            isEncrypted = isEncrypted,
+            isEncrypted = false,
             isAutomatic = isAutomatic
         )
 
@@ -271,10 +256,10 @@ class BackupRepositoryImpl @Inject constructor(
         return "Downloads/AdvanceERP_Backups/$fileName"
     }
 
-    override suspend fun verifyBackupFile(backupFile: File, passphrase: String?): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun verifyBackupFile(backupFile: File): Boolean = withContext(Dispatchers.IO) {
         if (!backupFile.exists() || backupFile.length() < 100) return@withContext false
 
-        val effectivePassphrase = passphrase ?: try {
+        val effectivePassphrase = try {
             preferencesRepository.backupPassphrase.firstOrNull()?.takeIf { it.isNotBlank() }
         } catch (_: Exception) {
             null
@@ -291,7 +276,7 @@ class BackupRepositoryImpl @Inject constructor(
             } finally {
                 decrypted.delete()
             }
-        } else if (backupFile.name.endsWith(".zip", ignoreCase = true)) {
+        } else if (BackupArchiveFormat.isZip(backupFile)) {
             verifyZipBackup(backupFile)
         } else {
             verifySqliteDbFile(backupFile)
@@ -355,24 +340,24 @@ class BackupRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun restoreBackup(backupFile: File, passphrase: String?): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun restoreBackup(backupFile: File): Result<Boolean> = withContext(Dispatchers.IO) {
         var decryptedFile: File? = null
         try {
-            val effectivePassphrase = passphrase ?: try {
+            val effectivePassphrase = try {
                 preferencesRepository.backupPassphrase.firstOrNull()?.takeIf { it.isNotBlank() }
             } catch (_: Exception) {
                 null
             }
 
             val restoreFile = if (BackupEncryption.isEncrypted(backupFile)) {
-                require(!effectivePassphrase.isNullOrEmpty()) { "ব্যাকআপ পাসওয়ার্ড প্রয়োজন (Backup password is required)" }
+                require(!effectivePassphrase.isNullOrEmpty()) { BackupArchiveFormat.LEGACY_KEY_UNAVAILABLE }
                 File(context.cacheDir, "restore_${UUID.randomUUID()}.zip").also {
                     decryptedFile = it
                     BackupEncryption.decrypt(backupFile, it, effectivePassphrase.toCharArray())
                 }
             } else backupFile
 
-            if (!verifyBackupFile(restoreFile, effectivePassphrase)) {
+            if (!verifyBackupFile(restoreFile)) {
                 return@withContext Result.failure(IllegalArgumentException("Invalid or corrupted backup file"))
             }
 
@@ -392,7 +377,7 @@ class BackupRepositoryImpl @Inject constructor(
             }
 
             // Extract from ZIP or restore DB directly
-            if (restoreFile.name.endsWith(".zip", ignoreCase = true)) {
+            if (BackupArchiveFormat.isZip(restoreFile)) {
                 ZipFile(restoreFile).use { zip ->
                     val dbEntry = zip.getEntry("database/advance_erp.db")
                         ?: throw IllegalStateException("Backup ZIP does not contain database/advance_erp.db")
@@ -440,7 +425,7 @@ class BackupRepositoryImpl @Inject constructor(
                     }
                 }
             } else {
-                FileInputStream(backupFile).use { input ->
+                FileInputStream(restoreFile).use { input ->
                     FileOutputStream(dbFile).use { output ->
                         input.copyTo(output)
                     }
@@ -472,7 +457,7 @@ class BackupRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun restoreFromUri(context: Context, uri: Uri, passphrase: String?): Result<Boolean> = withContext(Dispatchers.IO) {
+    override suspend fun restoreFromUri(context: Context, uri: Uri): Result<Boolean> = withContext(Dispatchers.IO) {
         val tempRestoreFile = File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -481,7 +466,7 @@ class BackupRepositoryImpl @Inject constructor(
                 }
             } ?: return@withContext Result.failure(IllegalArgumentException("Cannot open or read chosen backup file"))
 
-            restoreBackup(tempRestoreFile, passphrase)
+            restoreBackup(tempRestoreFile)
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
@@ -492,24 +477,30 @@ class BackupRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun shareBackup(context: Context, backupFile: File, passphrase: String) = withContext(Dispatchers.IO) {
+    override suspend fun shareBackup(context: Context, backupFile: File) = withContext(Dispatchers.IO) {
         require(backupFile.exists()) { "Backup file does not exist at ${backupFile.absolutePath}" }
         val exportRetentionMillis = 7L * 24 * 60 * 60 * 1000
         context.cacheDir.listFiles { file -> file.name.startsWith("AdvanceERP_Export_") }
             ?.filter { System.currentTimeMillis() - it.lastModified() > exportRetentionMillis }
             ?.forEach { it.delete() }
-        val encryptedBackup = File(context.cacheDir, "AdvanceERP_Export_${UUID.randomUUID()}.aerpbackup")
-        BackupEncryption.encrypt(backupFile, encryptedBackup, passphrase.toCharArray())
+        val legacyKey = if (BackupEncryption.isEncrypted(backupFile)) {
+            preferencesRepository.backupPassphrase.firstOrNull()
+        } else null
+        val sharedBackup = BackupArchiveFormat.createPlainShareCopy(backupFile, context.cacheDir, legacyKey)
+        if (!verifyBackupFile(sharedBackup)) {
+            sharedBackup.delete()
+            throw IllegalArgumentException("Invalid or corrupted backup file")
+        }
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
-            encryptedBackup
+            sharedBackup
         )
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/octet-stream"
+            type = if (BackupArchiveFormat.isZip(sharedBackup)) "application/zip" else "application/octet-stream"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Advance ERP Encrypted Backup - ${encryptedBackup.name}")
-            putExtra(Intent.EXTRA_TEXT, "Encrypted Advance ERP backup. Keep the passphrase to restore it.")
+            putExtra(Intent.EXTRA_SUBJECT, "Advance ERP Backup - ${sharedBackup.name}")
+            putExtra(Intent.EXTRA_TEXT, "Advance ERP backup. No password is required to restore this file.")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         val chooser = Intent.createChooser(shareIntent, "শেয়ার করুন / Share Backup").apply {

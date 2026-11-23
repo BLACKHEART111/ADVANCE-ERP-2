@@ -1087,13 +1087,24 @@ class SalesRepositoryImpl @Inject constructor(
 
         // 3. Returns (Credit AR)
         val allReturns = salesReturnDao.getReturnsForCustomerSync(customerId).filter { it.isPosted }
+        val adjustments = db.accountingDao().getCustomerLedgerAdjustments(customerId)
+        for (adjustment in adjustments) {
+            val delta = com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(adjustment)
+            ledgerItems.add(CustomerLedgerEntry(
+                id = adjustment.id, date = adjustment.entryDate, transactionType = "ADJUSTMENT",
+                referenceNumber = adjustment.entryNumber, description = adjustment.descriptionEn,
+                debitMinor = delta.coerceAtLeast(0L), creditMinor = (-delta).coerceAtLeast(0L),
+                runningBalanceMinor = 0L
+            ))
+        }
 
         // 0. Opening Due / Previous Balance (Confirmed Rule 4.2)
         val activeInvoices = invoices.filter { it.status != InvoiceStatus.CANCELLED.name }
         val activePayments = allCustomerPayments.filter { !it.isVoided }
         val netTransactions = activeInvoices.sumOf { it.totalAmountMinor } -
             activePayments.sumOf { it.amountMinor } -
-            allReturns.filter { it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }.sumOf { it.totalReturnAmountMinor }
+            allReturns.filter { it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }.sumOf { it.totalReturnAmountMinor } +
+            adjustments.sumOf { com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(it) }
         val openingBal = if ((customer?.outstandingBalanceMinor ?: 0L) == 0L) 0L else (customer?.outstandingBalanceMinor ?: 0L) - netTransactions
         if (openingBal > 0L) {
             val initialDate = (customer?.createdAt ?: System.currentTimeMillis()) - (365L * 24 * 3600 * 1000)
@@ -1174,7 +1185,9 @@ class SalesRepositoryImpl @Inject constructor(
         val creditReturns = salesReturnDao.getReturnsForCustomerSync(customerId)
             .filter { it.isPosted && it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }
             .sumOf { it.totalReturnAmountMinor }
-        return postedInvoices - activePayments - creditReturns
+        val adjustments = db.accountingDao().getCustomerLedgerAdjustments(customerId)
+            .sumOf { com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(it) }
+        return postedInvoices - activePayments - creditReturns + adjustments
     }
 
     private suspend fun captureCustomerBalanceBaseline(customerId: String): Pair<Long, Long> {

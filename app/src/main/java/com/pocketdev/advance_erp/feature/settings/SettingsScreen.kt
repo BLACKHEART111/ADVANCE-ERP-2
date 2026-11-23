@@ -889,7 +889,7 @@ fun SettingsScreen(
                 item(key = "cat_backup") {
                     SettingsAccordionCard(
                         title = if (isBn) "ডাটা ব্যাকআপ ও রিস্টোর" else "Data Backup & Restore",
-                        subtitle = if (isBn) "ম্যানুয়াল, অটো ব্যাকআপ, এনক্রিপশন" else "Manual, auto backup & encryption",
+                        subtitle = if (isBn) "ম্যানুয়াল ও অটো ব্যাকআপ" else "Manual & auto backup",
                         icon = Icons.Outlined.Storage,
                         expanded = expandBackup,
                         onToggle = { expandBackup = !expandBackup },
@@ -902,16 +902,14 @@ fun SettingsScreen(
                             isFridayAutoBackupEnabled = state.isFridayAutoBackupEnabled,
                             lastAutoBackupTime = state.lastAutoBackupTime,
                             backupFolderUri = state.backupFolderUri,
-                            backupPassphrase = state.backupPassphrase,
                             language = state.language,
                             onCreateBackup = { onFinished -> viewModel.createInstantBackup(onFinished) },
-                            onRestoreBackupFile = { file, passphrase -> viewModel.restoreBackup(file, passphrase) },
-                            onRestoreFromUri = { uri, passphrase -> viewModel.restoreFromUri(uri, passphrase) },
-                            onShareBackup = { file, passphrase -> viewModel.shareBackup(file, passphrase) },
+                            onRestoreBackupFile = { file -> viewModel.restoreBackup(file) },
+                            onRestoreFromUri = { uri -> viewModel.restoreFromUri(uri) },
+                            onShareBackup = { file -> viewModel.shareBackup(file) },
                             onDeleteBackup = { recordId -> viewModel.deleteBackup(recordId) },
                             onToggleFridayAutoBackup = { enabled -> viewModel.toggleFridayAutoBackup(enabled) },
                             onSelectBackupFolder = { uri -> viewModel.setBackupFolderUri(uri) },
-                            onSetBackupPassphrase = { pass -> viewModel.setBackupPassphrase(pass) },
                             embeddedInAccordion = true
                         )
                     }

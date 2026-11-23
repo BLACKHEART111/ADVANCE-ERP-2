@@ -1086,6 +1086,7 @@ fun ImportManagementScreen(
             onUpdatePoItem = { itemId, q, p, c, g -> viewModel.updatePoItem(selectedPo.id, itemId, q, p, c, g) },
             onDeletePoItem = { itemId -> viewModel.deletePoItem(selectedPo.id, itemId) },
             freightRates = uiState.selectedShipmentFreightRates,
+            categories = uiState.categories,
             variants = uiState.productVariants,
             businessProfile = uiState.businessProfile
         )
