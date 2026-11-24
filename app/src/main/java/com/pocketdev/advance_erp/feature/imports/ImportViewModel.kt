@@ -675,6 +675,30 @@ class ImportViewModel @Inject constructor(
         }
     }
 
+    fun deletePurchaseOrder(orderId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.deletePurchaseOrder(orderId)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        selectedPo = if (it.selectedPo?.id == orderId) null else it.selectedPo,
+                        userMessage = "Purchase Order deleted successfully!"
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "Delete PO error: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
     fun duplicatePurchaseOrder(orderId: String) {
         viewModelScope.launch {
             try {

@@ -311,4 +311,21 @@ object PoPackingEngine {
             totalAmountMajor = totalAmountMajor
         )
     }
+
+    /**
+     * Only a PO that has received goods into inventory cannot be deleted.
+     * Every non-received PO (Draft, Confirmed, Partially Paid, Paid, Shipped,
+     * Cost Finalized, Cancelled) can be deleted.
+     */
+    fun canDeletePurchaseOrder(
+        status: String,
+        itemsReceivedQuantities: List<Int>,
+        hasPostedWarehouseReceipt: Boolean,
+        completionReceivedQuantity: Int = 0
+    ): Boolean {
+        val hasReceivedStatus = status == "RECEIVED" || status == "PARTIALLY_RECEIVED"
+        val hasReceivedItems = itemsReceivedQuantities.any { it > 0 }
+        val hasCompletedWithReceipts = status == "COMPLETED" && completionReceivedQuantity > 0
+        return !(hasReceivedStatus || hasReceivedItems || hasPostedWarehouseReceipt || hasCompletedWithReceipts)
+    }
 }

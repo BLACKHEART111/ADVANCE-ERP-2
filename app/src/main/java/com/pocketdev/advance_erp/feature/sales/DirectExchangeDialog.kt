@@ -25,10 +25,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.pocketdev.advance_erp.core.util.Formatters
+import com.pocketdev.advance_erp.core.util.firstInStockProduct
+import com.pocketdev.advance_erp.core.util.firstInStockVariant
+import com.pocketdev.advance_erp.core.util.sellableStockForProduct
+import com.pocketdev.advance_erp.core.util.sellableStockForVariant
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.data.entity.SalesInvoiceItem
+import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.domain.repository.DirectExchangeDraft
 import com.pocketdev.advance_erp.domain.repository.ReturnItemDraft
 import com.pocketdev.advance_erp.domain.repository.InvoiceItemDraft
@@ -40,15 +45,26 @@ fun DirectExchangeDialog(
     invoiceItems: List<SalesInvoiceItem>,
     allProducts: List<Product>,
     allVariants: List<ProductVariant>,
+    stockBalances: List<StockBalance> = emptyList(),
     onDismiss: () -> Unit,
     onExchangeConfirmed: (DirectExchangeDraft) -> Unit
 ) {
+    val variantsByProduct = remember(allVariants) { allVariants.groupBy { it.productId } }
     var selectedReturnItem by remember { mutableStateOf(invoiceItems.firstOrNull()) }
     var returnQtyText by rememberSaveable { mutableStateOf("1") }
     var isDamagedReturn by rememberSaveable { mutableStateOf(false) }
 
-    var selectedReplacementProduct by remember { mutableStateOf(allProducts.firstOrNull()) }
-    var selectedReplacementVariant by remember { mutableStateOf<ProductVariant?>(null) }
+    var selectedReplacementProduct by remember {
+        mutableStateOf(firstInStockProduct(stockBalances, invoice.warehouseId, allProducts, variantsByProduct))
+    }
+    var selectedReplacementVariant by remember {
+        mutableStateOf(
+            selectedReplacementProduct?.let { p ->
+                firstInStockVariant(stockBalances, invoice.warehouseId, p.id, variantsByProduct[p.id].orEmpty())
+            }
+        )
+    }
+    var replacementVariantDropdown by rememberSaveable { mutableStateOf(false) }
     var replacementQtyText by rememberSaveable { mutableStateOf("1") }
     var notes by rememberSaveable { mutableStateOf("") }
 
@@ -176,18 +192,30 @@ fun DirectExchangeDialog(
                         Column(modifier = Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("2. Replacement Item / প্রতিস্থাপন পণ্য", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
-                            // Product selector (take top 6 or matching)
+                            // Product selector
                             Text("Select Replacement Product:", style = MaterialTheme.typography.bodySmall)
+                            val washedColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.36f)
                             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(allProducts.take(8)) { prod ->
+                                items(allProducts) { prod ->
+                                    val pVars = variantsByProduct[prod.id].orEmpty()
+                                    val prodStock = sellableStockForProduct(stockBalances, invoice.warehouseId, prod.id, pVars)
+                                    val isProdInStock = prodStock > 0
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
+                                        enabled = isProdInStock,
                                         colors = CardDefaults.cardColors(
-                                            containerColor = if (selectedReplacementProduct?.id == prod.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                                            containerColor = if (selectedReplacementProduct?.id == prod.id) {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.surface
+                                            },
+                                            disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
                                         ),
                                         onClick = {
-                                            selectedReplacementProduct = prod
-                                            selectedReplacementVariant = allVariants.firstOrNull { it.productId == prod.id }
+                                            if (isProdInStock) {
+                                                selectedReplacementProduct = prod
+                                                selectedReplacementVariant = firstInStockVariant(stockBalances, invoice.warehouseId, prod.id, pVars)
+                                            }
                                         }
                                     ) {
                                         Row(
@@ -195,8 +223,85 @@ fun DirectExchangeDialog(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(prod.nameEn, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                                            Text("৳${Formatters.formatMinorUnit(prod.sellingPriceMinor)}", style = MaterialTheme.typography.labelSmall)
+                                            Text(
+                                                text = prod.nameEn,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = if (isProdInStock) FontWeight.SemiBold else FontWeight.Normal,
+                                                color = if (isProdInStock) MaterialTheme.colorScheme.onSurface else washedColor,
+                                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                            )
+                                            Text(
+                                                text = if (isProdInStock) {
+                                                    "৳${Formatters.formatMinorUnit(prod.sellingPriceMinor)} • স্টক: $prodStock"
+                                                } else {
+                                                    "স্টক নেই"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isProdInStock) MaterialTheme.colorScheme.primary else washedColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            val repVariants = selectedReplacementProduct?.let { variantsByProduct[it.id].orEmpty() }.orEmpty()
+                            if (repVariants.isNotEmpty() && selectedReplacementProduct != null) {
+                                ExposedDropdownMenuBox(
+                                    expanded = replacementVariantDropdown,
+                                    onExpandedChange = { replacementVariantDropdown = it }
+                                ) {
+                                    OutlinedTextField(
+                                        value = selectedReplacementVariant?.let { v ->
+                                            listOfNotNull(v.color, v.size, v.sku).joinToString(" - ")
+                                        } ?: "Select Variant / ভেরিয়েন্ট",
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text("Replacement Variant") },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = replacementVariantDropdown) },
+                                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = replacementVariantDropdown,
+                                        onDismissRequest = { replacementVariantDropdown = false }
+                                    ) {
+                                        repVariants.forEach { v ->
+                                            val varStock = sellableStockForVariant(
+                                                stockBalances,
+                                                invoice.warehouseId,
+                                                selectedReplacementProduct!!.id,
+                                                v.id
+                                            )
+                                            val isVarInStock = varStock > 0
+                                            DropdownMenuItem(
+                                                enabled = isVarInStock,
+                                                colors = MenuDefaults.itemColors(
+                                                    textColor = MaterialTheme.colorScheme.onSurface,
+                                                    disabledTextColor = washedColor
+                                                ),
+                                                text = {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = listOfNotNull(v.color, v.size, v.sku).joinToString(" • "),
+                                                            color = if (isVarInStock) MaterialTheme.colorScheme.onSurface else washedColor,
+                                                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                                        )
+                                                        Text(
+                                                            text = if (isVarInStock) "স্টক: $varStock" else "স্টক নেই",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = if (isVarInStock) MaterialTheme.colorScheme.primary else washedColor
+                                                        )
+                                                    }
+                                                },
+                                                onClick = {
+                                                    if (!isVarInStock) return@DropdownMenuItem
+                                                    selectedReplacementVariant = v
+                                                    replacementVariantDropdown = false
+                                                }
+                                            )
                                         }
                                     }
                                 }
@@ -266,6 +371,7 @@ fun DirectExchangeDialog(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
+                        enabled = selectedReturnItem != null && selectedReplacementProduct != null,
                         onClick = {
                             val retItem = selectedReturnItem ?: return@Button
                             val repProduct = selectedReplacementProduct ?: return@Button

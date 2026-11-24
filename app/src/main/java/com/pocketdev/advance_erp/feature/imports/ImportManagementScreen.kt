@@ -1072,6 +1072,9 @@ fun ImportManagementScreen(
             onCancelPo = { orderId, reason ->
                 viewModel.cancelPurchaseOrder(orderId, reason)
             },
+            onDeletePo = { orderId ->
+                viewModel.deletePurchaseOrder(orderId)
+            },
             onDuplicatePo = { orderId ->
                 viewModel.duplicatePurchaseOrder(orderId)
             },

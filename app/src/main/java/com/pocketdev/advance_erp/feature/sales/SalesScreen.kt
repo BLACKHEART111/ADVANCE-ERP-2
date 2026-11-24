@@ -417,6 +417,7 @@ fun SalesScreen(
             products = uiState.products,
             variants = uiState.variants,
             stockBalances = uiState.stockBalances,
+            costLayers = uiState.costLayers,
             liquidAccounts = uiState.liquidAccounts,
             customerSummary = uiState.selectedCustomerSummary,
             isBangla = isBangla,
@@ -520,6 +521,8 @@ fun SalesScreen(
             variants = uiState.variants,
             warehouses = uiState.warehouses,
             customers = uiState.customers,
+            costLayers = uiState.costLayers,
+            stockBalances = uiState.stockBalances,
             salesViewModel = viewModel,
             onDismiss = { showPosDialog = false }
         )
@@ -546,6 +549,7 @@ fun SalesScreen(
             invoiceItems = uiState.selectedInvoiceItems,
             allProducts = uiState.products,
             allVariants = uiState.variants,
+            stockBalances = uiState.stockBalances,
             onDismiss = { showDirectExchangeDialog = false },
             onExchangeConfirmed = { draft ->
                 viewModel.processDirectExchange(draft) {

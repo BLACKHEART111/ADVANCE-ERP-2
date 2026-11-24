@@ -46,9 +46,15 @@ import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.InvoicePdfGenerator
+import com.pocketdev.advance_erp.core.util.firstInStockVariant
+import com.pocketdev.advance_erp.core.util.resolveUnitCostMinorForSale
+import com.pocketdev.advance_erp.core.util.sellableStockForProduct
+import com.pocketdev.advance_erp.core.util.sellableStockForVariant
 import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductVariant
+import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Warehouse
 import com.pocketdev.advance_erp.domain.repository.InvoiceItemDraft
 import com.pocketdev.advance_erp.domain.repository.NewCustomerDraft
@@ -73,6 +79,8 @@ fun PosDialog(
     variants: List<ProductVariant>,
     warehouses: List<Warehouse>,
     customers: List<Customer>,
+    costLayers: List<InventoryCostLayer> = emptyList(),
+    stockBalances: List<StockBalance> = emptyList(),
     salesViewModel: SalesViewModel,
     onDismiss: () -> Unit
 ) {
@@ -80,7 +88,7 @@ fun PosDialog(
     var selectedWarehouse by remember { mutableStateOf(warehouses.firstOrNull()) }
     var selectedCustomer by remember { mutableStateOf<Customer?>(null) }
     var isWholesale by rememberSaveable { mutableStateOf(false) }
-    var showCostAndProfit by rememberSaveable { mutableStateOf(false) }
+    var showCostAndProfit by rememberSaveable { mutableStateOf(true) }
 
     val cartItems = remember { mutableStateListOf<PosCartItem>() }
     var barcodeInput by rememberSaveable { mutableStateOf("") }
@@ -112,10 +120,13 @@ fun PosDialog(
         ?.coerceAtLeast(0L) ?: 0L
     val changeDueMinor = (tenderedMinor - netTotalMinor).coerceAtLeast(0L)
 
+    val variantsByProduct = remember(variants) { variants.groupBy { it.productId } }
+
     fun addOrIncrementBarcode(rawCode: String) {
         checkoutError = null
         val code = rawCode.trim()
         if (code.isBlank()) return
+        val whId = selectedWarehouse?.id.orEmpty()
 
         // 1. Search variants
         val matchedVariant = variants.find {
@@ -125,6 +136,10 @@ fun PosDialog(
         if (matchedVariant != null) {
             val prod = products.find { it.id == matchedVariant.productId }
             if (prod != null) {
+                if (sellableStockForVariant(stockBalances, whId, prod.id, matchedVariant.id) <= 0) {
+                    checkoutError = "নির্বাচিত ভেরিয়েন্টটি স্টকে নেই (Stock Out)"
+                    return
+                }
                 val existing = cartItems.find { it.variant?.id == matchedVariant.id }
                 if (existing != null) {
                     val idx = cartItems.indexOf(existing)
@@ -145,6 +160,29 @@ fun PosDialog(
         }
 
         if (matchedProduct != null) {
+            val pVars = variantsByProduct[matchedProduct.id].orEmpty()
+            if (pVars.isNotEmpty()) {
+                val inStockVariant = firstInStockVariant(stockBalances, whId, matchedProduct.id, pVars)
+                if (inStockVariant == null) {
+                    checkoutError = "পণ্যটি স্টকে নেই (Stock Out)"
+                    return
+                }
+                val existing = cartItems.find { it.variant?.id == inStockVariant.id }
+                if (existing != null) {
+                    val idx = cartItems.indexOf(existing)
+                    cartItems[idx] = existing.copy(quantity = existing.quantity + 1)
+                } else {
+                    val basePrice = inStockVariant.variantPriceMinor
+                    val price = if (isWholesale) (basePrice * 90L) / 100L else basePrice
+                    cartItems.add(PosCartItem(matchedProduct, inStockVariant, 1, price))
+                }
+                barcodeInput = ""
+                return
+            }
+            if (sellableStockForProduct(stockBalances, whId, matchedProduct.id, emptyList()) <= 0) {
+                checkoutError = "পণ্যটি স্টকে নেই (Stock Out)"
+                return
+            }
             val existing = cartItems.find { it.product.id == matchedProduct.id && it.variant == null }
             if (existing != null) {
                 val idx = cartItems.indexOf(existing)
@@ -297,16 +335,41 @@ fun PosDialog(
                             Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan", tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
+                    val washedColor = TextMuted.copy(alpha = 0.42f)
                     suggestions.forEach { p ->
+                        val pVars = variantsByProduct[p.id].orEmpty()
+                        val prodStock = sellableStockForProduct(
+                            stockBalances = stockBalances,
+                            warehouseId = selectedWarehouse?.id.orEmpty(),
+                            productId = p.id,
+                            productVariants = pVars
+                        )
+                        val isProdInStock = prodStock > 0
                         Row(
                             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .clickable { addOrIncrementBarcode(p.baseSku.ifBlank { p.barcode ?: "" }) }
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isProdInStock) 0.5f else 0.18f))
+                                .clickable(enabled = isProdInStock) {
+                                    addOrIncrementBarcode(p.baseSku.ifBlank { p.barcode ?: "" })
+                                }
                                 .padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("${p.nameEn} (${p.baseSku})", modifier = Modifier.weight(1f), maxLines = 1)
-                            Text("৳${Formatters.formatMinorUnit(p.sellingPriceMinor)}", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "${p.nameEn} (${p.baseSku})",
+                                modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                maxLines = 1,
+                                color = if (isProdInStock) Color.Unspecified else washedColor
+                            )
+                            Text(
+                                text = if (isProdInStock) {
+                                    "৳${Formatters.formatMinorUnit(p.sellingPriceMinor)} • স্টক: $prodStock"
+                                } else {
+                                    "স্টক নেই"
+                                },
+                                fontWeight = if (isProdInStock) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (isProdInStock) Color.Unspecified else washedColor
+                            )
                         }
                     }
 
@@ -378,11 +441,14 @@ fun PosDialog(
                                     Text("Line total: ৳${Formatters.formatMinorUnit(item.lineTotalMinor)}", fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.End))
 
                                     if (showCostAndProfit) {
-                                        val unitCostMinor = if (item.variant != null && item.variant.variantCostMinor > 0L) {
-                                            item.variant.variantCostMinor
-                                        } else {
-                                            item.product.purchasePriceMinor
-                                        }
+                                        val unitCostMinor = resolveUnitCostMinorForSale(
+                                            layers = costLayers,
+                                            productId = item.product.id,
+                                            variantId = item.variant?.id,
+                                            warehouseId = selectedWarehouse?.id,
+                                            variantCostMinor = item.variant?.variantCostMinor,
+                                            productPurchasePriceMinor = item.product.purchasePriceMinor
+                                        )
                                         val lineCostMinor = unitCostMinor * item.quantity
                                         val lineProfitMinor = item.lineTotalMinor - lineCostMinor
                                         val profitColor = if (lineProfitMinor >= 0) StatusSuccess else StatusError
@@ -447,7 +513,14 @@ fun PosDialog(
 
                     if (showCostAndProfit && cartItems.isNotEmpty()) {
                         val totalCostMinor = cartItems.sumOf { item ->
-                            val unitCost = if (item.variant != null && item.variant.variantCostMinor > 0L) item.variant.variantCostMinor else item.product.purchasePriceMinor
+                            val unitCost = resolveUnitCostMinorForSale(
+                                layers = costLayers,
+                                productId = item.product.id,
+                                variantId = item.variant?.id,
+                                warehouseId = selectedWarehouse?.id,
+                                variantCostMinor = item.variant?.variantCostMinor,
+                                productPurchasePriceMinor = item.product.purchasePriceMinor
+                            )
                             unitCost * item.quantity
                         }
                         val totalProfitMinor = netTotalMinor - totalCostMinor

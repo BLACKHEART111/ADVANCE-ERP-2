@@ -25,6 +25,8 @@ import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.data.entity.SalesInvoiceItem
 import com.pocketdev.advance_erp.data.entity.SalesReturn
+import com.pocketdev.advance_erp.data.dao.InventoryCostLayerDao
+import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Warehouse
 import com.pocketdev.advance_erp.domain.repository.AccountingRepository
@@ -56,6 +58,7 @@ data class SalesUiState(
     val products: List<Product> = emptyList(),
     val variants: List<ProductVariant> = emptyList(),
     val stockBalances: List<StockBalance> = emptyList(),
+    val costLayers: List<InventoryCostLayer> = emptyList(),
     val payments: List<CustomerPayment> = emptyList(),
     val returns: List<SalesReturn> = emptyList(),
     val liquidAccounts: List<ChartOfAccount> = emptyList(),
@@ -86,6 +89,7 @@ class SalesViewModel @Inject constructor(
     private val customerDao: CustomerDao,
     private val warehouseDao: WarehouseDao,
     private val stockBalanceDao: StockBalanceDao,
+    private val inventoryCostLayerDao: InventoryCostLayerDao,
     private val businessProfileDao: BusinessProfileDao,
     private val accountingRepository: AccountingRepository,
     private val preferencesRepository: UserPreferencesRepository
@@ -172,6 +176,11 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             stockBalanceDao.getAllBalances().collect { balances ->
                 _uiState.update { it.copy(stockBalances = balances) }
+            }
+        }
+        viewModelScope.launch {
+            inventoryCostLayerDao.getAllCostLayers().collect { layers ->
+                _uiState.update { it.copy(costLayers = layers) }
             }
         }
 

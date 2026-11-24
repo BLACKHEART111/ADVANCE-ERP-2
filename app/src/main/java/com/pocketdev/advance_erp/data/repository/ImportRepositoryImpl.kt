@@ -380,6 +380,92 @@ class ImportRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun deletePurchaseOrder(orderId: String): Unit = database.withTransaction {
+        val order = purchaseOrderDao.getOrderById(orderId)
+            ?: throw IllegalArgumentException("Purchase Order not found: $orderId")
+        val poItems = purchaseOrderDao.getItemsForOrderSync(orderId)
+        val linkedShipments = importShipmentDao.getShipmentsByOrderIdSync(orderId)
+        val orderReceipts = warehouseReceiptDao.getReceiptsByOrderSync(orderId)
+        val shipmentReceipts = linkedShipments.flatMap { warehouseReceiptDao.getReceiptsByShipmentSync(it.id) }
+        val allReceipts = (orderReceipts + shipmentReceipts).distinctBy { it.id }
+        val completion = minimalImportDao.getCompletionRecordForOrder(orderId)
+        val hasCostLayers = linkedShipments.any { inventoryCostLayerDao.getLayersForShipmentSync(it.id).isNotEmpty() }
+
+        val canDelete = PoPackingEngine.canDeletePurchaseOrder(
+            status = order.status,
+            itemsReceivedQuantities = poItems.map { it.receivedQuantity },
+            hasPostedWarehouseReceipt = allReceipts.any { it.status == ReceiptStatus.POSTED.name } || hasCostLayers,
+            completionReceivedQuantity = completion?.receivedQuantity ?: 0
+        )
+        check(canDelete) {
+            "এই ক্রয়াদেশের পণ্য ইতোমধ্যে গুদামে রিসিভ করা হয়েছে, তাই এটি ডিলিট করা যাবে না। (Cannot delete Purchase Order ${order.poNumber}: products have already been received.)"
+        }
+
+        // 1. Reverse any posted supplier payment journals & delete linked payments
+        val linkedPayments = supplierPaymentDao.getPaymentsByOrderSync(orderId)
+        linkedPayments.forEach { payment ->
+            database.accountingDao()
+                .getActiveEntriesForReference("SUPPLIER_PAYMENT", payment.paymentNumber)
+                .forEach { je -> accountingRepository.reverseJournalEntry(je.id) }
+        }
+        supplierPaymentDao.deletePaymentsForOrder(orderId)
+
+        // 2. Revert remaining unpaid supplier payable commitment (if PO was active/confirmed)
+        if (order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
+            val netUnpaidPayableBdt = (order.totalBdtAmountMinor - order.paidBdtAmountMinor).coerceAtLeast(0L)
+            if (netUnpaidPayableBdt > 0L) {
+                supplierDao.getSupplierById(order.supplierId)?.let { sup ->
+                    val newPayable = (sup.outstandingPayableMinor - netUnpaidPayableBdt).coerceAtLeast(0L)
+                    supplierDao.updateOutstandingPayable(sup.id, newPayable)
+                }
+            }
+        }
+
+        // 3. Reverse & delete any additional product costs
+        val additionalCosts = minimalImportDao.getAdditionalCostsForOrderSync(orderId)
+        additionalCosts.forEach { ac ->
+            database.accountingDao()
+                .getActiveEntriesForReference("ADDITIONAL_COST", ac.costNumber)
+                .forEach { je -> accountingRepository.reverseJournalEntry(je.id) }
+        }
+        minimalImportDao.deleteAdditionalCostsForOrder(orderId)
+
+        // 4. Reverse & delete any import cost items for this order or its linked shipments
+        val allCosts = (
+            importCostDao.getCostItemsForOrderSync(orderId) +
+                linkedShipments.flatMap { importCostDao.getCostItemsForShipmentSync(it.id) }
+        ).distinctBy { it.id }
+        allCosts.forEach { cost ->
+            database.accountingDao()
+                .getActiveEntriesForReference("IMPORT_EXPENSE", cost.id)
+                .forEach { je -> accountingRepository.reverseJournalEntry(je.id) }
+            database.accountingDao()
+                .getActiveEntriesForReference("POST_FINALIZE_IMPORT_EXPENSE", cost.id)
+                .forEach { je -> accountingRepository.reverseJournalEntry(je.id) }
+            importCostDao.deleteCostItem(cost.id)
+        }
+
+        // 5. Delete unposted draft warehouse receipts, cartons, shipments, completion records, items, and the PO
+        allReceipts.forEach { r ->
+            warehouseReceiptDao.deleteReceiptItems(r.id)
+            warehouseReceiptDao.deleteReceipt(r.id)
+        }
+        minimalImportDao.deleteDamageRecordsForOrder(orderId)
+        minimalImportDao.deleteShortageRecordsForOrder(orderId)
+        minimalImportDao.deleteCompletionRecordsForOrder(orderId)
+        importShipmentDao.deleteCartonsForOrder(orderId)
+        linkedShipments.forEach { shp ->
+            importCostDao.deleteAllocationsForShipment(shp.id)
+            importCostDao.deleteSnapshotsForShipment(shp.id)
+            importShipmentDao.deleteCartonsForShipment(shp.id)
+            importShipmentDao.deleteSuppliersForShipment(shp.id)
+            importShipmentDao.deleteFreightRatesForShipment(shp.id)
+            importShipmentDao.deleteShipment(shp.id)
+        }
+        purchaseOrderDao.deleteItemsForOrder(orderId)
+        purchaseOrderDao.deleteOrder(orderId)
+    }
+
     // ==========================================
     // 2. Supplier Payments
     // ==========================================

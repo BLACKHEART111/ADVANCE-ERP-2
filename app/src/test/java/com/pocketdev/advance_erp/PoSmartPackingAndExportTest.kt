@@ -304,4 +304,76 @@ class PoSmartPackingAndExportTest {
         assertEquals(1400, evaSummary.totalQuantity)
         assertEquals(BigDecimal("5370.00"), evaSummary.totalAmountMajor)
     }
+
+    @Test
+    fun scenario15_onlyReceivedPoCannotBeDeletedWhileAllUnreceivedPoStatusesCanBeDeleted() {
+        val unreceivedStatuses = listOf(
+            "DRAFT",
+            "CONFIRMED",
+            "PARTIALLY_PAID",
+            "PAID",
+            "SHIPPED",
+            "ACTUAL_COST_FINALIZED",
+            "CANCELLED"
+        )
+        unreceivedStatuses.forEach { status ->
+            assertTrue(
+                "Expected $status PO with 0 received qty to be deletable",
+                PoPackingEngine.canDeletePurchaseOrder(
+                    status = status,
+                    itemsReceivedQuantities = listOf(0, 0),
+                    hasPostedWarehouseReceipt = false,
+                    completionReceivedQuantity = 0
+                )
+            )
+        }
+
+        // Completed with 0 received qty is also deletable
+        assertTrue(
+            PoPackingEngine.canDeletePurchaseOrder(
+                status = "COMPLETED",
+                itemsReceivedQuantities = listOf(0),
+                hasPostedWarehouseReceipt = false,
+                completionReceivedQuantity = 0
+            )
+        )
+
+        // Received or partially received POs must be blocked
+        assertFalse(
+            PoPackingEngine.canDeletePurchaseOrder(
+                status = "RECEIVED",
+                itemsReceivedQuantities = listOf(0),
+                hasPostedWarehouseReceipt = false
+            )
+        )
+        assertFalse(
+            PoPackingEngine.canDeletePurchaseOrder(
+                status = "PARTIALLY_RECEIVED",
+                itemsReceivedQuantities = listOf(0),
+                hasPostedWarehouseReceipt = false
+            )
+        )
+        assertFalse(
+            PoPackingEngine.canDeletePurchaseOrder(
+                status = "CONFIRMED",
+                itemsReceivedQuantities = listOf(0, 50),
+                hasPostedWarehouseReceipt = false
+            )
+        )
+        assertFalse(
+            PoPackingEngine.canDeletePurchaseOrder(
+                status = "SHIPPED",
+                itemsReceivedQuantities = listOf(0),
+                hasPostedWarehouseReceipt = true
+            )
+        )
+        assertFalse(
+            PoPackingEngine.canDeletePurchaseOrder(
+                status = "COMPLETED",
+                itemsReceivedQuantities = listOf(0),
+                hasPostedWarehouseReceipt = false,
+                completionReceivedQuantity = 100
+            )
+        )
+    }
 }

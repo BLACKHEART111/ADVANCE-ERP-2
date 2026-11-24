@@ -156,6 +156,7 @@ fun PurchaseOrderDetailDialog(
     onCompletePo: (order: PurchaseOrder) -> Unit = {},
     onSharePdf: (order: PurchaseOrder) -> Unit,
     onCancelPo: (orderId: String, reason: String?) -> Unit,
+    onDeletePo: ((orderId: String) -> Unit)? = null,
     onDuplicatePo: ((orderId: String) -> Unit)? = null,
     onEditFullPo: ((order: PurchaseOrder) -> Unit)? = null,
     onSelectShipment: ((ImportShipment) -> Unit)? = null,
@@ -174,6 +175,7 @@ fun PurchaseOrderDetailDialog(
     val isBangla = language == AppLanguage.BANGLA
     val productMap = remember(products) { products.associateBy { it.id } }
     var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeletePoConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var cancelReason by rememberSaveable { mutableStateOf("") }
     var showEditPackingDialog by rememberSaveable { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<PurchaseOrderItem?>(null) }
@@ -253,6 +255,14 @@ fun PurchaseOrderDetailDialog(
             shipments.all { it.shipmentNumber.startsWith("BATCH-") && it.status == "DRAFT" } &&
             receipts.isEmpty()
 
+    val isOrderReceived = !PoPackingEngine.canDeletePurchaseOrder(
+        status = order.status,
+        itemsReceivedQuantities = items.map { it.receivedQuantity },
+        hasPostedWarehouseReceipt = receipts.any { it.status == "POSTED" },
+        completionReceivedQuantity = completionRecord?.receivedQuantity ?: 0
+    )
+    val canDeletePo = onDeletePo != null && !isOrderReceived
+
     val isCostFinalized = order.isActualCostFinalized || order.status == PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name
 
     val navigateTab=com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate.current
@@ -264,6 +274,15 @@ fun PurchaseOrderDetailDialog(
                     PoTopBar(if(isBangla) "PO বিস্তারিত" else "PO details",onBack=onDismiss,actions={
                         if(onEditFullPo!=null && order.status !in setOf("COMPLETED","CANCELLED")) IconButton(onClick={onEditFullPo(order)}) { Icon(Icons.Outlined.Edit,if(isBangla) "সম্পাদনা" else "Edit") }
                         IconButton(onClick={onSharePdf(order)}) { Icon(Icons.Outlined.Print,if(isBangla) "PDF প্রিন্ট / শেয়ার" else "Print / share PDF") }
+                        if (canDeletePo) {
+                            IconButton(onClick = { showDeletePoConfirmDialog = true }) {
+                                Icon(
+                                    Icons.Outlined.Delete,
+                                    contentDescription = if (isBangla) "PO ডিলিট করুন" else "Delete PO",
+                                    tint = StatusError
+                                )
+                            }
+                        }
                         IconButton(onClick={showLifecycleActions=!showLifecycleActions}) { Icon(Icons.Outlined.MoreVert,if(isBangla) "আরও কার্যক্রম" else "More actions") }
                     })
                 }
@@ -468,7 +487,36 @@ fun PurchaseOrderDetailDialog(
                                 if(order.status !in setOf("DRAFT","CANCELLED","COMPLETED")) PoDetailAction(if(isBangla) "রিসিভ করুন" else "Receive",Icons.Outlined.LocalShipping,Modifier.weight(1f)){onReceiveProducts(order)}
                                 PoDetailAction(if(isBangla) "PDF প্রিন্ট/শেয়ার" else "PDF / Share",Icons.Outlined.PictureAsPdf,Modifier.weight(1f)){onSharePdf(order)}
                             }
-                            TextButton(onClick={showLifecycleActions=!showLifecycleActions}) {Text(if(isBangla) "অর্ডারের সব কার্যক্রম" else "All order operations")}
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(onClick = { showLifecycleActions = !showLifecycleActions }) {
+                                    Text(if (isBangla) "অর্ডারের সব কার্যক্রম" else "All order operations")
+                                }
+                                if (canDeletePo) {
+                                    OutlinedButton(
+                                        onClick = { showDeletePoConfirmDialog = true },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusError),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (isBangla) "PO ডিলিট করুন" else "Delete PO",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                } else if (onDeletePo != null && isOrderReceived) {
+                                    Text(
+                                        text = if (isBangla) "পণ্য রিসিভ হওয়ায় এই PO ডিলিট করা যাবে না" else "Received PO cannot be deleted",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
                         }
                     }
                     if(detailTab==0) {
@@ -1819,6 +1867,27 @@ fun PurchaseOrderDetailDialog(
                                 }
                             }
 
+                            if (canDeletePo) {
+                                OutlinedButton(
+                                    onClick = { showDeletePoConfirmDialog = true },
+                                    modifier = Modifier
+                                        .widthIn(min = 104.dp)
+                                        .defaultMinSize(minHeight = 48.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusError),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isBangla) "PO ডিলিট" else "Delete PO",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
                             if (!hasPrimaryActions) {
                                 Button(
                                     onClick = onDismiss,
@@ -1916,6 +1985,47 @@ fun PurchaseOrderDetailDialog(
             dismissButton = {
                 TextButton(onClick = { showCancelConfirmDialog = false }) {
                     Text(text = if (isBangla) "না" else "Dismiss")
+                }
+            }
+        )
+    }
+
+    // Delete PO Confirmation Alert (allowed for any non-received PO)
+    if (showDeletePoConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeletePoConfirmDialog = false },
+            title = {
+                Text(
+                    text = if (isBangla) "ক্রয়াদেশ ডিলিট নিশ্চিতকরণ" else "Delete Purchase Order?",
+                    fontWeight = FontWeight.Bold,
+                    color = StatusError
+                )
+            },
+            text = {
+                Text(
+                    text = if (isBangla)
+                        "আপনি কি নিশ্চিত যে ক্রয়াদেশ ${order.poNumber} স্থায়ীভাবে ডিলিট করতে চান? এর সাথে যুক্ত প্যাকিং ও হিসাব প্রত্যাহার করা হবে।"
+                    else
+                        "Are you sure you want to permanently delete Purchase Order ${order.poNumber}? Linked packing and payable records will be removed.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeletePoConfirmDialog = false
+                        onDeletePo?.invoke(order.id)
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusError)
+                ) {
+                    Text(text = if (isBangla) "হ্যাঁ, ডিলিট করুন" else "Yes, Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeletePoConfirmDialog = false }) {
+                    Text(text = if (isBangla) "না" else "Cancel")
                 }
             }
         )

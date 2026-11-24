@@ -74,4 +74,16 @@ interface MinimalImportDao {
 
     @Query("SELECT * FROM purchase_completion_records WHERE purchaseOrderId = :orderId ORDER BY completedAt DESC, id DESC LIMIT 1")
     fun getCompletionRecordForOrderFlow(orderId: String): Flow<PurchaseCompletionRecord?>
+
+    @Query("DELETE FROM damage_records WHERE purchaseOrderId = :orderId")
+    suspend fun deleteDamageRecordsForOrder(orderId: String)
+
+    @Query("DELETE FROM shortage_records WHERE purchaseOrderId = :orderId")
+    suspend fun deleteShortageRecordsForOrder(orderId: String)
+
+    @Query("DELETE FROM additional_product_costs WHERE purchaseOrderId = :orderId")
+    suspend fun deleteAdditionalCostsForOrder(orderId: String)
+
+    @Query("DELETE FROM purchase_completion_records WHERE purchaseOrderId = :orderId")
+    suspend fun deleteCompletionRecordsForOrder(orderId: String)
 }

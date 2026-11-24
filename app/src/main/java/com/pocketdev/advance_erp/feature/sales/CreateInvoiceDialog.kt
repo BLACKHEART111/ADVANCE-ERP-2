@@ -51,6 +51,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -93,6 +94,13 @@ import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
 import com.pocketdev.advance_erp.data.entity.Product
+import com.pocketdev.advance_erp.core.util.firstInStockProduct
+import com.pocketdev.advance_erp.core.util.firstInStockVariant
+import com.pocketdev.advance_erp.core.util.resolveUnitCostMinorForSale
+import com.pocketdev.advance_erp.core.util.sellableStockForProduct
+import com.pocketdev.advance_erp.core.util.sellableStockForSelection
+import com.pocketdev.advance_erp.core.util.sellableStockForVariant
+import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Warehouse
@@ -127,6 +135,7 @@ fun CreateInvoiceDialog(
     products: List<Product>,
     variants: List<ProductVariant> = emptyList(),
     stockBalances: List<StockBalance> = emptyList(),
+    costLayers: List<InventoryCostLayer> = emptyList(),
     liquidAccounts: List<ChartOfAccount> = emptyList(),
     customerSummary: CustomerSummary? = null,
     isBangla: Boolean,
@@ -151,7 +160,7 @@ fun CreateInvoiceDialog(
     var paymentMethod by rememberSaveable { mutableStateOf("CASH") } // CASH, BANK, MFS, CREDIT
     var selectedPaymentAccountId by rememberSaveable { mutableStateOf("coa-1010") }
     var notes by rememberSaveable { mutableStateOf("") }
-    var showCostAndProfit by rememberSaveable { mutableStateOf(false) }
+    var showCostAndProfit by rememberSaveable { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Option C Credit Limit Control State
@@ -173,21 +182,52 @@ fun CreateInvoiceDialog(
         products.associateBy { it.id }
     }
 
+    fun createDefaultItemDraft(warehouseId: String): ItemDraftState {
+        val p = firstInStockProduct(stockBalances, warehouseId, products, variantsByProduct)
+            ?: return ItemDraftState(productId = "", variantId = null, quantityStr = "1", unitPriceStr = "0.00")
+        val pVars = variantsByProduct[p.id].orEmpty()
+        val firstV = if (pVars.isNotEmpty()) firstInStockVariant(stockBalances, warehouseId, p.id, pVars) else null
+        val initialPriceMinor = firstV?.variantPriceMinor ?: p.sellingPriceMinor
+        return ItemDraftState(
+            productId = p.id,
+            variantId = firstV?.id,
+            quantityStr = "1",
+            unitPriceStr = BigDecimal(initialPriceMinor).divide(BigDecimal(100)).toPlainString()
+        )
+    }
+
     val itemsList = remember {
         mutableStateListOf<ItemDraftState>().apply {
             if (products.isNotEmpty()) {
-                val p = products.first()
-                val prodVariants = variantsByProduct[p.id] ?: emptyList()
-                val firstVariant = prodVariants.firstOrNull()
-                val initialPriceMinor = firstVariant?.variantPriceMinor ?: p.sellingPriceMinor
-                add(
-                    ItemDraftState(
-                        productId = p.id,
-                        variantId = firstVariant?.id,
-                        quantityStr = "1",
-                        unitPriceStr = BigDecimal(initialPriceMinor).divide(BigDecimal(100)).toPlainString()
-                    )
-                )
+                add(createDefaultItemDraft(selectedWarehouseId))
+            }
+        }
+    }
+
+    LaunchedEffect(selectedWarehouseId, stockBalances, products, variants, warehouses) {
+        if (selectedWarehouseId.isBlank() && warehouses.isNotEmpty()) {
+            selectedWarehouseId = warehouses.first().id
+        }
+        val whId = selectedWarehouseId
+        if (whId.isBlank()) return@LaunchedEffect
+        itemsList.forEach { itemDraft ->
+            if (itemDraft.productId.isBlank()) return@forEach
+            val pVars = variantsByProduct[itemDraft.productId].orEmpty()
+            if (sellableStockForProduct(stockBalances, whId, itemDraft.productId, pVars) <= 0) {
+                itemDraft.productId = ""
+                itemDraft.variantId = null
+                itemDraft.unitPriceStr = "0.00"
+            } else if (pVars.isNotEmpty()) {
+                val curVarId = itemDraft.variantId
+                val curVarInStock = curVarId != null &&
+                    sellableStockForVariant(stockBalances, whId, itemDraft.productId, curVarId) > 0
+                if (!curVarInStock) {
+                    val nextV = firstInStockVariant(stockBalances, whId, itemDraft.productId, pVars)
+                    itemDraft.variantId = nextV?.id
+                    if (nextV != null) {
+                        itemDraft.unitPriceStr = BigDecimal(nextV.variantPriceMinor).divide(BigDecimal(100)).toPlainString()
+                    }
+                }
             }
         }
     }
@@ -232,16 +272,14 @@ fun CreateInvoiceDialog(
     val dueAmountMinor = maxOf(0L, grandTotalMinor - currentPaidMinor)
 
     // Helper: Compute sellable stock for (warehouse, product, variant)
-    fun getSellableStock(productId: String, variantId: String?): Int {
-        if (selectedWarehouseId.isBlank()) return 0
-        val balance = if (variantId != null) {
-            stockBalances.find { it.warehouseId == selectedWarehouseId && it.productId == productId && it.variantId == variantId }
-                ?: stockBalances.find { it.warehouseId == selectedWarehouseId && it.productId == productId }
-        } else {
-            stockBalances.find { it.warehouseId == selectedWarehouseId && it.productId == productId }
-        }
-        return maxOf(0, (balance?.quantity ?: 0) - (balance?.reservedQuantity ?: 0))
-    }
+    fun getSellableStock(productId: String, variantId: String?): Int =
+        sellableStockForSelection(
+            stockBalances = stockBalances,
+            warehouseId = selectedWarehouseId,
+            productId = productId,
+            variantId = variantId,
+            productVariants = variantsByProduct[productId].orEmpty()
+        )
 
     fun buildInvoiceDraft(): SalesInvoiceDraft? {
         if (selectedCustomerId.isBlank() && pendingNewCustomerDraft == null) {
@@ -254,6 +292,14 @@ fun CreateInvoiceDialog(
         }
         if (itemsList.isEmpty()) {
             errorMessage = if (isBangla) "কমপক্ষে একটি পণ্য যোগ করুন" else "Please add at least one item"
+            return null
+        }
+        if (itemsList.any { it.productId.isBlank() }) {
+            errorMessage = if (isBangla) "অনুগ্রহ করে স্টকে থাকা পণ্য নির্বাচন করুন" else "Please select an in-stock product for every row"
+            return null
+        }
+        if (itemsList.any { getSellableStock(it.productId, it.variantId) <= 0 }) {
+            errorMessage = if (isBangla) "স্টক আউট পণ্য বিক্রয় করা যাবে না" else "Cannot sell out-of-stock item"
             return null
         }
 
@@ -510,18 +556,7 @@ fun CreateInvoiceDialog(
                             Button(
                                 onClick = {
                                     if (products.isNotEmpty()) {
-                                        val p = products.first()
-                                        val pVars = variantsByProduct[p.id] ?: emptyList()
-                                        val firstVar = pVars.firstOrNull()
-                                        val initPrice = firstVar?.variantPriceMinor ?: p.sellingPriceMinor
-                                        itemsList.add(
-                                            ItemDraftState(
-                                                productId = p.id,
-                                                variantId = firstVar?.id,
-                                                quantityStr = "1",
-                                                unitPriceStr = BigDecimal(initPrice).divide(BigDecimal(100)).toPlainString()
-                                            )
-                                        )
+                                        itemsList.add(createDefaultItemDraft(selectedWarehouseId))
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
@@ -601,7 +636,8 @@ fun CreateInvoiceDialog(
                                     onExpandedChange = { productDropdown = it }
                                 ) {
                                     OutlinedTextField(
-                                        value = curProduct?.let { "${it.nameEn} [${it.baseSku}]" } ?: "Select Product",
+                                        value = curProduct?.let { "${it.nameEn} [${it.baseSku}]" }
+                                            ?: if (isBangla) "পণ্য নির্বাচন করুন" else "Select Product",
                                         onValueChange = {},
                                         readOnly = true,
                                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = productDropdown) },
@@ -618,13 +654,47 @@ fun CreateInvoiceDialog(
                                         expanded = productDropdown,
                                         onDismissRequest = { productDropdown = false }
                                     ) {
+                                        val washedColor = TextMuted.copy(alpha = 0.42f)
                                         products.forEach { prod ->
+                                            val pVars = variantsByProduct[prod.id].orEmpty()
+                                            val prodStock = sellableStockForProduct(stockBalances, selectedWarehouseId, prod.id, pVars)
+                                            val isProdInStock = prodStock > 0
                                             DropdownMenuItem(
-                                                text = { Text("${prod.nameEn} (${prod.baseSku})") },
+                                                enabled = isProdInStock,
+                                                colors = MenuDefaults.itemColors(
+                                                    textColor = TextPrimary,
+                                                    disabledTextColor = washedColor
+                                                ),
+                                                text = {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "${prod.nameEn} (${prod.baseSku})",
+                                                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                                            color = if (isProdInStock) TextPrimary else washedColor,
+                                                            fontWeight = if (isProdInStock) FontWeight.Medium else FontWeight.Normal
+                                                        )
+                                                        Text(
+                                                            text = if (isProdInStock) {
+                                                                if (isBangla) "স্টক: $prodStock" else "Stock: $prodStock"
+                                                            } else {
+                                                                if (isBangla) "স্টক নেই" else "Stock Out"
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = if (isProdInStock) SecondaryTeal else washedColor,
+                                                            fontWeight = if (isProdInStock) FontWeight.SemiBold else FontWeight.Normal
+                                                        )
+                                                    }
+                                                },
                                                 onClick = {
+                                                    if (!isProdInStock) return@DropdownMenuItem
                                                     itemDraft.productId = prod.id
-                                                    val pVars = variantsByProduct[prod.id] ?: emptyList()
-                                                    val firstV = pVars.firstOrNull()
+                                                    val firstV = if (pVars.isNotEmpty()) {
+                                                        firstInStockVariant(stockBalances, selectedWarehouseId, prod.id, pVars)
+                                                    } else null
                                                     itemDraft.variantId = firstV?.id
                                                     val priceMinor = firstV?.variantPriceMinor ?: prod.sellingPriceMinor
                                                     itemDraft.unitPriceStr = BigDecimal(priceMinor).divide(BigDecimal(100)).toPlainString()
@@ -644,7 +714,7 @@ fun CreateInvoiceDialog(
                                     ) {
                                         val variantTitle = curVariant?.let { v ->
                                             listOfNotNull(v.color, v.size, v.sku).joinToString(" - ")
-                                        } ?: "Select Variant"
+                                        } ?: if (isBangla) "ভেরিয়েন্ট নির্বাচন করুন" else "Select Variant"
                                         OutlinedTextField(
                                             value = variantTitle,
                                             onValueChange = {},
@@ -664,22 +734,48 @@ fun CreateInvoiceDialog(
                                             expanded = variantDropdown,
                                             onDismissRequest = { variantDropdown = false }
                                         ) {
+                                            val washedColor = TextMuted.copy(alpha = 0.42f)
                                             for (v in prodVariants) {
+                                                val varStock = sellableStockForVariant(stockBalances, selectedWarehouseId, itemDraft.productId, v.id)
+                                                val isVarInStock = varStock > 0
                                                 DropdownMenuItem(
+                                                    enabled = isVarInStock,
+                                                    colors = MenuDefaults.itemColors(
+                                                        textColor = TextPrimary,
+                                                        disabledTextColor = washedColor
+                                                    ),
                                                     text = {
-                                                        Column {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                                                Text(
+                                                                    text = listOfNotNull(v.color, v.size, v.sku).joinToString(" • "),
+                                                                    fontWeight = if (isVarInStock) FontWeight.Bold else FontWeight.Normal,
+                                                                    color = if (isVarInStock) TextPrimary else washedColor
+                                                                )
+                                                                Text(
+                                                                    text = "Price: ৳" + Formatters.formatMinorUnit(v.variantPriceMinor),
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = if (isVarInStock) TextSecondary else TextMuted.copy(alpha = 0.35f)
+                                                                )
+                                                            }
                                                             Text(
-                                                                text = listOfNotNull(v.color, v.size, v.sku).joinToString(" • "),
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                            Text(
-                                                                text = "Price: ৳" + Formatters.formatMinorUnit(v.variantPriceMinor),
-                                                                style = MaterialTheme.typography.bodySmall,
-                                                                color = TextSecondary
+                                                                text = if (isVarInStock) {
+                                                                    if (isBangla) "স্টক: $varStock" else "Stock: $varStock"
+                                                                } else {
+                                                                    if (isBangla) "স্টক নেই" else "Stock Out"
+                                                                },
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = if (isVarInStock) SecondaryTeal else washedColor,
+                                                                fontWeight = if (isVarInStock) FontWeight.SemiBold else FontWeight.Normal
                                                             )
                                                         }
                                                     },
                                                     onClick = {
+                                                        if (!isVarInStock) return@DropdownMenuItem
                                                         itemDraft.variantId = v.id
                                                         itemDraft.unitPriceStr = BigDecimal(v.variantPriceMinor).divide(BigDecimal(100)).toPlainString()
                                                         variantDropdown = false
@@ -750,11 +846,14 @@ fun CreateInvoiceDialog(
                                 }
 
                                 if (showCostAndProfit && curProduct != null) {
-                                    val unitCostMinor = if (curVariant != null && curVariant.variantCostMinor > 0L) {
-                                        curVariant.variantCostMinor
-                                    } else {
-                                        curProduct.purchasePriceMinor
-                                    }
+                                    val unitCostMinor = resolveUnitCostMinorForSale(
+                                        layers = costLayers,
+                                        productId = curProduct.id,
+                                        variantId = curVariant?.id,
+                                        warehouseId = selectedWarehouseId,
+                                        variantCostMinor = curVariant?.variantCostMinor,
+                                        productPurchasePriceMinor = curProduct.purchasePriceMinor
+                                    )
                                     val qty = itemDraft.quantityStr.toIntOrNull() ?: 0
                                     val priceMinor = runCatching { Money.parseFromString(itemDraft.unitPriceStr).minorUnits }.getOrDefault(0L)
                                     val discMinor = runCatching { Money.parseFromString(itemDraft.discountStr).minorUnits }.getOrDefault(0L)
@@ -1028,7 +1127,18 @@ fun CreateInvoiceDialog(
                                         val prod = productsMap[item.productId]
                                         val pVars = variantsByProduct[item.productId] ?: emptyList()
                                         val curV = pVars.find { it.id == item.variantId }
-                                        val unitCost = if (curV != null && curV.variantCostMinor > 0L) curV.variantCostMinor else (prod?.purchasePriceMinor ?: 0L)
+                                        val unitCost = if (prod != null) {
+                                            resolveUnitCostMinorForSale(
+                                                layers = costLayers,
+                                                productId = prod.id,
+                                                variantId = curV?.id,
+                                                warehouseId = selectedWarehouseId,
+                                                variantCostMinor = curV?.variantCostMinor,
+                                                productPurchasePriceMinor = prod.purchasePriceMinor
+                                            )
+                                        } else {
+                                            0L
+                                        }
                                         val q = item.quantityStr.toIntOrNull() ?: 0
                                         unitCost * q
                                     }
