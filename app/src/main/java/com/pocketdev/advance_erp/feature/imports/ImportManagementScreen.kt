@@ -1096,6 +1096,7 @@ fun ImportManagementScreen(
                 viewModel.reverseSupplierPayment(paymentId)
             },
             freightPayments = uiState.selectedPoFreightPayments,
+            ledgerAccruedFreightBillMinor = uiState.selectedPoAccruedFreightBillMinor,
             liquidAccounts = uiState.liquidAccounts,
             accountBalances = uiState.liquidAccountBalances,
             onRecordFreightPayment = { ordId, accId, amtMinor, pDate, nts ->

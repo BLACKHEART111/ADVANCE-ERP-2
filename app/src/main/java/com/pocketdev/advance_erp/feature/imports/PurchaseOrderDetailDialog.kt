@@ -166,6 +166,7 @@ fun PurchaseOrderDetailDialog(
     onDeletePo: ((orderId: String) -> Unit)? = null,
     onReversePayment: ((paymentId: String) -> Unit)? = null,
     freightPayments: List<PoFreightPaymentRecord> = emptyList(),
+    ledgerAccruedFreightBillMinor: Long? = null,
     liquidAccounts: List<ChartOfAccount> = emptyList(),
     accountBalances: Map<String, Long> = emptyMap(),
     onRecordFreightPayment: ((orderId: String, paymentAccountId: String, amountBdtMinor: Long, paymentDate: Long, notes: String?) -> Unit)? = null,
@@ -293,6 +294,7 @@ fun PurchaseOrderDetailDialog(
         products,
         variants,
         snapshots,
+        ledgerAccruedFreightBillMinor,
         isBangla,
         isCostFinalized
     ) {
@@ -308,15 +310,17 @@ fun PurchaseOrderDetailDialog(
             variants = variants,
             snapshots = snapshots,
             isBangla = isBangla,
-            isCostFinalized = isCostFinalized
+            isCostFinalized = isCostFinalized,
+            ledgerAccruedImportMinor = ledgerAccruedFreightBillMinor
         )
     }
-    val freightPayableSummary = remember(landedSummary, costItems, additionalCosts, freightPayments) {
+    val freightPayableSummary = remember(landedSummary, costItems, additionalCosts, freightPayments, ledgerAccruedFreightBillMinor) {
         calculatePoFreightPayableSummary(
             landedSummary = landedSummary,
             costItems = costItems,
             additionalCosts = additionalCosts,
-            paidFreightBillMinor = freightPayments.sumOf { it.amountBdtMinor }
+            paidFreightBillMinor = freightPayments.sumOf { it.amountBdtMinor },
+            ledgerAccruedBillMinor = ledgerAccruedFreightBillMinor
         )
     }
 
@@ -369,9 +373,26 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
                     item {
-                        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                            val tabs=if(isBangla)listOf("সাধারণ","পণ্য (${items.size})","প্যাকিং ($displayCartons)","খরচ","পেমেন্ট")else listOf("General","Products (${items.size})","Packing ($displayCartons)","Costs","Payments")
-                            items(tabs.size) { index -> androidx.compose.material3.FilterChip(selected=detailTab==index,onClick={detailTab=index},label={Text(tabs[index])}) }
+                        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            val hasUnpaidDues = (remainingBalanceMinor > 0L || freightPayableSummary.remainingFreightBillMinor > 0L) &&
+                                order.status != PurchaseOrderStatus.CANCELLED.name
+                            val payLabel = if (isBangla) {
+                                if (hasUnpaidDues) "পেমেন্ট •" else "পেমেন্ট"
+                            } else {
+                                if (hasUnpaidDues) "Payments •" else "Payments"
+                            }
+                            val tabs = if (isBangla) {
+                                listOf("সাধারণ", "পণ্য (${items.size})", "প্যাকিং ($displayCartons)", "খরচ", payLabel)
+                            } else {
+                                listOf("General", "Products (${items.size})", "Packing ($displayCartons)", "Costs", payLabel)
+                            }
+                            items(tabs.size) { index ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = detailTab == index,
+                                    onClick = { detailTab = index },
+                                    label = { Text(tabs[index], maxLines = 1, style = MaterialTheme.typography.labelMedium) }
+                                )
+                            }
                         }
                     }
                     if(detailTab==0) item {
@@ -411,10 +432,91 @@ fun PurchaseOrderDetailDialog(
                                 categoryBreakdowns = landedSummary.categoryBreakdowns,
                                 productBreakdowns = landedSummary.productBreakdowns
                             )
-                            Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                                if(remainingBalanceMinor>0 && order.status!="CANCELLED") PoDetailAction(if(isBangla) "পেমেন্ট রেকর্ড" else "Payment",Icons.Outlined.Payment,Modifier.weight(1f)){onMakePayment(order)}
-                                if(order.status !in setOf("DRAFT","CANCELLED","COMPLETED")) PoDetailAction(if(isBangla) "রিসিভ করুন" else "Receive",Icons.Outlined.LocalShipping,Modifier.weight(1f)){onReceiveProducts(order)}
-                                PoDetailAction(if(isBangla) "PDF প্রিন্ট/শেয়ার" else "PDF / Share",Icons.Outlined.PictureAsPdf,Modifier.weight(1f)){onSharePdf(order)}
+                            if ((freightPayableSummary.totalFreightBillMinor > 0L || freightPayments.isNotEmpty()) &&
+                                order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (freightPayableSummary.remainingFreightBillMinor > 0L) SecondaryTeal.copy(alpha = 0.08f) else StatusSuccessContainer,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (freightPayableSummary.remainingFreightBillMinor > 0L) SecondaryTeal.copy(alpha = 0.35f) else StatusSuccess.copy(alpha = 0.35f)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                            Text(
+                                                text = if (isBangla) "ফ্রেইট ফরোয়ার্ডার বিল (হিসাব ২০২০)" else "Freight Forwarder Bill (2020)",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary
+                                            )
+                                            Text(
+                                                text = if (isBangla) {
+                                                    "মোট: ৳${Formatters.formatMinorUnit(freightPayableSummary.totalFreightBillMinor)} • পরিশোধিত: ৳${Formatters.formatMinorUnit(freightPayableSummary.paidFreightBillMinor)} • বকেয়া: ৳${Formatters.formatMinorUnit(freightPayableSummary.remainingFreightBillMinor)}"
+                                                } else {
+                                                    "Bill: ৳${Formatters.formatMinorUnit(freightPayableSummary.totalFreightBillMinor)} • Paid: ৳${Formatters.formatMinorUnit(freightPayableSummary.paidFreightBillMinor)} • Due: ৳${Formatters.formatMinorUnit(freightPayableSummary.remainingFreightBillMinor)}"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (freightPayableSummary.remainingFreightBillMinor > 0L) StatusError else StatusSuccess,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        if (onRecordFreightPayment != null && freightPayableSummary.remainingFreightBillMinor > 0L) {
+                                            Button(
+                                                onClick = { showFreightPaymentDialog = true },
+                                                colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                            ) {
+                                                Icon(Icons.Outlined.LocalShipping, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (isBangla) "ফ্রেইট পেমেন্ট" else "Pay Freight",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        } else {
+                                            Surface(
+                                                onClick = { detailTab = 4 },
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = StatusSuccess.copy(alpha = 0.14f)
+                                            ) {
+                                                Text(
+                                                    text = if (isBangla) "পরিশোধিত ✓" else "Paid ✓",
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = StatusSuccess
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            val isFullyReceived = order.status == PurchaseOrderStatus.RECEIVED.name ||
+                                (totalOrderedQuantity > 0 && totalReceivedQuantity >= totalOrderedQuantity)
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                if (remainingBalanceMinor > 0 && order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
+                                    PoDetailAction(if (isBangla) "সাপ্লায়ার পেমেন্ট" else "Supplier Pay", Icons.Outlined.Payment, Modifier.weight(1f)) { onMakePayment(order) }
+                                }
+                                if (onRecordFreightPayment != null &&
+                                    freightPayableSummary.remainingFreightBillMinor > 0L &&
+                                    order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)
+                                ) {
+                                    PoDetailAction(if (isBangla) "ফ্রেইট পেমেন্ট" else "Pay Freight", Icons.Outlined.LocalShipping, Modifier.weight(1f)) { showFreightPaymentDialog = true }
+                                }
+                                if (!isFullyReceived && order.status !in setOf("DRAFT", "CANCELLED", "COMPLETED")) {
+                                    PoDetailAction(if (isBangla) "রিসিভ করুন" else "Receive", Icons.Outlined.Warehouse, Modifier.weight(1f)) { onReceiveProducts(order) }
+                                }
+                                PoDetailAction(if (isBangla) "PDF প্রিন্ট/শেয়ার" else "PDF / Share", Icons.Outlined.PictureAsPdf, Modifier.weight(1f)) { onSharePdf(order) }
                             }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

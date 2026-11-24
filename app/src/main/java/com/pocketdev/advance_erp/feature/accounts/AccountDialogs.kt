@@ -1161,7 +1161,8 @@ fun AccountDetailDialog(
     onEdit: () -> Unit,
     onDeleteAccount: ((onError: (String) -> Unit) -> Unit)? = null,
     onDepositCapital: (() -> Unit)? = null,
-    onPayAccruedFreight: (() -> Unit)? = null
+    onPayAccruedFreight: (() -> Unit)? = null,
+    onWithdrawOrProfit: (() -> Unit)? = null
 ) {
     val isBangla = language == AppLanguage.BANGLA
     val netBalanceMinor = if (account.normalBalance == NormalBalance.DEBIT.name) {
@@ -1340,6 +1341,7 @@ fun AccountDetailDialog(
                     }
                 }
 
+                val isInvestorEquity = account.accountType == AccountType.EQUITY.name && account.accountCode != "3020"
                 if (account.liquidKind != null && onDepositCapital != null) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
@@ -1354,6 +1356,41 @@ fun AccountDetailDialog(
                             text = if (isBangla) "এই হিসাবে মূলধন / টাকা জমা করুন" else "Add Capital / Deposit to Account",
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                } else if (isInvestorEquity && (onDepositCapital != null || onWithdrawOrProfit != null)) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (onDepositCapital != null) {
+                            Button(
+                                onClick = onDepositCapital,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(
+                                    text = if (isBangla) "মূলধন জমা" else "Deposit",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        if (onWithdrawOrProfit != null) {
+                            Button(
+                                onClick = onWithdrawOrProfit,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(
+                                    text = if (isBangla) "উত্তোলন / মুনাফা" else "Withdraw / Profit",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
                     }
                 }
                 if (account.id == "coa-2020" && netBalanceMinor > 0L && onPayAccruedFreight != null) {
@@ -1443,15 +1480,226 @@ private fun DetailRow(label: String, value: String) {
 }
 
 @Composable
+private fun LiquidAccountSelectorList(
+    accounts: List<ChartOfAccount>,
+    selectedAccountId: String,
+    trialBalanceMap: Map<String, TrialBalanceItem>,
+    accentColor: Color,
+    isBangla: Boolean,
+    onSelect: (String) -> Unit
+) {
+    val lang = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        accounts.forEach { acc ->
+            val isSel = acc.id == selectedAccountId
+            val tb = trialBalanceMap[acc.id]
+            val bal = (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onSelect(acc.id) },
+                shape = RoundedCornerShape(10.dp),
+                color = if (isSel) accentColor.copy(alpha = 0.12f) else ERPBackground,
+                border = BorderStroke(1.dp, if (isSel) accentColor else ERPDivider)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = when (acc.liquidKind) {
+                                LiquidAccountKind.CASH -> Icons.Outlined.AccountBalanceWallet
+                                LiquidAccountKind.BANK -> Icons.Outlined.AccountBalance
+                                LiquidAccountKind.MOBILE_BANKING -> Icons.Outlined.PhoneAndroid
+                                null -> Icons.Outlined.AccountBalanceWallet
+                            },
+                            contentDescription = null,
+                            tint = if (isSel) accentColor else TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "${acc.accountCode} • ${if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${if (isBangla) "বর্তমান ব্যালেন্স:" else "Current:"} ${Formatters.formatMoney(bal, CurrencyCode.BDT, lang)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (bal < 0L) StatusError else TextSecondary,
+                                fontWeight = if (bal < 0L) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                    if (isSel) {
+                        Icon(Icons.Outlined.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InvestorEquitySelectorSection(
+    title: String,
+    equityAccounts: List<ChartOfAccount>,
+    selectedEquityId: String,
+    trialBalanceMap: Map<String, TrialBalanceItem>,
+    accentColor: Color,
+    isBangla: Boolean,
+    onSelect: (String) -> Unit,
+    onCreateInvestor: ((nameEn: String, nameBn: String, onCreated: (String) -> Unit) -> Unit)?
+) {
+    val lang = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH
+    var showAddInvestor by rememberSaveable { mutableStateOf(false) }
+    var newInvestorName by rememberSaveable { mutableStateOf("") }
+    var isCreating by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = TextSecondary,
+            modifier = Modifier.weight(1f)
+        )
+        if (onCreateInvestor != null) {
+            TextButton(
+                onClick = { showAddInvestor = !showAddInvestor },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = accentColor)
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = if (isBangla) "নতুন ইনভেস্টর" else "New Investor",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
+                )
+            }
+        }
+    }
+
+    if (showAddInvestor && onCreateInvestor != null) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = ERPBackground,
+            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = newInvestorName,
+                    onValueChange = { newInvestorName = it },
+                    label = { Text(if (isBangla) "ইনভেস্টরের নাম * (যেমন: রহিম / Karim)" else "Investor Name * (e.g. Karim)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { showAddInvestor = false; newInvestorName = "" }) {
+                        Text(if (isBangla) "বাতিল" else "Cancel", fontSize = 11.sp)
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Button(
+                        enabled = newInvestorName.trim().isNotBlank() && !isCreating,
+                        onClick = {
+                            val clean = newInvestorName.trim()
+                            isCreating = true
+                            onCreateInvestor(clean, clean) { createdId ->
+                                onSelect(createdId)
+                                newInvestorName = ""
+                                showAddInvestor = false
+                                isCreating = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (isBangla) "যোগ ও নির্বাচন" else "Create & Select",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        equityAccounts.forEach { acc ->
+            val isSel = acc.id == selectedEquityId
+            val tb = trialBalanceMap[acc.id]
+            val capBal = (tb?.totalCreditMinor ?: 0L) - (tb?.totalDebitMinor ?: 0L)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onSelect(acc.id) },
+                shape = RoundedCornerShape(10.dp),
+                color = if (isSel) accentColor.copy(alpha = 0.12f) else ERPBackground,
+                border = BorderStroke(1.dp, if (isSel) accentColor else ERPDivider)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "${acc.accountCode} • ${if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${if (isBangla) "বর্তমান মূলধন:" else "Current Capital:"} ${Formatters.formatMoney(capBal, CurrencyCode.BDT, lang)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (capBal > 0L) StatusSuccess else TextSecondary,
+                            fontWeight = if (capBal > 0L) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                    if (isSel) {
+                        Icon(Icons.Outlined.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun DepositCapitalDialog(
     liquidAccounts: List<ChartOfAccount>,
     trialBalanceMap: Map<String, TrialBalanceItem>,
     preselectedAccountId: String? = null,
+    equityAccounts: List<ChartOfAccount> = emptyList(),
+    preselectedEquityAccountId: String? = null,
+    onCreateInvestor: ((nameEn: String, nameBn: String, onCreated: (String) -> Unit) -> Unit)? = null,
     isBangla: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (accountId: String, amountMinor: Long, notes: String?) -> Unit
+    onConfirm: (accountId: String, equityAccountId: String, amountMinor: Long, notes: String?) -> Unit
 ) {
     val activeAccounts = remember(liquidAccounts) { liquidAccounts.filter { it.isActive } }
+    val activeEquityAccounts = remember(equityAccounts) {
+        equityAccounts.filter { it.isActive && it.accountType == AccountType.EQUITY.name && it.accountCode != "3020" }
+    }
     var selectedAccountId by remember(preselectedAccountId, activeAccounts) {
         mutableStateOf(
             preselectedAccountId?.takeIf { id -> activeAccounts.any { it.id == id } }
@@ -1459,6 +1707,26 @@ fun DepositCapitalDialog(
                 ?: activeAccounts.firstOrNull()?.id.orEmpty()
         )
     }
+    var selectedEquityId by remember(preselectedEquityAccountId) {
+        mutableStateOf(
+            preselectedEquityAccountId?.takeIf { id -> activeEquityAccounts.any { it.id == id } }
+                ?: activeEquityAccounts.find { it.id == AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID }?.id
+                ?: activeEquityAccounts.firstOrNull()?.id
+                ?: AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID
+        )
+    }
+    var pendingEquityId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeEquityAccounts) {
+        val pending = pendingEquityId
+        if (pending != null && activeEquityAccounts.any { it.id == pending }) {
+            selectedEquityId = pending
+            pendingEquityId = null
+        } else if (activeEquityAccounts.isNotEmpty() && activeEquityAccounts.none { it.id == selectedEquityId }) {
+            selectedEquityId = activeEquityAccounts.find { it.id == AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID }?.id
+                ?: activeEquityAccounts.first().id
+        }
+    }
+
     var amountStr by rememberSaveable { mutableStateOf("") }
     var notes by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -1468,6 +1736,10 @@ fun DepositCapitalDialog(
         val tb = trialBalanceMap[acc.id]
         (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
     } ?: 0L
+    val selectedEquityAcc = activeEquityAccounts.find { it.id == selectedEquityId }
+    val selectedEquityLabel = selectedEquityAcc?.let {
+        "${it.accountCode} ${if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn}"
+    } ?: if (isBangla) "৩০১০ মালিকের মূলধন" else "3010 Owner's Capital"
     val lang = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH
 
     Dialog(
@@ -1496,13 +1768,17 @@ fun DepositCapitalDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isBangla) "মূলধন / তহবিল জমা" else "Add Capital / Deposit Funds",
+                            text = if (isBangla) "মূলধন / ইনভেস্টমেন্ট জমা" else "Add Capital / Investor Deposit",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
                         Text(
-                            text = if (isBangla) "মালিকের মূলধন (৩০১০) থেকে নগদ/ব্যাংকে তহবিল যোগ" else "Credit Owner's Capital (3010) to Cash / Bank",
+                            text = if (isBangla) {
+                                "$selectedEquityLabel থেকে নগদ/ব্যাংকে তহবিল যোগ"
+                            } else {
+                                "Credit $selectedEquityLabel to Cash / Bank"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
@@ -1514,6 +1790,30 @@ fun DepositCapitalDialog(
 
                 HorizontalDivider(color = ERPDivider)
 
+                if (activeEquityAccounts.isNotEmpty() || onCreateInvestor != null) {
+                    InvestorEquitySelectorSection(
+                        title = if (isBangla) "কার মূলধন জমা হচ্ছে? (মালিক / ইনভেস্টর) *" else "Investor / Equity Account *",
+                        equityAccounts = activeEquityAccounts,
+                        selectedEquityId = selectedEquityId,
+                        trialBalanceMap = trialBalanceMap,
+                        accentColor = PrimaryPurple,
+                        isBangla = isBangla,
+                        onSelect = { id ->
+                            selectedEquityId = id
+                            errorMessage = null
+                        },
+                        onCreateInvestor = if (onCreateInvestor != null) {
+                            { nameEn, nameBn, done ->
+                                onCreateInvestor(nameEn, nameBn) { createdId ->
+                                    pendingEquityId = createdId
+                                    selectedEquityId = createdId
+                                    done(createdId)
+                                }
+                            }
+                        } else null
+                    )
+                }
+
                 Text(
                     text = if (isBangla) "কোন হিসাবে জমা হবে *" else "Deposit To Account *",
                     style = MaterialTheme.typography.labelSmall,
@@ -1521,65 +1821,17 @@ fun DepositCapitalDialog(
                     color = TextSecondary
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    activeAccounts.forEach { acc ->
-                        val isSel = acc.id == selectedAccountId
-                        val tb = trialBalanceMap[acc.id]
-                        val bal = (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    selectedAccountId = acc.id
-                                    errorMessage = null
-                                },
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isSel) SecondaryTeal.copy(alpha = 0.12f) else ERPBackground,
-                            border = BorderStroke(1.dp, if (isSel) SecondaryTeal else ERPDivider)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Icon(
-                                        imageVector = when (acc.liquidKind) {
-                                            LiquidAccountKind.CASH -> Icons.Outlined.AccountBalanceWallet
-                                            LiquidAccountKind.BANK -> Icons.Outlined.AccountBalance
-                                            LiquidAccountKind.MOBILE_BANKING -> Icons.Outlined.PhoneAndroid
-                                            null -> Icons.Outlined.AccountBalanceWallet
-                                        },
-                                        contentDescription = null,
-                                        tint = if (isSel) SecondaryTeal else TextSecondary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = "${acc.accountCode} • ${if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                            color = TextPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "${if (isBangla) "বর্তমান ব্যালেন্স:" else "Current:"} ${Formatters.formatMoney(bal, CurrencyCode.BDT, lang)}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (bal < 0L) StatusError else TextSecondary,
-                                            fontWeight = if (bal < 0L) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    }
-                                }
-                                if (isSel) {
-                                    Icon(Icons.Outlined.Check, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        }
+                LiquidAccountSelectorList(
+                    accounts = activeAccounts,
+                    selectedAccountId = selectedAccountId,
+                    trialBalanceMap = trialBalanceMap,
+                    accentColor = SecondaryTeal,
+                    isBangla = isBangla,
+                    onSelect = { id ->
+                        selectedAccountId = id
+                        errorMessage = null
                     }
-                }
+                )
 
                 if (selectedBalMinor < 0L) {
                     val deficitMinor = -selectedBalMinor
@@ -1668,7 +1920,12 @@ fun DepositCapitalDialog(
                                     if (isBangla) "জমার পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be greater than zero"
                                 }
                                 val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                                onConfirm(selectedAccountId, minor, notes.ifBlank { null })
+                                onConfirm(
+                                    selectedAccountId,
+                                    selectedEquityId.ifBlank { AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID },
+                                    minor,
+                                    notes.ifBlank { null }
+                                )
                                 onDismiss()
                             } catch (e: Exception) {
                                 errorMessage = e.message ?: if (isBangla) "সঠিক পরিমাণ লিখুন" else "Enter a valid amount"
@@ -1677,6 +1934,452 @@ fun DepositCapitalDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
                     ) {
                         Text(if (isBangla) "মূলধন জমা করুন" else "Deposit Capital")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CapitalWithdrawalAndProfitDialog(
+    initialModeProfit: Boolean = false,
+    liquidAccounts: List<ChartOfAccount>,
+    equityAccounts: List<ChartOfAccount>,
+    trialBalanceMap: Map<String, TrialBalanceItem>,
+    cumulativeNetProfitMinor: Long,
+    alreadyDistributedMinor: Long,
+    availableProfitMinor: Long,
+    preselectedEquityAccountId: String? = null,
+    isBangla: Boolean,
+    onCreateInvestor: (nameEn: String, nameBn: String, onCreated: (String) -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirmWithdrawal: (liquidAccountId: String, equityAccountId: String, amountMinor: Long, notes: String?) -> Unit,
+    onConfirmProfitDistribution: (investorEquityAccountId: String, amountMinor: Long, reinvestToCapital: Boolean, paymentAccountId: String?, notes: String?) -> Unit
+) {
+    val activeLiquidAccounts = remember(liquidAccounts) { liquidAccounts.filter { it.isActive } }
+    val activeEquityAccounts = remember(equityAccounts) {
+        equityAccounts.filter { it.isActive && it.accountType == AccountType.EQUITY.name && it.accountCode != "3020" }
+    }
+    var isProfitMode by rememberSaveable(initialModeProfit) { mutableStateOf(initialModeProfit) }
+    var reinvestToCapital by rememberSaveable { mutableStateOf(false) }
+
+    var selectedEquityId by remember(preselectedEquityAccountId) {
+        mutableStateOf(
+            preselectedEquityAccountId?.takeIf { id -> activeEquityAccounts.any { it.id == id } }
+                ?: activeEquityAccounts.find { it.id == AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID }?.id
+                ?: activeEquityAccounts.firstOrNull()?.id
+                ?: AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID
+        )
+    }
+    var pendingEquityId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeEquityAccounts) {
+        val pending = pendingEquityId
+        if (pending != null && activeEquityAccounts.any { it.id == pending }) {
+            selectedEquityId = pending
+            pendingEquityId = null
+        } else if (activeEquityAccounts.isNotEmpty() && activeEquityAccounts.none { it.id == selectedEquityId }) {
+            selectedEquityId = activeEquityAccounts.find { it.id == AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID }?.id
+                ?: activeEquityAccounts.first().id
+        }
+    }
+
+    var selectedLiquidId by remember(activeLiquidAccounts) {
+        mutableStateOf(
+            activeLiquidAccounts.maxByOrNull { acc ->
+                val tb = trialBalanceMap[acc.id]
+                (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
+            }?.id ?: activeLiquidAccounts.firstOrNull()?.id.orEmpty()
+        )
+    }
+
+    var profitPercentStr by rememberSaveable { mutableStateOf("") }
+    var amountStr by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val lang = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH
+
+    val selectedLiquidBalMinor = trialBalanceMap[selectedLiquidId]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
+    val selectedEquityAcc = activeEquityAccounts.find { it.id == selectedEquityId }
+    val selectedEquityCapitalMinor = (trialBalanceMap[selectedEquityId]?.let {
+        it.totalCreditMinor - it.totalDebitMinor
+    } ?: 0L).coerceAtLeast(0L)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 540.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .navigationBarsPadding()
+                .imePadding(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isBangla) "উত্তোলন ও মুনাফা বণ্টন" else "Withdrawal & Profit Distribution",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = if (isProfitMode) {
+                                if (isBangla) "অর্জিত মুনাফা (৩০২০) থেকে ইনভেস্টরকে অংশ প্রদান" else "Distribute from Retained Earnings (3020)"
+                            } else {
+                                if (isBangla) "মালিক / ইনভেস্টরের মূলধন উত্তোলন (Drawings)" else "Owner / Investor Capital Withdrawal"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                isProfitMode = false
+                                errorMessage = null
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (!isProfitMode) PrimaryPurple else ERPBackground,
+                        border = BorderStroke(1.dp, if (!isProfitMode) PrimaryPurple else ERPDivider)
+                    ) {
+                        Text(
+                            text = if (isBangla) "মূলধন উত্তোলন" else "Capital Withdraw",
+                            color = if (!isProfitMode) Color.White else TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                isProfitMode = true
+                                errorMessage = null
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isProfitMode) SecondaryTeal else ERPBackground,
+                        border = BorderStroke(1.dp, if (isProfitMode) SecondaryTeal else ERPDivider)
+                    ) {
+                        Text(
+                            text = if (isBangla) "মুনাফা বণ্টন (Profit)" else "Profit Share",
+                            color = if (isProfitMode) Color.White else TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = ERPDivider)
+
+                if (isProfitMode) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = SecondaryTeal.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            DetailRow(
+                                if (isBangla) "অর্জিত নিট মুনাফা:" else "Cumulative Net Profit:",
+                                Formatters.formatMoney(cumulativeNetProfitMinor, CurrencyCode.BDT, lang)
+                            )
+                            DetailRow(
+                                if (isBangla) "পূর্বে বণ্টনকৃত:" else "Already Distributed:",
+                                Formatters.formatMoney(alreadyDistributedMinor, CurrencyCode.BDT, lang)
+                            )
+                            HorizontalDivider(color = SecondaryTeal.copy(alpha = 0.25f))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(
+                                    text = if (isBangla) "বণ্টনযোগ্য মুনাফা:" else "Distributable Profit:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = Formatters.formatMoney(availableProfitMinor, CurrencyCode.BDT, lang),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (availableProfitMinor > 0L) StatusSuccess else StatusError
+                                )
+                            }
+                        }
+                    }
+                }
+
+                InvestorEquitySelectorSection(
+                    title = if (isProfitMode) {
+                        if (isBangla) "কোন ইনভেস্টর/মালিককে মুনাফা দেবেন? *" else "Recipient Investor / Owner *"
+                    } else {
+                        if (isBangla) "কে টাকা উত্তোলন করছেন? (মালিক / ইনভেস্টর) *" else "Withdraw From Owner / Investor *"
+                    },
+                    equityAccounts = activeEquityAccounts,
+                    selectedEquityId = selectedEquityId,
+                    trialBalanceMap = trialBalanceMap,
+                    accentColor = if (isProfitMode) SecondaryTeal else PrimaryPurple,
+                    isBangla = isBangla,
+                    onSelect = { id ->
+                        selectedEquityId = id
+                        errorMessage = null
+                    },
+                    onCreateInvestor = { nameEn, nameBn, done ->
+                        onCreateInvestor(nameEn, nameBn) { createdId ->
+                            pendingEquityId = createdId
+                            selectedEquityId = createdId
+                            done(createdId)
+                        }
+                    }
+                )
+
+                if (isProfitMode) {
+                    Text(
+                        text = if (isBangla) "পেআউট ধরন *" else "Distribution Method *",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    reinvestToCapital = false
+                                    errorMessage = null
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (!reinvestToCapital) PrimaryPurple.copy(alpha = 0.14f) else ERPBackground,
+                            border = BorderStroke(1.dp, if (!reinvestToCapital) PrimaryPurple else ERPDivider)
+                        ) {
+                            Text(
+                                text = if (isBangla) "নগদ / ব্যাংক পেআউট" else "Cash / Bank Payout",
+                                color = if (!reinvestToCapital) PrimaryPurple else TextSecondary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)
+                            )
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    reinvestToCapital = true
+                                    errorMessage = null
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (reinvestToCapital) SecondaryTeal.copy(alpha = 0.14f) else ERPBackground,
+                            border = BorderStroke(1.dp, if (reinvestToCapital) SecondaryTeal else ERPDivider)
+                        ) {
+                            Text(
+                                text = if (isBangla) "মূলধনে পুনঃবিনিয়োগ" else "Reinvest to Capital",
+                                color = if (reinvestToCapital) SecondaryTeal else TextSecondary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (!isProfitMode || !reinvestToCapital) {
+                    Text(
+                        text = if (isBangla) "কোন নগদ/ব্যাংক হিসাব থেকে টাকা যাবে? *" else "Pay From Liquid Account *",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary
+                    )
+                    LiquidAccountSelectorList(
+                        accounts = activeLiquidAccounts,
+                        selectedAccountId = selectedLiquidId,
+                        trialBalanceMap = trialBalanceMap,
+                        accentColor = if (isProfitMode) SecondaryTeal else PrimaryPurple,
+                        isBangla = isBangla,
+                        onSelect = { id ->
+                            selectedLiquidId = id
+                            errorMessage = null
+                        }
+                    )
+                }
+
+                if (isProfitMode) {
+                    OutlinedTextField(
+                        value = profitPercentStr,
+                        onValueChange = { rawPct ->
+                            profitPercentStr = rawPct
+                            errorMessage = null
+                            val clean = Formatters.normalizeAsciiNumberInput(rawPct).trim()
+                            if (clean.isNotBlank() && availableProfitMinor > 0L) {
+                                runCatching {
+                                    val pct = BigDecimal(clean)
+                                    if (pct > BigDecimal.ZERO && pct <= BigDecimal("100")) {
+                                        val shareMinor = BigDecimal(availableProfitMinor)
+                                            .multiply(pct)
+                                            .divide(BigDecimal("100"), 0, RoundingMode.HALF_UP)
+                                        amountStr = shareMinor.divide(BigDecimal("100"), 2, RoundingMode.HALF_UP)
+                                            .stripTrailingZeros().toPlainString()
+                                    }
+                                }
+                            }
+                        },
+                        label = { Text(if (isBangla) "মুনাফার অংশ % (ঐচ্ছিক, যেমন: 25)" else "Profit Share % (Optional, e.g. 25)") },
+                        placeholder = { Text("0") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = amountStr,
+                    onValueChange = {
+                        amountStr = it
+                        profitPercentStr = ""
+                        errorMessage = null
+                    },
+                    label = {
+                        Text(
+                            if (isProfitMode) {
+                                if (isBangla) "লভ্যাংশের পরিমাণ (BDT ৳) *" else "Profit Amount (BDT ৳) *"
+                            } else {
+                                if (isBangla) "উত্তোলনের পরিমাণ (BDT ৳) *" else "Withdrawal Amount (BDT ৳) *"
+                            }
+                        )
+                    },
+                    placeholder = { Text("0.00") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text(if (isBangla) "নোট / কারণ (ঐচ্ছিক)" else "Notes / Reason (Optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = StatusError, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(if (isBangla) "বাতিল" else "Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            try {
+                                val amtBd = BigDecimal(Formatters.normalizeAsciiNumberInput(amountStr).trim())
+                                require(amtBd > BigDecimal.ZERO) {
+                                    if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive"
+                                }
+                                val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                val cleanNotes = notes.ifBlank { null }
+
+                                if (isProfitMode) {
+                                    require(availableProfitMinor > 0L && minor <= availableProfitMinor) {
+                                        if (isBangla) {
+                                            "বণ্টনযোগ্য মুনাফার (${Formatters.formatMoney(availableProfitMinor, CurrencyCode.BDT, lang)}) চেয়ে বেশি দেওয়া যাবে না!"
+                                        } else {
+                                            "Cannot exceed distributable profit (${Formatters.formatMoney(availableProfitMinor, CurrencyCode.BDT, lang)})!"
+                                        }
+                                    }
+                                    if (!reinvestToCapital) {
+                                        require(selectedLiquidId.isNotBlank()) {
+                                            if (isBangla) "একটি নগদ/ব্যাংক হিসাব নির্বাচন করুন" else "Select a liquid account"
+                                        }
+                                        require(selectedLiquidBalMinor >= minor) {
+                                            if (isBangla) {
+                                                "নির্বাচিত নগদ/ব্যাংক হিসাবে পর্যাপ্ত ব্যালেন্স নেই!"
+                                            } else {
+                                                "Insufficient balance in selected account!"
+                                            }
+                                        }
+                                    }
+                                    onConfirmProfitDistribution(
+                                        selectedEquityId,
+                                        minor,
+                                        reinvestToCapital,
+                                        if (reinvestToCapital) null else selectedLiquidId,
+                                        cleanNotes
+                                    )
+                                } else {
+                                    require(selectedLiquidId.isNotBlank()) {
+                                        if (isBangla) "একটি নগদ/ব্যাংক হিসাব নির্বাচন করুন" else "Select a liquid account"
+                                    }
+                                    require(selectedLiquidBalMinor >= minor) {
+                                        if (isBangla) {
+                                            "নির্বাচিত নগদ/ব্যাংক হিসাবে পর্যাপ্ত ব্যালেন্স নেই!"
+                                        } else {
+                                            "Insufficient balance in selected account!"
+                                        }
+                                    }
+                                    if (selectedEquityId != AccountingRepositoryImpl.OWNER_CAPITAL_ACCOUNT_ID) {
+                                        val eqLabel = selectedEquityAcc?.let {
+                                            if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn
+                                        } ?: ""
+                                        require(minor <= selectedEquityCapitalMinor) {
+                                            if (isBangla) {
+                                                "$eqLabel-এর মূলধন (${Formatters.formatMoney(selectedEquityCapitalMinor, CurrencyCode.BDT, lang)}) এর চেয়ে বেশি উত্তোলন করা যাবে না!"
+                                            } else {
+                                                "Cannot withdraw more than $eqLabel's capital!"
+                                            }
+                                        }
+                                    }
+                                    onConfirmWithdrawal(selectedLiquidId, selectedEquityId, minor, cleanNotes)
+                                }
+                                onDismiss()
+                            } catch (e: Exception) {
+                                errorMessage = e.message ?: if (isBangla) "সঠিক পরিমাণ লিখুন" else "Invalid amount"
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isProfitMode) SecondaryTeal else PrimaryPurple
+                        )
+                    ) {
+                        Text(
+                            if (isProfitMode) {
+                                if (isBangla) "মুনাফা বণ্টন নিশ্চিত" else "Distribute Profit"
+                            } else {
+                                if (isBangla) "উত্তোলন নিশ্চিত" else "Confirm Withdraw"
+                            }
+                        )
                     }
                 }
             }

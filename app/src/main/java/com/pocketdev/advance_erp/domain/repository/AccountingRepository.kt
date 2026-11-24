@@ -74,10 +74,41 @@ interface AccountingRepository {
     /** Fails cleanly if [accountId] is a liquid account with balance below [requiredAmountMinor]. */
     suspend fun requireSufficientLiquidBalance(accountId: String, requiredAmountMinor: Long)
 
-    /** Posts owner capital injection (`Dr Liquid Account / Cr 3010 Owner's Capital`). */
+    /** Posts owner or investor capital injection (`Dr Liquid Account / Cr Selected Equity Account`). */
     suspend fun depositCapitalToLiquidAccount(
         accountId: String,
         amountMinor: Long,
+        entryDate: Long = System.currentTimeMillis(),
+        notes: String? = null,
+        equityAccountId: String = "coa-3010"
+    ): String
+
+    /** Creates a dedicated 3000-series CREDIT Equity account for an additional investor (`3030`, `3031`, ...). */
+    suspend fun createInvestorEquityAccount(
+        investorNameEn: String,
+        investorNameBn: String = "",
+        notes: String? = null
+    ): String
+
+    /** Posts owner/investor capital withdrawal or drawings (`Dr Equity Account / Cr Liquid Account`) after liquid balance check. */
+    suspend fun withdrawCapitalFromLiquidAccount(
+        liquidAccountId: String,
+        equityAccountId: String = "coa-3010",
+        amountMinor: Long,
+        entryDate: Long = System.currentTimeMillis(),
+        notes: String? = null
+    ): String
+
+    /**
+     * Distributes earned net profit from `3020 Retained Earnings` to an owner/investor:
+     * - If [reinvestToCapital] == false: `Dr 3020 Retained Earnings / Cr [paymentAccountId]` (checks liquid balance & distributable profit).
+     * - If [reinvestToCapital] == true: `Dr 3020 Retained Earnings / Cr [investorEquityAccountId]` (checks distributable profit).
+     */
+    suspend fun distributeProfitToInvestor(
+        investorEquityAccountId: String,
+        amountMinor: Long,
+        reinvestToCapital: Boolean = false,
+        paymentAccountId: String? = null,
         entryDate: Long = System.currentTimeMillis(),
         notes: String? = null
     ): String

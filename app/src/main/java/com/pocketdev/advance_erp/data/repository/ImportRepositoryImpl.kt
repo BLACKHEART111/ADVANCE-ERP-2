@@ -713,6 +713,11 @@ class ImportRepositoryImpl @Inject constructor(
         return cartonWeightByKey
     }
 
+    override fun getAccruedFreightBillForOrder(orderId: String): Flow<Long?> =
+        database.accountingDao().getActiveImportExpenseEntriesForOrder(orderId).map { entries ->
+            if (entries.isEmpty()) null else entries.sumOf { it.totalCreditMinor }
+        }
+
     override fun getFreightPaymentsForOrder(orderId: String): Flow<List<PoFreightPaymentRecord>> =
         database.accountingDao().getActiveFreightPaymentsForOrder(orderId).map { entries ->
             entries.map { entry ->
@@ -751,7 +756,13 @@ class ImportRepositoryImpl @Inject constructor(
         } else emptyList()
 
         if (po.isActualCostFinalized && snapshots.isNotEmpty()) {
-            val totalLandedMinor = snapshots.sumOf { it.totalLandedCostBdtMinor }
+            val totalLandedMinor = snapshots.sumOf { snap ->
+                if (snap.unitLandedCostBdtMinor > 0L && snap.totalReceivedQuantity > 0) {
+                    snap.totalReceivedQuantity.toLong() * snap.unitLandedCostBdtMinor
+                } else {
+                    snap.totalLandedCostBdtMinor
+                }
+            }
             val alreadyPostedMinor = actualCosts.filter { it.isPosted }.sumOf { it.bdtAmountMinor }
             val totalDelta = (totalLandedMinor - po.totalBdtAmountMinor - alreadyPostedMinor).coerceAtLeast(0L)
             val unpostedPairs = actualCosts.filter { !it.isPosted }.map {
@@ -888,7 +899,17 @@ class ImportRepositoryImpl @Inject constructor(
         val (computedBillMinor, resolvedBuckets) = computeUnpaidPoFreightAndImportTotalMinor(po)
         val existingAccrualEntries = accountingDao.getActiveEntriesForReference("PO_IMPORT_EXPENSE", orderId)
         val accruedOnLedgerMinor = existingAccrualEntries.sumOf { it.totalCreditMinor }
-        val effectiveTotalBillMinor = maxOf(computedBillMinor, accruedOnLedgerMinor)
+        val isFinalizedOrReceived = po.isActualCostFinalized || po.status in setOf(
+            PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name,
+            PurchaseOrderStatus.PARTIALLY_RECEIVED.name,
+            PurchaseOrderStatus.RECEIVED.name,
+            PurchaseOrderStatus.COMPLETED.name
+        )
+        val effectiveTotalBillMinor = if (isFinalizedOrReceived && accruedOnLedgerMinor > 0L) {
+            accruedOnLedgerMinor
+        } else {
+            maxOf(computedBillMinor, accruedOnLedgerMinor)
+        }
         val alreadyPaidMinor = accountingDao.getActiveEntriesForReference("PO_FREIGHT_PAYMENT", orderId)
             .sumOf { it.totalDebitMinor }
         val remainingDueMinor = (effectiveTotalBillMinor - alreadyPaidMinor).coerceAtLeast(0L)
@@ -899,8 +920,8 @@ class ImportRepositoryImpl @Inject constructor(
 
         accountingRepository.requireSufficientLiquidBalance(paymentAccountId, amountBdtMinor)
 
-        // Ensure 2020 payable accrual & 1220 capitalization exist for this PO before settling 2020
-        if (accruedOnLedgerMinor < effectiveTotalBillMinor && effectiveTotalBillMinor > 0L && resolvedBuckets.isNotEmpty()) {
+        // Ensure 2020 payable accrual & 1220 capitalization exist for unfinalized POs before settling 2020
+        if (!isFinalizedOrReceived && accruedOnLedgerMinor < effectiveTotalBillMinor && effectiveTotalBillMinor > 0L && resolvedBuckets.isNotEmpty()) {
             syncPoCommitmentJournal(po)
             existingAccrualEntries.forEach { accountingRepository.reverseJournalEntry(it.id) }
             accountingDao.getActiveEntriesForReference("PO_LANDED_CAPITALIZE", orderId)

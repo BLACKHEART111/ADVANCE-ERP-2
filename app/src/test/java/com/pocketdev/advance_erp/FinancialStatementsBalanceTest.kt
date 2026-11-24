@@ -160,4 +160,82 @@ class FinancialStatementsBalanceTest {
 
         assertEquals(closingCashBankMinor, cf.openingCashBankMinor + cf.netChangeInCashMinor)
     }
+
+    @Test
+    fun multiInvestorCapitalWithdrawalAndProfitDistributionPreserveBalanceSheetEquation() {
+        // Opening state: Cash 1,500,000 minor + Inventory 500,000 minor = Liabilities 0 + (Owner 3010: 1,000,000 + Investor A 3030: 600,000 + Profit: 400,000)
+        var cashMinor = 150_000_000L
+        val inventoryMinor = 50_000_000L
+        var capital3010 = 100_000_000L
+        var capital3030 = 60_000_000L // Investor A
+        var capital3031 = 20_000_000L // Investor B invests ৳200,000
+        cashMinor += 20_000_000L
+        val pnlNetProfit = 40_000_000L
+        var postedRetained3020NetCredit = 0L
+
+        // 1. Investor A withdraws ৳100,000 capital (Dr 3030 / Cr 1010)
+        val withdrawMinor = 10_000_000L
+        capital3030 -= withdrawMinor
+        cashMinor -= withdrawMinor
+
+        // 2. Profit distributed in cash to Investor A: ৳150,000 (Dr 3020 / Cr 1010)
+        val cashProfitShareMinor = 15_000_000L
+        postedRetained3020NetCredit -= cashProfitShareMinor
+        cashMinor -= cashProfitShareMinor
+
+        // 3. Profit reinvested to Investor B capital: ৳50,000 (Dr 3020 / Cr 3031)
+        val reinvestProfitMinor = 5_000_000L
+        postedRetained3020NetCredit -= reinvestProfitMinor
+        capital3031 += reinvestProfitMinor
+
+        val totalAssets = cashMinor + inventoryMinor // 145,000,000 + 50,000,000 = 195,000,000
+        val equityItems = listOf(
+            AccountSummaryItem("coa-3010", "3010", "Owner's Capital", "", capital3010),
+            AccountSummaryItem("coa-3030", "3030", "Investor A Capital", "", capital3030),
+            AccountSummaryItem("coa-3031", "3031", "Investor B Capital", "", capital3031)
+        )
+        val retainedEarnings = pnlNetProfit + postedRetained3020NetCredit // 40M - 15M - 5M = 20M
+        val totalEquity = equityItems.sumOf { it.amountMinor } + retainedEarnings
+
+        val bs = BalanceSheet(
+            asOfDate = System.currentTimeMillis(),
+            currentAssets = listOf(
+                AccountSummaryItem("coa-1010", "1010", "Cash", "", cashMinor),
+                AccountSummaryItem("coa-1210", "1210", "Inventory", "", inventoryMinor)
+            ),
+            totalCurrentAssetsMinor = totalAssets,
+            totalAssetsMinor = totalAssets,
+            currentLiabilities = emptyList(),
+            totalCurrentLiabilitiesMinor = 0L,
+            totalLiabilitiesMinor = 0L,
+            equityItems = equityItems,
+            retainedEarningsMinor = retainedEarnings,
+            totalEquityMinor = totalEquity,
+            totalLiabilitiesAndEquityMinor = totalEquity,
+            isBalanced = (totalAssets == totalEquity)
+        )
+
+        assertTrue(bs.isBalanced)
+        assertEquals(totalAssets, bs.totalLiabilitiesAndEquityMinor)
+        assertEquals(20_000_000L, retainedEarnings)
+        assertEquals(25_000_000L, capital3031)
+
+        // Cash flow financing reconciliation: +20M deposit - 10M withdrawal - 15M profit distribution = -5M net financing
+        val openingCash = 150_000_000L
+        val netFinancing = 20_000_000L - withdrawMinor - cashProfitShareMinor
+        val cf = CashFlowStatement(
+            fromDate = 0L,
+            toDate = System.currentTimeMillis(),
+            cashInflowCustomersMinor = 0L,
+            cashOutflowSuppliersMinor = 0L,
+            cashOutflowExpensesMinor = 0L,
+            netCashFromOperationsMinor = 0L,
+            netCashFromInvestingMinor = 0L,
+            netCashFromFinancingMinor = netFinancing,
+            netChangeInCashMinor = netFinancing,
+            openingCashBankMinor = openingCash,
+            closingCashBankMinor = cashMinor
+        )
+        assertEquals(cf.closingCashBankMinor, cf.openingCashBankMinor + cf.netChangeInCashMinor)
+    }
 }

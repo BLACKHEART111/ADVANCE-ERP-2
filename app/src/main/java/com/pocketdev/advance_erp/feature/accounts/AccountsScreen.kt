@@ -228,6 +228,10 @@ fun AccountsScreen(
     var showTransferDialog by rememberSaveable { mutableStateOf(false) }
     var showDepositCapitalDialog by rememberSaveable { mutableStateOf(false) }
     var depositCapitalPreselectedAccId by rememberSaveable { mutableStateOf<String?>(null) }
+    var depositCapitalPreselectedEquityId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showWithdrawOrProfitDialog by rememberSaveable { mutableStateOf(false) }
+    var withdrawOrProfitInitialProfitMode by rememberSaveable { mutableStateOf(false) }
+    var withdrawOrProfitPreselectedEquityId by rememberSaveable { mutableStateOf<String?>(null) }
     var showPayAccruedFreightDialog by rememberSaveable { mutableStateOf(false) }
     var showReconciliationDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateBackupDialog by rememberSaveable { mutableStateOf(false) }
@@ -240,6 +244,25 @@ fun AccountsScreen(
 
     val trialBalanceMap = remember(uiState.trialBalance) {
         uiState.trialBalance.associateBy { it.accountId }
+    }
+    val equityInvestorAccounts = remember(uiState.accounts) {
+        uiState.accounts
+            .filter { it.isActive && it.accountType == AccountType.EQUITY.name && it.accountCode != "3020" }
+            .sortedBy { it.accountCode }
+    }
+    val profitDistributionMetrics = remember(uiState.trialBalance) {
+        val revenueNetCredit = uiState.trialBalance
+            .filter { it.accountType == AccountType.REVENUE.name }
+            .sumOf { it.totalCreditMinor - it.totalDebitMinor }
+        val expenseNetDebit = uiState.trialBalance
+            .filter { it.accountType == AccountType.EXPENSE.name }
+            .sumOf { it.totalDebitMinor - it.totalCreditMinor }
+        val cumulativeNetProfit = revenueNetCredit - expenseNetDebit
+        val tb3020 = uiState.trialBalance.firstOrNull { it.accountId == "coa-3020" }
+        val retainedPostedNetCredit = (tb3020?.totalCreditMinor ?: 0L) - (tb3020?.totalDebitMinor ?: 0L)
+        val alreadyDistributed = (-retainedPostedNetCredit).coerceAtLeast(0L)
+        val availableProfit = (cumulativeNetProfit + retainedPostedNetCredit).coerceAtLeast(0L)
+        Triple(cumulativeNetProfit, alreadyDistributed, availableProfit)
     }
 
     val filteredCoaAccounts = remember(uiState.accounts, coaSearchQuery, coaCategoryFilter) {
@@ -498,6 +521,7 @@ fun AccountsScreen(
                             Button(
                                 onClick = {
                                     depositCapitalPreselectedAccId = null
+                                    depositCapitalPreselectedEquityId = null
                                     showDepositCapitalDialog = true
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = DeepNavy),
@@ -507,7 +531,26 @@ fun AccountsScreen(
                                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (isBangla) "+ মূলধন / তহবিল জমা করুন (Cash / Bank)" else "+ Add Capital / Deposit Funds (Cash / Bank)",
+                                    text = if (isBangla) "মূলধন / ইনভেস্টমেন্ট জমা (Cash / Bank)" else "Add Capital / Investor Deposit (Cash / Bank)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Button(
+                                onClick = {
+                                    withdrawOrProfitPreselectedEquityId = null
+                                    withdrawOrProfitInitialProfitMode = false
+                                    showWithdrawOrProfitDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isBangla) "মালিক উত্তোলন ও মুনাফা বণ্টন (Withdraw / Profit)" else "Owner Withdrawal & Profit Distribution",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -583,6 +626,88 @@ fun AccountsScreen(
                             language = uiState.language,
                             onClick = { detailAccount = acc }
                         )
+                    }
+
+                    // Owner & Investor Equity Summary Card
+                    if (equityInvestorAccounts.isNotEmpty()) {
+                        item {
+                            FinanceCard(contentPadding = 12.dp) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isBangla) "মালিক ও ইনভেস্টর মূলধন" else "Owner & Investor Equity",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
+                                        )
+                                        if (canViewProfit) {
+                                            val availProfit = profitDistributionMetrics.third
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = SecondaryTeal.copy(alpha = 0.12f),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .clickable {
+                                                        withdrawOrProfitPreselectedEquityId = null
+                                                        withdrawOrProfitInitialProfitMode = true
+                                                        showWithdrawOrProfitDialog = true
+                                                    }
+                                            ) {
+                                                Text(
+                                                    text = if (isBangla) {
+                                                        "বণ্টনযোগ্য লাভ: ${Formatters.formatMoney(availProfit, CurrencyCode.BDT, uiState.language)}"
+                                                    } else {
+                                                        "Profit: ${Formatters.formatMoney(availProfit, CurrencyCode.BDT, uiState.language)}"
+                                                    },
+                                                    color = SecondaryTeal,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    equityInvestorAccounts.forEach { eqAcc ->
+                                        val eqTb = trialBalanceMap[eqAcc.id]
+                                        val eqBalMinor = (eqTb?.totalCreditMinor ?: 0L) - (eqTb?.totalDebitMinor ?: 0L)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(ERPBackground)
+                                                .clickable { detailAccount = eqAcc }
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${eqAcc.accountCode} • ${if (isBangla && eqAcc.nameBn.isNotBlank()) eqAcc.nameBn else eqAcc.nameEn}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = TextPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = Formatters.formatMoney(eqBalMinor, CurrencyCode.BDT, uiState.language),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (eqBalMinor >= 0L) StatusSuccess else StatusError
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Cash & Bank Book Section
@@ -1804,6 +1929,7 @@ fun AccountsScreen(
 
     // Account Detail Modal
     detailAccount?.let { acc ->
+        val isInvestorEquity = acc.accountType == AccountType.EQUITY.name && acc.accountCode != "3020"
         AccountDetailDialog(
             account = acc,
             trialItem = trialBalanceMap[acc.id],
@@ -1821,14 +1947,28 @@ fun AccountsScreen(
                 )
             },
             onDepositCapital = {
-                depositCapitalPreselectedAccId = acc.id
+                if (isInvestorEquity) {
+                    depositCapitalPreselectedAccId = null
+                    depositCapitalPreselectedEquityId = acc.id
+                } else {
+                    depositCapitalPreselectedAccId = acc.id
+                    depositCapitalPreselectedEquityId = null
+                }
                 detailAccount = null
                 showDepositCapitalDialog = true
             },
             onPayAccruedFreight = {
                 detailAccount = null
                 showPayAccruedFreightDialog = true
-            }
+            },
+            onWithdrawOrProfit = if (isInvestorEquity) {
+                {
+                    withdrawOrProfitPreselectedEquityId = acc.id
+                    withdrawOrProfitInitialProfitMode = false
+                    detailAccount = null
+                    showWithdrawOrProfitDialog = true
+                }
+            } else null
         )
     }
 
@@ -1837,10 +1977,39 @@ fun AccountsScreen(
             liquidAccounts = uiState.liquidAccounts,
             trialBalanceMap = trialBalanceMap,
             preselectedAccountId = depositCapitalPreselectedAccId,
+            equityAccounts = equityInvestorAccounts,
+            preselectedEquityAccountId = depositCapitalPreselectedEquityId,
+            onCreateInvestor = { nameEn, nameBn, onCreated ->
+                viewModel.createInvestorAccount(nameEn, nameBn, onCreated)
+            },
             isBangla = isBangla,
             onDismiss = { showDepositCapitalDialog = false },
-            onConfirm = { accId, amtMinor, notes ->
-                viewModel.depositCapital(accId, amtMinor, notes)
+            onConfirm = { accId, equityId, amtMinor, notes ->
+                viewModel.depositCapital(accId, amtMinor, notes, equityAccountId = equityId)
+            }
+        )
+    }
+
+    if (showWithdrawOrProfitDialog) {
+        CapitalWithdrawalAndProfitDialog(
+            initialModeProfit = withdrawOrProfitInitialProfitMode,
+            liquidAccounts = uiState.liquidAccounts,
+            equityAccounts = equityInvestorAccounts,
+            trialBalanceMap = trialBalanceMap,
+            cumulativeNetProfitMinor = profitDistributionMetrics.first,
+            alreadyDistributedMinor = profitDistributionMetrics.second,
+            availableProfitMinor = profitDistributionMetrics.third,
+            preselectedEquityAccountId = withdrawOrProfitPreselectedEquityId,
+            isBangla = isBangla,
+            onCreateInvestor = { nameEn, nameBn, onCreated ->
+                viewModel.createInvestorAccount(nameEn, nameBn, onCreated)
+            },
+            onDismiss = { showWithdrawOrProfitDialog = false },
+            onConfirmWithdrawal = { liquidId, equityId, amtMinor, notes ->
+                viewModel.withdrawCapital(liquidId, equityId, amtMinor, notes)
+            },
+            onConfirmProfitDistribution = { investorId, amtMinor, reinvest, payAccId, notes ->
+                viewModel.distributeProfit(investorId, amtMinor, reinvest, payAccId, notes)
             }
         )
     }

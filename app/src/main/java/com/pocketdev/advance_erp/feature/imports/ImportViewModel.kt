@@ -92,6 +92,7 @@ data class ImportUiState(
     val selectedPoItems: List<PurchaseOrderItem> = emptyList(),
     val selectedPoPayments: List<SupplierPayment> = emptyList(),
     val selectedPoFreightPayments: List<PoFreightPaymentRecord> = emptyList(),
+    val selectedPoAccruedFreightBillMinor: Long? = null,
     val selectedPoShipments: List<ImportShipment> = emptyList(),
     val selectedPoCartons: List<ShipmentCarton> = emptyList(),
     val selectedPoCostItems: List<ImportCostItem> = emptyList(),
@@ -450,6 +451,7 @@ class ImportViewModel @Inject constructor(
                     selectedPoItems = emptyList(),
                     selectedPoPayments = emptyList(),
                     selectedPoFreightPayments = emptyList(),
+                    selectedPoAccruedFreightBillMinor = null,
                     selectedPoShipments = emptyList(),
                     selectedPoCartons = emptyList(),
                     selectedPoCostItems = emptyList(),
@@ -485,6 +487,11 @@ class ImportViewModel @Inject constructor(
             launch {
                 importRepository.getFreightPaymentsForOrder(order.id).collect { fPayments ->
                     _uiState.update { it.copy(selectedPoFreightPayments = fPayments) }
+                }
+            }
+            launch {
+                importRepository.getAccruedFreightBillForOrder(order.id).collect { billMinor ->
+                    _uiState.update { it.copy(selectedPoAccruedFreightBillMinor = billMinor) }
                 }
             }
             launch {

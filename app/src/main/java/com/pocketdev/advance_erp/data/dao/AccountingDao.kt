@@ -126,6 +126,13 @@ interface AccountingDao {
     fun getActiveFreightPaymentsForOrder(orderId: String): Flow<List<JournalEntry>>
 
     @Query("""
+        SELECT * FROM journal_entries
+        WHERE referenceType = 'PO_IMPORT_EXPENSE' AND referenceId = :orderId AND isPosted = 1 AND isReversed = 0
+        ORDER BY entryDate DESC, createdAt DESC
+    """)
+    fun getActiveImportExpenseEntriesForOrder(orderId: String): Flow<List<JournalEntry>>
+
+    @Query("""
         SELECT * FROM journal_entries WHERE isPosted = 1 AND isReversed = 0
         AND referenceType IN ('CUSTOMER_LEDGER_DEBIT_ADJUSTMENT', 'CUSTOMER_LEDGER_CREDIT_ADJUSTMENT')
         AND (:customerId IS NULL OR referenceId = :customerId)

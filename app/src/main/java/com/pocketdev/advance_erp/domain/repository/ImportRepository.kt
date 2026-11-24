@@ -303,6 +303,7 @@ interface ImportRepository {
     suspend fun deletePurchaseOrder(orderId: String)
     suspend fun reverseSupplierPayment(paymentId: String)
     suspend fun reconcilePurchaseOrderLedger()
+    fun getAccruedFreightBillForOrder(orderId: String): Flow<Long?>
     fun getFreightPaymentsForOrder(orderId: String): Flow<List<PoFreightPaymentRecord>>
     suspend fun recordPoFreightPayment(
         orderId: String,

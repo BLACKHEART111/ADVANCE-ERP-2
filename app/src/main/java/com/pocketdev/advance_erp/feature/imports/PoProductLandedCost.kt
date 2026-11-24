@@ -80,7 +80,8 @@ internal fun calculatePoFreightPayableSummary(
     landedSummary: PoLandedCalculationSummary,
     costItems: List<ImportCostItem>,
     additionalCosts: List<AdditionalProductCost>,
-    paidFreightBillMinor: Long
+    paidFreightBillMinor: Long,
+    ledgerAccruedBillMinor: Long? = null
 ): PoFreightPayableSummary {
     val alreadyDirectlyPaidMinor = costItems
         .filter { it.isPosted && it.costCategory != CostCategory.PRODUCT_PURCHASE.name }
@@ -88,8 +89,12 @@ internal fun calculatePoFreightPayableSummary(
         additionalCosts
             .filter { it.isCapitalizable }
             .sumOf { it.bdtAmountMinor }
-    val totalBillMinor = (landedSummary.totalFreightBdtMinor + landedSummary.totalOtherOverheadBdtMinor - alreadyDirectlyPaidMinor)
-        .coerceAtLeast(0L)
+    val totalBillMinor = if (ledgerAccruedBillMinor != null && ledgerAccruedBillMinor > 0L) {
+        ledgerAccruedBillMinor
+    } else {
+        (landedSummary.totalFreightBdtMinor + landedSummary.totalOtherOverheadBdtMinor - alreadyDirectlyPaidMinor)
+            .coerceAtLeast(0L)
+    }
     val effectiveTotalMinor = maxOf(totalBillMinor, paidFreightBillMinor.coerceAtLeast(0L))
     val paidMinor = paidFreightBillMinor.coerceAtLeast(0L)
     val remainingMinor = (effectiveTotalMinor - paidMinor).coerceAtLeast(0L)
@@ -366,7 +371,8 @@ internal fun calculatePoLandedCostSummary(
     variants: List<ProductVariant>,
     snapshots: List<LandedCostSnapshot> = emptyList(),
     isBangla: Boolean = false,
-    isCostFinalized: Boolean = order.isActualCostFinalized
+    isCostFinalized: Boolean = order.isActualCostFinalized,
+    ledgerAccruedImportMinor: Long? = null
 ): PoLandedCalculationSummary {
     val productMap = products.associateBy { it.id }
     val variantMap = variants.associateBy { it.id }
@@ -445,23 +451,86 @@ internal fun calculatePoLandedCostSummary(
 
         if (items.all { matchedSnapshotsByItemId[it.id] != null }) {
             snapshotModeUsed = true
+            val hasAnyNonFreightCostItem = costItems.any { ci ->
+                (ci.isCapitalizableCost || ci.isCapitalized || ci.costCategory == CostCategory.OTHER_CHARGES.name) &&
+                    ci.costCategory != CostCategory.PRODUCT_PURCHASE.name &&
+                    ci.costCategory !in FREIGHT_CATEGORY_NAMES &&
+                    ci.bdtAmountMinor > 0L
+            }
             items.groupBy { matchedSnapshotsByItemId[it.id]!!.id }.forEach { (_, groupItems) ->
                 val snap = matchedSnapshotsByItemId[groupItems.first().id]!!
-                val snapOther = (snap.totalAllocatedCostsBdtMinor - snap.internationalFreightBdtMinor).coerceAtLeast(0L)
+                val effectiveSnapLanded = if (snap.unitLandedCostBdtMinor > 0L && snap.totalReceivedQuantity > 0) {
+                    snap.totalReceivedQuantity.toLong() * snap.unitLandedCostBdtMinor
+                } else {
+                    snap.totalLandedCostBdtMinor
+                }
+                val effectiveSnapAllocated = (effectiveSnapLanded - snap.totalPurchaseCostBdtMinor).coerceAtLeast(0L)
+                val rawSnapOther = (snap.chinaDeliveryBdtMinor + snap.bdTransportBdtMinor + snap.otherExpensesBdtMinor).coerceAtLeast(0L)
+                val rawSnapTotalOverhead = snap.internationalFreightBdtMinor + rawSnapOther
+                val effectiveSnapFreight = when {
+                    rawSnapOther == 0L && !hasAnyNonFreightCostItem -> effectiveSnapAllocated
+                    rawSnapTotalOverhead > 0L -> BigDecimal.valueOf(effectiveSnapAllocated)
+                        .multiply(BigDecimal.valueOf(snap.internationalFreightBdtMinor))
+                        .divide(BigDecimal.valueOf(rawSnapTotalOverhead), 0, RoundingMode.HALF_UP)
+                        .longValueExact()
+                        .coerceIn(0L, effectiveSnapAllocated)
+                    else -> snap.internationalFreightBdtMinor.coerceAtMost(effectiveSnapAllocated)
+                }
+                val snapOther = (effectiveSnapAllocated - effectiveSnapFreight).coerceAtLeast(0L)
                 if (groupItems.size == 1) {
                     val only = groupItems.first()
                     purchaseByItemId[only.id] = snap.totalPurchaseCostBdtMinor
-                    freightByItemId[only.id] = snap.internationalFreightBdtMinor
+                    freightByItemId[only.id] = effectiveSnapFreight
                     otherOverheadByItemId[only.id] = snapOther
                 } else {
                     val qtyWeights = groupItems.map { BigDecimal(it.quantity.coerceAtLeast(1)) }
                     val purchSplit = allocateLongProportionally(snap.totalPurchaseCostBdtMinor, qtyWeights)
-                    val freightSplit = allocateLongProportionally(snap.internationalFreightBdtMinor, qtyWeights)
+                    val freightSplit = allocateLongProportionally(effectiveSnapFreight, qtyWeights)
                     val otherSplit = allocateLongProportionally(snapOther, qtyWeights)
                     groupItems.forEachIndexed { idx, itm ->
                         purchaseByItemId[itm.id] = purchSplit[idx]
                         freightByItemId[itm.id] = freightSplit[idx]
                         otherOverheadByItemId[itm.id] = otherSplit[idx]
+                    }
+                }
+            }
+
+            if (ledgerAccruedImportMinor != null && ledgerAccruedImportMinor >= 0L) {
+                val alreadyPostedDirectMinor = costItems
+                    .filter { it.isPosted && it.costCategory != CostCategory.PRODUCT_PURCHASE.name }
+                    .sumOf { it.bdtAmountMinor }
+                val targetTotalAllocated = ledgerAccruedImportMinor + alreadyPostedDirectMinor
+                val oldFreightTotal = items.sumOf { freightByItemId[it.id] ?: 0L }
+                val oldOtherTotal = items.sumOf { otherOverheadByItemId[it.id] ?: 0L }
+                val currentTotalAllocated = oldFreightTotal + oldOtherTotal
+                val snapshotsHaveNoOtherCosts = snapshots.all {
+                    (it.chinaDeliveryBdtMinor + it.bdTransportBdtMinor + it.otherExpensesBdtMinor) <= 0L
+                } && !hasAnyNonFreightCostItem
+                if ((currentTotalAllocated != targetTotalAllocated || (snapshotsHaveNoOtherCosts && oldOtherTotal > 0L)) && currentTotalAllocated > 0L) {
+                    val newFreightTotal = if (oldOtherTotal == 0L || snapshotsHaveNoOtherCosts) {
+                        targetTotalAllocated
+                    } else {
+                        BigDecimal.valueOf(targetTotalAllocated)
+                            .multiply(BigDecimal.valueOf(oldFreightTotal))
+                            .divide(BigDecimal.valueOf(currentTotalAllocated), 0, RoundingMode.HALF_UP)
+                            .longValueExact()
+                            .coerceIn(0L, targetTotalAllocated)
+                    }
+                    val newOtherTotal = (targetTotalAllocated - newFreightTotal).coerceAtLeast(0L)
+                    val fWeights = items.map {
+                        val fw = freightByItemId[it.id] ?: 0L
+                        BigDecimal(if (snapshotsHaveNoOtherCosts) fw + (otherOverheadByItemId[it.id] ?: 0L) else fw)
+                    }
+                    val newFSplit = allocateLongProportionally(newFreightTotal, fWeights)
+                    val newOSplit = if (newOtherTotal > 0L) {
+                        val oWeights = items.map { BigDecimal(otherOverheadByItemId[it.id] ?: 0L) }
+                        allocateLongProportionally(newOtherTotal, oWeights)
+                    } else {
+                        List(items.size) { 0L }
+                    }
+                    items.forEachIndexed { idx, itm ->
+                        freightByItemId[itm.id] = newFSplit[idx]
+                        otherOverheadByItemId[itm.id] = newOSplit[idx]
                     }
                 }
             }

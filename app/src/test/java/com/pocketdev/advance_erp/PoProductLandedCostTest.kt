@@ -373,4 +373,131 @@ class PoProductLandedCostTest {
         assertEquals(984_800L, partial.remainingFreightBillMinor)
         assertTrue(partial.progress > 0.33f && partial.progress < 0.34f)
     }
+
+    @Test
+    fun ledgerAccruedFreightReconcilesUnitRoundedSnapshotsOnReceivedPo() {
+        val order = PurchaseOrder(
+            id = "po-rec-2",
+            poNumber = "PO-2026-002",
+            supplierId = "sup-1",
+            status = PurchaseOrderStatus.RECEIVED.name,
+            currency = "CNY",
+            exchangeRateToBdt = "20.0000",
+            totalAmountMinor = 1_538_000L,
+            totalBdtAmountMinor = 30_760_000L,
+            paidAmountMinor = 1_538_000L,
+            paidBdtAmountMinor = 30_760_000L,
+            isActualCostFinalized = true
+        )
+        val items = listOf(
+            PurchaseOrderItem("i-1", "po-rec-2", "prod-tsg", null, 200, 3000L, 600_000L, 12_000_000L, receivedQuantity = 200),
+            PurchaseOrderItem("i-2", "po-rec-2", "prod-msg", null, 300, 3126L, 938_000L, 18_760_000L, receivedQuantity = 300)
+        )
+        // Suppose pre-rounding snapshot international freight was 18,934,400 minor (৳189,344.00)
+        // while posted unit-rounded stock/ledger PO_IMPORT_EXPENSE was 18,933,760 minor (৳189,337.60).
+        val snapshots = listOf(
+            LandedCostSnapshot(
+                id = "s-1", shipmentId = "shp-2", productId = "prod-tsg", variantId = null,
+                productNameEn = "T SHOES GUARD", productNameBn = "", sku = "SG7-TSG-005",
+                totalReceivedQuantity = 200, totalPurchaseCostBdtMinor = 12_000_000L,
+                totalAllocatedCostsBdtMinor = 8_000_000L, totalLandedCostBdtMinor = 20_000_000L,
+                unitLandedCostBdtMinor = 100_000L, internationalFreightBdtMinor = 8_000_000L
+            ),
+            LandedCostSnapshot(
+                id = "s-2", shipmentId = "shp-2", productId = "prod-msg", variantId = null,
+                productNameEn = "MOON SHOES GURD", productNameBn = "", sku = "SG7-MSG-004",
+                totalReceivedQuantity = 300, totalPurchaseCostBdtMinor = 18_760_000L,
+                totalAllocatedCostsBdtMinor = 10_934_400L, totalLandedCostBdtMinor = 29_694_400L,
+                unitLandedCostBdtMinor = 98_981L, internationalFreightBdtMinor = 10_934_400L
+            )
+        )
+
+        val summary = calculatePoLandedCostSummary(
+            order = order,
+            items = items,
+            cartons = emptyList(),
+            costItems = emptyList(),
+            additionalCosts = emptyList(),
+            freightRates = emptyList(),
+            categories = listOf(catInsole),
+            products = listOf(prodTsg, prodMsg),
+            variants = emptyList(),
+            snapshots = snapshots,
+            isCostFinalized = true,
+            ledgerAccruedImportMinor = 18_933_760L
+        )
+        assertEquals(18_933_760L, summary.totalFreightBdtMinor)
+        assertEquals(49_693_760L, summary.totalLandedBdtMinor)
+
+        val payable = calculatePoFreightPayableSummary(
+            landedSummary = summary,
+            costItems = emptyList(),
+            additionalCosts = emptyList(),
+            paidFreightBillMinor = 0L,
+            ledgerAccruedBillMinor = 18_933_760L
+        )
+        assertEquals(18_933_760L, payable.totalFreightBillMinor)
+        assertEquals(18_933_760L, payable.remainingFreightBillMinor)
+    }
+
+    @Test
+    fun unitRoundedUpwardsSnapshotDoesNotLeakFreightIntoOtherOverhead() {
+        val order = PurchaseOrder(
+            id = "po-rec-round",
+            poNumber = "PO-2026-002",
+            supplierId = "sup-1",
+            status = PurchaseOrderStatus.RECEIVED.name,
+            currency = "CNY",
+            exchangeRateToBdt = "20.0000",
+            totalAmountMinor = 1_538_000L,
+            totalBdtAmountMinor = 30_760_000L,
+            paidAmountMinor = 1_538_000L,
+            paidBdtAmountMinor = 30_760_000L,
+            isActualCostFinalized = true
+        )
+        val items = listOf(
+            PurchaseOrderItem("i-1", "po-rec-round", "prod-tsg", null, 200, 3000L, 600_000L, 12_000_000L, receivedQuantity = 200),
+            PurchaseOrderItem("i-2", "po-rec-round", "prod-msg", null, 300, 3126L, 938_000L, 18_760_000L, receivedQuantity = 300)
+        )
+        // Item 1 rounds DOWN by -1,120 minor (8,000,000 -> 7,998,880);
+        // Item 2 rounds UP by +480 minor (10,934,400 -> 10,934,880).
+        // Combined allocated overhead = 18,933,760 (matching 5030 ledger ৳189,337.60), with ZERO non-freight costs.
+        val snapshots = listOf(
+            LandedCostSnapshot(
+                id = "s-down", shipmentId = "shp-2", productId = "prod-tsg", variantId = null,
+                productNameEn = "EVA HEIGHT", productNameBn = "", sku = "EVA-200",
+                totalReceivedQuantity = 200, totalPurchaseCostBdtMinor = 12_000_000L,
+                totalAllocatedCostsBdtMinor = 8_000_000L, totalLandedCostBdtMinor = 20_000_000L,
+                unitLandedCostBdtMinor = 99_994L, // 200 * 99,994 = 19,998,800 (allocated 7,998,800 < 8,000,000)
+                internationalFreightBdtMinor = 8_000_000L
+            ),
+            LandedCostSnapshot(
+                id = "s-up", shipmentId = "shp-2", productId = "prod-msg", variantId = null,
+                productNameEn = "PU STONE INSOLE", productNameBn = "", sku = "PU-300",
+                totalReceivedQuantity = 300, totalPurchaseCostBdtMinor = 18_760_000L,
+                totalAllocatedCostsBdtMinor = 10_934_400L, totalLandedCostBdtMinor = 29_694_400L,
+                unitLandedCostBdtMinor = 98_983L, // 300 * 98,983 = 29,694,900 -> +500 > 10,934,400
+                internationalFreightBdtMinor = 10_934_400L
+            )
+        )
+
+        val summary = calculatePoLandedCostSummary(
+            order = order,
+            items = items,
+            cartons = emptyList(),
+            costItems = emptyList(),
+            additionalCosts = emptyList(),
+            freightRates = emptyList(),
+            categories = listOf(catInsole),
+            products = listOf(prodTsg, prodMsg),
+            variants = emptyList(),
+            snapshots = snapshots,
+            isCostFinalized = true,
+            ledgerAccruedImportMinor = 18_933_760L
+        )
+
+        assertEquals(18_933_760L, summary.totalFreightBdtMinor)
+        assertEquals(0L, summary.totalOtherOverheadBdtMinor)
+        assertEquals(49_693_760L, summary.totalLandedBdtMinor)
+    }
 }

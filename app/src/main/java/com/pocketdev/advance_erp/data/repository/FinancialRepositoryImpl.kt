@@ -502,9 +502,16 @@ class FinancialRepositoryImpl @Inject constructor(
         val linesByAccount = linesInRange.groupBy { it.accountId }
 
         // Revenue accounts
-        val grossSalesMinor = linesByAccount["coa-4010"]?.let { list ->
+        val salesRevenue4010Minor = linesByAccount["coa-4010"]?.let { list ->
             list.filter { !it.isDebit }.sumOf { it.amountMinor } - list.filter { it.isDebit }.sumOf { it.amountMinor }
         } ?: 0L
+        val otherRevenueMinor = accounts.values
+            .filter { it.accountType == "REVENUE" && it.accountCode !in setOf("4010", "4020", "4030") }
+            .sumOf { acc ->
+                val list = linesByAccount[acc.id] ?: emptyList()
+                list.filter { !it.isDebit }.sumOf { it.amountMinor } - list.filter { it.isDebit }.sumOf { it.amountMinor }
+            }
+        val grossSalesMinor = salesRevenue4010Minor + otherRevenueMinor
 
         val salesReturnsMinor = linesByAccount["coa-4020"]?.let { list ->
             list.filter { it.isDebit }.sumOf { it.amountMinor } - list.filter { !it.isDebit }.sumOf { it.amountMinor }
@@ -646,9 +653,12 @@ class FinancialRepositoryImpl @Inject constructor(
             directEquity += netBalance
         }
 
-        // P&L Net Profit up to asOfDate represents cumulative retained earnings from operations
+        // P&L Net Profit up to asOfDate minus any distributed Retained Earnings (3020) keeps Assets = L + E balanced
         val pnl = getProfitAndLoss(0L, asOfDate)
-        val retainedEarnings = pnl.netProfitMinor
+        val postedRetainedNetCreditMinor = linesByAccount["coa-3020"]?.let { list ->
+            list.filter { !it.isDebit }.sumOf { it.amountMinor } - list.filter { it.isDebit }.sumOf { it.amountMinor }
+        } ?: 0L
+        val retainedEarnings = pnl.netProfitMinor + postedRetainedNetCreditMinor
         val totalEquity = directEquity + retainedEarnings
         val totalLiabilitiesAndEquity = totalLiabilities + totalEquity
 
@@ -707,7 +717,7 @@ class FinancialRepositoryImpl @Inject constructor(
             val (refType, netLiquidImpact) = pair
             if (netLiquidImpact == 0L) continue
             when (refType) {
-                "OPENING_BALANCE", "CAPITAL_DEPOSIT", "OWNER_CAPITAL", "CAPITAL_WITHDRAWAL" -> {
+                "OPENING_BALANCE", "CAPITAL_DEPOSIT", "OWNER_CAPITAL", "CAPITAL_WITHDRAWAL", "PROFIT_DISTRIBUTION" -> {
                     netFinancing += netLiquidImpact
                 }
                 "SALES_INVOICE", "CUSTOMER_PAYMENT", "VOID_INVOICE_SALES" -> {

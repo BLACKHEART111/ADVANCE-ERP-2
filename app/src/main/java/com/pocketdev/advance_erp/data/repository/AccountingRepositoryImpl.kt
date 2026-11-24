@@ -192,6 +192,7 @@ class AccountingRepositoryImpl @Inject constructor(
 
     companion object {
         const val OWNER_CAPITAL_ACCOUNT_ID = "coa-3010"
+        const val RETAINED_EARNINGS_ACCOUNT_ID = "coa-3020"
         const val MAIN_CASH_ACCOUNT_ID = "coa-1010"
 
         /** Accounts referenced directly by posting logic – must stay active (coa-1010 main Cash is also protected). */
@@ -378,7 +379,8 @@ class AccountingRepositoryImpl @Inject constructor(
         accountId: String,
         amountMinor: Long,
         entryDate: Long,
-        notes: String?
+        notes: String?,
+        equityAccountId: String
     ): String = database.withTransaction {
         require(amountMinor > 0L) { "জমার পরিমাণ শূন্যের বেশি হতে হবে (Amount must be positive)" }
         val acc = accountingDao.getAccountById(accountId)
@@ -386,21 +388,163 @@ class AccountingRepositoryImpl @Inject constructor(
         require(acc.liquidKind != null || acc.id == MAIN_CASH_ACCOUNT_ID) {
             "শুধুমাত্র নগদ, ব্যাংক বা মোবাইল ব্যাংকিং হিসাবে তহবিল জমা করা যাবে"
         }
-        accountingDao.getAccountById(OWNER_CAPITAL_ACCOUNT_ID)
-            ?: throw IllegalStateException("Owner capital account (3010) not found")
+        val equityAcc = accountingDao.getAccountById(equityAccountId)
+            ?: throw IllegalStateException("Equity account not found: $equityAccountId")
+        require(equityAcc.accountType == AccountType.EQUITY.name && equityAcc.accountCode != "3020") {
+            "মূলধন জমার জন্য একটি বৈধ মালিক/ইনভেস্টর মূলধন হিসাব নির্বাচন করুন"
+        }
         val cleanNote = notes?.trim()?.takeIf { it.isNotBlank() }
         val suffix = cleanNote?.let { " ($it)" } ?: ""
+        val equityNameBn = equityAcc.nameBn.ifBlank { equityAcc.nameEn }
+        val accNameBn = acc.nameBn.ifBlank { acc.nameEn }
         postJournalEntry(
             entryDate = entryDate,
-            descEn = "Owner Capital / Fund Deposit to ${acc.nameEn}$suffix",
-            descBn = "মালিকের মূলধন / তহবিল জমা - ${acc.nameBn.ifBlank { acc.nameEn }}$suffix",
+            descEn = "Capital Deposit (${equityAcc.nameEn}) to ${acc.nameEn}$suffix",
+            descBn = "মূলধন জমা ($equityNameBn) -> $accNameBn$suffix",
             referenceType = "CAPITAL_DEPOSIT",
-            referenceId = acc.id,
+            referenceId = equityAcc.id,
             lines = listOf(
-                JournalLineDraft(acc.id, true, amountMinor, "Capital deposit to ${acc.nameEn}"),
-                JournalLineDraft(OWNER_CAPITAL_ACCOUNT_ID, false, amountMinor, "Owner capital contribution")
+                JournalLineDraft(acc.id, true, amountMinor, "Capital deposit from ${equityAcc.nameEn} to ${acc.nameEn}"),
+                JournalLineDraft(equityAcc.id, false, amountMinor, "Capital contribution - ${equityAcc.nameEn}")
             )
         )
+    }
+
+    override suspend fun createInvestorEquityAccount(
+        investorNameEn: String,
+        investorNameBn: String,
+        notes: String?
+    ): String = database.withTransaction {
+        require(investorNameEn.isNotBlank() || investorNameBn.isNotBlank()) { "ইনভেস্টরের নাম লিখুন" }
+        val rawEn = investorNameEn.trim().ifBlank { investorNameBn.trim() }
+        val rawBn = investorNameBn.trim().ifBlank { rawEn }
+        val finalEn = if (rawEn.contains("capital", ignoreCase = true)) rawEn else "$rawEn - Investor Capital"
+        val finalBn = if (rawBn.contains("মূলধন")) rawBn else "$rawBn (ইনভেস্টর মূলধন)"
+        val code = suggestNextAccountCode(AccountType.EQUITY, null)
+        createAccount(
+            code = code,
+            nameEn = finalEn,
+            nameBn = finalBn,
+            type = AccountType.EQUITY,
+            normalBalance = NormalBalance.CREDIT,
+            description = notes?.trim()?.takeIf { it.isNotBlank() } ?: "Investor Capital Account"
+        )
+    }
+
+    override suspend fun withdrawCapitalFromLiquidAccount(
+        liquidAccountId: String,
+        equityAccountId: String,
+        amountMinor: Long,
+        entryDate: Long,
+        notes: String?
+    ): String = database.withTransaction {
+        require(amountMinor > 0L) { "উত্তোলনের পরিমাণ শূন্যের বেশি হতে হবে" }
+        val liquidAcc = accountingDao.getAccountById(liquidAccountId)
+            ?: throw IllegalArgumentException("Account not found: $liquidAccountId")
+        require(liquidAcc.liquidKind != null || liquidAcc.id == MAIN_CASH_ACCOUNT_ID) {
+            "শুধুমাত্র নগদ, ব্যাংক বা মোবাইল ব্যাংকিং হিসাব থেকে উত্তোলন করা যাবে"
+        }
+        val equityAcc = accountingDao.getAccountById(equityAccountId)
+            ?: throw IllegalStateException("Equity account not found: $equityAccountId")
+        require(equityAcc.accountType == AccountType.EQUITY.name && equityAcc.accountCode != "3020") {
+            "উত্তোলনের জন্য একটি বৈধ মালিক/ইনভেস্টর মূলধন হিসাব নির্বাচন করুন"
+        }
+        requireSufficientLiquidBalance(liquidAccountId, amountMinor)
+        if (equityAcc.id != OWNER_CAPITAL_ACCOUNT_ID) {
+            val investorNetCreditMinor = (-accountingDao.getNetDebitBalanceForAccount(equityAcc.accountCode)).coerceAtLeast(0L)
+            val eqLabel = equityAcc.nameBn.ifBlank { equityAcc.nameEn }
+            require(amountMinor <= investorNetCreditMinor) {
+                "$eqLabel-এর বর্তমান মূলধন ব্যালেন্স (৳${Formatters.formatMinorUnit(investorNetCreditMinor)}) এর চেয়ে বেশি উত্তোলন করা যাবে না।"
+            }
+        }
+        val cleanNote = notes?.trim()?.takeIf { it.isNotBlank() }
+        val suffix = cleanNote?.let { " ($it)" } ?: ""
+        val eqNameBn = equityAcc.nameBn.ifBlank { equityAcc.nameEn }
+        val liqNameBn = liquidAcc.nameBn.ifBlank { liquidAcc.nameEn }
+        postJournalEntry(
+            entryDate = entryDate,
+            descEn = "Capital Withdrawal (${equityAcc.nameEn}) from ${liquidAcc.nameEn}$suffix",
+            descBn = "মূলধন উত্তোলন ($eqNameBn) <- $liqNameBn$suffix",
+            referenceType = "CAPITAL_WITHDRAWAL",
+            referenceId = equityAcc.id,
+            lines = listOf(
+                JournalLineDraft(equityAcc.id, true, amountMinor, "Capital withdrawal / drawings - ${equityAcc.nameEn}"),
+                JournalLineDraft(liquidAcc.id, false, amountMinor, "Paid withdrawal from ${liquidAcc.nameEn}")
+            )
+        )
+    }
+
+    override suspend fun distributeProfitToInvestor(
+        investorEquityAccountId: String,
+        amountMinor: Long,
+        reinvestToCapital: Boolean,
+        paymentAccountId: String?,
+        entryDate: Long,
+        notes: String?
+    ): String = database.withTransaction {
+        require(amountMinor > 0L) { "লভ্যাংশের পরিমাণ শূন্যের বেশি হতে হবে" }
+        accountingDao.getAccountById(RETAINED_EARNINGS_ACCOUNT_ID)
+            ?: throw IllegalStateException("Retained Earnings account (3020) not found")
+        val investorAcc = accountingDao.getAccountById(investorEquityAccountId)
+            ?: throw IllegalStateException("Investor equity account not found: $investorEquityAccountId")
+        require(investorAcc.accountType == AccountType.EQUITY.name && investorAcc.accountCode != "3020") {
+            "লভ্যাংশ বণ্টনের জন্য একটি বৈধ মালিক/ইনভেস্টর হিসাব নির্বাচন করুন"
+        }
+
+        val allAccountsById = accountingDao.getAllAccountsSync().associateBy { it.id }
+        val activeLines = accountingDao.getActivePostedLines()
+        val revenueNetCredit = activeLines
+            .filter { allAccountsById[it.accountId]?.accountType == AccountType.REVENUE.name }
+            .sumOf { if (it.isDebit) -it.amountMinor else it.amountMinor }
+        val expenseNetDebit = activeLines
+            .filter { allAccountsById[it.accountId]?.accountType == AccountType.EXPENSE.name }
+            .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
+        val retainedPostedNetCredit = activeLines
+            .filter { it.accountId == RETAINED_EARNINGS_ACCOUNT_ID }
+            .sumOf { if (it.isDebit) -it.amountMinor else it.amountMinor }
+        val availableProfitMinor = (revenueNetCredit - expenseNetDebit) + retainedPostedNetCredit
+        require(availableProfitMinor > 0L && amountMinor <= availableProfitMinor) {
+            "বণ্টনযোগ্য নিট মুনাফা পর্যাপ্ত নেই (বর্তমান বণ্টনযোগ্য মুনাফা: ৳${Formatters.formatMinorUnit(availableProfitMinor.coerceAtLeast(0L))})"
+        }
+
+        val cleanNote = notes?.trim()?.takeIf { it.isNotBlank() }
+        val suffix = cleanNote?.let { " ($it)" } ?: ""
+        val invNameBn = investorAcc.nameBn.ifBlank { investorAcc.nameEn }
+
+        if (reinvestToCapital) {
+            postJournalEntry(
+                entryDate = entryDate,
+                descEn = "Profit Share Reinvested to Capital (${investorAcc.nameEn})$suffix",
+                descBn = "মুনাফার অংশ মূলধনে পুনঃবিনিয়োগ ($invNameBn)$suffix",
+                referenceType = "PROFIT_REINVESTMENT",
+                referenceId = investorAcc.id,
+                lines = listOf(
+                    JournalLineDraft(RETAINED_EARNINGS_ACCOUNT_ID, true, amountMinor, "Profit share reinvested to ${investorAcc.nameEn}"),
+                    JournalLineDraft(investorAcc.id, false, amountMinor, "Reinvested profit share added to capital")
+                )
+            )
+        } else {
+            val cleanPayId = paymentAccountId?.takeIf { it.isNotBlank() }
+                ?: throw IllegalArgumentException("পরিশোধের জন্য একটি নগদ/ব্যাংক হিসাব নির্বাচন করুন")
+            val payAcc = accountingDao.getAccountById(cleanPayId)
+                ?: throw IllegalArgumentException("Payment account not found: $cleanPayId")
+            require(payAcc.liquidKind != null || payAcc.id == MAIN_CASH_ACCOUNT_ID) {
+                "পরিশোধের জন্য একটি বৈধ নগদ, ব্যাংক বা মোবাইল ব্যাংকিং হিসাব নির্বাচন করুন"
+            }
+            requireSufficientLiquidBalance(payAcc.id, amountMinor)
+            val payNameBn = payAcc.nameBn.ifBlank { payAcc.nameEn }
+            postJournalEntry(
+                entryDate = entryDate,
+                descEn = "Profit Distribution to ${investorAcc.nameEn} via ${payAcc.nameEn}$suffix",
+                descBn = "মুনাফার অংশ প্রদান ($invNameBn) - $payNameBn$suffix",
+                referenceType = "PROFIT_DISTRIBUTION",
+                referenceId = investorAcc.id,
+                lines = listOf(
+                    JournalLineDraft(RETAINED_EARNINGS_ACCOUNT_ID, true, amountMinor, "Profit share distributed to ${investorAcc.nameEn}"),
+                    JournalLineDraft(payAcc.id, false, amountMinor, "Paid profit share to ${investorAcc.nameEn}")
+                )
+            )
+        }
     }
 
     override suspend fun payAccruedCustomsAndFreight(

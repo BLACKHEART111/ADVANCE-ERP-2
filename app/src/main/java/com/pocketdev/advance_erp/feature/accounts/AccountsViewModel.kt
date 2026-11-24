@@ -589,6 +589,7 @@ class AccountsViewModel @Inject constructor(
         accountId: String,
         amountMinor: Long,
         notes: String?,
+        equityAccountId: String = "coa-3010",
         onSuccess: (() -> Unit)? = null
     ) {
         viewModelScope.launch {
@@ -597,7 +598,8 @@ class AccountsViewModel @Inject constructor(
                 accountingRepository.depositCapitalToLiquidAccount(
                     accountId = accountId,
                     amountMinor = amountMinor,
-                    notes = notes
+                    notes = notes,
+                    equityAccountId = equityAccountId
                 )
                 refreshTrialBalance()
                 loadFinancialStatements()
@@ -610,6 +612,97 @@ class AccountsViewModel @Inject constructor(
                 onSuccess?.invoke()
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "Deposit failed") }
+            }
+        }
+    }
+
+    fun createInvestorAccount(
+        nameEn: String,
+        nameBn: String,
+        onCreated: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                val newId = accountingRepository.createInvestorEquityAccount(
+                    investorNameEn = nameEn,
+                    investorNameBn = nameBn
+                )
+                refreshTrialBalance()
+                loadFinancialStatements()
+                val msg = if (_uiState.value.language == AppLanguage.BANGLA) {
+                    "নতুন ইনভেস্টর মূলধন হিসাব তৈরি হয়েছে!"
+                } else {
+                    "New investor capital account created!"
+                }
+                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                onCreated(newId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "Failed to create investor account") }
+            }
+        }
+    }
+
+    fun withdrawCapital(
+        liquidAccountId: String,
+        equityAccountId: String,
+        amountMinor: Long,
+        notes: String?,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                accountingRepository.withdrawCapitalFromLiquidAccount(
+                    liquidAccountId = liquidAccountId,
+                    equityAccountId = equityAccountId,
+                    amountMinor = amountMinor,
+                    notes = notes
+                )
+                refreshTrialBalance()
+                loadFinancialStatements()
+                val msg = if (_uiState.value.language == AppLanguage.BANGLA) {
+                    "মূলধন উত্তোলন সফলভাবে সম্পন্ন হয়েছে!"
+                } else {
+                    "Capital withdrawal recorded!"
+                }
+                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "Withdrawal failed") }
+            }
+        }
+    }
+
+    fun distributeProfit(
+        investorEquityAccountId: String,
+        amountMinor: Long,
+        reinvestToCapital: Boolean,
+        paymentAccountId: String?,
+        notes: String?,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                accountingRepository.distributeProfitToInvestor(
+                    investorEquityAccountId = investorEquityAccountId,
+                    amountMinor = amountMinor,
+                    reinvestToCapital = reinvestToCapital,
+                    paymentAccountId = paymentAccountId,
+                    notes = notes
+                )
+                refreshTrialBalance()
+                loadFinancialStatements()
+                val msg = if (_uiState.value.language == AppLanguage.BANGLA) {
+                    "মুনাফার অংশ সফলভাবে বণ্টন হয়েছে!"
+                } else {
+                    "Profit distribution recorded!"
+                }
+                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "Profit distribution failed") }
             }
         }
     }
