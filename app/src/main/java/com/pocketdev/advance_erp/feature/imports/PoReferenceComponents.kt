@@ -222,7 +222,8 @@ internal fun allocateAmountBdtAcrossCategoriesByWeight(
     total:String,
     unit:String?=null,
     isBangla:Boolean,
-    categoryBreakdowns:List<PoCategoryLandedBreakdown> = emptyList()
+    categoryBreakdowns:List<PoCategoryLandedBreakdown> = emptyList(),
+    productBreakdowns:List<PoProductLandedBreakdown> = emptyList()
 ) {
     val dark=LocalIsDarkTheme.current
     Surface(shape=RoundedCornerShape(14.dp),color=if(dark) Color(0xFF343329) else Color(0xFFFFF4D8)) {
@@ -231,7 +232,49 @@ internal fun allocateAmountBdtAcrossCategoriesByWeight(
                 Icon(Icons.Outlined.Layers,null,Modifier.size(29.dp),tint=if(dark) Color(0xFFFFD27C) else Color(0xFF93600E))
                 Column(Modifier.weight(1f)) { Text(if(isBangla) "সর্বমোট ল্যান্ডিং কস্ট" else "Total landed cost",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge); Text(total,color=MaterialTheme.colorScheme.secondary,fontWeight=FontWeight.ExtraBold,style=MaterialTheme.typography.titleLarge) }
             }
-            if (categoryBreakdowns.isNotEmpty()) {
+            if (productBreakdowns.isNotEmpty()) {
+                HorizontalDivider(color=MaterialTheme.colorScheme.secondary.copy(alpha=.15f))
+                Text(
+                    text = if (isBangla) "পণ্য অনুযায়ী গড় প্রতি পিস ল্যান্ডিং কস্ট:" else "Product-wise average per unit landed cost:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                productBreakdowns.forEach { prod ->
+                    val prodTotalStr = BigDecimal.valueOf(prod.totalLandedBdtMinor, 2).setScale(2, RoundingMode.HALF_UP)
+                    val prodWeightStr = prod.grossWeightKg.setScale(2, RoundingMode.HALF_UP)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = prod.productTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (isBangla) {
+                                    "${prod.totalPcs} PCS • $prodWeightStr KG • মোট: ৳ $prodTotalStr"
+                                } else {
+                                    "${prod.totalPcs} PCS • $prodWeightStr KG • Total: ৳ $prodTotalStr"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = (if (isBangla) "গড় প্রতি পিস: " else "Avg: ") + "৳ ${prod.unitLandedBdt} / PCS",
+                            color = MaterialTheme.colorScheme.secondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+            if (categoryBreakdowns.isNotEmpty() && (productBreakdowns.isEmpty() || categoryBreakdowns.size > 1)) {
                 HorizontalDivider(color=MaterialTheme.colorScheme.secondary.copy(alpha=.15f))
                 Text(
                     text = if (isBangla) "ক্যাটাগরি অনুযায়ী গড় প্রতি পিস ল্যান্ডিং কস্ট:" else "Category-wise average per unit landed cost:",

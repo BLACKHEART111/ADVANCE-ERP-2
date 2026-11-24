@@ -67,10 +67,20 @@ interface PurchaseOrderDao {
     @Query("SELECT * FROM purchase_orders WHERE supplierId = :supplierId ORDER BY createdAt DESC")
     fun getOrdersBySupplier(supplierId: String): Flow<List<PurchaseOrder>>
 
-    @Query("SELECT * FROM purchase_orders WHERE createdAt >= :fromMillis AND createdAt <= :toMillis ORDER BY createdAt DESC")
+    @Query("""
+        SELECT * FROM purchase_orders
+        WHERE orderDate >= :fromMillis AND orderDate <= :toMillis
+          AND status NOT IN ('DRAFT', 'CANCELLED')
+        ORDER BY orderDate DESC, createdAt DESC
+    """)
     suspend fun getOrdersInRange(fromMillis: Long, toMillis: Long): List<PurchaseOrder>
 
-    @Query("SELECT * FROM purchase_orders WHERE createdAt >= :fromMillis AND createdAt <= :toMillis ORDER BY createdAt DESC")
+    @Query("""
+        SELECT * FROM purchase_orders
+        WHERE orderDate >= :fromMillis AND orderDate <= :toMillis
+          AND status NOT IN ('DRAFT', 'CANCELLED')
+        ORDER BY orderDate DESC, createdAt DESC
+    """)
     fun getOrdersInRangeFlow(fromMillis: Long, toMillis: Long): Flow<List<PurchaseOrder>>
 
     @Query("SELECT COUNT(*) FROM purchase_orders")

@@ -2490,8 +2490,11 @@ fun CreatePurchaseOrderDialog(
                     if (!metadataOnly) item {
                         // Compute category weights & totals live
                         val categoryWeightMap = mutableMapOf<String, BigDecimal>()
+                        val itemWeightMap = mutableMapOf<String, BigDecimal>()
+                        val itemCartonNumsMap = mutableMapOf<String, MutableSet<String>>()
                         if (cartonBoxes.isNotEmpty()) {
                             cartonBoxes.forEach { box ->
+                                val boxKey = box.cartonNumber.ifBlank { box.uid }
                                 val shares = runCatching {
                                     CartonWeightAllocationEngine.allocateWeights(
                                         box.grossWeightKgStr.toBigDecimal(), lines = box.lines.map { line ->
@@ -2503,6 +2506,9 @@ fun CreatePurchaseOrderDialog(
                                 shares.forEach { line ->
                                     val catId = products.find { it.id == line.productId }?.categoryId ?: "uncategorized"
                                     categoryWeightMap[catId] = (categoryWeightMap[catId] ?: BigDecimal.ZERO) + line.allocatedGrossWeightKg
+                                    val iKey = poItemKey(line.productId, line.variantId)
+                                    itemWeightMap[iKey] = (itemWeightMap[iKey] ?: BigDecimal.ZERO) + line.allocatedGrossWeightKg
+                                    itemCartonNumsMap.getOrPut(iKey) { mutableSetOf() }.add(boxKey)
                                 }
                             }
                         } else {
@@ -2603,6 +2609,56 @@ fun CreatePurchaseOrderDialog(
                             sharedOverheadBdt = sharedOverheadBdt,
                             expectedTotalProductBdt = totalProductBdt,
                             expectedTotalFreightBdt = if (isLocalPurchase) BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP) else totalCategoryFreightBdt
+                        )
+                        val draftCalcItems = itemsList.mapIndexedNotNull { idx, itm ->
+                            if (itm.productId.isBlank()) null
+                            else {
+                                val qty = itm.quantityStr.trim().toIntOrNull() ?: 0
+                                val priceBd = itm.unitPriceStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                                val foreignMinor = BigDecimal(qty).multiply(priceBd).movePointRight(2)
+                                    .setScale(0, RoundingMode.HALF_UP).toLong()
+                                val bdtMinor = BigDecimal(qty).multiply(priceBd).multiply(rateBd).movePointRight(2)
+                                    .setScale(0, RoundingMode.HALF_UP).toLong()
+                                val iKey = poItemKey(itm.productId, itm.variantId)
+                                val weightKg = if (cartonBoxes.isNotEmpty()) {
+                                    itemWeightMap[iKey] ?: BigDecimal.ZERO
+                                } else {
+                                    itm.grossWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                                }
+                                val cartonsCnt = if (cartonBoxes.isNotEmpty()) {
+                                    itemCartonNumsMap[iKey]?.size ?: 0
+                                } else {
+                                    itm.cartonQuantityStr.trim().toIntOrNull() ?: 0
+                                }
+                                PoDraftCostCalcItem(
+                                    itemId = "draft-$idx",
+                                    productId = itm.productId,
+                                    variantId = itm.variantId,
+                                    quantity = qty,
+                                    purchaseForeignMinor = foreignMinor,
+                                    purchaseBdtMinor = bdtMinor,
+                                    grossWeightKg = weightKg,
+                                    cartonCount = cartonsCnt
+                                )
+                            }
+                        }
+                        val categoryRatesMinorMap = categoryRateStrings.mapValues { (_, str) ->
+                            (str.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                                .multiply(BigDecimal("100"))
+                                .setScale(0, RoundingMode.HALF_UP)
+                                .toLong()
+                        }
+                        val productLandedBreakdowns = calculateDraftPoProductLandedBreakdowns(
+                            draftItems = draftCalcItems,
+                            products = products,
+                            variants = variants,
+                            categories = categories,
+                            isLocalPurchase = isLocalPurchase,
+                            categoryFreightRatesMinor = categoryRatesMinorMap,
+                            sharedOverheadBdt = sharedOverheadBdt,
+                            expectedTotalProductBdt = totalProductBdt,
+                            expectedTotalFreightBdt = if (isLocalPurchase) BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP) else totalCategoryFreightBdt,
+                            isBangla = isBangla
                         )
 
                         Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -2757,7 +2813,8 @@ fun CreatePurchaseOrderDialog(
                                     total = "৳ $grandTotalEstimatedBdt",
                                     unit = (if (isBangla) "সর্বমোট গড় প্রতি পিস: " else "Overall average per unit: ") + "৳ $avgUnitLandedBdt / PCS",
                                     isBangla = isBangla,
-                                    categoryBreakdowns = categoryLandedBreakdowns
+                                    categoryBreakdowns = categoryLandedBreakdowns,
+                                    productBreakdowns = productLandedBreakdowns
                                 )
 
                                 Spacer(modifier = Modifier.height(8.dp))

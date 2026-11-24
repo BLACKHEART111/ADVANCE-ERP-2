@@ -12,6 +12,7 @@ import com.pocketdev.advance_erp.core.engine.LandingCostEngine
 import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
 import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
 import com.pocketdev.advance_erp.core.engine.PoPackingEngine
+import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
 import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import com.pocketdev.advance_erp.data.dao.CustomerDao
@@ -64,12 +65,14 @@ import com.pocketdev.advance_erp.domain.repository.CostAdjustmentResult
 import com.pocketdev.advance_erp.domain.repository.ImportRepository
 import com.pocketdev.advance_erp.domain.repository.JournalLineDraft
 import com.pocketdev.advance_erp.domain.repository.MixedCartonLineDraft
+import com.pocketdev.advance_erp.domain.repository.PoFreightPaymentRecord
 import com.pocketdev.advance_erp.domain.repository.PoRemainingItem
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
 import com.pocketdev.advance_erp.domain.repository.ReceiptItemDraft
 import com.pocketdev.advance_erp.domain.repository.ShipmentCartonDraft
 import com.pocketdev.advance_erp.domain.repository.ShipmentSupplierDraft
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.UUID
@@ -467,7 +470,7 @@ class ImportRepositoryImpl @Inject constructor(
             importShipmentDao.deleteFreightRatesForShipment(shp.id)
             importShipmentDao.deleteShipment(shp.id)
         }
-        listOf("PO_COMMITMENT", "PO_IMPORT_EXPENSE", "PO_LANDED_CAPITALIZE").forEach { refType ->
+        listOf("PO_COMMITMENT", "PO_IMPORT_EXPENSE", "PO_LANDED_CAPITALIZE", "PO_FREIGHT_PAYMENT").forEach { refType ->
             database.accountingDao()
                 .getActiveEntriesForReference(refType, orderId)
                 .forEach { je -> accountingRepository.reverseJournalEntry(je.id) }
@@ -658,6 +661,306 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         supplierPaymentDao.deletePaymentById(paymentId)
+    }
+
+    private fun resolvePoCartonWeightsByKey(cartons: List<ShipmentCarton>): Map<String, BigDecimal> {
+        val cartonWeightByKey = mutableMapOf<String, BigDecimal>()
+        cartons.groupBy { it.cartonNumber }.values.forEach { cLines ->
+            val allLinesHaveWeight = cLines.all {
+                (it.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO
+            }
+            if (allLinesHaveWeight) {
+                cLines.forEach { line ->
+                    val k = if (line.variantId != null) "${line.productId}:${line.variantId}" else line.productId
+                    val w = line.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                    cartonWeightByKey[k] = (cartonWeightByKey[k] ?: BigDecimal.ZERO).add(w)
+                }
+            } else {
+                val boxGw = cLines.firstOrNull()?.cartonGrossWeightKg?.trim()?.toBigDecimalOrNull()
+                    ?.takeIf { it > BigDecimal.ZERO }
+                    ?: cLines.fold(BigDecimal.ZERO) { acc, l ->
+                        acc.add(l.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                    }
+                val allocated = if (boxGw > BigDecimal.ZERO) {
+                    runCatching {
+                        CartonWeightAllocationEngine.allocateWeights(
+                            cartonGrossWeightKg = boxGw,
+                            lines = cLines.map { l ->
+                                MixedCartonLineInput(
+                                    productId = l.productId,
+                                    variantId = l.variantId,
+                                    quantity = l.quantity.coerceAtLeast(1),
+                                    manualGrossWeightKg = l.grossWeightKg.trim().toBigDecimalOrNull()?.takeIf { it > BigDecimal.ZERO }
+                                )
+                            }
+                        )
+                    }.getOrNull()
+                } else null
+                if (allocated != null) {
+                    allocated.forEach { alloc ->
+                        val k = if (alloc.variantId != null) "${alloc.productId}:${alloc.variantId}" else alloc.productId
+                        cartonWeightByKey[k] = (cartonWeightByKey[k] ?: BigDecimal.ZERO).add(alloc.allocatedGrossWeightKg)
+                    }
+                } else {
+                    cLines.forEach { line ->
+                        val k = if (line.variantId != null) "${line.productId}:${line.variantId}" else line.productId
+                        val w = line.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                        cartonWeightByKey[k] = (cartonWeightByKey[k] ?: BigDecimal.ZERO).add(w)
+                    }
+                }
+            }
+        }
+        return cartonWeightByKey
+    }
+
+    override fun getFreightPaymentsForOrder(orderId: String): Flow<List<PoFreightPaymentRecord>> =
+        database.accountingDao().getActiveFreightPaymentsForOrder(orderId).map { entries ->
+            entries.map { entry ->
+                val lines = database.accountingDao().getLinesForEntrySync(entry.id)
+                val creditLine = lines.firstOrNull { !it.isDebit }
+                val rawDesc = creditLine?.description.orEmpty()
+                val notePart = rawDesc.substringAfter("PO freight payment | ", missingDelimiterValue = "")
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                PoFreightPaymentRecord(
+                    journalEntryId = entry.id,
+                    entryNumber = entry.entryNumber,
+                    orderId = orderId,
+                    paymentDate = entry.entryDate,
+                    amountBdtMinor = creditLine?.amountMinor ?: entry.totalCreditMinor,
+                    paymentAccountId = creditLine?.accountId.orEmpty(),
+                    paymentAccountName = creditLine?.accountName.orEmpty(),
+                    notes = notePart
+                )
+            }
+        }
+
+    private suspend fun computeUnpaidPoFreightAndImportTotalMinor(po: PurchaseOrder): Pair<Long, Map<String, Long>> {
+        val batchShipment = importShipmentDao.getBatchShipmentForOrder(po.id)
+        val orderCosts = importCostDao.getActualCostItemsForOrderSync(po.id)
+        val shipmentCosts = if (batchShipment != null) {
+            importCostDao.getCostItemsForShipmentSync(batchShipment.id).filter { !it.isEstimated }
+        } else emptyList()
+        val actualCosts = (orderCosts + shipmentCosts)
+            .distinctBy { it.id }
+            .filter { !it.costCategory.equals(CostCategory.PRODUCT_PURCHASE.name, ignoreCase = true) }
+
+        val accountingDao = database.accountingDao()
+        val snapshots = if (po.isActualCostFinalized && batchShipment != null) {
+            importCostDao.getSnapshotsForShipmentSync(batchShipment.id)
+        } else emptyList()
+
+        if (po.isActualCostFinalized && snapshots.isNotEmpty()) {
+            val totalLandedMinor = snapshots.sumOf { it.totalLandedCostBdtMinor }
+            val alreadyPostedMinor = actualCosts.filter { it.isPosted }.sumOf { it.bdtAmountMinor }
+            val totalDelta = (totalLandedMinor - po.totalBdtAmountMinor - alreadyPostedMinor).coerceAtLeast(0L)
+            val unpostedPairs = actualCosts.filter { !it.isPosted }.map {
+                ErpAccountingGuard.mapImportCostCategoryToExpenseAccountId(it.costCategory, it.description) to it.bdtAmountMinor
+            }
+            val rawBuckets = ErpAccountingGuard.allocateLandedExpenseBucketsMinor(
+                unpostedCosts = unpostedPairs,
+                categoryFreightMinor = snapshots.sumOf { it.internationalFreightBdtMinor },
+                targetTotalCapitalizedDeltaMinor = totalDelta
+            )
+            val resolvedBuckets = linkedMapOf<String, Long>()
+            for ((rawAccId, amt) in rawBuckets) {
+                val accId = if (accountingDao.getAccountById(rawAccId) != null) rawAccId else "coa-5030"
+                resolvedBuckets[accId] = (resolvedBuckets[accId] ?: 0L) + amt
+            }
+            return totalDelta to resolvedBuckets
+        }
+
+        val unpostedCapCosts = actualCosts.filter {
+            !it.isPosted && (it.isCapitalizableCost || it.isCapitalized || it.costCategory == CostCategory.OTHER_CHARGES.name)
+        }
+        val freightCategories = setOf(
+            CostCategory.INTERNATIONAL_FREIGHT.name,
+            CostCategory.SEA_FREIGHT.name,
+            CostCategory.AIR_FREIGHT.name
+        )
+        val hasExplicitFreight = actualCosts.any { it.costCategory in freightCategories }
+        var derivedFreightMinor = 0L
+        if (!hasExplicitFreight) {
+            val poItems = purchaseOrderDao.getItemsForOrderSync(po.id)
+            val cartons = importShipmentDao.getCartonsForOrderSync(po.id)
+            val weightByKey = resolvePoCartonWeightsByKey(cartons)
+            val syncedRates = if (batchShipment != null) syncShipmentCategoryFreightRates(batchShipment.id) else emptyList()
+            val applicableRates = syncedRates.filter { rate ->
+                rate.overrideRatePerKgBdtMinor != null ||
+                    (!po.currency.equals("BDT", ignoreCase = true) && rate.defaultRatePerKgBdtMinor > 0L)
+            }
+            if (applicableRates.isNotEmpty() && poItems.isNotEmpty()) {
+                val poProducts = poItems.map { item ->
+                    val prod = productDao.getProductById(item.productId)
+                    val variant = if (item.variantId != null) productVariantDao.getVariantById(item.variantId) else null
+                    val key = if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId
+                    val itemWeight = weightByKey[key]?.takeIf { it > BigDecimal.ZERO }
+                        ?: BigDecimal(item.grossWeightKg.ifBlank { "0" })
+                    LandingCostEngine.ShipmentProductInput(
+                        productId = item.productId,
+                        variantId = item.variantId,
+                        productNameEn = prod?.nameEn ?: item.productId,
+                        productNameBn = prod?.nameBn ?: "",
+                        sku = variant?.sku ?: prod?.baseSku ?: "",
+                        supplierId = po.supplierId,
+                        purchaseOrderId = po.id,
+                        categoryId = prod?.categoryId ?: "cat-uncategorized",
+                        packedQuantity = item.quantity,
+                        unitPurchasePriceForeignMinor = item.unitPriceMinor,
+                        purchaseCurrency = po.currency,
+                        purchaseExchangeRateToBdt = BigDecimal(po.exchangeRateToBdt.ifBlank { "1.0" }),
+                        goodQuantity = item.quantity,
+                        fallbackGrossWeightKg = itemWeight
+                    )
+                }
+                val rateInputs = applicableRates.map { r ->
+                    LandingCostEngine.CategoryFreightRateInput(
+                        categoryId = r.categoryId,
+                        categoryNameEn = r.categoryNameEn,
+                        defaultRatePerKgBdtMinor = r.defaultRatePerKgBdtMinor,
+                        overrideRatePerKgBdtMinor = r.overrideRatePerKgBdtMinor
+                    )
+                }
+                derivedFreightMinor = LandingCostEngine.calculateCategoryInternationalFreight(
+                    products = poProducts,
+                    productWeightsKg = emptyMap(),
+                    categoryRates = rateInputs
+                ).sumOf { it.totalCategoryFreightBdtMinor }
+            } else if (!po.currency.equals("BDT", ignoreCase = true)) {
+                val poRate = po.shippingRatePerKgBdt.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                val totalWt = if (poItems.isNotEmpty()) {
+                    poItems.fold(BigDecimal.ZERO) { acc, item ->
+                        val key = if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId
+                        val w = weightByKey[key]?.takeIf { it > BigDecimal.ZERO }
+                            ?: BigDecimal(item.grossWeightKg.ifBlank { "0" })
+                        acc.add(w)
+                    }
+                } else {
+                    BigDecimal(po.totalGrossWeightKg.ifBlank { "0" })
+                }
+                if (poRate > BigDecimal.ZERO && totalWt > BigDecimal.ZERO) {
+                    derivedFreightMinor = totalWt
+                        .multiply(poRate)
+                        .movePointRight(2)
+                        .setScale(0, RoundingMode.HALF_UP)
+                        .longValueExact()
+                }
+            }
+        }
+
+        val totalDelta = unpostedCapCosts.sumOf { it.bdtAmountMinor } + derivedFreightMinor
+        val unpostedPairs = unpostedCapCosts.map {
+            ErpAccountingGuard.mapImportCostCategoryToExpenseAccountId(it.costCategory, it.description) to it.bdtAmountMinor
+        }
+        val rawBuckets = ErpAccountingGuard.allocateLandedExpenseBucketsMinor(
+            unpostedCosts = unpostedPairs,
+            categoryFreightMinor = derivedFreightMinor,
+            targetTotalCapitalizedDeltaMinor = totalDelta
+        )
+        val resolvedBuckets = linkedMapOf<String, Long>()
+        for ((rawAccId, amt) in rawBuckets) {
+            val accId = if (accountingDao.getAccountById(rawAccId) != null) rawAccId else "coa-5030"
+            resolvedBuckets[accId] = (resolvedBuckets[accId] ?: 0L) + amt
+        }
+        return totalDelta to resolvedBuckets
+    }
+
+    override suspend fun recordPoFreightPayment(
+        orderId: String,
+        paymentAccountId: String,
+        amountBdtMinor: Long,
+        paymentDate: Long,
+        notes: String?
+    ): String = database.withTransaction {
+        require(amountBdtMinor > 0L) { "পরিশোধের পরিমাণ শূন্যের বেশি হতে হবে" }
+        val po = purchaseOrderDao.getOrderById(orderId)
+            ?: throw IllegalArgumentException("ক্রয়াদেশ খুঁজে পাওয়া যায়নি: $orderId")
+        require(po.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
+            "খসড়া বা বাতিল PO-তে ফ্রেইট পেমেন্ট করা যাবে না"
+        }
+
+        val accountingDao = database.accountingDao()
+        accountingDao.getAccountById("coa-2020")
+            ?: throw IllegalStateException("বকেয়া শুল্ক ও ফ্রেইট হিসাব (২০২০) খুঁজে পাওয়া যায়নি")
+        accountingDao.getAccountById(paymentAccountId)
+            ?: throw IllegalArgumentException("পেমেন্ট হিসাব খুঁজে পাওয়া যায়নি")
+
+        val (computedBillMinor, resolvedBuckets) = computeUnpaidPoFreightAndImportTotalMinor(po)
+        val existingAccrualEntries = accountingDao.getActiveEntriesForReference("PO_IMPORT_EXPENSE", orderId)
+        val accruedOnLedgerMinor = existingAccrualEntries.sumOf { it.totalCreditMinor }
+        val effectiveTotalBillMinor = maxOf(computedBillMinor, accruedOnLedgerMinor)
+        val alreadyPaidMinor = accountingDao.getActiveEntriesForReference("PO_FREIGHT_PAYMENT", orderId)
+            .sumOf { it.totalDebitMinor }
+        val remainingDueMinor = (effectiveTotalBillMinor - alreadyPaidMinor).coerceAtLeast(0L)
+
+        require(amountBdtMinor <= remainingDueMinor) {
+            "এই PO-র বকেয়া ফ্রেইট ও শিপিং বিলের (৳${Formatters.formatMinorUnit(remainingDueMinor)}) চেয়ে বেশি পরিশোধ করা যাবে না"
+        }
+
+        accountingRepository.requireSufficientLiquidBalance(paymentAccountId, amountBdtMinor)
+
+        // Ensure 2020 payable accrual & 1220 capitalization exist for this PO before settling 2020
+        if (accruedOnLedgerMinor < effectiveTotalBillMinor && effectiveTotalBillMinor > 0L && resolvedBuckets.isNotEmpty()) {
+            syncPoCommitmentJournal(po)
+            existingAccrualEntries.forEach { accountingRepository.reverseJournalEntry(it.id) }
+            accountingDao.getActiveEntriesForReference("PO_LANDED_CAPITALIZE", orderId)
+                .forEach { accountingRepository.reverseJournalEntry(it.id) }
+
+            val expenseLines = resolvedBuckets.map { (accId, amt) ->
+                JournalLineDraft(accId, true, amt, "Import expense recognized for ${po.poNumber}")
+            } + JournalLineDraft("coa-2020", false, effectiveTotalBillMinor, "Accrued customs & freight for ${po.poNumber}")
+
+            accountingRepository.postJournalEntry(
+                entryDate = po.orderDate,
+                descEn = "Import Freight & Clearance Charges for ${po.poNumber}",
+                descBn = "আমদানি ফ্রেইট ও শুল্ক ব্যয় (${po.poNumber})",
+                referenceType = "PO_IMPORT_EXPENSE",
+                referenceId = orderId,
+                lines = expenseLines
+            )
+
+            val capitalizeLines = listOf(
+                JournalLineDraft("coa-1220", true, effectiveTotalBillMinor, "Capitalize freight & costs into in-transit stock (${po.poNumber})")
+            ) + resolvedBuckets.map { (accId, amt) ->
+                JournalLineDraft(accId, false, amt, "Capitalized import cost (${po.poNumber})")
+            }
+
+            accountingRepository.postJournalEntry(
+                entryDate = po.orderDate,
+                descEn = "Capitalize Import Freight & Costs into In-Transit Stock (${po.poNumber})",
+                descBn = "ট্রানজিট পণ্যে ফ্রেইট ও আমদানি ব্যয় সংযোজন (${po.poNumber})",
+                referenceType = "PO_LANDED_CAPITALIZE",
+                referenceId = orderId,
+                lines = capitalizeLines
+            )
+        }
+
+        val cleanNote = notes?.trim()?.takeIf { it.isNotBlank() }
+        accountingRepository.postJournalEntry(
+            entryDate = paymentDate,
+            descEn = "Freight Forwarder Payment for ${po.poNumber}${cleanNote?.let { " ($it)" } ?: ""}",
+            descBn = "ফ্রেইট ফরোয়ার্ডার পেমেন্ট (${po.poNumber})${cleanNote?.let { " - $it" } ?: ""}",
+            referenceType = "PO_FREIGHT_PAYMENT",
+            referenceId = orderId,
+            lines = listOf(
+                JournalLineDraft("coa-2020", true, amountBdtMinor, "Settle accrued freight & import bill for ${po.poNumber}"),
+                JournalLineDraft(
+                    accountId = paymentAccountId,
+                    isDebit = false,
+                    amountMinor = amountBdtMinor,
+                    description = if (cleanNote != null) "PO freight payment | $cleanNote" else "PO freight payment"
+                )
+            )
+        )
+    }
+
+    override suspend fun reversePoFreightPayment(journalEntryId: String): Unit = database.withTransaction {
+        val entry = database.accountingDao().getJournalEntryById(journalEntryId)
+            ?: throw IllegalArgumentException("ফ্রেইট পেমেন্ট খুঁজে পাওয়া যায়নি: $journalEntryId")
+        require(entry.referenceType == "PO_FREIGHT_PAYMENT" && !entry.isReversed) {
+            "এই এন্ট্রিটি রিভার্সযোগ্য ফ্রেইট পেমেন্ট নয়"
+        }
+        accountingRepository.reverseJournalEntry(journalEntryId)
     }
 
     // ==========================================
@@ -1919,18 +2222,21 @@ class ImportRepositoryImpl @Inject constructor(
         require(poItems.isNotEmpty()) { "Purchase order has no items to allocate costs" }
 
         val cartons = importShipmentDao.getCartonsForOrderSync(orderId)
+        val cartonWeightByKey = resolvePoCartonWeightsByKey(cartons)
 
         val allocationInputs = poItems.map { item ->
             val product = productDao.getProductById(item.productId)
             val variant = if (item.variantId != null) productVariantDao.getVariantById(item.variantId) else null
+            val itemKey = if (item.variantId != null) "${item.productId}:${item.variantId}" else item.productId
 
-            // Weight: from cartons if entered, else from poItem summary
+            // Weight: from resolved cartons if entered, else from poItem summary
             val itemCartons = cartons.filter { it.productId == item.productId && (item.variantId == null || it.variantId == item.variantId) }
-            val grossWeight = if (itemCartons.isNotEmpty()) {
-                itemCartons.fold(BigDecimal.ZERO) { acc, c -> acc.add(BigDecimal(c.grossWeightKg.ifBlank { "0" })) }
-            } else {
-                BigDecimal(item.grossWeightKg.ifBlank { "0" })
-            }
+            val grossWeight = cartonWeightByKey[itemKey]?.takeIf { it > BigDecimal.ZERO }
+                ?: if (itemCartons.isNotEmpty()) {
+                    itemCartons.fold(BigDecimal.ZERO) { acc, c -> acc.add(BigDecimal(c.grossWeightKg.ifBlank { "0" })) }
+                } else {
+                    BigDecimal(item.grossWeightKg.ifBlank { "0" })
+                }
 
             val cbm = if (itemCartons.isNotEmpty()) {
                 itemCartons.fold(BigDecimal.ZERO) { acc, c -> acc.add(BigDecimal(c.cbm.ifBlank { "0" })) }
@@ -1952,6 +2258,12 @@ class ImportRepositoryImpl @Inject constructor(
 
         val allAllocations = mutableListOf<LandedCostAllocation>()
         val totalAllocatedPerItem = mutableMapOf<String, Long>()
+        val freightPerKey = mutableMapOf<String, Long>()
+        val freightCategoryNames = setOf(
+            CostCategory.INTERNATIONAL_FREIGHT.name,
+            CostCategory.SEA_FREIGHT.name,
+            CostCategory.AIR_FREIGHT.name
+        )
         val totalActualCostBdt = actualCosts.sumOf { it.bdtAmountMinor }
         var totalAllocatedExpense = 0L
 
@@ -1988,6 +2300,9 @@ class ImportRepositoryImpl @Inject constructor(
                 )
 
                 totalAllocatedPerItem[res.itemId] = (totalAllocatedPerItem[res.itemId] ?: 0L) + res.allocatedBdtMinor
+                if (costItem.costCategory in freightCategoryNames) {
+                    freightPerKey[res.itemId] = (freightPerKey[res.itemId] ?: 0L) + res.allocatedBdtMinor
+                }
                 totalAllocatedExpense += res.allocatedBdtMinor
             }
         }
@@ -1997,15 +2312,8 @@ class ImportRepositoryImpl @Inject constructor(
             "Cost allocation mismatch: Total allocated ($totalAllocatedExpense) != Total actual ($totalActualCostBdt)"
         }
 
-        // If no explicit freight cost item was recorded, check category-wise freight rate overrides (or import shipment defaults)
-        val hasExplicitFreight = actualCosts.any {
-            it.costCategory in setOf(
-                CostCategory.INTERNATIONAL_FREIGHT.name,
-                CostCategory.SEA_FREIGHT.name,
-                CostCategory.AIR_FREIGHT.name
-            )
-        }
-        val freightPerKey = mutableMapOf<String, Long>()
+        // If no explicit freight cost item was recorded, check category-wise freight rate overrides (or PO shipping rate fallback)
+        val hasExplicitFreight = actualCosts.any { it.costCategory in freightCategoryNames }
         if (!hasExplicitFreight) {
             val syncedRates = syncShipmentCategoryFreightRates(batchShipment.id)
             val applicableRates = syncedRates.filter { rate ->
@@ -2052,6 +2360,25 @@ class ImportRepositoryImpl @Inject constructor(
                     res.productAllocationsBdtMinor.forEach { (key, amt) ->
                         freightPerKey[key] = (freightPerKey[key] ?: 0L) + amt
                         totalAllocatedPerItem[key] = (totalAllocatedPerItem[key] ?: 0L) + amt
+                    }
+                }
+            } else if (!po.currency.equals("BDT", ignoreCase = true)) {
+                val poRatePerKgBdt = po.shippingRatePerKgBdt.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                val totalPoWeight = allocationInputs.fold(BigDecimal.ZERO) { acc, a -> acc.add(a.grossWeightKg) }
+                if (poRatePerKgBdt > BigDecimal.ZERO && totalPoWeight > BigDecimal.ZERO) {
+                    val poFreightMinor = totalPoWeight
+                        .multiply(poRatePerKgBdt)
+                        .movePointRight(2)
+                        .setScale(0, RoundingMode.HALF_UP)
+                        .longValueExact()
+                    val allocated = LandedCostAllocationEngine.allocate(
+                        totalCostBdtMinor = poFreightMinor,
+                        items = allocationInputs,
+                        method = AllocationMethod.GROSS_WEIGHT
+                    )
+                    allocated.forEach { res ->
+                        freightPerKey[res.itemId] = (freightPerKey[res.itemId] ?: 0L) + res.allocatedBdtMinor
+                        totalAllocatedPerItem[res.itemId] = (totalAllocatedPerItem[res.itemId] ?: 0L) + res.allocatedBdtMinor
                     }
                 }
             }

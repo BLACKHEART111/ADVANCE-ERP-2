@@ -113,11 +113,17 @@ class DashboardRepositoryImpl @Inject constructor(
             listOf(prodCount, custCount, suppCount, lowStock.size)
         }
 
+        val ledgerTriggerFlow = combine(
+            purchaseOrderDao.getAllOrders(),
+            accountingDao.getAllJournalEntries()
+        ) { _, _ -> Unit }
+
         return combine(
             financialsFlow,
             countsFlow,
-            stockMovementDao.getMovementsInRange(startOfDay, endOfDay)
-        ) { financials, counts, dayMovements ->
+            stockMovementDao.getMovementsInRange(startOfDay, endOfDay),
+            ledgerTriggerFlow
+        ) { financials, counts, dayMovements, _ ->
             val stockValuationMinor = financials[0]
             val receivableMinor = financials[1]
             val payableMinor = financials[2]
@@ -173,8 +179,31 @@ class DashboardRepositoryImpl @Inject constructor(
             val custPayments = runCatching { customerPaymentDao.getPaymentsInRange(startOfDay, endOfDay) }.getOrDefault(emptyList())
             val collectionsMinor = custPayments.sumOf { it.amountMinor }
 
+            val cashBankIds = try {
+                accountingDao.getLiquidAccountsSync().map { it.id }.toSet()
+            } catch (e: Exception) {
+                emptySet()
+            }.ifEmpty { setOf("coa-1010", "coa-1020", "coa-1030") }
+
+            val dayLines = runCatching { accountingDao.getActivePostedLinesInRange(startOfDay, endOfDay) }.getOrDefault(emptyList())
+            val freightRefTypes = setOf("PO_FREIGHT_PAYMENT", "FREIGHT_DUTY_PAYMENT", "IMPORT_EXPENSE", "POST_FINALIZE_IMPORT_EXPENSE")
+            val freightEntryCache = mutableMapOf<String, String?>()
+            var freightPaymentsMinor = 0L
+            val countedFreightEntryIds = mutableSetOf<String>()
+            for (line in dayLines) {
+                if (!line.isDebit && line.accountId in cashBankIds) {
+                    val refType = freightEntryCache.getOrPut(line.journalEntryId) {
+                        runCatching { accountingDao.getJournalEntryById(line.journalEntryId)?.referenceType }.getOrNull()
+                    }
+                    if (refType in freightRefTypes) {
+                        freightPaymentsMinor += line.amountMinor
+                        countedFreightEntryIds.add(line.journalEntryId)
+                    }
+                }
+            }
+
             val suppPayments = runCatching { supplierPaymentDao.getPaymentsInRange(startOfDay, endOfDay) }.getOrDefault(emptyList())
-            val paymentsMinor = suppPayments.sumOf { it.bdtAmountMinor }
+            val paymentsMinor = suppPayments.sumOf { it.bdtAmountMinor } + freightPaymentsMinor
 
             val expenses = runCatching { expenseDao.getExpensesByDateRangeSync(startOfDay, endOfDay) }.getOrDefault(emptyList())
             val dayExpensesMinor = expenses.sumOf { it.bdtAmountMinor }
@@ -186,7 +215,7 @@ class DashboardRepositoryImpl @Inject constructor(
             val stockOut = dayMovements.filter { !StockMovementType.fromCode(it.movementType).isIncoming }.sumOf { it.quantity }
 
             val netCashFlowMinor = collectionsMinor - paymentsMinor - dayExpensesMinor
-            val transactionCount = postedInvoices.size + orders.size + custPayments.size + suppPayments.size + expenses.size + returns.size
+            val transactionCount = postedInvoices.size + orders.size + custPayments.size + suppPayments.size + expenses.size + returns.size + countedFreightEntryIds.size
 
             val dateWiseMetrics = DateWiseMetrics(
                 selectedDateMillis = dateMillis,
@@ -212,11 +241,6 @@ class DashboardRepositoryImpl @Inject constructor(
                 emptyList()
             }
 
-            val cashBankIds = try {
-                accountingDao.getLiquidAccountsSync().map { it.id }.toSet()
-            } catch (e: Exception) {
-                emptySet()
-            }.ifEmpty { setOf("coa-1010", "coa-1020", "coa-1030") }
             val cashBankLines = activeLinesUpTo.filter { it.accountId in cashBankIds }
             val closingCashBankMinor = cashBankLines.filter { it.isDebit }.sumOf { it.amountMinor } -
                     cashBankLines.filter { !it.isDebit }.sumOf { it.amountMinor }
@@ -230,11 +254,18 @@ class DashboardRepositoryImpl @Inject constructor(
             }
 
             val apLines = activeLinesUpTo.filter { it.accountId == "coa-2010" }
-            val closingApMinor = if (endOfDay < todayStart && apLines.isNotEmpty()) {
-                apLines.filter { !it.isDebit }.sumOf { it.amountMinor } - apLines.filter { it.isDebit }.sumOf { it.amountMinor }
+            val ap2010Minor = if (apLines.isNotEmpty()) {
+                (apLines.filter { !it.isDebit }.sumOf { it.amountMinor } - apLines.filter { it.isDebit }.sumOf { it.amountMinor }).coerceAtLeast(0L)
+            } else 0L
+            val freight2020Lines = activeLinesUpTo.filter { it.accountId == "coa-2020" }
+            val accruedFreight2020Minor = if (freight2020Lines.isNotEmpty()) {
+                (freight2020Lines.filter { !it.isDebit }.sumOf { it.amountMinor } - freight2020Lines.filter { it.isDebit }.sumOf { it.amountMinor }).coerceAtLeast(0L)
+            } else 0L
+            val closingApMinor = (if (endOfDay < todayStart && apLines.isNotEmpty()) {
+                ap2010Minor
             } else {
-                payableMinor
-            }
+                maxOf(payableMinor, ap2010Minor)
+            }) + accruedFreight2020Minor
 
             val invAssetLines = activeLinesUpTo.filter { it.accountId == "coa-1210" }
             val closingInvMinor = if (invAssetLines.isNotEmpty()) {

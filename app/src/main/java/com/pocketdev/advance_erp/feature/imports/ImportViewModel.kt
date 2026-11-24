@@ -49,6 +49,7 @@ import com.pocketdev.advance_erp.domain.repository.AccountingRepository
 import com.pocketdev.advance_erp.domain.repository.ContactsRepository
 import com.pocketdev.advance_erp.domain.repository.ImportRepository
 import com.pocketdev.advance_erp.domain.repository.MixedCartonLineDraft
+import com.pocketdev.advance_erp.domain.repository.PoFreightPaymentRecord
 import com.pocketdev.advance_erp.domain.repository.PoRemainingItem
 import com.pocketdev.advance_erp.domain.repository.ProductRepository
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
@@ -90,6 +91,7 @@ data class ImportUiState(
     val selectedPo: PurchaseOrder? = null,
     val selectedPoItems: List<PurchaseOrderItem> = emptyList(),
     val selectedPoPayments: List<SupplierPayment> = emptyList(),
+    val selectedPoFreightPayments: List<PoFreightPaymentRecord> = emptyList(),
     val selectedPoShipments: List<ImportShipment> = emptyList(),
     val selectedPoCartons: List<ShipmentCarton> = emptyList(),
     val selectedPoCostItems: List<ImportCostItem> = emptyList(),
@@ -447,6 +449,7 @@ class ImportViewModel @Inject constructor(
                     selectedPo = null,
                     selectedPoItems = emptyList(),
                     selectedPoPayments = emptyList(),
+                    selectedPoFreightPayments = emptyList(),
                     selectedPoShipments = emptyList(),
                     selectedPoCartons = emptyList(),
                     selectedPoCostItems = emptyList(),
@@ -480,9 +483,14 @@ class ImportViewModel @Inject constructor(
                 }
             }
             launch {
+                importRepository.getFreightPaymentsForOrder(order.id).collect { fPayments ->
+                    _uiState.update { it.copy(selectedPoFreightPayments = fPayments) }
+                }
+            }
+            launch {
                 importRepository.getShipmentsForOrder(order.id).collect { shipments ->
                     _uiState.update { it.copy(selectedPoShipments = shipments) }
-                    val batch = shipments.firstOrNull { it.shipmentNumber.startsWith("BATCH-") }
+                    val batch = shipments.firstOrNull { it.shipmentNumber.startsWith("BATCH-") } ?: shipments.firstOrNull()
                     if (batch != null && _uiState.value.selectedPo?.id == order.id && _uiState.value.selectedShipmentId != batch.id) {
                         selectShipment(batch.id)
                     }
@@ -802,6 +810,56 @@ class ImportViewModel @Inject constructor(
                     }
                 }
                 _uiState.update { it.copy(isLoading = false, userMessage = "সাপ্লায়ার পেমেন্ট রিভার্স করা হয়েছে (Supplier payment reversed)!") }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, userMessage = "Reversal error: ${e.message}") }
+            }
+        }
+    }
+
+    fun recordPoFreightPayment(
+        orderId: String,
+        paymentAccountId: String,
+        amountBdtMinor: Long,
+        paymentDate: Long = System.currentTimeMillis(),
+        notes: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.recordPoFreightPayment(
+                    orderId = orderId,
+                    paymentAccountId = paymentAccountId,
+                    amountBdtMinor = amountBdtMinor,
+                    paymentDate = paymentDate,
+                    notes = notes
+                )
+                refreshLiquidAccountBalances()
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "ফ্রেইট ফরোয়ার্ডার পেমেন্ট রেকর্ড ও হিসাবভুক্ত হয়েছে!"
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "ফ্রেইট পেমেন্ট ব্যর্থ হয়েছে") }
+            }
+        }
+    }
+
+    fun reversePoFreightPayment(journalEntryId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.reversePoFreightPayment(journalEntryId)
+                refreshLiquidAccountBalances()
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = "ফ্রেইট ফরোয়ার্ডার পেমেন্ট রিভার্স করা হয়েছে!"
+                    )
+                }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, userMessage = "Reversal error: ${e.message}") }

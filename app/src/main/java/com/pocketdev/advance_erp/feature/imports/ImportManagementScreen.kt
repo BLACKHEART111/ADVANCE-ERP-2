@@ -1095,6 +1095,15 @@ fun ImportManagementScreen(
             onReversePayment = { paymentId ->
                 viewModel.reverseSupplierPayment(paymentId)
             },
+            freightPayments = uiState.selectedPoFreightPayments,
+            liquidAccounts = uiState.liquidAccounts,
+            accountBalances = uiState.liquidAccountBalances,
+            onRecordFreightPayment = { ordId, accId, amtMinor, pDate, nts ->
+                viewModel.recordPoFreightPayment(ordId, accId, amtMinor, pDate, nts)
+            },
+            onReverseFreightPayment = { entryId ->
+                viewModel.reversePoFreightPayment(entryId)
+            },
             onDuplicatePo = { orderId ->
                 viewModel.duplicatePurchaseOrder(orderId)
             },
@@ -1108,9 +1117,16 @@ fun ImportManagementScreen(
             onUpdatePacking = { ctn, gross, net, cbm -> viewModel.updateOrderPacking(selectedPo.id, ctn, gross, net, cbm) },
             onUpdatePoItem = { itemId, q, p, c, g -> viewModel.updatePoItem(selectedPo.id, itemId, q, p, c, g) },
             onDeletePoItem = { itemId -> viewModel.deletePoItem(selectedPo.id, itemId) },
-            freightRates = uiState.selectedShipmentFreightRates,
+            freightRates = uiState.selectedShipmentFreightRates.filter { rate ->
+                val poShipmentIds = (uiState.selectedPoShipments.map { it.id } + listOfNotNull(selectedPo.shipmentId)).toSet()
+                rate.shipmentId in poShipmentIds
+            },
             categories = uiState.categories,
             variants = uiState.productVariants,
+            snapshots = uiState.landedCostSnapshots.filter { snap ->
+                val poShipmentIds = (uiState.selectedPoShipments.map { it.id } + listOfNotNull(selectedPo.shipmentId)).toSet()
+                snap.shipmentId in poShipmentIds
+            },
             businessProfile = uiState.businessProfile
         )
     }

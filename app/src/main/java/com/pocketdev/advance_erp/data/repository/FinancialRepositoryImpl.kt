@@ -717,7 +717,7 @@ class FinancialRepositoryImpl @Inject constructor(
                         cashOutflowExpenses += -netLiquidImpact
                     }
                 }
-                "SUPPLIER_PAYMENT", "IMPORT_EXPENSE", "POST_FINALIZE_IMPORT_EXPENSE", "FREIGHT_DUTY_PAYMENT" -> {
+                "SUPPLIER_PAYMENT", "IMPORT_EXPENSE", "POST_FINALIZE_IMPORT_EXPENSE", "FREIGHT_DUTY_PAYMENT", "PO_FREIGHT_PAYMENT" -> {
                     cashOutflowSuppliers += -netLiquidImpact
                 }
                 else -> {

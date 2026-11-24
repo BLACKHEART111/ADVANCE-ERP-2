@@ -334,9 +334,9 @@ internal fun DashboardContent(
                                 )
                                 PremiumDashboardStatCard(
                                     title = if (state.isCustomRange) {
-                                        if (isBangla) "মোট ক্রয় মূল্য" else "Range Purchase Value"
+                                        if (isBangla) "মোট ক্রয় আদেশ (PO)" else "Range Purchase Orders"
                                     } else {
-                                        if (isBangla) "দিনের ক্রয় মূল্য" else "Daily Purchase Value"
+                                        if (isBangla) "দিনের ক্রয় আদেশ (PO)" else "Daily Purchase Orders"
                                     },
                                     value = Formatters.formatMoney(dateMetrics?.totalPurchases?.minorUnits ?: 0L, state.currency, language),
                                     icon = Icons.Outlined.ShoppingCart,
@@ -362,7 +362,7 @@ internal fun DashboardContent(
                                     modifier = Modifier.weight(1f)
                                 )
                                 PremiumDashboardStatCard(
-                                    title = if (isBangla) "সরবরাহকারী পরিশোধ" else "Supplier Payments",
+                                    title = if (isBangla) "সরবরাহকারী ও ফ্রেইট পরিশোধ" else "Supplier & Freight Paid",
                                     value = Formatters.formatMoney(dateMetrics?.totalPayments?.minorUnits ?: 0L, state.currency, language),
                                     icon = Icons.Outlined.ArrowUpward,
                                     accentColor = tokens.accentRed,

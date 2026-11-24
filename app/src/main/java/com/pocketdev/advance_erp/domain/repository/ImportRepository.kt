@@ -131,6 +131,17 @@ data class CostAdjustmentResult(
     val journalEntryNumber: String
 )
 
+data class PoFreightPaymentRecord(
+    val journalEntryId: String,
+    val entryNumber: String,
+    val orderId: String,
+    val paymentDate: Long,
+    val amountBdtMinor: Long,
+    val paymentAccountId: String,
+    val paymentAccountName: String,
+    val notes: String? = null
+)
+
 interface ImportRepository {
     suspend fun updatePurchaseOrderMetadata(orderId: String, notes: String?, attachments: String?)
 
@@ -292,6 +303,15 @@ interface ImportRepository {
     suspend fun deletePurchaseOrder(orderId: String)
     suspend fun reverseSupplierPayment(paymentId: String)
     suspend fun reconcilePurchaseOrderLedger()
+    fun getFreightPaymentsForOrder(orderId: String): Flow<List<PoFreightPaymentRecord>>
+    suspend fun recordPoFreightPayment(
+        orderId: String,
+        paymentAccountId: String,
+        amountBdtMinor: Long,
+        paymentDate: Long = System.currentTimeMillis(),
+        notes: String? = null
+    ): String
+    suspend fun reversePoFreightPayment(journalEntryId: String)
 
     fun getCartonsForOrder(orderId: String): Flow<List<ShipmentCarton>>
     suspend fun getCartonsForOrderSync(orderId: String): List<ShipmentCarton>

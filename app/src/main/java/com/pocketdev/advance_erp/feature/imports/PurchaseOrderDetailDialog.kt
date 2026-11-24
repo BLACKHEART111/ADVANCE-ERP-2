@@ -5,8 +5,10 @@ import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
 import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,7 +21,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
@@ -77,6 +82,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,14 +107,14 @@ import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
+import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.CostCategory
 import com.pocketdev.advance_erp.data.entity.DamageRecord
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.ImportShipment
+import com.pocketdev.advance_erp.data.entity.LandedCostSnapshot
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
-import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
-import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
 import com.pocketdev.advance_erp.data.entity.PurchaseCompletionRecord
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.core.engine.PoPackingEngine
@@ -124,6 +130,7 @@ import com.pocketdev.advance_erp.data.entity.SupplierPayment
 import com.pocketdev.advance_erp.data.entity.WarehouseReceipt
 import com.pocketdev.advance_erp.domain.model.PaymentTermType
 import com.pocketdev.advance_erp.domain.model.PaymentTermsCalculator
+import com.pocketdev.advance_erp.domain.repository.PoFreightPaymentRecord
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -158,6 +165,11 @@ fun PurchaseOrderDetailDialog(
     onCancelPo: (orderId: String, reason: String?) -> Unit,
     onDeletePo: ((orderId: String) -> Unit)? = null,
     onReversePayment: ((paymentId: String) -> Unit)? = null,
+    freightPayments: List<PoFreightPaymentRecord> = emptyList(),
+    liquidAccounts: List<ChartOfAccount> = emptyList(),
+    accountBalances: Map<String, Long> = emptyMap(),
+    onRecordFreightPayment: ((orderId: String, paymentAccountId: String, amountBdtMinor: Long, paymentDate: Long, notes: String?) -> Unit)? = null,
+    onReverseFreightPayment: ((journalEntryId: String) -> Unit)? = null,
     onDuplicatePo: ((orderId: String) -> Unit)? = null,
     onEditFullPo: ((order: PurchaseOrder) -> Unit)? = null,
     onSelectShipment: ((ImportShipment) -> Unit)? = null,
@@ -169,6 +181,7 @@ fun PurchaseOrderDetailDialog(
     freightRates: List<ShipmentFreightRate> = emptyList(),
     categories: List<ProductCategory> = emptyList(),
     variants: List<ProductVariant> = emptyList(),
+    snapshots: List<LandedCostSnapshot> = emptyList(),
     businessProfile: BusinessProfile? = null
 ) {
     var detailTab by rememberSaveable { mutableStateOf(0) }
@@ -178,6 +191,8 @@ fun PurchaseOrderDetailDialog(
     var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var showDeletePoConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var reversingPayment by remember { mutableStateOf<SupplierPayment?>(null) }
+    var showFreightPaymentDialog by rememberSaveable { mutableStateOf(false) }
+    var reversingFreightPayment by remember { mutableStateOf<PoFreightPaymentRecord?>(null) }
     var cancelReason by rememberSaveable { mutableStateOf("") }
     var showEditPackingDialog by rememberSaveable { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<PurchaseOrderItem?>(null) }
@@ -266,6 +281,44 @@ fun PurchaseOrderDetailDialog(
     val canDeletePo = onDeletePo != null && !isOrderReceived
 
     val isCostFinalized = order.isActualCostFinalized || order.status == PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name
+    var collapsedDetailProductIds by remember(order.id) { mutableStateOf(emptySet<String>()) }
+    val landedSummary = remember(
+        order,
+        items,
+        cartons,
+        costItems,
+        additionalCosts,
+        freightRates,
+        categories,
+        products,
+        variants,
+        snapshots,
+        isBangla,
+        isCostFinalized
+    ) {
+        calculatePoLandedCostSummary(
+            order = order,
+            items = items,
+            cartons = cartons,
+            costItems = costItems,
+            additionalCosts = additionalCosts,
+            freightRates = freightRates,
+            categories = categories,
+            products = products,
+            variants = variants,
+            snapshots = snapshots,
+            isBangla = isBangla,
+            isCostFinalized = isCostFinalized
+        )
+    }
+    val freightPayableSummary = remember(landedSummary, costItems, additionalCosts, freightPayments) {
+        calculatePoFreightPayableSummary(
+            landedSummary = landedSummary,
+            costItems = costItems,
+            additionalCosts = additionalCosts,
+            paidFreightBillMinor = freightPayments.sumOf { it.amountBdtMinor }
+        )
+    }
 
     val navigateTab=com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate.current
     PoReferenceTheme {
@@ -328,161 +381,35 @@ fun PurchaseOrderDetailDialog(
                                 val cat=runCatching {com.pocketdev.advance_erp.data.entity.CostCategory.valueOf(category)}.getOrNull()
                                 PremiumPoCostLine(cat?.let {if(isBangla)it.titleBn else it.titleEn} ?: category,"৳ ${Formatters.formatMinorUnit(costs.sumOf {it.bdtAmountMinor})}")
                             }
-                            val freightCategoryNames = setOf(
-                                CostCategory.INTERNATIONAL_FREIGHT.name,
-                                CostCategory.AIR_FREIGHT.name,
-                                CostCategory.SEA_FREIGHT.name
-                            )
-                            val capitalizableCostItems = costItems.filter {
-                                (it.isCapitalizableCost || it.isCapitalized || it.costCategory == CostCategory.OTHER_CHARGES.name) &&
-                                    it.costCategory != CostCategory.PRODUCT_PURCHASE.name
-                            }
-                            val capitalCosts = capitalizableCostItems.sumOf { it.bdtAmountMinor }
-                            val explicitFreightCostMinor = capitalizableCostItems
-                                .filter { it.costCategory in freightCategoryNames }
-                                .sumOf { it.bdtAmountMinor }
-                            val hasAnyFreightCostItem = costItems.any { it.costCategory in freightCategoryNames }
-
-                            val catWeightMap = mutableMapOf<String, BigDecimal>()
-                            if (cartons.isNotEmpty()) {
-                                cartons.groupBy { it.cartonNumber }.values.forEach { cLines ->
-                                    val allLinesHaveWeight = cLines.all {
-                                        (it.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO
-                                    }
-                                    if (allLinesHaveWeight) {
-                                        cLines.forEach { line ->
-                                            val catId = productMap[line.productId]?.categoryId ?: line.categoryId ?: "uncategorized"
-                                            val w = line.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                            catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(w)
-                                        }
-                                    } else {
-                                        val boxGw = cLines.firstOrNull()?.cartonGrossWeightKg?.trim()?.toBigDecimalOrNull()
-                                            ?.takeIf { it > BigDecimal.ZERO }
-                                            ?: cLines.fold(BigDecimal.ZERO) { acc, l ->
-                                                acc.add(l.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
-                                            }
-                                        val allocated = if (boxGw > BigDecimal.ZERO) {
-                                            runCatching {
-                                                CartonWeightAllocationEngine.allocateWeights(
-                                                    cartonGrossWeightKg = boxGw,
-                                                    lines = cLines.map { l ->
-                                                        MixedCartonLineInput(
-                                                            productId = l.productId,
-                                                            variantId = l.variantId,
-                                                            quantity = l.quantity.coerceAtLeast(1),
-                                                            manualGrossWeightKg = l.grossWeightKg.trim().toBigDecimalOrNull()?.takeIf { it > BigDecimal.ZERO }
-                                                        )
-                                                    }
-                                                )
-                                            }.getOrNull()
-                                        } else null
-                                        if (allocated != null) {
-                                            allocated.forEach { alloc ->
-                                                val catId = productMap[alloc.productId]?.categoryId ?: "uncategorized"
-                                                catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(alloc.allocatedGrossWeightKg)
-                                            }
-                                        } else {
-                                            cLines.forEach { line ->
-                                                val catId = productMap[line.productId]?.categoryId ?: line.categoryId ?: "uncategorized"
-                                                val w = line.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                                catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(w)
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                items.forEach { itm ->
-                                    val catId = productMap[itm.productId]?.categoryId ?: "uncategorized"
-                                    val w = itm.grossWeightKg.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                    catWeightMap[catId] = (catWeightMap[catId] ?: BigDecimal.ZERO).add(w)
-                                }
-                            }
-
-                            val catPcsMap = mutableMapOf<String, Int>()
-                            val catProdBdtMinorMap = mutableMapOf<String, Long>()
-                            items.forEach { itm ->
-                                val catId = productMap[itm.productId]?.categoryId ?: "uncategorized"
-                                catPcsMap[catId] = (catPcsMap[catId] ?: 0) + itm.quantity
-                                catProdBdtMinorMap[catId] = (catProdBdtMinorMap[catId] ?: 0L) + itm.totalBdtAmountMinor
-                            }
-
-                            val allCatIds = (catWeightMap.keys + catPcsMap.keys).distinct()
-                            val catWeights = allCatIds.map { catWeightMap[it] ?: BigDecimal.ZERO }
-                            val catPcsList = allCatIds.map { catPcsMap[it] ?: 0 }
-                            val catProdMinors = allCatIds.map { catProdBdtMinorMap[it] ?: 0L }
-
-                            var derivedRateFreightMinor = 0L
-                            val catFreightBdtList: List<BigDecimal> = if (explicitFreightCostMinor > 0L) {
-                                allocateAmountBdtAcrossCategoriesByWeight(
-                                    totalAmountMinor = explicitFreightCostMinor,
-                                    weightsKg = catWeights,
-                                    pcsList = catPcsList,
-                                    productMinors = catProdMinors
-                                )
-                            } else if (!hasAnyFreightCostItem && freightRates.isNotEmpty() &&
-                                (!order.currency.equals("BDT", ignoreCase = true) || freightRates.any { (it.overrideRatePerKgBdtMinor ?: 0L) > 0L })
-                            ) {
-                                val categoryMap = categories.associateBy { it.id }
-                                val rateByCat = freightRates.associateBy { it.categoryId }
-                                allCatIds.mapIndexed { idx, catId ->
-                                    val r = rateByCat[catId]
-                                    val appliedMinor = r?.overrideRatePerKgBdtMinor
-                                        ?: r?.appliedRatePerKgBdtMinor
-                                        ?: categoryMap[catId]?.defaultFreightRatePerKgBdtMinor
-                                        ?: 0L
-                                    val fMinor = if (appliedMinor > 0L && catWeights[idx] > BigDecimal.ZERO) {
-                                        catWeights[idx].multiply(BigDecimal(appliedMinor)).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                                    } else 0L
-                                    derivedRateFreightMinor += fMinor
-                                    BigDecimal.valueOf(fMinor, 2)
-                                }
-                            } else {
-                                List(allCatIds.size) { BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP) }
-                            }
-
-                            if (!hasAnyFreightCostItem && derivedRateFreightMinor > 0L) {
+                            additionalCosts.filter { it.isCapitalizable && it.bdtAmountMinor > 0L }.forEach { ac ->
                                 PremiumPoCostLine(
-                                    if (isBangla) "আন্তর্জাতিক ফ্রেইট (${displayGrossWeight} KG)" else "International Freight (${displayGrossWeight} KG)",
-                                    "৳ ${Formatters.formatMinorUnit(derivedRateFreightMinor)}"
+                                    ac.description.ifBlank { ac.category.replace("_", " ") },
+                                    "৳ ${Formatters.formatMinorUnit(ac.bdtAmountMinor)}"
                                 )
                             }
-
-                            val totalLandedMinor = order.totalBdtAmountMinor + capitalCosts + derivedRateFreightMinor
-                            val totalLandedBdt = BigDecimal.valueOf(totalLandedMinor, 2)
-                            val sharedOverheadMinor = (capitalCosts - explicitFreightCostMinor).coerceAtLeast(0L)
-                            val categoryMap = categories.associateBy { it.id }
-                            val catInputs = allCatIds.mapIndexed { idx, catId ->
-                                val catObj = categoryMap[catId]
-                                val rateObj = freightRates.find { it.categoryId == catId }
-                                val catTitle = when {
-                                    catObj != null -> if (isBangla && catObj.nameBn.isNotBlank()) catObj.nameBn else catObj.nameEn
-                                    rateObj != null -> if (isBangla && rateObj.categoryNameBn.isNotBlank()) rateObj.categoryNameBn else rateObj.categoryNameEn
-                                    else -> if (isBangla) "অন্যান্য ক্যাটাগরি" else "Uncategorized"
-                                }
-                                PoCategoryLandedInput(
-                                    categoryId = catId,
-                                    categoryTitle = catTitle,
-                                    totalPcs = catPcsList[idx],
-                                    grossWeightKg = catWeights[idx],
-                                    productCostBdt = BigDecimal.valueOf(catProdMinors[idx], 2),
-                                    freightCostBdt = catFreightBdtList[idx]
+                            val hasAnyFreightCostItem = costItems.any {
+                                it.costCategory in setOf(
+                                    CostCategory.INTERNATIONAL_FREIGHT.name,
+                                    CostCategory.AIR_FREIGHT.name,
+                                    CostCategory.SEA_FREIGHT.name
                                 )
                             }
-                            val categoryBreakdowns = calculatePoCategoryLandedBreakdowns(
-                                inputs = catInputs,
-                                sharedOverheadBdt = BigDecimal.valueOf(sharedOverheadMinor, 2),
-                                expectedTotalProductBdt = BigDecimal.valueOf(order.totalBdtAmountMinor, 2)
-                            )
-                            val overallAvgBdt = if (totalOrderedQuantity > 0) {
-                                totalLandedBdt.divide(BigDecimal(totalOrderedQuantity), 2, RoundingMode.HALF_UP)
-                            } else null
+                            val displayRateFreightMinor = landedSummary.derivedRateFreightMinor.takeIf { it > 0L }
+                                ?: if (!hasAnyFreightCostItem) landedSummary.totalFreightBdtMinor else 0L
+                            if (!hasAnyFreightCostItem && displayRateFreightMinor > 0L) {
+                                PremiumPoCostLine(
+                                    if (isBangla) "আন্তর্জাতিক ফ্রেইট ($displayGrossWeight KG)" else "International Freight ($displayGrossWeight KG)",
+                                    "৳ ${Formatters.formatMinorUnit(displayRateFreightMinor)}"
+                                )
+                            }
                             PoLandedHighlight(
-                                total = "৳ ${Formatters.formatMinorUnit(totalLandedMinor)}",
-                                unit = overallAvgBdt?.let {
+                                total = "৳ ${Formatters.formatMinorUnit(landedSummary.totalLandedBdtMinor)}",
+                                unit = landedSummary.overallUnitLandedBdt?.let {
                                     (if (isBangla) "সর্বমোট গড় প্রতি পিস: " else "Overall average per unit: ") + "৳ $it / PCS"
                                 },
                                 isBangla = isBangla,
-                                categoryBreakdowns = categoryBreakdowns
+                                categoryBreakdowns = landedSummary.categoryBreakdowns,
+                                productBreakdowns = landedSummary.productBreakdowns
                             )
                             Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                                 if(remainingBalanceMinor>0 && order.status!="CANCELLED") PoDetailAction(if(isBangla) "পেমেন্ট রেকর্ড" else "Payment",Icons.Outlined.Payment,Modifier.weight(1f)){onMakePayment(order)}
@@ -672,7 +599,7 @@ fun PurchaseOrderDetailDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = if (isBangla) "পেমেন্ট ও বকেয়া সারসংক্ষেপ" else "Payment & Balance Summary",
+                                        text = if (isBangla) "সরবরাহকারী পেমেন্ট (পণ্য মূল্য • ২০১০)" else "Supplier Payment (Goods • 2010)",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = TextPrimary
@@ -786,6 +713,23 @@ fun PurchaseOrderDetailDialog(
                                     }
                                 }
 
+                                if (remainingBalanceMinor > 0L && order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Button(
+                                        onClick = { onMakePayment(order) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Icon(Icons.Outlined.Payment, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isBangla) "সাপ্লায়ার পেমেন্ট দিন" else "Pay Supplier",
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
                                 // Scheduled Payment Terms Breakdown
                                 Spacer(modifier = Modifier.height(10.dp))
                                 HorizontalDivider(color = ERPDivider)
@@ -880,96 +824,486 @@ fun PurchaseOrderDetailDialog(
                         }
                     }
 
-                    }
-                    if(detailTab==1) {
-                    // 4. Line Items Card
-                    item {
-                        ERPCard {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text(
-                                    text = if (isBangla) "পণ্য তালিকা (${items.size}):" else "Ordered Items (${items.size}):",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                items.forEachIndexed { idx, item ->
-                                    val product = productMap[item.productId]
+                    if (freightPayableSummary.totalFreightBillMinor > 0L || freightPayments.isNotEmpty()) {
+                        item {
+                            ERPCard {
+                                Column(modifier = Modifier.padding(14.dp)) {
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 6.dp),
+                                        modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        Text(
+                                            text = if (isBangla) "ফ্রেইট ফরোয়ার্ডার ও শিপিং পেমেন্ট (২০২০)" else "Freight Forwarder & Shipping Payment (2020)",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary,
+                                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                        )
+                                        Text(
+                                            text = "${(freightPayableSummary.progress * 100).toInt()}% ${if (isBangla) "পরিশোধিত" else "Paid"}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (freightPayableSummary.progress >= 1f) StatusSuccess else SecondaryTeal
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    LinearProgressIndicator(
+                                        progress = { freightPayableSummary.progress },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(8.dp)
+                                            .clip(RoundedCornerShape(4.dp)),
+                                        color = if (freightPayableSummary.progress >= 1f) StatusSuccess else SecondaryTeal,
+                                        trackColor = ERPBackground
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "${idx + 1}. ${product?.nameEn ?: item.productId}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = TextPrimary
+                                                text = if (isBangla) "মোট ফ্রেইট বিল" else "Total Freight Bill",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMuted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
-                                                text = "SKU: ${product?.baseSku ?: "N/A"} • ${item.quantity} units @ ${order.currency} ${Formatters.formatMinorUnit(item.unitPriceMinor)}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = TextSecondary
-                                            )
-                                            val itemGrossWeightBd = BigDecimal(item.grossWeightKg.ifBlank { "0" })
-                                            if (item.cartonQuantity > 0 || itemGrossWeightBd > BigDecimal.ZERO) {
-                                                Text(
-                                                    text = "Packing: ${item.cartonQuantity} Cartons • ${item.grossWeightKg} KG Gross",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = SecondaryTeal
-                                                )
-                                            }
-                                        }
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                text = "${order.currency} ${Formatters.formatMinorUnit(item.totalAmountMinor)}",
+                                                text = Formatters.formatMoney(freightPayableSummary.totalFreightBillMinor, CurrencyCode.BDT, language),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                color = PrimaryPurple
+                                                color = TextPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = if (isBangla) "পরিশোধিত" else "Paid",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMuted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
-                                                text = Formatters.formatMoney(item.totalBdtAmountMinor, CurrencyCode.BDT, language),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = TextMuted
+                                                text = Formatters.formatMoney(freightPayableSummary.paidFreightBillMinor, CurrencyCode.BDT, language),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = StatusSuccess,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
-                                            if (order.status == PurchaseOrderStatus.DRAFT.name || order.status == PurchaseOrderStatus.CONFIRMED.name) {
-                                                Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    modifier = Modifier.padding(top = 2.dp)
-                                                ) {
-                                                    IconButton(
-                                                        onClick = { editingItem = item },
-                                                        modifier = Modifier.size(24.dp)
+                                        }
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.End
+                                        ) {
+                                            Text(
+                                                text = if (isBangla) "বকেয়া" else "Due",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMuted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = Formatters.formatMoney(freightPayableSummary.remainingFreightBillMinor, CurrencyCode.BDT, language),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (freightPayableSummary.remainingFreightBillMinor > 0L) StatusError else StatusSuccess,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    if (onRecordFreightPayment != null &&
+                                        freightPayableSummary.remainingFreightBillMinor > 0L &&
+                                        order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)
+                                    ) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Button(
+                                            onClick = { showFreightPaymentDialog = true },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Icon(Icons.Outlined.LocalShipping, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isBangla) "ফ্রেইট ফরোয়ার্ডার পেমেন্ট রেকর্ড করুন" else "Pay Freight Forwarder",
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    if (freightPayments.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = ERPDivider)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = if (isBangla) "ফ্রেইট পেমেন্ট ইতিহাস (${freightPayments.size}):" else "Freight Payment History (${freightPayments.size}):",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextSecondary
+                                        )
+                                        freightPayments.forEach { fp ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "${fp.entryNumber} • ${fp.paymentAccountName.ifBlank { "Cash / Bank" }}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = TextPrimary
+                                                    )
+                                                    val dateLine = Formatters.formatDate(fp.paymentDate, language) +
+                                                        (fp.notes?.let { " • $it" } ?: "")
+                                                    Text(
+                                                        text = dateLine,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = TextMuted
+                                                    )
+                                                }
+                                                Text(
+                                                    text = Formatters.formatMoney(fp.amountBdtMinor, CurrencyCode.BDT, language),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = StatusSuccess
+                                                )
+                                                if (onReverseFreightPayment != null) {
+                                                    TextButton(
+                                                        onClick = { reversingFreightPayment = fp },
+                                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                                                     ) {
-                                                        Icon(
-                                                            imageVector = Icons.Outlined.Edit,
-                                                            contentDescription = "Edit Item",
-                                                            tint = PrimaryPurple,
-                                                            modifier = Modifier.size(15.dp)
-                                                        )
-                                                    }
-                                                    IconButton(
-                                                        onClick = { deletingItemId = item.id },
-                                                        modifier = Modifier.size(24.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Outlined.Delete,
-                                                            contentDescription = "Delete Item",
-                                                            tint = StatusError,
-                                                            modifier = Modifier.size(15.dp)
+                                                        Text(
+                                                            text = if (isBangla) "রিভার্স" else "Reverse",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = StatusError
                                                         )
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    if (idx < items.size - 1) {
-                                        HorizontalDivider(color = ERPDivider)
+                                }
+                            }
+                        }
+                    }
+
+                    }
+                    if(detailTab==1) {
+                    // 4. Product-grouped Line Items Card with Product & Variant Landed Cost
+                    item {
+                        val itemsById = remember(items) { items.associateBy { it.id } }
+                        val prodBreakdowns = landedSummary.productBreakdowns
+                        val hasExpandableProducts = prodBreakdowns.any { it.itemBreakdowns.size > 1 }
+                        val allProductsCollapsed = hasExpandableProducts && prodBreakdowns
+                            .filter { it.itemBreakdowns.size > 1 }
+                            .all { it.productId in collapsedDetailProductIds }
+
+                        ERPCard {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (isBangla) {
+                                                "পণ্য ও ল্যান্ডিং কস্ট (${prodBreakdowns.size} পণ্য • ${items.size} আইটেম)"
+                                            } else {
+                                                "Products & Landed Cost (${prodBreakdowns.size} Products • ${items.size} Items)"
+                                            },
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
+                                        )
+                                        Text(
+                                            text = if (isBangla) {
+                                                if (isCostFinalized) "চূড়ান্ত ল্যান্ডেড কস্ট অনুযায়ী হিসাবকৃত" else "বর্তমান ফ্রেইট ও খরচ অনুযায়ী প্রাক্কলিত ল্যান্ডেড কস্ট"
+                                            } else {
+                                                if (isCostFinalized) "Based on finalized actual landed cost" else "Estimated from current freight & import charges"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextMuted
+                                        )
+                                    }
+                                    if (hasExpandableProducts) {
+                                        TextButton(
+                                            onClick = {
+                                                collapsedDetailProductIds = if (allProductsCollapsed) {
+                                                    emptySet()
+                                                } else {
+                                                    prodBreakdowns.filter { it.itemBreakdowns.size > 1 }.map { it.productId }.toSet()
+                                                }
+                                            },
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = if (allProductsCollapsed) {
+                                                    if (isBangla) "সব দেখুন" else "Expand All"
+                                                } else {
+                                                    if (isBangla) "সব মিনিমাইজ" else "Collapse All"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = PrimaryPurple
+                                            )
+                                        }
+                                    }
+                                }
+
+                                prodBreakdowns.forEachIndexed { prodIdx, prod ->
+                                    val isCollapsed = prod.productId in collapsedDetailProductIds
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = ERPSurfaceVariant.copy(alpha = 0.65f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            // Product Header & Product-wise Landed Cost
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.Top
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                                    Text(
+                                                        text = "${prodIdx + 1}. ${prod.productTitle}",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TextPrimary
+                                                    )
+                                                    val wtStr = prod.grossWeightKg.setScale(2, RoundingMode.HALF_UP).toPlainString()
+                                                    Text(
+                                                        text = buildString {
+                                                            append("SKU: ${prod.baseSku.ifBlank { "N/A" }} • ${prod.totalPcs} PCS • $wtStr KG")
+                                                            if (prod.totalCartons > 0) append(" • ${prod.totalCartons} CTN")
+                                                        },
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = TextSecondary
+                                                    )
+                                                    if (prod.freightBdtMinor > 0L || prod.otherOverheadBdtMinor > 0L) {
+                                                        Text(
+                                                            text = buildString {
+                                                                append(if (isBangla) "ক্রয়: ৳ " else "Buy: ৳ ")
+                                                                append(Formatters.formatMinorUnit(prod.purchaseBdtMinor))
+                                                                if (prod.freightBdtMinor > 0L) {
+                                                                    append(if (isBangla) " + ফ্রেইট: ৳ " else " + Freight: ৳ ")
+                                                                    append(Formatters.formatMinorUnit(prod.freightBdtMinor))
+                                                                }
+                                                                if (prod.otherOverheadBdtMinor > 0L) {
+                                                                    append(if (isBangla) " + খরচ: ৳ " else " + Costs: ৳ ")
+                                                                    append(Formatters.formatMinorUnit(prod.otherOverheadBdtMinor))
+                                                                }
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextMuted
+                                                        )
+                                                    }
+                                                }
+                                                Column(horizontalAlignment = Alignment.End) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = if (isCostFinalized) StatusSuccessContainer else PrimaryPurple.copy(alpha = 0.12f)
+                                                    ) {
+                                                        Text(
+                                                            text = if (isBangla) {
+                                                                if (isCostFinalized) "চূড়ান্ত" else "প্রাক্কলিত"
+                                                            } else {
+                                                                if (isCostFinalized) "Final" else "Est."
+                                                            },
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isCostFinalized) StatusSuccess else PrimaryPurple
+                                                        )
+                                                    }
+                                                    if (prod.itemBreakdowns.size > 1) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                collapsedDetailProductIds = if (isCollapsed) {
+                                                                    collapsedDetailProductIds - prod.productId
+                                                                } else {
+                                                                    collapsedDetailProductIds + prod.productId
+                                                                }
+                                                            },
+                                                            modifier = Modifier.size(26.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = if (isCollapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+                                                                contentDescription = null,
+                                                                tint = TextSecondary,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Product Total & Per-Piece Landed Cost Bar
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surface,
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.35f))
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                                        Text(
+                                                            text = if (isBangla) "মোট ল্যান্ডিং কস্ট" else "Product Landed Cost",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextMuted
+                                                        )
+                                                        Text(
+                                                            text = "৳ ${Formatters.formatMinorUnit(prod.totalLandedBdtMinor)}",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = TextPrimary
+                                                        )
+                                                    }
+                                                    Column(horizontalAlignment = Alignment.End) {
+                                                        Text(
+                                                            text = if (isBangla) "প্রতি পিস ল্যান্ডিং কস্ট" else "Per-Unit Landed Cost",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextMuted
+                                                        )
+                                                        Text(
+                                                            text = if (isBangla) "৳ ${prod.unitLandedBdt} / পিস" else "৳ ${prod.unitLandedBdt} / PCS",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = SecondaryTeal
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            if (!isCollapsed) {
+                                                HorizontalDivider(color = ERPDivider)
+                                                prod.itemBreakdowns.forEachIndexed { vIdx, itemBreakdown ->
+                                                    val rawItem = itemsById[itemBreakdown.itemId]
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 3.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                                            val lineTitle = when {
+                                                                itemBreakdown.variantLabel.isNotBlank() ->
+                                                                    "${vIdx + 1}. ${itemBreakdown.variantLabel}"
+                                                                prod.itemBreakdowns.size > 1 ->
+                                                                    if (isBangla) "লাইন ${vIdx + 1}" else "Line ${vIdx + 1}"
+                                                                else ->
+                                                                    itemBreakdown.productTitle
+                                                            }
+                                                            Text(
+                                                                text = lineTitle,
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = TextPrimary
+                                                            )
+                                                            if (rawItem != null) {
+                                                                Text(
+                                                                    text = "SKU: ${itemBreakdown.sku.ifBlank { "N/A" }} • ${rawItem.quantity} units @ ${order.currency} ${Formatters.formatMinorUnit(rawItem.unitPriceMinor)}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = TextSecondary
+                                                                )
+                                                            }
+                                                            if (itemBreakdown.cartonCount > 0 || itemBreakdown.grossWeightKg > BigDecimal.ZERO) {
+                                                                Text(
+                                                                    text = "Packing: ${itemBreakdown.cartonCount} Cartons • ${itemBreakdown.grossWeightKg} KG Gross",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = SecondaryTeal
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = if (isBangla) {
+                                                                    "ল্যান্ডিং কস্ট: ৳ ${itemBreakdown.unitLandedBdt}/পিস • মোট ল্যান্ডেড: ৳ ${Formatters.formatMinorUnit(itemBreakdown.totalLandedBdtMinor)}"
+                                                                } else {
+                                                                    "Landed: ৳ ${itemBreakdown.unitLandedBdt}/pcs • Total: ৳ ${Formatters.formatMinorUnit(itemBreakdown.totalLandedBdtMinor)}"
+                                                                },
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = PrimaryPurple
+                                                            )
+                                                        }
+                                                        if (rawItem != null) {
+                                                            Column(horizontalAlignment = Alignment.End) {
+                                                                Text(
+                                                                    text = "${order.currency} ${Formatters.formatMinorUnit(rawItem.totalAmountMinor)}",
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = PrimaryPurple
+                                                                )
+                                                                Text(
+                                                                    text = Formatters.formatMoney(rawItem.totalBdtAmountMinor, CurrencyCode.BDT, language),
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = TextMuted
+                                                                )
+                                                                if (order.status == PurchaseOrderStatus.DRAFT.name || order.status == PurchaseOrderStatus.CONFIRMED.name) {
+                                                                    Row(
+                                                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        modifier = Modifier.padding(top = 2.dp)
+                                                                    ) {
+                                                                        IconButton(
+                                                                            onClick = { editingItem = rawItem },
+                                                                            modifier = Modifier.size(24.dp)
+                                                                        ) {
+                                                                            Icon(
+                                                                                imageVector = Icons.Outlined.Edit,
+                                                                                contentDescription = "Edit Item",
+                                                                                tint = PrimaryPurple,
+                                                                                modifier = Modifier.size(15.dp)
+                                                                            )
+                                                                        }
+                                                                        IconButton(
+                                                                            onClick = { deletingItemId = rawItem.id },
+                                                                            modifier = Modifier.size(24.dp)
+                                                                        ) {
+                                                                            Icon(
+                                                                                imageVector = Icons.Outlined.Delete,
+                                                                                contentDescription = "Delete Item",
+                                                                                tint = StatusError,
+                                                                                modifier = Modifier.size(15.dp)
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    if (vIdx < prod.itemBreakdowns.lastIndex) {
+                                                        HorizontalDivider(color = ERPDivider.copy(alpha = 0.6f))
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1295,6 +1629,32 @@ fun PurchaseOrderDetailDialog(
                                     }
                                 }
 
+                                if (onRecordFreightPayment != null &&
+                                    freightPayableSummary.remainingFreightBillMinor > 0L &&
+                                    order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)
+                                ) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    OutlinedButton(
+                                        onClick = { showFreightPaymentDialog = true },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, SecondaryTeal)
+                                    ) {
+                                        Icon(Icons.Outlined.LocalShipping, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isBangla) {
+                                                "ফ্রেইট বিল পরিশোধ করুন (বকেয়া: ${Formatters.formatMoney(freightPayableSummary.remainingFreightBillMinor, CurrencyCode.BDT, language)})"
+                                            } else {
+                                                "Pay Freight Bill (Due: ${Formatters.formatMoney(freightPayableSummary.remainingFreightBillMinor, CurrencyCode.BDT, language)})"
+                                            },
+                                            color = SecondaryTeal,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    }
+                                }
+
                                 if (costItems.isNotEmpty()) {
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Text(
@@ -1314,6 +1674,74 @@ fun PurchaseOrderDetailDialog(
                                                     { deletingCostItemId = cost.id }
                                                 } else null
                                             )
+                                        }
+                                    }
+                                }
+
+                                if (landedSummary.productBreakdowns.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    HorizontalDivider(color = ERPDivider)
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = if (isBangla) "পণ্যভিত্তিক ল্যান্ডিং কস্ট বিভাজন:" else "Product-wise Landed Cost Breakdown:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        landedSummary.productBreakdowns.forEach { prod ->
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = ERPSurfaceVariant.copy(alpha = 0.7f),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, ERPDivider)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                                        Text(
+                                                            text = prod.productTitle,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = TextPrimary
+                                                        )
+                                                        val wtStr = prod.grossWeightKg.setScale(2, RoundingMode.HALF_UP).toPlainString()
+                                                        Text(
+                                                            text = if (isBangla) {
+                                                                "${prod.totalPcs} PCS • $wtStr KG • ক্রয় ৳${Formatters.formatMinorUnit(prod.purchaseBdtMinor)} + ফ্রেইট/খরচ ৳${Formatters.formatMinorUnit(prod.freightBdtMinor + prod.otherOverheadBdtMinor)}"
+                                                            } else {
+                                                                "${prod.totalPcs} PCS • $wtStr KG • Buy ৳${Formatters.formatMinorUnit(prod.purchaseBdtMinor)} + Freight/Costs ৳${Formatters.formatMinorUnit(prod.freightBdtMinor + prod.otherOverheadBdtMinor)}"
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextSecondary
+                                                        )
+                                                        Text(
+                                                            text = if (isBangla) {
+                                                                "মোট ল্যান্ডেড: ৳ ${Formatters.formatMinorUnit(prod.totalLandedBdtMinor)}"
+                                                            } else {
+                                                                "Total Landed: ৳ ${Formatters.formatMinorUnit(prod.totalLandedBdtMinor)}"
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = TextPrimary
+                                                        )
+                                                    }
+                                                    Column(horizontalAlignment = Alignment.End) {
+                                                        Text(
+                                                            text = if (isBangla) "৳ ${prod.unitLandedBdt} / পিস" else "৳ ${prod.unitLandedBdt} / PCS",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = SecondaryTeal
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -2080,6 +2508,62 @@ fun PurchaseOrderDetailDialog(
             },
             dismissButton = {
                 TextButton(onClick = { reversingPayment = null }) {
+                    Text(text = if (isBangla) "না" else "Cancel")
+                }
+            }
+        )
+    }
+
+    if (showFreightPaymentDialog && onRecordFreightPayment != null) {
+        RecordPoFreightPaymentDialog(
+            poNumber = order.poNumber,
+            totalFreightBillMinor = freightPayableSummary.totalFreightBillMinor,
+            paidFreightBillMinor = freightPayableSummary.paidFreightBillMinor,
+            remainingDueMinor = freightPayableSummary.remainingFreightBillMinor,
+            liquidAccounts = liquidAccounts,
+            accountBalances = accountBalances,
+            isBangla = isBangla,
+            onDismiss = { showFreightPaymentDialog = false },
+            onConfirm = { accId, amtMinor, notesStr ->
+                onRecordFreightPayment.invoke(order.id, accId, amtMinor, System.currentTimeMillis(), notesStr)
+            }
+        )
+    }
+
+    reversingFreightPayment?.let { targetFp ->
+        AlertDialog(
+            onDismissRequest = { reversingFreightPayment = null },
+            title = {
+                Text(
+                    text = if (isBangla) "ফ্রেইট পেমেন্ট বাতিল / রিভার্স করুন?" else "Reverse Freight Payment?",
+                    fontWeight = FontWeight.Bold,
+                    color = StatusError
+                )
+            },
+            text = {
+                Text(
+                    text = if (isBangla)
+                        "আপনি কি ফ্রেইট পেমেন্ট ${targetFp.entryNumber} (${Formatters.formatMoney(targetFp.amountBdtMinor, CurrencyCode.BDT, language)}) রিভার্স করতে চান? এতে ক্যাশ/ব্যাংক ব্যালেন্স ফিরে আসবে এবং ফ্রেইট বকেয়া আপডেট হবে।"
+                    else
+                        "Reverse freight payment ${targetFp.entryNumber} (${Formatters.formatMoney(targetFp.amountBdtMinor, CurrencyCode.BDT, language)})? Cash/Bank balance and freight payable will be restored.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val jeId = targetFp.journalEntryId
+                        reversingFreightPayment = null
+                        onReverseFreightPayment?.invoke(jeId)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusError)
+                ) {
+                    Text(text = if (isBangla) "হ্যাঁ, রিভার্স করুন" else "Yes, Reverse")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { reversingFreightPayment = null }) {
                     Text(text = if (isBangla) "না" else "Cancel")
                 }
             }
@@ -2875,6 +3359,229 @@ private fun WarehouseReceiptCard(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordPoFreightPaymentDialog(
+    poNumber: String,
+    totalFreightBillMinor: Long,
+    paidFreightBillMinor: Long,
+    remainingDueMinor: Long,
+    liquidAccounts: List<ChartOfAccount>,
+    accountBalances: Map<String, Long>,
+    isBangla: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (paymentAccountId: String, amountBdtMinor: Long, notes: String?) -> Unit
+) {
+    val activeAccounts = remember(liquidAccounts) { liquidAccounts.filter { it.isActive } }
+    var selectedAccountId by remember(activeAccounts, accountBalances) {
+        mutableStateOf(
+            activeAccounts.maxByOrNull { accountBalances[it.id] ?: 0L }?.id
+                ?: activeAccounts.firstOrNull()?.id.orEmpty()
+        )
+    }
+    var amountStr by rememberSaveable(poNumber, remainingDueMinor) {
+        mutableStateOf(
+            BigDecimal(remainingDueMinor.coerceAtLeast(0L))
+                .divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString()
+        )
+    }
+    var notes by rememberSaveable(poNumber) { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val lang = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH
+    val selectedBalMinor = accountBalances[selectedAccountId] ?: 0L
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 540.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .navigationBarsPadding()
+                .imePadding(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = if (isBangla) "ফ্রেইট ফরোয়ার্ডার পেমেন্ট ($poNumber)" else "Pay Freight Forwarder ($poNumber)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = ERPSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(if (isBangla) "মোট ফ্রেইট বিল:" else "Total Freight Bill:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Text(Formatters.formatMoney(totalFreightBillMinor, CurrencyCode.BDT, lang), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(if (isBangla) "ইতিমধ্যে পরিশোধিত:" else "Already Paid:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Text(Formatters.formatMoney(paidFreightBillMinor, CurrencyCode.BDT, lang), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = StatusSuccess)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(if (isBangla) "অবশিষ্ট বকেয়া:" else "Remaining Due:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Text(Formatters.formatMoney(remainingDueMinor, CurrencyCode.BDT, lang), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = StatusError)
+                        }
+                    }
+                }
+
+                Text(
+                    text = if (isBangla) "পেমেন্টের হিসাব নির্বাচন করুন (Cash / Bank / MFS):" else "Select Payment Account (Cash / Bank / MFS):",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+
+                if (activeAccounts.isEmpty()) {
+                    Text(
+                        text = if (isBangla) "কোনো সক্রিয় নগদ বা ব্যাংক হিসাব পাওয়া যায়নি।" else "No active cash or bank account found.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusError
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        activeAccounts.forEach { acc ->
+                            val isSel = acc.id == selectedAccountId
+                            val bal = accountBalances[acc.id] ?: 0L
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        selectedAccountId = acc.id
+                                        errorMessage = null
+                                    },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSel) SecondaryTeal.copy(alpha = 0.1f) else ERPBackground,
+                                border = BorderStroke(1.dp, if (isSel) SecondaryTeal else ERPDivider)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${acc.accountCode} • ${if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = Formatters.formatMoney(bal, CurrencyCode.BDT, lang),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (bal <= 0L) StatusError else StatusSuccess
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = amountStr,
+                    onValueChange = {
+                        amountStr = it
+                        errorMessage = null
+                    },
+                    label = { Text(if (isBangla) "পরিশোধের পরিমাণ (BDT ৳) *" else "Payment Amount (BDT ৳) *") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    trailingIcon = {
+                        TextButton(
+                            onClick = {
+                                amountStr = BigDecimal(remainingDueMinor.coerceAtLeast(0L))
+                                    .divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+                                    .stripTrailingZeros()
+                                    .toPlainString()
+                                errorMessage = null
+                            }
+                        ) {
+                            Text(
+                                text = if (isBangla) "সম্পূর্ণ বকেয়া" else "Full Due",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = SecondaryTeal
+                            )
+                        }
+                    }
+                )
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text(if (isBangla) "ফরোয়ার্ডার রেফারেন্স / নোট" else "Forwarder Ref / Notes") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = StatusError, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(if (isBangla) "বাতিল" else "Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            try {
+                                require(selectedAccountId.isNotBlank()) {
+                                    if (isBangla) "একটি পেমেন্ট হিসাব নির্বাচন করুন" else "Select a payment account"
+                                }
+                                val amtBd = BigDecimal(Formatters.normalizeAsciiNumberInput(amountStr).trim())
+                                require(amtBd > BigDecimal.ZERO) {
+                                    if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive"
+                                }
+                                val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                require(minor <= remainingDueMinor) {
+                                    if (isBangla) "বকেয়া ফ্রেইট বিলের চেয়ে বেশি পরিশোধ করা যাবে না" else "Cannot exceed remaining freight bill"
+                                }
+                                require(selectedBalMinor >= minor) {
+                                    if (isBangla) {
+                                        "নির্বাচিত হিসাবে পর্যাপ্ত ব্যালেন্স নেই! আগে মূলধন / তহবিল জমা করুন।"
+                                    } else {
+                                        "Insufficient balance in selected account! Deposit capital/funds first."
+                                    }
+                                }
+                                onConfirm(selectedAccountId, minor, notes.ifBlank { null })
+                                onDismiss()
+                            } catch (e: Exception) {
+                                errorMessage = e.message ?: "Invalid payment amount"
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
+                    ) {
+                        Text(if (isBangla) "পরিশোধ করুন" else "Pay Now", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
