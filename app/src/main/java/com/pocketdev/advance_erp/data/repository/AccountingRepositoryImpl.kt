@@ -2,6 +2,8 @@ package com.pocketdev.advance_erp.data.repository
 
 import androidx.room.withTransaction
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
+import com.pocketdev.advance_erp.core.engine.ErpAccountingGuard
+import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.dao.AccountingDao
 import com.pocketdev.advance_erp.data.entity.AccountType
 import com.pocketdev.advance_erp.data.entity.ChartOfAccount
@@ -363,5 +365,69 @@ class AccountingRepositoryImpl @Inject constructor(
                 netCreditMinor = netCredit
             )
         }
+    }
+
+    override suspend fun requireSufficientLiquidBalance(accountId: String, requiredAmountMinor: Long) {
+        val account = accountingDao.getAccountById(accountId) ?: return
+        if (account.liquidKind == null) return
+        val currentBal = accountingDao.getNetDebitBalanceForAccount(account.accountCode)
+        ErpAccountingGuard.validateSufficientLiquidBalance(account, currentBal, requiredAmountMinor)
+    }
+
+    override suspend fun depositCapitalToLiquidAccount(
+        accountId: String,
+        amountMinor: Long,
+        entryDate: Long,
+        notes: String?
+    ): String = database.withTransaction {
+        require(amountMinor > 0L) { "জমার পরিমাণ শূন্যের বেশি হতে হবে (Amount must be positive)" }
+        val acc = accountingDao.getAccountById(accountId)
+            ?: throw IllegalArgumentException("Account not found: $accountId")
+        require(acc.liquidKind != null || acc.id == MAIN_CASH_ACCOUNT_ID) {
+            "শুধুমাত্র নগদ, ব্যাংক বা মোবাইল ব্যাংকিং হিসাবে তহবিল জমা করা যাবে"
+        }
+        accountingDao.getAccountById(OWNER_CAPITAL_ACCOUNT_ID)
+            ?: throw IllegalStateException("Owner capital account (3010) not found")
+        val cleanNote = notes?.trim()?.takeIf { it.isNotBlank() }
+        val suffix = cleanNote?.let { " ($it)" } ?: ""
+        postJournalEntry(
+            entryDate = entryDate,
+            descEn = "Owner Capital / Fund Deposit to ${acc.nameEn}$suffix",
+            descBn = "মালিকের মূলধন / তহবিল জমা - ${acc.nameBn.ifBlank { acc.nameEn }}$suffix",
+            referenceType = "CAPITAL_DEPOSIT",
+            referenceId = acc.id,
+            lines = listOf(
+                JournalLineDraft(acc.id, true, amountMinor, "Capital deposit to ${acc.nameEn}"),
+                JournalLineDraft(OWNER_CAPITAL_ACCOUNT_ID, false, amountMinor, "Owner capital contribution")
+            )
+        )
+    }
+
+    override suspend fun payAccruedCustomsAndFreight(
+        paymentAccountId: String,
+        amountMinor: Long,
+        entryDate: Long,
+        notes: String?
+    ): String = database.withTransaction {
+        require(amountMinor > 0L) { "পরিশোধের পরিমাণ শূন্যের বেশি হতে হবে (Amount must be positive)" }
+        accountingDao.getAccountById("coa-2020")
+            ?: throw IllegalStateException("Accrued freight account (2020) not found")
+        val accruedDueMinor = (-accountingDao.getNetDebitBalanceForAccount("2020")).coerceAtLeast(0L)
+        require(amountMinor <= accruedDueMinor) {
+            "বকেয়া ফ্রেইট/শুল্কের (৳${Formatters.formatMinorUnit(accruedDueMinor)}) চেয়ে বেশি পরিশোধ করা যাবে না"
+        }
+        requireSufficientLiquidBalance(paymentAccountId, amountMinor)
+        val suffix = notes?.trim()?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
+        postJournalEntry(
+            entryDate = entryDate,
+            descEn = "Freight & Customs Payable Settlement$suffix",
+            descBn = "বকেয়া শুল্ক ও ফ্রেইট বিল পরিশোধ$suffix",
+            referenceType = "FREIGHT_DUTY_PAYMENT",
+            referenceId = paymentAccountId,
+            lines = listOf(
+                JournalLineDraft("coa-2020", true, amountMinor, "Settle accrued customs & freight"),
+                JournalLineDraft(paymentAccountId, false, amountMinor, "Paid customs & freight")
+            )
+        )
     }
 }

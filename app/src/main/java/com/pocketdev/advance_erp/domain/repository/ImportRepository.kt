@@ -290,6 +290,8 @@ interface ImportRepository {
     suspend fun updatePurchaseOrderItem(itemId: String, quantity: Int, unitPriceMinor: Long, cartonQuantity: Int, grossWeightKg: String)
     suspend fun deletePurchaseOrderItem(itemId: String)
     suspend fun deletePurchaseOrder(orderId: String)
+    suspend fun reverseSupplierPayment(paymentId: String)
+    suspend fun reconcilePurchaseOrderLedger()
 
     fun getCartonsForOrder(orderId: String): Flow<List<ShipmentCarton>>
     suspend fun getCartonsForOrderSync(orderId: String): List<ShipmentCarton>

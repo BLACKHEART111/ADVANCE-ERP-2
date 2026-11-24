@@ -70,4 +70,23 @@ interface AccountingRepository {
 
     suspend fun reverseJournalEntry(entryId: String): String
     suspend fun getTrialBalance(): List<TrialBalanceItem>
+
+    /** Fails cleanly if [accountId] is a liquid account with balance below [requiredAmountMinor]. */
+    suspend fun requireSufficientLiquidBalance(accountId: String, requiredAmountMinor: Long)
+
+    /** Posts owner capital injection (`Dr Liquid Account / Cr 3010 Owner's Capital`). */
+    suspend fun depositCapitalToLiquidAccount(
+        accountId: String,
+        amountMinor: Long,
+        entryDate: Long = System.currentTimeMillis(),
+        notes: String? = null
+    ): String
+
+    /** Pays down Accrued Customs & Freight (`Dr 2020 / Cr Payment Account`). */
+    suspend fun payAccruedCustomsAndFreight(
+        paymentAccountId: String,
+        amountMinor: Long,
+        entryDate: Long = System.currentTimeMillis(),
+        notes: String? = null
+    ): String
 }

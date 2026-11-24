@@ -5,6 +5,7 @@ import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import com.pocketdev.advance_erp.core.util.MovementNumberGenerator
 import com.pocketdev.advance_erp.core.engine.AllocationItemInput
 import com.pocketdev.advance_erp.core.engine.AllocationMethod
+import com.pocketdev.advance_erp.core.engine.ErpAccountingGuard
 import com.pocketdev.advance_erp.core.engine.CbmCalculator
 import com.pocketdev.advance_erp.core.engine.LandedCostAllocationEngine
 import com.pocketdev.advance_erp.core.engine.LandingCostEngine
@@ -295,22 +296,26 @@ class ImportRepositoryImpl @Inject constructor(
             if (supplier != null) {
                 supplierDao.updateOutstandingPayable(supplierId, supplier.outstandingPayableMinor + totalBdtMinor)
             }
+            syncPoCommitmentJournal(order)
         }
 
         return orderId
     }
 
     override suspend fun updatePurchaseOrderStatus(orderId: String, status: PurchaseOrderStatus) {
-        val currentOrder = purchaseOrderDao.getOrderById(orderId)
-        val oldStatus = currentOrder?.status
-        purchaseOrderDao.updateOrderStatus(orderId, status.name)
+        database.withTransaction {
+            val currentOrder = purchaseOrderDao.getOrderById(orderId)
+            val oldStatus = currentOrder?.status
+            purchaseOrderDao.updateOrderStatus(orderId, status.name)
 
-        // When a DRAFT order is confirmed, add its BDT amount to the supplier outstanding payable
-        if (status == PurchaseOrderStatus.CONFIRMED && oldStatus == PurchaseOrderStatus.DRAFT.name && currentOrder != null) {
-            val supplier = supplierDao.getSupplierById(currentOrder.supplierId)
-            if (supplier != null) {
-                supplierDao.updateOutstandingPayable(currentOrder.supplierId, supplier.outstandingPayableMinor + currentOrder.totalBdtAmountMinor)
+            // When a DRAFT order is confirmed, add its BDT amount to the supplier outstanding payable
+            if (status == PurchaseOrderStatus.CONFIRMED && oldStatus == PurchaseOrderStatus.DRAFT.name && currentOrder != null) {
+                val supplier = supplierDao.getSupplierById(currentOrder.supplierId)
+                if (supplier != null) {
+                    supplierDao.updateOutstandingPayable(currentOrder.supplierId, supplier.outstandingPayableMinor + currentOrder.totalBdtAmountMinor)
+                }
             }
+            purchaseOrderDao.getOrderById(orderId)?.let { syncPoCommitmentJournal(it) }
         }
     }
 
@@ -370,13 +375,13 @@ class ImportRepositoryImpl @Inject constructor(
         } else order.notes
 
         database.withTransaction {
-            purchaseOrderDao.updateOrder(
-                order.copy(
-                    status = PurchaseOrderStatus.CANCELLED.name,
-                    notes = updatedNotes,
-                    updatedAt = System.currentTimeMillis()
-                )
+            val cancelledOrder = order.copy(
+                status = PurchaseOrderStatus.CANCELLED.name,
+                notes = updatedNotes,
+                updatedAt = System.currentTimeMillis()
             )
+            purchaseOrderDao.updateOrder(cancelledOrder)
+            syncPoCommitmentJournal(cancelledOrder)
         }
     }
 
@@ -462,8 +467,197 @@ class ImportRepositoryImpl @Inject constructor(
             importShipmentDao.deleteFreightRatesForShipment(shp.id)
             importShipmentDao.deleteShipment(shp.id)
         }
+        listOf("PO_COMMITMENT", "PO_IMPORT_EXPENSE", "PO_LANDED_CAPITALIZE").forEach { refType ->
+            database.accountingDao()
+                .getActiveEntriesForReference(refType, orderId)
+                .forEach { je -> accountingRepository.reverseJournalEntry(je.id) }
+        }
         purchaseOrderDao.deleteItemsForOrder(orderId)
         purchaseOrderDao.deleteOrder(orderId)
+    }
+
+    private suspend fun hasStandardPoLedgerAccounts(): Boolean {
+        val dao = database.accountingDao()
+        return dao.getAccountById("coa-1220") != null && dao.getAccountById("coa-2010") != null
+    }
+
+    private suspend fun syncPoCommitmentJournal(order: PurchaseOrder) {
+        if (!hasStandardPoLedgerAccounts()) return
+        val accountingDao = database.accountingDao()
+        val active = accountingDao.getActiveEntriesForReference("PO_COMMITMENT", order.id)
+        if (order.status in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name) ||
+            order.totalBdtAmountMinor <= 0L
+        ) {
+            active.forEach { accountingRepository.reverseJournalEntry(it.id) }
+            return
+        }
+        if (active.size == 1 && active.first().totalDebitMinor == order.totalBdtAmountMinor) return
+        active.forEach { accountingRepository.reverseJournalEntry(it.id) }
+        accountingRepository.postJournalEntry(
+            entryDate = order.orderDate,
+            descEn = "PO Confirmed (Goods In-Transit): ${order.poNumber}",
+            descBn = "ক্রয়াদেশ নিশ্চিতকরণ ও ট্রানজিট পণ্য: ${order.poNumber}",
+            referenceType = "PO_COMMITMENT",
+            referenceId = order.id,
+            lines = listOf(
+                JournalLineDraft("coa-1220", true, order.totalBdtAmountMinor, "Merchandise in transit for ${order.poNumber}"),
+                JournalLineDraft("coa-2010", false, order.totalBdtAmountMinor, "Supplier payable for ${order.poNumber}")
+            )
+        )
+    }
+
+    private suspend fun postPoFinalizedLandedJournals(
+        po: PurchaseOrder,
+        actualCosts: List<ImportCostItem>,
+        snapshots: List<LandedCostSnapshot>,
+        explicitTotalLandedMinor: Long? = null
+    ) {
+        val accountingDao = database.accountingDao()
+        if (!hasStandardPoLedgerAccounts() ||
+            accountingDao.getAccountById("coa-2020") == null ||
+            accountingDao.getAccountById("coa-5030") == null
+        ) {
+            return
+        }
+
+        syncPoCommitmentJournal(po)
+        accountingDao.getActiveEntriesForReference("PO_IMPORT_EXPENSE", po.id)
+            .forEach { accountingRepository.reverseJournalEntry(it.id) }
+        accountingDao.getActiveEntriesForReference("PO_LANDED_CAPITALIZE", po.id)
+            .forEach { accountingRepository.reverseJournalEntry(it.id) }
+
+        val totalLandedMinor = explicitTotalLandedMinor
+            ?: snapshots.sumOf { it.totalReceivedQuantity.toLong() * it.unitLandedCostBdtMinor }
+        val alreadyPostedImportCostsMinor = actualCosts.filter { it.isPosted }.sumOf { it.bdtAmountMinor }
+        val targetDeltaMinor = (totalLandedMinor - po.totalBdtAmountMinor - alreadyPostedImportCostsMinor).coerceAtLeast(0L)
+        if (targetDeltaMinor <= 0L) return
+
+        val unpostedPairs = actualCosts.filter { !it.isPosted }.map {
+            ErpAccountingGuard.mapImportCostCategoryToExpenseAccountId(it.costCategory, it.description) to it.bdtAmountMinor
+        }
+        val catFreightMinor = snapshots.sumOf { it.internationalFreightBdtMinor }
+        val rawBuckets = ErpAccountingGuard.allocateLandedExpenseBucketsMinor(
+            unpostedCosts = unpostedPairs,
+            categoryFreightMinor = catFreightMinor,
+            targetTotalCapitalizedDeltaMinor = targetDeltaMinor
+        )
+        val resolvedBuckets = linkedMapOf<String, Long>()
+        for ((rawAccId, amt) in rawBuckets) {
+            val accId = if (accountingDao.getAccountById(rawAccId) != null) rawAccId else "coa-5030"
+            resolvedBuckets[accId] = (resolvedBuckets[accId] ?: 0L) + amt
+        }
+
+        val expenseLines = resolvedBuckets.map { (accId, amt) ->
+            JournalLineDraft(accId, true, amt, "Import expense recognized for ${po.poNumber}")
+        } + JournalLineDraft("coa-2020", false, targetDeltaMinor, "Accrued customs & freight for ${po.poNumber}")
+
+        accountingRepository.postJournalEntry(
+            entryDate = po.orderDate,
+            descEn = "Import Freight & Clearance Charges for ${po.poNumber}",
+            descBn = "আমদানি ফ্রেইট ও শুল্ক ব্যয় (${po.poNumber})",
+            referenceType = "PO_IMPORT_EXPENSE",
+            referenceId = po.id,
+            lines = expenseLines
+        )
+
+        val capitalizeLines = listOf(
+            JournalLineDraft("coa-1220", true, targetDeltaMinor, "Capitalize freight & costs into in-transit stock (${po.poNumber})")
+        ) + resolvedBuckets.map { (accId, amt) ->
+            JournalLineDraft(accId, false, amt, "Capitalized import cost (${po.poNumber})")
+        }
+
+        accountingRepository.postJournalEntry(
+            entryDate = po.orderDate,
+            descEn = "Capitalize Import Freight & Costs into In-Transit Stock (${po.poNumber})",
+            descBn = "ট্রানজিট পণ্যে ফ্রেইট ও আমদানি ব্যয় সংযোজন (${po.poNumber})",
+            referenceType = "PO_LANDED_CAPITALIZE",
+            referenceId = po.id,
+            lines = capitalizeLines
+        )
+    }
+
+    override suspend fun reconcilePurchaseOrderLedger() = database.withTransaction {
+        if (!hasStandardPoLedgerAccounts()) return@withTransaction
+        val accountingDao = database.accountingDao()
+        val orders = purchaseOrderDao.getAllOrdersSync()
+        for (po in orders) {
+            syncPoCommitmentJournal(po)
+            val isFinalizedOrBeyond = po.isActualCostFinalized || po.status in setOf(
+                PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name,
+                PurchaseOrderStatus.PARTIALLY_RECEIVED.name,
+                PurchaseOrderStatus.RECEIVED.name,
+                PurchaseOrderStatus.COMPLETED.name
+            )
+            if (po.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name) && isFinalizedOrBeyond) {
+                val alreadyPosted = accountingDao.getActiveEntriesForReference("PO_LANDED_CAPITALIZE", po.id).isNotEmpty()
+                if (!alreadyPosted) {
+                    val batchShipment = importShipmentDao.getBatchShipmentForOrder(po.id) ?: continue
+                    val actualCosts = (
+                        importCostDao.getActualCostItemsForOrderSync(po.id) +
+                            importCostDao.getCostItemsForShipmentSync(batchShipment.id).filter { !it.isEstimated }
+                        ).distinctBy { it.id }
+                        .filter { !it.costCategory.equals(CostCategory.PRODUCT_PURCHASE.name, ignoreCase = true) }
+                    val snapshots = importCostDao.getSnapshotsForShipmentSync(batchShipment.id)
+                    val itemsOrdered = purchaseOrderDao.getItemsForOrderSync(po.id)
+                    val allItemsReceived = itemsOrdered.isNotEmpty() && itemsOrdered.all { it.receivedQuantity >= it.quantity }
+                    var explicitTotal: Long? = null
+                    if (po.status == PurchaseOrderStatus.RECEIVED.name || allItemsReceived) {
+                        val postedReceipts = (
+                            warehouseReceiptDao.getReceiptsByOrderSync(po.id) +
+                                warehouseReceiptDao.getReceiptsByShipmentSync(batchShipment.id)
+                            ).distinctBy { it.id }
+                            .filter { it.status == ReceiptStatus.POSTED.name }
+                        var clearedMinor = 0L
+                        for (receipt in postedReceipts) {
+                            listOf("WAREHOUSE_RECEIPT", "DAMAGE_WRITE_OFF", "SHORTAGE_CLAIM").forEach { rType ->
+                                accountingDao.getActiveEntriesForReference(rType, receipt.receiptNumber).forEach { je ->
+                                    clearedMinor += accountingDao.getLinesForEntrySync(je.id)
+                                        .filter { it.accountId == "coa-1220" && !it.isDebit }
+                                        .sumOf { it.amountMinor }
+                                }
+                            }
+                        }
+                        if (clearedMinor > 0L) explicitTotal = clearedMinor
+                    }
+                    postPoFinalizedLandedJournals(po, actualCosts, snapshots, explicitTotal)
+                }
+            }
+        }
+    }
+
+    override suspend fun reverseSupplierPayment(paymentId: String): Unit = database.withTransaction {
+        val payment = supplierPaymentDao.getPaymentById(paymentId)
+            ?: throw IllegalArgumentException("পেমেন্ট খুঁজে পাওয়া যায়নি: $paymentId")
+
+        database.accountingDao()
+            .getActiveEntriesForReference("SUPPLIER_PAYMENT", payment.paymentNumber)
+            .forEach { je -> accountingRepository.reverseJournalEntry(je.id) }
+
+        supplierDao.getSupplierById(payment.supplierId)?.let { sup ->
+            supplierDao.updateOutstandingPayable(sup.id, sup.outstandingPayableMinor + payment.bdtAmountMinor)
+        }
+
+        payment.purchaseOrderId?.let { orderId ->
+            purchaseOrderDao.getOrderById(orderId)?.let { po ->
+                val newPaid = (po.paidAmountMinor - payment.amountMinor).coerceAtLeast(0L)
+                val newPaidBdt = (po.paidBdtAmountMinor - payment.bdtAmountMinor).coerceAtLeast(0L)
+                val newStatus = if (po.status in setOf(PurchaseOrderStatus.PAID.name, PurchaseOrderStatus.PARTIALLY_PAID.name)) {
+                    if (newPaid > 0L) PurchaseOrderStatus.PARTIALLY_PAID.name else PurchaseOrderStatus.CONFIRMED.name
+                } else {
+                    po.status
+                }
+                purchaseOrderDao.updateOrder(
+                    po.copy(
+                        paidAmountMinor = newPaid,
+                        paidBdtAmountMinor = newPaidBdt,
+                        status = newStatus,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+
+        supplierPaymentDao.deletePaymentById(paymentId)
     }
 
     // ==========================================
@@ -520,6 +714,10 @@ class ImportRepositoryImpl @Inject constructor(
             .setScale(0, RoundingMode.HALF_UP)
             .longValueExact()
 
+        val resolvedAccountId = paymentAccountId?.takeIf { it.isNotBlank() }
+            ?: if (method == PaymentMethod.CASH) "coa-1010" else "coa-1020"
+        accountingRepository.requireSufficientLiquidBalance(resolvedAccountId, bdtAmountMinor)
+
         val payment = SupplierPayment(
             id = paymentId,
             paymentNumber = paymentNumber,
@@ -560,7 +758,7 @@ class ImportRepositoryImpl @Inject constructor(
 
         // Automatic Double-Entry Accounting:
         // Dr. Accounts Payable (2010)
-        // Cr. Bank (1020)
+        // Cr. Selected Liquid Account (1010 Cash / 1020 Bank / etc.)
         accountingRepository.postJournalEntry(
                 entryDate = paymentDate,
                 descEn = "Supplier Payment $paymentNumber to ${supplier?.companyName ?: supplierId}",
@@ -575,10 +773,10 @@ class ImportRepositoryImpl @Inject constructor(
                         description = "Debit Accounts Payable for remittance $paymentNumber"
                     ),
                     JournalLineDraft(
-                        accountId = paymentAccountId ?: if (method == PaymentMethod.CASH) "coa-1010" else "coa-1020",
+                        accountId = resolvedAccountId,
                         isDebit = false,
                         amountMinor = bdtAmountMinor,
-                        description = "Credit Bank Account for remittance $paymentNumber"
+                        description = "Credit Payment Account for remittance $paymentNumber"
                     )
                 )
             )
@@ -888,6 +1086,8 @@ class ImportRepositoryImpl @Inject constructor(
             .setScale(0, RoundingMode.HALF_UP)
             .longValueExact()
 
+        accountingRepository.requireSufficientLiquidBalance("coa-1020", bdtAmountMinor)
+
         val costItem = ImportCostItem(
             id = costId,
             shipmentId = shipmentId,
@@ -908,9 +1108,21 @@ class ImportRepositoryImpl @Inject constructor(
 
         importCostDao.insertCostItem(costItem)
 
-        // Automatic Accounting:
-        // Dr. In-Transit Inventory (1220)
-        // Cr. Bank (1020)
+        val mappedExpAccId = ErpAccountingGuard.mapImportCostCategoryToExpenseAccountId(category.name, description)
+        val hasMappedExpAcc = database.accountingDao().getAccountById(mappedExpAccId) != null
+        val journalLines = if (hasMappedExpAcc) {
+            listOf(
+                JournalLineDraft(mappedExpAccId, true, bdtAmountMinor, "Import expense: $description"),
+                JournalLineDraft("coa-1020", false, bdtAmountMinor, "Payment for import expense $description"),
+                JournalLineDraft("coa-1220", true, bdtAmountMinor, "Capitalize import expense $description"),
+                JournalLineDraft(mappedExpAccId, false, bdtAmountMinor, "Capitalize import expense $description")
+            )
+        } else {
+            listOf(
+                JournalLineDraft("coa-1220", true, bdtAmountMinor, "Capitalize import expense $description"),
+                JournalLineDraft("coa-1020", false, bdtAmountMinor, "Payment for import expense $description")
+            )
+        }
         try {
             accountingRepository.postJournalEntry(
                 entryDate = System.currentTimeMillis(),
@@ -918,20 +1130,7 @@ class ImportRepositoryImpl @Inject constructor(
                 descBn = "আমদানি ব্যয়: $description",
                 referenceType = "IMPORT_EXPENSE",
                 referenceId = costId,
-                lines = listOf(
-                    JournalLineDraft(
-                        accountId = "coa-1220", // In-Transit Inventory
-                        isDebit = true,
-                        amountMinor = bdtAmountMinor,
-                        description = "Capitalize import expense $description"
-                    ),
-                    JournalLineDraft(
-                        accountId = "coa-1020", // City Bank Corporate
-                        isDebit = false,
-                        amountMinor = bdtAmountMinor,
-                        description = "Payment for import expense $description"
-                    )
-                )
+                lines = journalLines
             )
         } catch (e: Exception) {
             throw e
@@ -1926,6 +2125,18 @@ class ImportRepositoryImpl @Inject constructor(
             // Mark PO and Batch as ACTUAL_COST_FINALIZED
             purchaseOrderDao.markActualCostFinalized(orderId, PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name, now)
             importShipmentDao.updateShipmentStatus(batchShipment.id, ShipmentStatus.ARRIVED.name)
+            postPoFinalizedLandedJournals(
+                po = po.copy(
+                    isActualCostFinalized = true,
+                    status = if (po.status in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
+                        PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name
+                    } else {
+                        po.status
+                    }
+                ),
+                actualCosts = actualCosts,
+                snapshots = snapshots
+            )
         }
 
         return snapshots
@@ -2394,10 +2605,12 @@ class ImportRepositoryImpl @Inject constructor(
         isCapitalizable: Boolean,
         allocationMethod: String,
         notes: String?
-    ): String {
+    ): String = database.withTransaction {
         require(amountMinor > 0) { "Cost amount must be positive" }
         val po = purchaseOrderDao.getOrderById(orderId)
             ?: throw IllegalArgumentException("Purchase order not found: $orderId")
+
+        accountingRepository.requireSufficientLiquidBalance("coa-1020", amountMinor)
 
         val costCount = minimalImportDao.getAdditionalCostCount()
         val costNumber = "AC-2026-%04d".format(costCount + 1)
@@ -2471,7 +2684,7 @@ class ImportRepositoryImpl @Inject constructor(
             )
         }
 
-        return costId
+        return@withTransaction costId
     }
 
     override fun getAdditionalCostsForOrder(orderId: String): Flow<List<AdditionalProductCost>> =
@@ -2984,6 +3197,7 @@ class ImportRepositoryImpl @Inject constructor(
             }
             oldMirror.forEach { importCostDao.deleteCostItem(it.id) }
         }
+        purchaseOrderDao.getOrderById(orderId)?.let { syncPoCommitmentJournal(it) }
         Unit
     } }
 
@@ -3047,15 +3261,15 @@ class ImportRepositoryImpl @Inject constructor(
         if (po.status != PurchaseOrderStatus.DRAFT.name) supplierDao.getSupplierById(po.supplierId)?.let {
             supplierDao.updateOutstandingPayable(it.id, it.outstandingPayableMinor + newTotalBdtMinor - po.totalBdtAmountMinor)
         }
-        purchaseOrderDao.updateOrder(
-            po.copy(
-                totalAmountMinor = newTotalMinor,
-                totalBdtAmountMinor = newTotalBdtMinor,
-                totalCartons = newCartons,
-                totalGrossWeightKg = newGross,
-                updatedAt = System.currentTimeMillis()
-            )
+        val updatedPo = po.copy(
+            totalAmountMinor = newTotalMinor,
+            totalBdtAmountMinor = newTotalBdtMinor,
+            totalCartons = newCartons,
+            totalGrossWeightKg = newGross,
+            updatedAt = System.currentTimeMillis()
         )
+        purchaseOrderDao.updateOrder(updatedPo)
+        syncPoCommitmentJournal(updatedPo)
     }
 
     override suspend fun deletePurchaseOrderItem(itemId: String): Unit = database.withTransaction {
@@ -3075,15 +3289,15 @@ class ImportRepositoryImpl @Inject constructor(
         if (po.status != PurchaseOrderStatus.DRAFT.name) supplierDao.getSupplierById(po.supplierId)?.let {
             supplierDao.updateOutstandingPayable(it.id, it.outstandingPayableMinor + newTotalBdtMinor - po.totalBdtAmountMinor)
         }
-        purchaseOrderDao.updateOrder(
-            po.copy(
-                totalAmountMinor = newTotalMinor,
-                totalBdtAmountMinor = newTotalBdtMinor,
-                totalCartons = newCartons,
-                totalGrossWeightKg = newGross,
-                updatedAt = System.currentTimeMillis()
-            )
+        val updatedPo = po.copy(
+            totalAmountMinor = newTotalMinor,
+            totalBdtAmountMinor = newTotalBdtMinor,
+            totalCartons = newCartons,
+            totalGrossWeightKg = newGross,
+            updatedAt = System.currentTimeMillis()
         )
+        purchaseOrderDao.updateOrder(updatedPo)
+        syncPoCommitmentJournal(updatedPo)
     }
 
     // =========================================================================
@@ -3334,6 +3548,7 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         val bdtAmountMinor = LandingCostEngine.convertToBdtMinor(amountMinor, currency, exchangeRate)
+        accountingRepository.requireSufficientLiquidBalance("coa-1020", bdtAmountMinor)
         val manualSpec = if (method == AllocationMethod.MANUAL) {
             require(manualAllocationsBdtMinor.isNotEmpty()) {
                 "Manual product-wise allocation amounts are required when MANUAL allocation method is selected"
@@ -3376,6 +3591,21 @@ class ImportRepositoryImpl @Inject constructor(
         )
         importCostDao.insertCostItem(costItem)
 
+        val mappedExpAccId = ErpAccountingGuard.mapImportCostCategoryToExpenseAccountId(category.name, description.trim())
+        val hasMappedExpAcc = database.accountingDao().getAccountById(mappedExpAccId) != null
+        val journalLines = if (hasMappedExpAcc) {
+            listOf(
+                JournalLineDraft(mappedExpAccId, true, bdtAmountMinor, "Import expense recorded: $description"),
+                JournalLineDraft("coa-1020", false, bdtAmountMinor, "Payment for import expense: $description"),
+                JournalLineDraft("coa-1220", true, bdtAmountMinor, "Capitalize import expense: $description"),
+                JournalLineDraft(mappedExpAccId, false, bdtAmountMinor, "Capitalize import expense: $description")
+            )
+        } else {
+            listOf(
+                JournalLineDraft("coa-1220", true, bdtAmountMinor, "Import expense recorded: $description"),
+                JournalLineDraft("coa-1020", false, bdtAmountMinor, "Payment for import expense: $description")
+            )
+        }
         try {
             accountingRepository.postJournalEntry(
                 entryDate = costDate,
@@ -3383,20 +3613,7 @@ class ImportRepositoryImpl @Inject constructor(
                 descBn = "আমদানি ব্যয়: $description",
                 referenceType = "IMPORT_EXPENSE",
                 referenceId = costId,
-                lines = listOf(
-                    JournalLineDraft(
-                        accountId = "coa-1220",
-                        isDebit = true,
-                        amountMinor = bdtAmountMinor,
-                        description = "Import expense recorded: $description"
-                    ),
-                    JournalLineDraft(
-                        accountId = "coa-1020",
-                        isDebit = false,
-                        amountMinor = bdtAmountMinor,
-                        description = "Payment for import expense: $description"
-                    )
-                )
+                lines = journalLines
             )
         } catch (e: Exception) {
             throw e
@@ -4042,6 +4259,8 @@ class ImportRepositoryImpl @Inject constructor(
         val descEn = "Monthly Warehouse Rent ($whName - $rentMonth)"
         val descBn = "মাসিক গুদাম ভাড়া ($whName - $rentMonth)"
 
+        accountingRepository.requireSufficientLiquidBalance(paymentAccountId, amountMinor)
+
         var journalEntryId: String? = null
         try {
             journalEntryId = accountingRepository.postJournalEntry(
@@ -4119,6 +4338,8 @@ class ImportRepositoryImpl @Inject constructor(
 
         val descEn = "Customer Delivery Expense for Invoice #$invNum$challanTag"
         val descBn = "ক্রেতা ডেলিভারি খরচ (ইনভয়েস #$invNum$challanTag)"
+
+        accountingRepository.requireSufficientLiquidBalance(paymentAccountId, amountMinor)
 
         var journalEntryId: String? = null
         try {

@@ -740,7 +740,24 @@ fun ImportManagementScreen(
             orders = uiState.purchaseOrders,
             preselectedSupplierId = preselectedSupplierIdForPayment,
             preselectedOrderId = preselectedOrderIdForPayment,
+            liquidAccounts = uiState.liquidAccounts,
+            accountBalances = uiState.liquidAccountBalances,
             isBangla = isBangla,
+            onConfirmWithDetails = { supId, ordId, amt, cur, rate, meth, acc, accId, pDate, ref, notes ->
+                viewModel.recordSupplierPayment(
+                    supplierId = supId,
+                    orderId = ordId,
+                    amountMinor = amt,
+                    currency = cur,
+                    exchangeRate = rate,
+                    method = meth,
+                    paymentAccount = acc,
+                    reference = ref,
+                    notes = notes,
+                    paymentDate = pDate,
+                    paymentAccountId = accId
+                )
+            },
             onDismiss = { showRecordPaymentDialog = false },
             onConfirm = { supId, ordId, amt, cur, rate, meth, acc, ref, notes ->
                 viewModel.recordSupplierPayment(supId, ordId, amt, cur, rate, meth, acc, ref, notes)
@@ -1074,6 +1091,9 @@ fun ImportManagementScreen(
             },
             onDeletePo = { orderId ->
                 viewModel.deletePurchaseOrder(orderId)
+            },
+            onReversePayment = { paymentId ->
+                viewModel.reverseSupplierPayment(paymentId)
             },
             onDuplicatePo = { orderId ->
                 viewModel.duplicatePurchaseOrder(orderId)

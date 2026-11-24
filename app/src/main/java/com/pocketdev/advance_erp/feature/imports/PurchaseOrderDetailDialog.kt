@@ -157,6 +157,7 @@ fun PurchaseOrderDetailDialog(
     onSharePdf: (order: PurchaseOrder) -> Unit,
     onCancelPo: (orderId: String, reason: String?) -> Unit,
     onDeletePo: ((orderId: String) -> Unit)? = null,
+    onReversePayment: ((paymentId: String) -> Unit)? = null,
     onDuplicatePo: ((orderId: String) -> Unit)? = null,
     onEditFullPo: ((order: PurchaseOrder) -> Unit)? = null,
     onSelectShipment: ((ImportShipment) -> Unit)? = null,
@@ -176,6 +177,7 @@ fun PurchaseOrderDetailDialog(
     val productMap = remember(products) { products.associateBy { it.id } }
     var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var showDeletePoConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var reversingPayment by remember { mutableStateOf<SupplierPayment?>(null) }
     var cancelReason by rememberSaveable { mutableStateOf("") }
     var showEditPackingDialog by rememberSaveable { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<PurchaseOrderItem?>(null) }
@@ -832,7 +834,7 @@ fun PurchaseOrderDetailDialog(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Column {
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = "${p.paymentNumber} • ${p.paymentMethod}",
                                                     style = MaterialTheme.typography.bodySmall,
@@ -857,6 +859,19 @@ fun PurchaseOrderDetailDialog(
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = TextMuted
                                                 )
+                                            }
+                                            if (onReversePayment != null) {
+                                                TextButton(
+                                                    onClick = { reversingPayment = p },
+                                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (isBangla) "রিভার্স" else "Reverse",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = StatusError
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -2025,6 +2040,46 @@ fun PurchaseOrderDetailDialog(
             },
             dismissButton = {
                 TextButton(onClick = { showDeletePoConfirmDialog = false }) {
+                    Text(text = if (isBangla) "না" else "Cancel")
+                }
+            }
+        )
+    }
+
+    reversingPayment?.let { targetPayment ->
+        AlertDialog(
+            onDismissRequest = { reversingPayment = null },
+            title = {
+                Text(
+                    text = if (isBangla) "পেমেন্ট বাতিল / রিভার্স করুন?" else "Reverse Supplier Payment?",
+                    fontWeight = FontWeight.Bold,
+                    color = StatusError
+                )
+            },
+            text = {
+                Text(
+                    text = if (isBangla)
+                        "আপনি কি পেমেন্ট ${targetPayment.paymentNumber} (${Formatters.formatMoney(targetPayment.bdtAmountMinor, CurrencyCode.BDT, language)}) রিভার্স করতে চান? এতে ক্যাশ/ব্যাংক ব্যালেন্স ফিরে আসবে এবং PO-র বকেয়া আপডেট হবে।"
+                    else
+                        "Reverse payment ${targetPayment.paymentNumber} (${Formatters.formatMoney(targetPayment.bdtAmountMinor, CurrencyCode.BDT, language)})? Cash/Bank balance and PO payable will be restored.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val pid = targetPayment.id
+                        reversingPayment = null
+                        onReversePayment?.invoke(pid)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusError)
+                ) {
+                    Text(text = if (isBangla) "হ্যাঁ, রিভার্স করুন" else "Yes, Reverse")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { reversingPayment = null }) {
                     Text(text = if (isBangla) "না" else "Cancel")
                 }
             }

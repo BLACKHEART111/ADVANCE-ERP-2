@@ -90,6 +90,8 @@ class FinancialRepositoryImpl @Inject constructor(
         val voucherNumber = formatDocumentNumber("EXP", dateFormat, count + 1)
         val voucherId = "exp-${UUID.randomUUID()}"
 
+        accountingRepository.requireSufficientLiquidBalance(paymentAccountId, bdtAmountMinor)
+
         // Create balanced journal entry: Debit Expense Account, Credit Payment Account
         val journalLines = listOf(
             JournalLineDraft(
@@ -191,6 +193,8 @@ class FinancialRepositoryImpl @Inject constructor(
         val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(transferDate))
         val transferNumber = formatDocumentNumber("TRF", dateFormat, count + 1)
         val transferId = "trf-${UUID.randomUUID()}"
+
+        accountingRepository.requireSufficientLiquidBalance(sourceAccountId, amountMinor)
 
         // Balanced journal entry: Debit Destination Account, Credit Source Account
         val journalLines = listOf(
@@ -430,6 +434,7 @@ class FinancialRepositoryImpl @Inject constructor(
             ?: throw IllegalArgumentException("Bank account not found: $bankAccountId")
 
         val lines = if (isBankCharge) {
+            accountingRepository.requireSufficientLiquidBalance(bankAccountId, amountMinor)
             // Debit Bank Charges 5150, Credit Bank Account
             listOf(
                 JournalLineDraft(
@@ -517,17 +522,17 @@ class FinancialRepositoryImpl @Inject constructor(
 
         val grossProfit = netSalesRevenue - cogsMinor
 
-        // Operating Expenses (5020, 5030, 5040, 5110, 5120, 5130, 5140, 5150, 5190)
-        val opExpAccountCodes = listOf("5020", "5030", "5040", "5110", "5120", "5130", "5140", "5150", "5190")
+        // Operating Expenses (all EXPENSE accounts except 5010 COGS and 5090 FX Gain/Loss)
+        val opExpAccounts = accounts.values
+            .filter { it.accountType == "EXPENSE" && it.accountCode !in setOf("5010", "5090") }
+            .sortedBy { it.accountCode }
         val operatingExpenses = mutableListOf<AccountSummaryItem>()
         var totalOpExpenses = 0L
 
-        for (code in opExpAccountCodes) {
-            val accId = "coa-$code"
-            val acc = accounts[accId]
-            val lines = linesByAccount[accId] ?: emptyList()
+        for (acc in opExpAccounts) {
+            val lines = linesByAccount[acc.id] ?: emptyList()
             val netDebit = lines.filter { it.isDebit }.sumOf { it.amountMinor } - lines.filter { !it.isDebit }.sumOf { it.amountMinor }
-            if (acc != null && netDebit != 0L) {
+            if (netDebit != 0L) {
                 operatingExpenses.add(
                     AccountSummaryItem(
                         accountId = acc.id,
@@ -666,26 +671,6 @@ class FinancialRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getCashFlowStatement(fromDate: Long, toDate: Long): CashFlowStatement {
-        // Customer payments received in period
-        val customerPayments = customerPaymentDao.getAllPaymentsSync()
-            .filter { it.paymentDate in fromDate..toDate && it.isPosted }
-        val cashInflowCustomers = customerPayments.sumOf { it.amountMinor }
-
-        // Supplier payments made in period
-        val supplierPayments = supplierPaymentDao.getAllPaymentsSync()
-            .filter { it.paymentDate in fromDate..toDate }
-        val cashOutflowSuppliers = supplierPayments.sumOf { it.bdtAmountMinor }
-
-        // Operating expenses paid in cash/bank
-        val expenses = expenseDao.getAllExpensesSync()
-            .filter { it.voucherDate in fromDate..toDate && it.isPosted && !it.isReversed }
-        val cashOutflowExpenses = expenses.sumOf { it.bdtAmountMinor }
-
-        val netOperations = cashInflowCustomers - cashOutflowSuppliers - cashOutflowExpenses
-        val netInvesting = 0L
-        val netFinancing = 0L
-        val netChange = netOperations + netInvesting + netFinancing
-
         // All Cash, Bank & Mobile-banking accounts
         val cashBankIds = accountingDao.getLiquidAccountsSync().map { it.id }.toSet()
             .ifEmpty { setOf("coa-1010", "coa-1020", "coa-1030") }
@@ -693,6 +678,13 @@ class FinancialRepositoryImpl @Inject constructor(
 
         var openingBal = 0L
         var closingBal = 0L
+        var cashInflowCustomers = 0L
+        var cashOutflowSuppliers = 0L
+        var cashOutflowExpenses = 0L
+        var netFinancing = 0L
+        val netInvesting = 0L
+
+        val inPeriodByEntry = linkedMapOf<String, Pair<String, Long>>()
 
         for (line in allPostedLines) {
             val je = accountingDao.getJournalEntryById(line.journalEntryId)
@@ -704,7 +696,38 @@ class FinancialRepositoryImpl @Inject constructor(
             if (date <= toDate) {
                 closingBal += net
             }
+            if (date in fromDate..toDate) {
+                val refType = je?.referenceType.orEmpty()
+                val prev = inPeriodByEntry[line.journalEntryId]?.second ?: 0L
+                inPeriodByEntry[line.journalEntryId] = refType to (prev + net)
+            }
         }
+
+        for ((_, pair) in inPeriodByEntry) {
+            val (refType, netLiquidImpact) = pair
+            if (netLiquidImpact == 0L) continue
+            when (refType) {
+                "OPENING_BALANCE", "CAPITAL_DEPOSIT", "OWNER_CAPITAL", "CAPITAL_WITHDRAWAL" -> {
+                    netFinancing += netLiquidImpact
+                }
+                "SALES_INVOICE", "CUSTOMER_PAYMENT", "VOID_INVOICE_SALES" -> {
+                    if (netLiquidImpact >= 0L) {
+                        cashInflowCustomers += netLiquidImpact
+                    } else {
+                        cashOutflowExpenses += -netLiquidImpact
+                    }
+                }
+                "SUPPLIER_PAYMENT", "IMPORT_EXPENSE", "POST_FINALIZE_IMPORT_EXPENSE", "FREIGHT_DUTY_PAYMENT" -> {
+                    cashOutflowSuppliers += -netLiquidImpact
+                }
+                else -> {
+                    cashOutflowExpenses += -netLiquidImpact
+                }
+            }
+        }
+
+        val netOperations = cashInflowCustomers - cashOutflowSuppliers - cashOutflowExpenses
+        val netChange = netOperations + netInvesting + netFinancing
 
         return CashFlowStatement(
             fromDate = fromDate,

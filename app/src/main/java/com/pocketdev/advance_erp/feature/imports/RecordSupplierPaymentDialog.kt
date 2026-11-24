@@ -61,6 +61,7 @@ import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
@@ -89,6 +90,7 @@ fun RecordSupplierPaymentDialog(
     dismissOnSubmit: Boolean = true,
     saveError: String? = null,
     liquidAccounts: List<ChartOfAccount> = emptyList(),
+    accountBalances: Map<String, Long> = emptyMap(),
     nextPaymentNumber: String? = null,
     isBangla: Boolean = false,
     onSwitchToOtherPayment: (() -> Unit)? = null,
@@ -506,11 +508,16 @@ fun RecordSupplierPaymentDialog(
                                         .background(if (isSel) PrimaryPurple else ERPDivider)
                                         .clickable {
                                             selectedMethod = pm
-                                            if (pm == PaymentMethod.CASH) {
-                                                activeLiquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.let { acc ->
-                                                    selectedAccountId = acc.id
-                                                    paymentAccount = acc.nameEn
-                                                }
+                                            errorMessage = null
+                                            val preferredAcc = if (pm == PaymentMethod.CASH) {
+                                                activeLiquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }
+                                            } else {
+                                                activeLiquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.BANK }
+                                                    ?: activeLiquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }
+                                            } ?: activeLiquidAccounts.firstOrNull()
+                                            preferredAcc?.let { acc ->
+                                                selectedAccountId = acc.id
+                                                paymentAccount = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn
                                             }
                                         }
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -534,6 +541,8 @@ fun RecordSupplierPaymentDialog(
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(activeLiquidAccounts, key = { it.id }) { acc ->
                                     val isSel = selectedAccountId == acc.id
+                                    val accBal = accountBalances[acc.id] ?: 0L
+                                    val accTitle = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
@@ -541,17 +550,48 @@ fun RecordSupplierPaymentDialog(
                                             .border(1.dp, if (isSel) SecondaryTeal else ERPDivider, RoundedCornerShape(8.dp))
                                             .clickable {
                                                 selectedAccountId = acc.id
-                                                paymentAccount = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn
+                                                paymentAccount = accTitle
+                                                errorMessage = null
                                             }
                                             .padding(horizontal = 10.dp, vertical = 6.dp)
                                     ) {
-                                        Text(
-                                            text = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn,
-                                            color = if (isSel) Color.White else TextPrimary,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
-                                        )
+                                        Column {
+                                            Text(
+                                                text = accTitle,
+                                                color = if (isSel) Color.White else TextPrimary,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                            if (accountBalances.containsKey(acc.id)) {
+                                                Text(
+                                                    text = Formatters.formatMoney(accBal, CurrencyCode.BDT, lang),
+                                                    color = when {
+                                                        isSel -> Color.White.copy(alpha = 0.9f)
+                                                        accBal <= 0L -> StatusError
+                                                        else -> SecondaryTeal
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                        }
                                     }
+                                }
+                            }
+                            selectedAccountId?.let { selId ->
+                                if (accountBalances.containsKey(selId)) {
+                                    val selBal = accountBalances[selId] ?: 0L
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = if (isBangla) {
+                                            "উপলব্ধ ব্যালেন্স: ${Formatters.formatMoney(selBal, CurrencyCode.BDT, lang)}"
+                                        } else {
+                                            "Available Balance: ${Formatters.formatMoney(selBal, CurrencyCode.BDT, lang)}"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (selBal <= 0L) StatusError else StatusSuccess
+                                    )
                                 }
                             }
                             Spacer(modifier = Modifier.height(6.dp))
@@ -619,6 +659,19 @@ fun RecordSupplierPaymentDialog(
                                 }
 
                                 val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                val requiredBdtMinor = amtBd.multiply(rate).multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                selectedAccountId?.let { selId ->
+                                    if (accountBalances.containsKey(selId)) {
+                                        val selBal = accountBalances[selId] ?: 0L
+                                        require(selBal >= requiredBdtMinor) {
+                                            if (isBangla) {
+                                                "নির্বাচিত অ্যাকাউন্টে পর্যাপ্ত ব্যালেন্স নেই! বর্তমান: ${Formatters.formatMoney(selBal, CurrencyCode.BDT, lang)}, প্রয়োজন: ${Formatters.formatMoney(requiredBdtMinor, CurrencyCode.BDT, lang)}। আগে হিসাব ও অর্থ থেকে মূলধন জমা করুন।"
+                                            } else {
+                                                "Insufficient account balance! Available: ${Formatters.formatMoney(selBal, CurrencyCode.BDT, lang)}, Required: ${Formatters.formatMoney(requiredBdtMinor, CurrencyCode.BDT, lang)}."
+                                            }
+                                        }
+                                    }
+                                }
 
                                 if (onConfirmWithDetails != null) {
                                     onConfirmWithDetails(

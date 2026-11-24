@@ -30,6 +30,7 @@ import com.pocketdev.advance_erp.domain.model.ProfitAndLossStatement
 import com.pocketdev.advance_erp.domain.repository.AccountingRepository
 import com.pocketdev.advance_erp.domain.repository.BackupRepository
 import com.pocketdev.advance_erp.domain.repository.FinancialRepository
+import com.pocketdev.advance_erp.domain.repository.ImportRepository
 import com.pocketdev.advance_erp.domain.repository.JournalLineDraft
 import com.pocketdev.advance_erp.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -77,6 +78,7 @@ data class AccountsUiState(
 class AccountsViewModel @Inject constructor(
     private val accountingRepository: AccountingRepository,
     private val financialRepository: FinancialRepository,
+    private val importRepository: ImportRepository,
     private val backupRepository: BackupRepository,
     private val settingsRepository: SettingsRepository,
     private val preferencesRepository: UserPreferencesRepository
@@ -86,8 +88,12 @@ class AccountsViewModel @Inject constructor(
     val uiState: StateFlow<AccountsUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            runCatching { importRepository.reconcilePurchaseOrderLedger() }
+            refreshTrialBalance()
+            loadFinancialStatements()
+        }
         loadData()
-        loadFinancialStatements()
     }
 
     private fun loadData() {
@@ -575,6 +581,64 @@ class AccountsViewModel @Inject constructor(
                 val msg = e.message ?: "অ্যাকাউন্ট ডিলিট করা যায়নি"
                 _uiState.update { it.copy(isLoading = false, userMessage = msg) }
                 onError?.invoke(msg)
+            }
+        }
+    }
+
+    fun depositCapital(
+        accountId: String,
+        amountMinor: Long,
+        notes: String?,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                accountingRepository.depositCapitalToLiquidAccount(
+                    accountId = accountId,
+                    amountMinor = amountMinor,
+                    notes = notes
+                )
+                refreshTrialBalance()
+                loadFinancialStatements()
+                val msg = if (_uiState.value.language == AppLanguage.BANGLA) {
+                    "মূলধন / তহবিল সফলভাবে জমা হয়েছে!"
+                } else {
+                    "Capital / fund deposit recorded!"
+                }
+                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "Deposit failed") }
+            }
+        }
+    }
+
+    fun payAccruedFreight(
+        paymentAccountId: String,
+        amountMinor: Long,
+        notes: String?,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                accountingRepository.payAccruedCustomsAndFreight(
+                    paymentAccountId = paymentAccountId,
+                    amountMinor = amountMinor,
+                    notes = notes
+                )
+                refreshTrialBalance()
+                loadFinancialStatements()
+                val msg = if (_uiState.value.language == AppLanguage.BANGLA) {
+                    "বকেয়া শুল্ক ও ফ্রেইট বিল পরিশোধ হয়েছে!"
+                } else {
+                    "Accrued customs & freight payment posted!"
+                }
+                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "Payment failed") }
             }
         }
     }

@@ -18,6 +18,7 @@ import com.pocketdev.advance_erp.data.dao.BusinessProfileDao
 import com.pocketdev.advance_erp.data.entity.AdditionalCostCategory
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
+import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.CostCategory
 import com.pocketdev.advance_erp.data.entity.DamageRecord
 import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
@@ -44,6 +45,7 @@ import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.data.entity.SupplierPayment
 import com.pocketdev.advance_erp.data.entity.WarehouseReceipt
 import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
+import com.pocketdev.advance_erp.domain.repository.AccountingRepository
 import com.pocketdev.advance_erp.domain.repository.ContactsRepository
 import com.pocketdev.advance_erp.domain.repository.ImportRepository
 import com.pocketdev.advance_erp.domain.repository.MixedCartonLineDraft
@@ -106,6 +108,8 @@ data class ImportUiState(
     val poStatusFilter: PurchaseOrderStatus? = null,
     val poSupplierFilter: String? = null,
     val businessProfile: BusinessProfile? = null,
+    val liquidAccounts: List<ChartOfAccount> = emptyList(),
+    val liquidAccountBalances: Map<String, Long> = emptyMap(),
     val language: AppLanguage = AppLanguage.BANGLA,
     val isLoading: Boolean = false,
     val isSavingPurchaseOrder: Boolean = false,
@@ -124,6 +128,7 @@ data class ImportUiState(
 @HiltViewModel
 class ImportViewModel @Inject constructor(
     private val importRepository: ImportRepository,
+    private val accountingRepository: AccountingRepository,
     private val productRepository: ProductRepository,
     private val contactsRepository: ContactsRepository,
     private val preferencesRepository: UserPreferencesRepository,
@@ -135,7 +140,21 @@ class ImportViewModel @Inject constructor(
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            runCatching { importRepository.reconcilePurchaseOrderLedger() }
+            refreshLiquidAccountBalances()
+        }
         loadData()
+    }
+
+    private suspend fun refreshLiquidAccountBalances() {
+        runCatching {
+            val tb = accountingRepository.getTrialBalance()
+            val balMap = tb.associate { item ->
+                item.accountId to (item.totalDebitMinor - item.totalCreditMinor)
+            }
+            _uiState.update { it.copy(liquidAccountBalances = balMap) }
+        }
     }
 
     private fun loadData() {
@@ -187,6 +206,19 @@ class ImportViewModel @Inject constructor(
             viewModelScope.launch {
                 importRepository.getWarehouseRentExpenses(null).collect { rents ->
                     _uiState.update { it.copy(warehouseRentHistory = rents) }
+                }
+            }
+            viewModelScope.launch {
+                combine(
+                    accountingRepository.getLiquidAccounts(),
+                    accountingRepository.getAllJournalEntries()
+                ) { accounts, _ -> accounts }.collect { accounts ->
+                    val balMap = runCatching {
+                        accountingRepository.getTrialBalance().associate { item ->
+                            item.accountId to (item.totalDebitMinor - item.totalCreditMinor)
+                        }
+                    }.getOrDefault(_uiState.value.liquidAccountBalances)
+                    _uiState.update { it.copy(liquidAccounts = accounts, liquidAccountBalances = balMap) }
                 }
             }
 
@@ -721,14 +753,27 @@ class ImportViewModel @Inject constructor(
         method: PaymentMethod,
         paymentAccount: String,
         reference: String?,
-        notes: String?
+        notes: String?,
+        paymentDate: Long = System.currentTimeMillis(),
+        paymentAccountId: String? = null
     ) {
         viewModelScope.launch {
             try {
                 _uiState.update { it.copy(isLoading = true) }
                 importRepository.recordSupplierPayment(
-                    supplierId, orderId, amountMinor, currency, exchangeRate, method, paymentAccount, reference, notes
+                    supplierId = supplierId,
+                    orderId = orderId,
+                    amountMinor = amountMinor,
+                    currency = currency,
+                    exchangeRate = exchangeRate,
+                    method = method,
+                    paymentAccount = paymentAccount,
+                    reference = reference,
+                    notes = notes,
+                    paymentDate = paymentDate,
+                    paymentAccountId = paymentAccountId
                 )
+                refreshLiquidAccountBalances()
                 if (orderId != null) {
                     val updatedPo = importRepository.getPurchaseOrderById(orderId)
                     if (updatedPo != null && _uiState.value.selectedPo?.id == orderId) {
@@ -738,7 +783,28 @@ class ImportViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, userMessage = "Payment recorded and journal posted!") }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.update { it.copy(isLoading = false, userMessage = "Error: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, userMessage = e.message ?: "Payment failed") }
+            }
+        }
+    }
+
+    fun reverseSupplierPayment(paymentId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                val orderId = _uiState.value.selectedPo?.id
+                importRepository.reverseSupplierPayment(paymentId)
+                refreshLiquidAccountBalances()
+                if (orderId != null) {
+                    val updatedPo = importRepository.getPurchaseOrderById(orderId)
+                    if (updatedPo != null) {
+                        _uiState.update { it.copy(selectedPo = updatedPo) }
+                    }
+                }
+                _uiState.update { it.copy(isLoading = false, userMessage = "সাপ্লায়ার পেমেন্ট রিভার্স করা হয়েছে (Supplier payment reversed)!") }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, userMessage = "Reversal error: ${e.message}") }
             }
         }
     }

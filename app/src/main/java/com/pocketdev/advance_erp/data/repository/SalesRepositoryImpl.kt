@@ -927,6 +927,11 @@ class SalesRepositoryImpl @Inject constructor(
                 ReturnRefundOption.CASH_REFUND -> "coa-1010"     // Cash in Hand
                 ReturnRefundOption.BANK_REFUND -> "coa-1020"     // Bank
             }
+            if (draft.refundOption in setOf(ReturnRefundOption.CASH_REFUND, ReturnRefundOption.BANK_REFUND) &&
+                totalReturnAmount > 0L
+            ) {
+                accountingRepository.requireSufficientLiquidBalance(creditAccount, totalReturnAmount)
+            }
             val returnRevenueLines = listOf(
                 JournalLineDraft(
                     accountId = "coa-4020",

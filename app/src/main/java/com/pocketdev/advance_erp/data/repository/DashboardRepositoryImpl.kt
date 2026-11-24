@@ -264,8 +264,12 @@ class DashboardRepositoryImpl @Inject constructor(
                 .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
             val grossProfitMinor = netRevenue - cogsAcc
 
-            val opExpenseCodes = setOf("coa-5020", "coa-5030", "coa-5040", "coa-5110", "coa-5120", "coa-5130", "coa-5140", "coa-5150", "coa-5190")
-            val opExpenses = activeLinesUpTo.filter { it.accountId in opExpenseCodes }
+            val opExpenseIds = accountingDao.getAllAccountsSync()
+                .filter { it.accountType == "EXPENSE" && it.accountCode !in setOf("5010", "5090") }
+                .map { it.id }
+                .toSet()
+                .ifEmpty { setOf("coa-5020", "coa-5030", "coa-5040", "coa-5050", "coa-5110", "coa-5120", "coa-5130", "coa-5140", "coa-5150", "coa-5190") }
+            val opExpenses = activeLinesUpTo.filter { it.accountId in opExpenseIds }
                 .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
             val netProfitMinor = grossProfitMinor - opExpenses
 
@@ -283,7 +287,7 @@ class DashboardRepositoryImpl @Inject constructor(
                 .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
             val monthCogs = monthLines.filter { it.accountId == "coa-5010" }
                 .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
-            val monthOperatingExpenses = monthLines.filter { it.accountId in opExpenseCodes }
+            val monthOperatingExpenses = monthLines.filter { it.accountId in opExpenseIds }
                 .sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
             val monthlyMetrics = MonthlyPerformanceMetrics(
                 totalSales = Money.ofMinor(monthInvoices.sumOf { it.totalAmountMinor }, CurrencyCode.BDT),

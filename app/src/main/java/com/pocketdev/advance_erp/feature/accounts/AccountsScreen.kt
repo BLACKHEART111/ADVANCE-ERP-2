@@ -226,6 +226,9 @@ fun AccountsScreen(
     var showNewJournalDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordExpenseDialog by rememberSaveable { mutableStateOf(false) }
     var showTransferDialog by rememberSaveable { mutableStateOf(false) }
+    var showDepositCapitalDialog by rememberSaveable { mutableStateOf(false) }
+    var depositCapitalPreselectedAccId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showPayAccruedFreightDialog by rememberSaveable { mutableStateOf(false) }
     var showReconciliationDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateBackupDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -490,6 +493,24 @@ fun AccountsScreen(
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(stringResource(R.string.accounting_transfer_funds), fontSize = 12.sp, maxLines = 1)
                                 }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Button(
+                                onClick = {
+                                    depositCapitalPreselectedAccId = null
+                                    showDepositCapitalDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = DeepNavy),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isBangla) "+ মূলধন / তহবিল জমা করুন (Cash / Bank)" else "+ Add Capital / Deposit Funds (Cash / Bank)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
@@ -1798,6 +1819,43 @@ fun AccountsScreen(
                     onSuccess = { detailAccount = null },
                     onError = onErr
                 )
+            },
+            onDepositCapital = {
+                depositCapitalPreselectedAccId = acc.id
+                detailAccount = null
+                showDepositCapitalDialog = true
+            },
+            onPayAccruedFreight = {
+                detailAccount = null
+                showPayAccruedFreightDialog = true
+            }
+        )
+    }
+
+    if (showDepositCapitalDialog) {
+        DepositCapitalDialog(
+            liquidAccounts = uiState.liquidAccounts,
+            trialBalanceMap = trialBalanceMap,
+            preselectedAccountId = depositCapitalPreselectedAccId,
+            isBangla = isBangla,
+            onDismiss = { showDepositCapitalDialog = false },
+            onConfirm = { accId, amtMinor, notes ->
+                viewModel.depositCapital(accId, amtMinor, notes)
+            }
+        )
+    }
+
+    if (showPayAccruedFreightDialog) {
+        val accruedTb = trialBalanceMap["coa-2020"]
+        val accruedDue = ((accruedTb?.totalCreditMinor ?: 0L) - (accruedTb?.totalDebitMinor ?: 0L)).coerceAtLeast(0L)
+        PayAccruedFreightDialog(
+            accruedDueMinor = accruedDue,
+            liquidAccounts = uiState.liquidAccounts,
+            trialBalanceMap = trialBalanceMap,
+            isBangla = isBangla,
+            onDismiss = { showPayAccruedFreightDialog = false },
+            onConfirm = { payAccId, amtMinor, notes ->
+                viewModel.payAccruedFreight(payAccId, amtMinor, notes)
             }
         )
     }
@@ -1806,6 +1864,7 @@ fun AccountsScreen(
     if (showRecordExpenseDialog) {
         RecordExpenseDialog(
             accounts = uiState.accounts.filter { it.isActive },
+            trialBalanceMap = trialBalanceMap,
             isBangla = isBangla,
             onDismiss = { showRecordExpenseDialog = false },
             onConfirm = { cat, descEn, descBn, amtMinor, curr, rate, payAcc, expAcc, date, ref, notes ->
@@ -1819,6 +1878,7 @@ fun AccountsScreen(
         AccountTransferDialog(
             accounts = uiState.liquidAccounts.filter { it.isActive }
                 .ifEmpty { uiState.accounts.filter { it.isActive && it.accountType == "ASSET" } },
+            trialBalanceMap = trialBalanceMap,
             isBangla = isBangla,
             onDismiss = { showTransferDialog = false },
             onConfirm = { src, dst, amt, date, ref, notes ->
@@ -2060,6 +2120,11 @@ private fun ChartOfAccountCard(
     } else {
         (trialItem?.totalCreditMinor ?: 0L) - (trialItem?.totalDebitMinor ?: 0L)
     }
+    val capitalizedImportMinor = if (account.accountCode in setOf("5020", "5030", "5040", "5140") && netBalanceMinor == 0L) {
+        minOf(trialItem?.totalDebitMinor ?: 0L, trialItem?.totalCreditMinor ?: 0L)
+    } else {
+        0L
+    }
 
     val primaryName = if (isBangla && account.nameBn.isNotBlank()) account.nameBn else account.nameEn
     val secondaryLine = buildList {
@@ -2128,6 +2193,20 @@ private fun ChartOfAccountCard(
                             )
                         }
                     }
+                    if (capitalizedImportMinor > 0L) {
+                        Box(
+                            modifier = Modifier
+                                .background(SecondaryTeal.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = if (isBangla) "স্টকে যুক্ত" else "Capitalized",
+                                color = SecondaryTeal,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                     if (!account.isActive) {
                         Box(
                             modifier = Modifier
@@ -2148,11 +2227,16 @@ private fun ChartOfAccountCard(
             Spacer(modifier = Modifier.width(8.dp))
 
             Column(horizontalAlignment = Alignment.End) {
+                val displayedMinor = if (capitalizedImportMinor > 0L) capitalizedImportMinor else netBalanceMinor
                 Text(
-                    text = Formatters.formatMoney(netBalanceMinor, CurrencyCode.BDT, language),
+                    text = Formatters.formatMoney(displayedMinor, CurrencyCode.BDT, language),
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (netBalanceMinor < 0L) StatusError else DeepNavy
+                    color = when {
+                        capitalizedImportMinor > 0L -> SecondaryTeal
+                        netBalanceMinor < 0L -> StatusError
+                        else -> DeepNavy
+                    }
                 )
                 Text(
                     text = "${account.accountType} • ${if (account.normalBalance == "DEBIT") "Dr" else "Cr"}",
@@ -2181,6 +2265,7 @@ private fun AccountDropdownField(
     isBangla: Boolean = false,
     accounts: List<ChartOfAccount>,
     selectedAccountId: String,
+    trialBalanceMap: Map<String, TrialBalanceItem> = emptyMap(),
     onSelect: (ChartOfAccount) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2212,18 +2297,22 @@ private fun AccountDropdownField(
             onDismissRequest = { expanded = false }
         ) {
             accounts.forEach { acc ->
+                val tb = trialBalanceMap[acc.id]
+                val accBalMinor = (tb?.totalDebitMinor ?: 0L) - (tb?.totalCreditMinor ?: 0L)
                 DropdownMenuItem(
                     text = {
                         Column {
                             Text("${acc.accountCode} • ${if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             val sub = listOfNotNull(
-                                acc.liquidKind?.let { if (isBangla) it.titleBn else it.titleEn },
+                                acc.liquidKind?.let {
+                                    "${if (isBangla) it.titleBn else it.titleEn} • ৳${Formatters.formatMinorUnit(accBalMinor)}"
+                                },
                                 acc.institutionName,
                                 acc.accountNumber?.let { "A/C $it" }
                             )
                                 .joinToString(" • ")
                             if (sub.isNotBlank()) {
-                                Text(sub, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                Text(sub, style = MaterialTheme.typography.labelSmall, color = if (acc.liquidKind != null && accBalMinor <= 0L) StatusError else TextSecondary)
                             }
                         }
                     },
@@ -2240,6 +2329,7 @@ private fun AccountDropdownField(
 @Composable
 private fun RecordExpenseDialog(
     accounts: List<ChartOfAccount>,
+    trialBalanceMap: Map<String, TrialBalanceItem> = emptyMap(),
     isBangla: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (
@@ -2360,8 +2450,21 @@ private fun RecordExpenseDialog(
                     isBangla = isBangla,
                     accounts = paymentAccounts,
                     selectedAccountId = paymentAccountId,
+                    trialBalanceMap = trialBalanceMap,
                     onSelect = { paymentAccountId = it.id }
                 )
+
+                val payAccObj = paymentAccounts.find { it.id == paymentAccountId }
+                if (payAccObj?.liquidKind != null) {
+                    val payBal = trialBalanceMap[payAccObj.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (isBangla) "উপলব্ধ ব্যালেন্স: ৳${Formatters.formatMinorUnit(payBal)}" else "Available Balance: ৳${Formatters.formatMinorUnit(payBal)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (payBal <= 0L) StatusError else SecondaryTeal
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -2390,6 +2493,19 @@ private fun RecordExpenseDialog(
                                 require(descEn.isNotBlank()) { if (isBangla) "বিবরণ আবশ্যক" else "Description is required" }
 
                                 val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                val rateBd = if (currency.equals("BDT", ignoreCase = true)) BigDecimal.ONE else BigDecimal(exchangeRate.trim().ifBlank { "1" })
+                                val bdtMinorCheck = amtBd.multiply(rateBd).multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                val payAcc = paymentAccounts.find { it.id == paymentAccountId }
+                                if (payAcc?.liquidKind != null) {
+                                    val payBal = trialBalanceMap[payAcc.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
+                                    require(payBal >= bdtMinorCheck) {
+                                        if (isBangla) {
+                                            "নির্বাচিত হিসাবে পর্যাপ্ত ব্যালেন্স নেই (বর্তমান: ৳${Formatters.formatMinorUnit(payBal)})। আগে মূলধন জমা করুন।"
+                                        } else {
+                                            "Insufficient balance in selected account (available: ৳${Formatters.formatMinorUnit(payBal)})."
+                                        }
+                                    }
+                                }
                                 onConfirm(
                                     selectedCat.name,
                                     descEn,
@@ -2421,6 +2537,7 @@ private fun RecordExpenseDialog(
 @Composable
 private fun AccountTransferDialog(
     accounts: List<ChartOfAccount>,
+    trialBalanceMap: Map<String, TrialBalanceItem> = emptyMap(),
     isBangla: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (sourceId: String, destId: String, amountMinor: Long, date: Long, ref: String?, notes: String?) -> Unit
@@ -2456,8 +2573,21 @@ private fun AccountTransferDialog(
                     isBangla = isBangla,
                     accounts = accounts,
                     selectedAccountId = sourceId,
+                    trialBalanceMap = trialBalanceMap,
                     onSelect = { sourceId = it.id }
                 )
+
+                val srcAcc = accounts.find { it.id == sourceId }
+                if (srcAcc?.liquidKind != null) {
+                    val srcBal = trialBalanceMap[srcAcc.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (isBangla) "উপলব্ধ ব্যালেন্স: ৳${Formatters.formatMinorUnit(srcBal)}" else "Available Balance: ৳${Formatters.formatMinorUnit(srcBal)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (srcBal <= 0L) StatusError else SecondaryTeal
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -2466,6 +2596,7 @@ private fun AccountTransferDialog(
                     isBangla = isBangla,
                     accounts = accounts,
                     selectedAccountId = destId,
+                    trialBalanceMap = trialBalanceMap,
                     onSelect = { destId = it.id }
                 )
 
@@ -2506,6 +2637,17 @@ private fun AccountTransferDialog(
                                 require(amtBd > BigDecimal.ZERO) { "Amount must be positive" }
 
                                 val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                                val srcObj = accounts.find { it.id == sourceId }
+                                if (srcObj?.liquidKind != null) {
+                                    val srcBal = trialBalanceMap[srcObj.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
+                                    require(srcBal >= minor) {
+                                        if (isBangla) {
+                                            "উৎস অ্যাকাউন্টে পর্যাপ্ত ব্যালেন্স নেই (বর্তমান: ৳${Formatters.formatMinorUnit(srcBal)})। আগে মূলধন জমা করুন।"
+                                        } else {
+                                            "Insufficient balance in source account (available: ৳${Formatters.formatMinorUnit(srcBal)})."
+                                        }
+                                    }
+                                }
                                 onConfirm(sourceId, destId, minor, System.currentTimeMillis(), refStr.ifBlank { null }, null)
                                 onDismiss()
                             } catch (e: Exception) {

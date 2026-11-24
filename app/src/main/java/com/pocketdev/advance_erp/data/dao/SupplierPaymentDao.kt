@@ -40,6 +40,12 @@ interface SupplierPaymentDao {
     @Query("SELECT * FROM supplier_payments WHERE paymentDate >= :fromMillis AND paymentDate <= :toMillis ORDER BY paymentDate DESC")
     suspend fun getPaymentsInRange(fromMillis: Long, toMillis: Long): List<SupplierPayment>
 
+    @Query("SELECT * FROM supplier_payments WHERE id = :id LIMIT 1")
+    suspend fun getPaymentById(id: String): SupplierPayment?
+
+    @Query("DELETE FROM supplier_payments WHERE id = :id")
+    suspend fun deletePaymentById(id: String)
+
     @Query("DELETE FROM supplier_payments WHERE purchaseOrderId = :orderId")
     suspend fun deletePaymentsForOrder(orderId: String)
 }
