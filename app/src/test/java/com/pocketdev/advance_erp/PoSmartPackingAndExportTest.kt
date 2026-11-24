@@ -3,6 +3,7 @@ package com.pocketdev.advance_erp
 import com.pocketdev.advance_erp.core.engine.PackingCartonLine
 import com.pocketdev.advance_erp.core.engine.PackingIssueType
 import com.pocketdev.advance_erp.core.engine.PackingOrderLine
+import com.pocketdev.advance_erp.core.engine.PoOrderItemGroupLine
 import com.pocketdev.advance_erp.core.engine.PoPackingEngine
 import com.pocketdev.advance_erp.core.engine.VariantKey
 import com.pocketdev.advance_erp.core.engine.VariantVisibility
@@ -243,5 +244,64 @@ class PoSmartPackingAndExportTest {
         assertEquals(200, partialExport.exportedPackedQuantity)
         assertEquals(800, partialExport.poTotalQuantity) // Complete PO total preserved!
         assertEquals(BigDecimal("15.000"), partialExport.exportedGrossWeightKg)
+    }
+
+    @Test
+    fun scenario14_firstVariantQuantityAndPricePropagateToRemainingVariantsWithOptionalOverride() {
+        val evaVariants = (1..6).map { idx ->
+            PoOrderItemGroupLine(
+                productId = "prod-eva-insole",
+                variantId = "var-eva-$idx",
+                quantityStr = "",
+                unitPriceStr = ""
+            )
+        }
+        val otherProduct = listOf(
+            PoOrderItemGroupLine(
+                productId = "prod-t-shoes-guard",
+                variantId = "var-tsg-1",
+                quantityStr = "",
+                unitPriceStr = ""
+            )
+        )
+        var lines = evaVariants + otherProduct
+
+        // Initially no pre-filled default quantity or price
+        assertTrue(lines.all { it.quantityStr.isEmpty() && it.unitPriceStr.isEmpty() })
+
+        // Enter quantity 200 on 1st EVA variant -> auto-fills all 6 EVA variants, leaves other product untouched
+        lines = PoPackingEngine.updateProductVariantQuantity(lines, 0, "200")
+        assertTrue(lines.take(6).all { it.quantityStr == "200" && !it.manualQuantityOverride })
+        assertEquals("", lines[6].quantityStr)
+
+        // Enter price 3.50 on 1st EVA variant -> auto-fills all 6 EVA variants
+        lines = PoPackingEngine.updateProductVariantPrice(lines, 0, "3.50")
+        assertTrue(lines.take(6).all { it.unitPriceStr == "3.50" && !it.manualPriceOverride })
+        assertEquals("", lines[6].unitPriceStr)
+
+        // Optional individual override on Variant 3 qty (150) and Variant 4 price (4.00)
+        lines = PoPackingEngine.updateProductVariantQuantity(lines, 2, "150")
+        assertTrue(lines[2].manualQuantityOverride)
+        assertEquals("150", lines[2].quantityStr)
+
+        lines = PoPackingEngine.updateProductVariantPrice(lines, 3, "4.00")
+        assertTrue(lines[3].manualPriceOverride)
+        assertEquals("4.00", lines[3].unitPriceStr)
+
+        // Update 1st variant qty to 250 and price to 3.80 -> overrides are preserved
+        lines = PoPackingEngine.updateProductVariantQuantity(lines, 0, "250")
+        lines = PoPackingEngine.updateProductVariantPrice(lines, 0, "3.80")
+
+        listOf(0, 1, 3, 4, 5).forEach { idx -> assertEquals("250", lines[idx].quantityStr) }
+        assertEquals("150", lines[2].quantityStr)
+
+        listOf(0, 1, 2, 4, 5).forEach { idx -> assertEquals("3.80", lines[idx].unitPriceStr) }
+        assertEquals("4.00", lines[3].unitPriceStr)
+
+        // Product-wise summary totals
+        val evaSummary = PoPackingEngine.summarizeProductGroup(lines, "prod-eva-insole")
+        assertEquals(6, evaSummary.variantCount)
+        assertEquals(1400, evaSummary.totalQuantity)
+        assertEquals(BigDecimal("5370.00"), evaSummary.totalAmountMajor)
     }
 }

@@ -1,5 +1,15 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## PO Product Selection Minimization, First-Variant Propagation & Product Summary — 2026-11-25
+
+Implemented the four requested PO Section 2 (**পণ্য / Products**) enhancements across `PoPackingEngine.kt`, `PoProductVariantPicker.kt`, and `CreatePurchaseOrderDialog.kt`, plus unit test coverage in `PoSmartPackingAndExportTest.kt`:
+- **Picker variant minimization (`PoCatalogProductVariantPickerSheet`)**: Added per-product Minimize/Expand buttons and a header **সব মিনিমাইজ / Minimize All** toggle while keeping variant counts, selected badge counts, and **সব নিন / Select All** accessible.
+- **No pre-filled default `"100"` quantity**: Removed the picker's `ডিফল্ট পরিমাণ (PCS)` input (`"100"` default) and pre-inserted blank/100 item defaults; selected variants enter Step 2 (**পণ্য**) with empty quantity and unit price fields.
+- **First-variant auto-propagation with optional override (`PoPackingEngine.updateProductVariantQuantity` / `updateProductVariantPrice`)**: Entering or updating Quantity or Unit Price on the 1st variant of a product automatically propagates to the remaining variants of that product unless individually edited (marked custom and preserved across subsequent 1st-variant edits).
+- **Product-wise grouping, minimization & summary totals (`CreatePurchaseOrderDialog` Step 1)**: Grouped PO items under parent product cards with inline Quantity/Unit Price fields, per-product Minimize/Expand toggle (and **সব মিনিমাইজ / Minimize All**), and always-visible **মোট অর্ডার পণ্য (Total Ordered Qty)** & **মোট মূল্য (Total Amount)** summary badges (`PoPackingEngine.summarizeProductGroup`).
+
+Verified via `adev` pinned Gradle 8.13: `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` **BUILD SUCCESSFUL**, **412/412 JVM tests passed** across 77 files (0 failures, 0 errors, 0 skipped), including `PoSmartPackingAndExportTest` (6/6 passed). `git diff --check` passed. Debug APK (`app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `478f4d348e041a1e6473945b2daf8ddbf0c1e1d8706ad29ad2599e7f92acec57`) installed in-place on `OnePlus CPH2745` (`com.pocketdev.advance_erp2`, live data preserved); picker minimization, empty initial fields, and live PO product workflow verified on device and confirmed by the user.
+
 ## Password-free backup/restore — 2026-11-23
 
 User requested removing backup encryption and all password prompts. Manual and

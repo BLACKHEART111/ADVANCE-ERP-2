@@ -40,6 +40,7 @@ import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
 import com.pocketdev.advance_erp.core.engine.PackingCartonLine
 import com.pocketdev.advance_erp.core.engine.PackingIssueType
 import com.pocketdev.advance_erp.core.engine.PackingOrderLine
+import com.pocketdev.advance_erp.core.engine.PoOrderItemGroupLine
 import com.pocketdev.advance_erp.core.engine.PoPackingEngine
 import com.pocketdev.advance_erp.core.engine.VariantKey
 import androidx.compose.material3.LinearProgressIndicator
@@ -85,6 +86,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -147,7 +149,9 @@ private class ItemDraftState(
     cartonQuantityStr: String = "0",
     pcsPerCartonStr: String = "",
     grossWeightKgStr: String = "",
-    netWeightKgStr: String = ""
+    netWeightKgStr: String = "",
+    manualQuantityOverride: Boolean = false,
+    manualPriceOverride: Boolean = false
 ) {
     var productId by mutableStateOf(productId)
     var variantId by mutableStateOf(variantId)
@@ -157,6 +161,8 @@ private class ItemDraftState(
     var pcsPerCartonStr by mutableStateOf(pcsPerCartonStr)
     var grossWeightKgStr by mutableStateOf(grossWeightKgStr)
     var netWeightKgStr by mutableStateOf(netWeightKgStr)
+    var manualQuantityOverride by mutableStateOf(manualQuantityOverride)
+    var manualPriceOverride by mutableStateOf(manualPriceOverride)
 }
 
 private class CartonLineState(
@@ -227,9 +233,20 @@ private fun ItemDraftState.toJson() = JSONObject().apply {
     put("product", productId); put("variant", variantId ?: ""); put("qty", quantityStr)
     put("price", unitPriceStr); put("cartons", cartonQuantityStr); put("pcs", pcsPerCartonStr)
     put("gross", grossWeightKgStr); put("net", netWeightKgStr)
+    put("manualQty", manualQuantityOverride); put("manualPrice", manualPriceOverride)
 }
-private fun itemFromJson(j: JSONObject) = ItemDraftState(j.optString("product"), j.optString("variant").ifBlank { null },
-    j.optString("qty"), j.optString("price"), j.optString("cartons"), j.optString("pcs"), j.optString("gross"), j.optString("net"))
+private fun itemFromJson(j: JSONObject) = ItemDraftState(
+    j.optString("product"),
+    j.optString("variant").ifBlank { null },
+    j.optString("qty"),
+    j.optString("price"),
+    j.optString("cartons"),
+    j.optString("pcs"),
+    j.optString("gross"),
+    j.optString("net"),
+    j.optBoolean("manualQty", false),
+    j.optBoolean("manualPrice", false)
+)
 private fun CartonBoxState.toJson() = JSONObject().apply {
     put("uid", uid); put("number", cartonNumber); put("gross", grossWeightKgStr); put("net", netWeightKgStr)
     put("measurement", measurementStr); put("customMark", customShippingMark)
@@ -444,19 +461,26 @@ fun CreatePurchaseOrderDialog(
     var newCatNameEn by rememberSaveable { mutableStateOf("") }
     var newCatNameBn by rememberSaveable { mutableStateOf("") }
 
-    val firstProdId = products.firstOrNull()?.id ?: ""
-    val firstVarId = variants.firstOrNull { it.productId == firstProdId }?.id
-
-    fun PurchaseOrderItem.toItemDraftState(): ItemDraftState = ItemDraftState(
-        productId = productId,
-        variantId = variantId,
-        quantityStr = quantity.toString(),
-        unitPriceStr = String.format(java.util.Locale.ROOT, "%.2f", unitPriceMinor / 100.0),
-        cartonQuantityStr = cartonQuantity.toString(),
-        pcsPerCartonStr = pcsPerCarton.toString(),
-        grossWeightKgStr = grossWeightKg,
-        netWeightKgStr = netWeightKg
-    )
+    fun List<PurchaseOrderItem>.toItemDraftStates(): List<ItemDraftState> {
+        val firstByProduct = LinkedHashMap<String, PurchaseOrderItem>()
+        return map { item ->
+            val first = firstByProduct[item.productId]
+            val isFirst = first == null
+            if (first == null) firstByProduct[item.productId] = item
+            ItemDraftState(
+                productId = item.productId,
+                variantId = item.variantId,
+                quantityStr = item.quantity.toString(),
+                unitPriceStr = String.format(java.util.Locale.ROOT, "%.2f", item.unitPriceMinor / 100.0),
+                cartonQuantityStr = item.cartonQuantity.toString(),
+                pcsPerCartonStr = item.pcsPerCarton.toString(),
+                grossWeightKgStr = item.grossWeightKg,
+                netWeightKgStr = item.netWeightKg,
+                manualQuantityOverride = !isFirst && item.quantity != first!!.quantity,
+                manualPriceOverride = !isFirst && item.unitPriceMinor != first!!.unitPriceMinor
+            )
+        }
+    }
 
     fun List<ShipmentCarton>.toCartonBoxStates(): List<CartonBoxState> =
         groupBy { it.cartonNumber }
@@ -494,30 +518,18 @@ fun CreatePurchaseOrderDialog(
     val itemsList = rememberSaveable(editingOrder?.id, saver = ItemListSaver) {
         mutableStateListOf<ItemDraftState>().apply {
             if (initialEditingItems.isNotEmpty()) {
-                addAll(initialEditingItems.map { it.toItemDraftState() })
-            } else if (!isEditing) {
-                add(
-                    ItemDraftState(
-                        productId = firstProdId,
-                        variantId = firstVarId,
-                        quantityStr = "",
-                        unitPriceStr = "",
-                        cartonQuantityStr = "0",
-                        pcsPerCartonStr = "",
-                        grossWeightKgStr = "",
-                        netWeightKgStr = ""
-                    )
-                )
+                addAll(initialEditingItems.toItemDraftStates())
             }
         }
     }
     LaunchedEffect(editingOrder?.id, initialEditingItems) {
         if (isEditing && initialEditingItems.isNotEmpty() && !hasHydratedItems) {
             itemsList.clear()
-            itemsList.addAll(initialEditingItems.map { it.toItemDraftState() })
+            itemsList.addAll(initialEditingItems.toItemDraftStates())
             hasHydratedItems = true
         }
     }
+    val minimizedProductGroups = remember { mutableStateMapOf<String, Boolean>() }
 
     // Carton-by-Carton Packaging list (supports mixed variants in a single carton)
     var hasHydratedCartons by rememberSaveable(editingOrder?.id) { mutableStateOf(initialEditingCartons.isNotEmpty()) }
@@ -665,6 +677,36 @@ fun CreatePurchaseOrderDialog(
             v.size?.takeIf { it.isNotBlank() }
         )
         return if (parts.isNotEmpty()) "${parts.joinToString(" / ")} (${v.sku})" else v.sku
+    }
+
+    fun toGroupLines(): List<PoOrderItemGroupLine> = itemsList.map {
+        PoOrderItemGroupLine(
+            productId = it.productId,
+            variantId = it.variantId,
+            quantityStr = it.quantityStr,
+            unitPriceStr = it.unitPriceStr,
+            manualQuantityOverride = it.manualQuantityOverride,
+            manualPriceOverride = it.manualPriceOverride
+        )
+    }
+
+    fun applyGroupLines(updated: List<PoOrderItemGroupLine>) {
+        updated.forEachIndexed { idx, line ->
+            val target = itemsList.getOrNull(idx) ?: return@forEachIndexed
+            target.quantityStr = line.quantityStr
+            target.unitPriceStr = line.unitPriceStr
+            target.manualQuantityOverride = line.manualQuantityOverride
+            target.manualPriceOverride = line.manualPriceOverride
+        }
+    }
+
+    fun updateItemQuantity(globalIndex: Int, newQtyStr: String) {
+        val filtered = newQtyStr.filter { it.isDigit() }
+        applyGroupLines(PoPackingEngine.updateProductVariantQuantity(toGroupLines(), globalIndex, filtered))
+    }
+
+    fun updateItemUnitPrice(globalIndex: Int, newPriceStr: String) {
+        applyGroupLines(PoPackingEngine.updateProductVariantPrice(toGroupLines(), globalIndex, newPriceStr))
     }
 
     fun computeItemsTotalMinor(): Long = itemsList.sumOf { item ->
@@ -1143,8 +1185,11 @@ fun CreatePurchaseOrderDialog(
                         }
                     }
                     if (currentStep == 1) {
-                    // 3. Order Items + Searchable Product & Variant Selection + Option A Validation
+                    // 3. Order Items + Searchable Product & Variant Selection + Product Grouping + Propagation
                     // ==========================================
+                    val groupedProductItems = itemsList.withIndex().groupBy { it.value.productId }
+                    val groupLinesSnapshot = toGroupLines()
+
                     item {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -1164,7 +1209,10 @@ fun CreatePurchaseOrderDialog(
                                 )
                                 if (itemsList.isNotEmpty()) {
                                     Text(
-                                        text = "${itemsList.size} ${if (isBangla) "লাইন" else "lines"}",
+                                        text = if (isBangla)
+                                            "${groupedProductItems.size} পণ্য • ${itemsList.size} ভ্যারিয়েন্ট"
+                                        else
+                                            "${groupedProductItems.size} products • ${itemsList.size} lines",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = TextSecondary,
                                         fontWeight = FontWeight.SemiBold
@@ -1216,6 +1264,43 @@ fun CreatePurchaseOrderDialog(
                                     )
                                 }
                             }
+
+                            if (groupedProductItems.isNotEmpty()) {
+                                val allGroupsMinimized = groupedProductItems.keys.all { minimizedProductGroups[it] == true }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            val next = !allGroupsMinimized
+                                            groupedProductItems.keys.forEach { pid ->
+                                                minimizedProductGroups[pid] = next
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.testTag("po_items_minimize_all_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (allGroupsMinimized) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+                                            contentDescription = null,
+                                            tint = PrimaryPurple,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (allGroupsMinimized) {
+                                                if (isBangla) "সব প্রসারিত করুন" else "Expand All"
+                                            } else {
+                                                if (isBangla) "সব মিনিমাইজ" else "Minimize All"
+                                            },
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = PrimaryPurple
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -1223,7 +1308,13 @@ fun CreatePurchaseOrderDialog(
                         Surface(shape=RoundedCornerShape(12.dp),color=if(com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme.current)Color(0xFF39352A) else Color(0xFFFFF4D8)) {
                             Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.Info,null,Modifier.size(19.dp),tint=StatusWarning)
-                                Text(if(isBangla) "উপরের সার্চ পিকার দিয়ে একসাথে একাধিক পণ্য/ভ্যারিয়েন্ট যোগ করুন, অথবা পেন্সিল আইকনে ক্লিক করে পরিমাণ ও মূল্য সম্পাদনা করুন।" else "Use 'Search & Add Products' to pick multiple variants by Name, SKU, or Barcode. Tap edit to adjust qty & price.",style=MaterialTheme.typography.bodySmall)
+                                Text(
+                                    text = if (isBangla)
+                                        "উপরের সার্চ পিকার দিয়ে পণ্য/ভ্যারিয়েন্ট যোগ করুন। একই পণ্যের প্রথম ভ্যারিয়েন্টে পরিমাণ ও দর দিলে বাকিগুলোতে অটো বসে যাবে; প্রয়োজনে আলাদা ভ্যারিয়েন্ট এডিট বা মিনিমাইজ করতে পারবেন।"
+                                    else
+                                        "Add products via Search. Qty & price entered on the 1st variant auto-fill the product's remaining variants; edit any variant individually or minimize groups anytime.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     }
@@ -1272,240 +1363,471 @@ fun CreatePurchaseOrderDialog(
                         }
                     }
 
-                    itemsIndexed(itemsList) { index, itemState ->
-                        val productVariants = variants.filter { it.productId == itemState.productId }
-                        val selectedProd = products.find { it.id == itemState.productId }
+                    items(groupedProductItems.entries.toList(), key = { it.key.ifBlank { "__blank__" } }) { (productId, productIndexedItems) ->
+                        val productVariants = variants.filter { it.productId == productId && it.isActive }
+                        val selectedProd = products.find { it.id == productId }
                         val selectedCat = categories.find { it.id == selectedProd?.categoryId }
-                        val vKey = VariantKey(itemState.productId, itemState.variantId)
-                        val packedForItem = livePackedByVariantMap[vKey] ?: 0
-                        val typedOrderedQty = itemState.quantityStr.trim().toIntOrNull() ?: 0
-                        val qtyReductionCheck = PoPackingEngine.checkOrderQuantityChange(vKey, typedOrderedQty, liveCartonLines)
-                        val optionAError = !qtyReductionCheck.allowed && typedOrderedQty >= 0 && itemState.quantityStr.isNotBlank()
+                        val unitLabel = selectedProd?.unit?.ifBlank { "PCS" } ?: "PCS"
+                        val groupSummary = PoPackingEngine.summarizeProductGroup(groupLinesSnapshot, productId)
+                        val isMinimized = minimizedProductGroups[productId] == true
+                        val groupTotalPacked = productIndexedItems.sumOf {
+                            livePackedByVariantMap[VariantKey(it.value.productId, it.value.variantId)] ?: 0
+                        }
+                        val groupHasOptionAError = productIndexedItems.any { indexed ->
+                            val st = indexed.value
+                            val qty = st.quantityStr.trim().toIntOrNull() ?: 0
+                            val check = PoPackingEngine.checkOrderQuantityChange(
+                                VariantKey(st.productId, st.variantId),
+                                qty,
+                                liveCartonLines
+                            )
+                            !check.allowed && qty >= 0 && st.quantityStr.isNotBlank()
+                        }
 
-                        var expanded by rememberSaveable(index) { mutableStateOf(false) }
-                        var imageUri by remember(itemState.productId,itemState.variantId) { mutableStateOf<String?>(null) }
-                        LaunchedEffect(itemState.productId,itemState.variantId) { imageUri=resolveProductImage?.invoke(itemState.productId,itemState.variantId) }
+                        var imageUri by remember(productId, productIndexedItems.firstOrNull()?.value?.variantId) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(productId, productIndexedItems.firstOrNull()?.value?.variantId) {
+                            imageUri = resolveProductImage?.invoke(productId, productIndexedItems.firstOrNull()?.value?.variantId)
+                        }
+
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(20.dp),
                             border = androidx.compose.foundation.BorderStroke(
-                                width = if (optionAError) 1.5.dp else 1.dp,
-                                color = if (optionAError) StatusError else PrimaryPurple.copy(alpha = 0.18f)
+                                width = if (groupHasOptionAError) 1.5.dp else 1.dp,
+                                color = if (groupHasOptionAError) StatusError else PrimaryPurple.copy(alpha = 0.22f)
                             )
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)) {
-                                    Surface(shape=RoundedCornerShape(10.dp),color=MaterialTheme.colorScheme.surfaceVariant) {
-                                        if(imageUri!=null) AsyncImage(com.pocketdev.advance_erp.core.designsystem.rememberImageModel(imageUri),null,Modifier.size(56.dp),contentScale=ContentScale.Crop)
-                                        else Icon(Icons.Outlined.Inventory2,null,Modifier.padding(13.dp).size(28.dp),tint=PrimaryPurple)
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                // Product Group Header
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                ) {
+                                    Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                                        if (imageUri != null) {
+                                            AsyncImage(
+                                                model = com.pocketdev.advance_erp.core.designsystem.rememberImageModel(imageUri),
+                                                contentDescription = selectedProd?.nameEn,
+                                                modifier = Modifier.size(52.dp),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Icon(Icons.Outlined.Inventory2, null, Modifier.padding(12.dp).size(28.dp), tint = PrimaryPurple)
+                                        }
                                     }
-                                    Column(Modifier.weight(1f)) {
-                                        Text(selectedProd?.let { if(isBangla&&it.nameBn.isNotBlank())it.nameBn else it.nameEn }.orEmpty(),fontWeight=FontWeight.Bold,style=MaterialTheme.typography.bodyMedium)
-                                        Text("SKU: ${variants.find { it.id==itemState.variantId }?.sku ?: selectedProd?.baseSku.orEmpty()}",style=MaterialTheme.typography.labelSmall,color=TextSecondary)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            variants.find { it.id==itemState.variantId }?.let { variant ->
-                                                Surface(shape=RoundedCornerShape(6.dp),color=SecondaryTeal.copy(alpha=.12f)) {
-                                                    Text(variantLabel(variant),Modifier.padding(horizontal=5.dp,vertical=2.dp),style=MaterialTheme.typography.labelSmall)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = selectedProd?.let {
+                                                if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn
+                                            }.orEmpty().ifBlank { if (isBangla) "অজানা পণ্য" else "Unknown Product" },
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = TextPrimary
+                                        )
+                                        Text(
+                                            text = buildString {
+                                                append("SKU: ${selectedProd?.baseSku.orEmpty()}")
+                                                if (selectedCat != null) {
+                                                    append(" • ${if (isBangla && selectedCat.nameBn.isNotBlank()) selectedCat.nameBn else selectedCat.nameEn}")
                                                 }
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(shape = RoundedCornerShape(6.dp), color = PrimaryPurple.copy(alpha = 0.1f)) {
+                                                Text(
+                                                    text = if (isBangla) "${groupSummary.variantCount} ভ্যারিয়েন্ট" else "${groupSummary.variantCount} Variants",
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = PrimaryPurple
+                                                )
                                             }
-                                            if (packedForItem > 0) {
-                                                Surface(shape = RoundedCornerShape(6.dp), color = PrimaryPurple.copy(alpha = 0.12f)) {
+                                            if (groupTotalPacked > 0) {
+                                                Surface(shape = RoundedCornerShape(6.dp), color = SecondaryTeal.copy(alpha = 0.12f)) {
                                                     Text(
-                                                        text = if (isBangla) "প্যাকড: $packedForItem" else "Packed: $packedForItem",
-                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                                        text = if (isBangla) "প্যাকড: $groupTotalPacked" else "Packed: $groupTotalPacked",
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontWeight = FontWeight.Bold,
-                                                        color = PrimaryPurple
+                                                        color = SecondaryTeal
                                                     )
                                                 }
                                             }
                                         }
                                     }
-                                    IconButton(onClick={expanded=!expanded},modifier=Modifier.size(48.dp)) {Icon(Icons.Outlined.Edit,if(isBangla) "সম্পাদনা" else "Edit item",tint=PrimaryPurple)}
+                                    IconButton(
+                                        onClick = { minimizedProductGroups[productId] = !isMinimized },
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .testTag("po_product_group_minimize_$productId")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isMinimized) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+                                            contentDescription = if (isMinimized) {
+                                                if (isBangla) "ভ্যারিয়েন্ট দেখুন" else "Expand variants"
+                                            } else {
+                                                if (isBangla) "ভ্যারিয়েন্ট মিনিমাইজ করুন" else "Minimize variants"
+                                            },
+                                            tint = PrimaryPurple
+                                        )
+                                    }
                                     IconButton(
                                         onClick = {
-                                            if (packedForItem > 0) {
+                                            if (groupTotalPacked > 0) {
                                                 errorMessage = if (isBangla)
-                                                    "এই ভ্যারিয়েন্টের $packedForItem PCS ইতোমধ্যেই কার্টনে বরাদ্দ করা আছে। আইটেম মুছতে আগে কার্টন প্যাকিং থেকে সরান।"
+                                                    "এই পণ্যের $groupTotalPacked PCS ইতোমধ্যেই কার্টনে বরাদ্দ করা আছে। পণ্যটি মুছতে আগে কার্টন প্যাকিং থেকে সরান।"
                                                 else
-                                                    "This variant already has $packedForItem PCS allocated to cartons. Please adjust the carton packing before deleting."
+                                                    "This product already has $groupTotalPacked PCS allocated to cartons. Adjust carton packing before deleting."
                                             } else {
-                                                itemsList.removeAt(index)
+                                                itemsList.removeAll { it.productId == productId }
                                             }
                                         },
-                                        modifier=Modifier.size(48.dp)
-                                    ) {Icon(Icons.Outlined.Delete,if(isBangla) "মুছুন" else "Delete item",tint=StatusError)}
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.Delete,
+                                            contentDescription = if (isBangla) "পণ্য মুছুন" else "Delete product",
+                                            tint = StatusError
+                                        )
+                                    }
                                 }
-                                Row(Modifier.fillMaxWidth().padding(top=7.dp),horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text("$selectedCurrency ${itemState.unitPriceStr}",style=MaterialTheme.typography.labelLarge)
-                                    Text("${itemState.quantityStr} ${selectedProd?.unit ?: "PCS"}",style=MaterialTheme.typography.labelLarge)
-                                    Text("$selectedCurrency ${(itemState.unitPriceStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).multiply(itemState.quantityStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).setScale(2,RoundingMode.HALF_UP)}",style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
-                                }
-                                if (optionAError) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Surface(shape = RoundedCornerShape(8.dp), color = StatusError.copy(alpha = 0.1f)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
+
+                                // Product-Wise Summary Strip (Visible both expanded and minimized)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("po_product_summary_qty_$productId"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = ERPSurfaceVariant.copy(alpha = 0.65f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
                                             Text(
-                                                text = if (isBangla)
-                                                    "এই ভ্যারিয়েন্টের $packedForItem PCS ইতোমধ্যেই কার্টনে বরাদ্দ আছে। পরিমাণ কমানোর আগে কার্টন প্যাকিং সমন্বয় করুন।"
-                                                else
-                                                    "This variant already has $packedForItem PCS allocated to cartons. Please adjust the carton packing before reducing the PO quantity.",
+                                                text = if (isBangla) "মোট অর্ডার পণ্য" else "Total Ordered Qty",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = StatusError,
-                                                fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.weight(1f)
+                                                color = TextSecondary
                                             )
-                                            TextButton(onClick = { itemState.quantityStr = packedForItem.toString() }) {
-                                                Text(if (isBangla) "ঠিক করুন ($packedForItem)" else "Restore $packedForItem", fontWeight = FontWeight.Bold)
+                                            Text(
+                                                text = "${groupSummary.totalQuantity} $unitLabel",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("po_product_summary_amount_$productId"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = PrimaryPurple.copy(alpha = 0.09f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                                            Text(
+                                                text = if (isBangla) "মোট মূল্য ($selectedCurrency)" else "Total Amount ($selectedCurrency)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextSecondary
+                                            )
+                                            Text(
+                                                text = "$selectedCurrency ${groupSummary.totalAmountMajor}",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = PrimaryPurple
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (!isMinimized) {
+                                    HorizontalDivider(color = ERPSurfaceVariant)
+
+                                    if (productVariants.size > productIndexedItems.size || (onAddNewVariant != null && productId.isNotBlank())) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (productVariants.size > productIndexedItems.size) {
+                                                TextButton(
+                                                    onClick = {
+                                                        val existingKeys = itemsList.map { it.productId to it.variantId }.toSet()
+                                                        val firstOfProd = itemsList.firstOrNull { it.productId == productId }
+                                                        productVariants.forEach { pv ->
+                                                            if ((productId to pv.id) !in existingKeys) {
+                                                                itemsList.add(
+                                                                    ItemDraftState(
+                                                                        productId = productId,
+                                                                        variantId = pv.id,
+                                                                        quantityStr = firstOfProd?.quantityStr.orEmpty(),
+                                                                        unitPriceStr = firstOfProd?.unitPriceStr.orEmpty(),
+                                                                        manualQuantityOverride = false,
+                                                                        manualPriceOverride = false
+                                                                    )
+                                                                )
+                                                            }
+                                                        }
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        if (isBangla) "+ সব ভ্যারিয়েন্ট" else "+ All Variants",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                            if (onAddNewVariant != null && productId.isNotBlank()) {
+                                                TextButton(
+                                                    onClick = {
+                                                        targetItemIndexForVariant = null
+                                                        showInlineAddVariantForProductId = productId
+                                                        newVarColor = ""
+                                                        newVarSize = ""
+                                                        newVarSku = ""
+                                                        newVarCostStr = productIndexedItems.firstOrNull()?.value?.unitPriceStr.orEmpty()
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        if (isBangla) "+ নতুন ভ্যারিয়েন্ট" else "+ New Variant",
+                                                        fontSize = 11.sp,
+                                                        color = SecondaryTeal,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                if(expanded) {
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = ERPSurfaceVariant)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = if (isBangla) "আইটেম #${index + 1}" else "Item #${index + 1}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = PrimaryPurple
-                                        )
-                                        if (selectedCat != null) {
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = "• ${if (isBangla && selectedCat.nameBn.isNotBlank()) selectedCat.nameBn else selectedCat.nameEn}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = SecondaryTeal,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        if (productVariants.size > 1) {
-                                            TextButton(
-                                                onClick = {
-                                                    val existingKeys = itemsList.map { it.productId to it.variantId }.toSet()
-                                                    productVariants.forEachIndexed { vIdx, pv ->
-                                                        if (vIdx == 0 && itemState.variantId == null) {
-                                                            itemState.variantId = pv.id
-                                                        } else if ((itemState.productId to pv.id) !in existingKeys) {
-                                                            itemsList.add(
-                                                                ItemDraftState(
-                                                                    productId = itemState.productId,
-                                                                    variantId = pv.id,
-                                                                    quantityStr = itemState.quantityStr.ifBlank { "100" },
-                                                                    unitPriceStr = if (pv.variantCostMinor > 0) Formatters.formatMinorUnit(pv.variantCostMinor) else itemState.unitPriceStr
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        productIndexedItems.forEachIndexed { groupIdx, indexedItem ->
+                                            val index = indexedItem.index
+                                            val itemState = indexedItem.value
+                                            key(itemState.productId, itemState.variantId ?: "__base__") {
+                                            val vKey = VariantKey(itemState.productId, itemState.variantId)
+                                            val packedForItem = livePackedByVariantMap[vKey] ?: 0
+                                            val typedOrderedQty = itemState.quantityStr.trim().toIntOrNull() ?: 0
+                                            val qtyReductionCheck = PoPackingEngine.checkOrderQuantityChange(vKey, typedOrderedQty, liveCartonLines)
+                                            val optionAError = !qtyReductionCheck.allowed && typedOrderedQty >= 0 && itemState.quantityStr.isNotBlank()
+                                            val variant = variants.find { it.id == itemState.variantId }
+                                            val lineSubtotal = (itemState.unitPriceStr.toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                                                .multiply(itemState.quantityStr.toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                                                .setScale(2, RoundingMode.HALF_UP)
+
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(ERPSurfaceVariant.copy(alpha = 0.42f))
+                                                    .border(
+                                                        width = if (optionAError) 1.4.dp else 0.6.dp,
+                                                        color = if (optionAError) StatusError else ERPDivider,
+                                                        shape = RoundedCornerShape(12.dp)
+                                                    )
+                                                    .padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Row(
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Surface(shape = RoundedCornerShape(6.dp), color = SecondaryTeal.copy(alpha = 0.14f)) {
+                                                                Text(
+                                                                    text = variantLabel(variant),
+                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = TextPrimary
                                                                 )
+                                                            }
+                                                            if (groupIdx == 0 && productIndexedItems.size > 1) {
+                                                                Surface(shape = RoundedCornerShape(6.dp), color = PrimaryPurple.copy(alpha = 0.12f)) {
+                                                                    Text(
+                                                                        text = if (isBangla) "১ম (অটো উৎস)" else "1st (Auto-fills)",
+                                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = PrimaryPurple
+                                                                    )
+                                                                }
+                                                            } else if (groupIdx > 0 && (itemState.manualQuantityOverride || itemState.manualPriceOverride)) {
+                                                                Surface(shape = RoundedCornerShape(6.dp), color = StatusWarningContainer) {
+                                                                    Text(
+                                                                        text = if (isBangla) "কাস্টম" else "Custom",
+                                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = StatusWarning
+                                                                    )
+                                                                }
+                                                            }
+                                                            if (packedForItem > 0) {
+                                                                Surface(shape = RoundedCornerShape(6.dp), color = PrimaryPurple.copy(alpha = 0.12f)) {
+                                                                    Text(
+                                                                        text = if (isBangla) "প্যাকড: $packedForItem" else "Packed: $packedForItem",
+                                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = PrimaryPurple
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                if (packedForItem > 0) {
+                                                                    errorMessage = if (isBangla)
+                                                                        "এই ভ্যারিয়েন্টে $packedForItem PCS প্যাক করা আছে। পণ্য বা ভ্যারিয়েন্ট পাল্টানোর আগে কার্টন প্যাকিং পরিবর্তন করুন।"
+                                                                    else
+                                                                        "Cannot change product/variant while $packedForItem PCS are packed in cartons."
+                                                                } else {
+                                                                    catalogPickerReplaceItemIdx = index
+                                                                    showCatalogPickerSheet = true
+                                                                }
+                                                            },
+                                                            modifier = Modifier.size(36.dp)
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Outlined.Search,
+                                                                contentDescription = if (isBangla) "ভ্যারিয়েন্ট পরিবর্তন" else "Change variant",
+                                                                tint = PrimaryPurple,
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = {
+                                                                if (packedForItem > 0) {
+                                                                    errorMessage = if (isBangla)
+                                                                        "এই ভ্যারিয়েন্টের $packedForItem PCS ইতোমধ্যেই কার্টনে বরাদ্দ করা আছে। আইটেম মুছতে আগে কার্টন প্যাকিং থেকে সরান।"
+                                                                    else
+                                                                        "This variant already has $packedForItem PCS allocated to cartons. Please adjust the carton packing before deleting."
+                                                                } else {
+                                                                    itemsList.removeAt(index)
+                                                                }
+                                                            },
+                                                            modifier = Modifier.size(36.dp)
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Outlined.Delete,
+                                                                contentDescription = if (isBangla) "মুছুন" else "Delete item",
+                                                                tint = StatusError,
+                                                                modifier = Modifier.size(18.dp)
                                                             )
                                                         }
                                                     }
-                                                },
-                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(if (isBangla) "+ সব ভ্যারিয়েন্ট" else "+ All Variants", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    OutlinedTextField(
+                                                        value = itemState.quantityStr,
+                                                        onValueChange = { updateItemQuantity(index, it) },
+                                                        label = { Text(if (isBangla) "পরিমাণ ($unitLabel)" else "Qty ($unitLabel)") },
+                                                        isError = optionAError,
+                                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .testTag("po_item_qty_${productId}_$groupIdx"),
+                                                        singleLine = true
+                                                    )
+                                                    OutlinedTextField(
+                                                        value = itemState.unitPriceStr,
+                                                        onValueChange = { updateItemUnitPrice(index, it) },
+                                                        label = { Text(if (isBangla) "একক দর ($selectedCurrency)" else "Rate ($selectedCurrency)") },
+                                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .testTag("po_item_price_${productId}_$groupIdx"),
+                                                        singleLine = true
+                                                    )
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = if (isBangla) "লাইন মোট:" else "Line Total:",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = TextSecondary
+                                                    )
+                                                    Text(
+                                                        text = "$selectedCurrency $lineSubtotal",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = TextPrimary
+                                                    )
+                                                }
+
+                                                if (optionAError) {
+                                                    Surface(shape = RoundedCornerShape(8.dp), color = StatusError.copy(alpha = 0.1f)) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.SpaceBetween
+                                                        ) {
+                                                            Text(
+                                                                text = if (isBangla)
+                                                                    "এই ভ্যারিয়েন্টের $packedForItem PCS ইতোমধ্যেই কার্টনে বরাদ্দ আছে। পরিমাণ কমানোর আগে কার্টন প্যাকিং সমন্বয় করুন।"
+                                                                else
+                                                                    "This variant already has $packedForItem PCS allocated to cartons. Please adjust the carton packing before reducing the PO quantity.",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = StatusError,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                modifier = Modifier.weight(1f)
+                                                            )
+                                                            TextButton(onClick = { updateItemQuantity(index, packedForItem.toString()) }) {
+                                                                Text(if (isBangla) "ঠিক করুন ($packedForItem)" else "Restore $packedForItem", fontWeight = FontWeight.Bold)
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
-                                        }
-                                        if (onAddNewVariant != null && itemState.productId.isNotBlank()) {
-                                            TextButton(
-                                                onClick = {
-                                                    targetItemIndexForVariant = index
-                                                    showInlineAddVariantForProductId = itemState.productId
-                                                    newVarColor = ""
-                                                    newVarSize = ""
-                                                    newVarSku = ""
-                                                    newVarCostStr = itemState.unitPriceStr
-                                                },
-                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(if (isBangla) "+ নতুন ভ্যারিয়েন্ট" else "+ New Variant", fontSize = 11.sp, color = SecondaryTeal, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
                                 }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        if (packedForItem > 0) {
-                                            errorMessage = if (isBangla)
-                                                "এই ভ্যারিয়েন্টে $packedForItem PCS প্যাক করা আছে। পণ্য বা ভ্যারিয়েন্ট পাল্টানোর আগে কার্টন প্যাকিং পরিবর্তন করুন।"
-                                            else
-                                                "Cannot change product/variant while $packedForItem PCS are packed in cartons."
-                                        } else {
-                                            catalogPickerReplaceItemIdx = index
-                                            showCatalogPickerSheet = true
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(if (isBangla) "সার্চ করে পণ্য / ভ্যারিয়েন্ট পরিবর্তন করুন" else "Search & Change Product / Variant")
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(
-                                        value = itemState.quantityStr,
-                                        onValueChange = { itemState.quantityStr = it },
-                                        label = { Text(if (isBangla) "পরিমাণ (Qty)" else "Quantity") },
-                                        isError = optionAError,
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                    OutlinedTextField(
-                                        value = itemState.unitPriceStr,
-                                        onValueChange = { itemState.unitPriceStr = it },
-                                        label = { Text(if (isBangla) "একক দর ($selectedCurrency)" else "Unit Price ($selectedCurrency)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.weight(1f),
-                                        singleLine = true
-                                    )
-                                }
-
-                                if (cartonBoxes.isEmpty()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedTextField(
-                                            value = itemState.cartonQuantityStr,
-                                            onValueChange = { itemState.cartonQuantityStr = it },
-                                            label = { Text(if (isBangla) "কার্টন সংখ্যা" else "Cartons") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true
-                                        )
-                                        OutlinedTextField(
-                                            value = itemState.grossWeightKgStr,
-                                            onValueChange = { itemState.grossWeightKgStr = it },
-                                            label = { Text(if (isBangla) "মোট ওজন (KG)" else "Gross Wt (KG)") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                            modifier = Modifier.weight(1f),
-                                            singleLine = true
-                                        )
-                                    }
-                                }
-                                } // expanded item editor
                             }
                         }
                     }
 
                     // ==========================================
                     item {
+                        val grandTotalMajor = groupedProductItems.keys.fold(BigDecimal.ZERO) { acc, pid ->
+                            acc.add(PoPackingEngine.summarizeProductGroup(groupLinesSnapshot, pid).totalAmountMajor)
+                        }.setScale(2, RoundingMode.HALF_UP)
                         Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surfaceVariant) {
                             Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween) {
-                                Text(if(isBangla) "মোট আইটেম: ${itemsList.size}" else "Items: ${itemsList.size}",style=MaterialTheme.typography.labelLarge)
-                                Text((if(isBangla) "মোট পরিমাণ: " else "Quantity: ")+itemsList.sumOf { it.quantityStr.toIntOrNull() ?: 0 },style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
+                                Text(
+                                    if (isBangla) "মোট পণ্য: ${groupedProductItems.size} (${itemsList.size})"
+                                    else "Products: ${groupedProductItems.size} (${itemsList.size})",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                                Text(
+                                    (if (isBangla) "মোট: " else "Qty: ") +
+                                        itemsList.sumOf { it.quantityStr.toIntOrNull() ?: 0 } +
+                                        " • $selectedCurrency $grandTotalMajor",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
@@ -2735,36 +3057,50 @@ fun CreatePurchaseOrderDialog(
                     showCatalogPickerSheet = false
                     catalogPickerReplaceItemIdx = null
                 },
-                onConfirmSelection = { picks, defaultQtyStr ->
+                onConfirmSelection = { picks, _ ->
                     if (replaceIdx != null && replaceIdx in itemsList.indices) {
                         picks.firstOrNull()?.let { pick ->
                             val duplicateElsewhere = itemsList.withIndex().any { (idx, st) ->
                                 idx != replaceIdx && st.productId == pick.productId && st.variantId == pick.variantId
                             }
                             if (!duplicateElsewhere) {
+                                val changedProduct = itemsList[replaceIdx].productId != pick.productId
                                 itemsList[replaceIdx].productId = pick.productId
                                 itemsList[replaceIdx].variantId = pick.variantId
-                                if (pick.suggestedUnitPriceMajor.isNotBlank()) {
-                                    itemsList[replaceIdx].unitPriceStr = pick.suggestedUnitPriceMajor
+                                if (changedProduct) {
+                                    val firstOfProd = itemsList.withIndex()
+                                        .firstOrNull { it.index != replaceIdx && it.value.productId == pick.productId }
+                                        ?.value
+                                    itemsList[replaceIdx].quantityStr = firstOfProd?.quantityStr.orEmpty()
+                                    itemsList[replaceIdx].unitPriceStr = firstOfProd?.unitPriceStr.orEmpty()
+                                    itemsList[replaceIdx].manualQuantityOverride = false
+                                    itemsList[replaceIdx].manualPriceOverride = false
                                 }
                             } else {
                                 errorMessage = if (isBangla) "এই ভ্যারিয়েন্টটি ইতোমধ্যে PO তালিকায় রয়েছে।" else "This variant is already present in another PO line."
                             }
                         }
                     } else {
-                        val qtyInt = defaultQtyStr.trim().toIntOrNull()?.coerceAtLeast(1) ?: 100
+                        itemsList.removeAll { item ->
+                            item.productId.isBlank() || (
+                                item.quantityStr.isBlank() &&
+                                    item.unitPriceStr.isBlank() &&
+                                    item.variantId == null &&
+                                    picks.none { it.productId == item.productId && it.variantId == null }
+                            )
+                        }
                         picks.forEach { pick ->
-                            val existing = itemsList.find { it.productId == pick.productId && it.variantId == pick.variantId }
-                            if (existing != null) {
-                                val updatedQty = (existing.quantityStr.trim().toIntOrNull() ?: 0) + qtyInt
-                                existing.quantityStr = updatedQty.toString()
-                            } else {
+                            val existing = itemsList.any { it.productId == pick.productId && it.variantId == pick.variantId }
+                            if (!existing) {
+                                val firstOfProd = itemsList.firstOrNull { it.productId == pick.productId }
                                 itemsList.add(
                                     ItemDraftState(
                                         productId = pick.productId,
                                         variantId = pick.variantId,
-                                        quantityStr = qtyInt.toString(),
-                                        unitPriceStr = pick.suggestedUnitPriceMajor
+                                        quantityStr = firstOfProd?.quantityStr.orEmpty(),
+                                        unitPriceStr = firstOfProd?.unitPriceStr.orEmpty(),
+                                        manualQuantityOverride = false,
+                                        manualPriceOverride = false
                                     )
                                 )
                             }
@@ -3055,8 +3391,20 @@ fun CreatePurchaseOrderDialog(
                                 if (itemIdx != null && itemIdx in itemsList.indices) {
                                     itemsList[itemIdx].variantId = createdVar.id
                                     if (newVarCostStr.isNotBlank()) {
-                                        itemsList[itemIdx].unitPriceStr = newVarCostStr
+                                        updateItemUnitPrice(itemIdx, newVarCostStr)
                                     }
+                                } else if (itemsList.none { it.productId == targetProdId && it.variantId == createdVar.id }) {
+                                    val firstOfProd = itemsList.firstOrNull { it.productId == targetProdId }
+                                    itemsList.add(
+                                        ItemDraftState(
+                                            productId = targetProdId,
+                                            variantId = createdVar.id,
+                                            quantityStr = firstOfProd?.quantityStr.orEmpty(),
+                                            unitPriceStr = firstOfProd?.unitPriceStr.orEmpty(),
+                                            manualQuantityOverride = false,
+                                            manualPriceOverride = false
+                                        )
+                                    )
                                 }
                                 showInlineAddVariantForProductId = null
                             }
@@ -3097,10 +3445,10 @@ fun CreatePurchaseOrderDialog(
                 ) { created, createdVars ->
                     showInlineAddProductDialog = false
                     if (createdVars.isEmpty()) {
-                        itemsList.add(ItemDraftState(productId = created.id, variantId = null, quantityStr = "100", unitPriceStr = ""))
+                        itemsList.add(ItemDraftState(productId = created.id, variantId = null, quantityStr = "", unitPriceStr = ""))
                     } else {
                         createdVars.forEach { cv ->
-                            itemsList.add(ItemDraftState(productId = created.id, variantId = cv.id, quantityStr = "100", unitPriceStr = ""))
+                            itemsList.add(ItemDraftState(productId = created.id, variantId = cv.id, quantityStr = "", unitPriceStr = ""))
                         }
                     }
                 }

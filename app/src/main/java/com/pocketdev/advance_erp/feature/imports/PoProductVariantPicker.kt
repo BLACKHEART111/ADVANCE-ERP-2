@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
@@ -122,8 +124,8 @@ fun PoCatalogProductVariantPickerSheet(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
-    var defaultQtyStr by remember { mutableStateOf("100") }
     val selectedKeys = remember { mutableStateMapOf<VariantKey, Boolean>() }
+    val collapsedProductIds = remember { mutableStateMapOf<String, Boolean>() }
 
     val activeVariantsByProduct = remember(variants) {
         variants.filter { it.isActive }.groupBy { it.productId }
@@ -175,6 +177,35 @@ fun PoCatalogProductVariantPickerSheet(
             val cur = selectedKeys[key] == true
             if (cur) selectedKeys.remove(key) else selectedKeys[key] = true
         }
+    }
+
+    fun buildSelectedPicks(): List<CatalogVariantSelection> {
+        val picks = mutableListOf<CatalogVariantSelection>()
+        products.forEach { prod ->
+            val prodVariants = activeVariantsByProduct[prod.id].orEmpty()
+            if (prodVariants.isEmpty()) {
+                val baseKey = VariantKey(prod.id, null)
+                if (selectedKeys[baseKey] == true) {
+                    picks += CatalogVariantSelection(
+                        productId = prod.id,
+                        variantId = null,
+                        suggestedUnitPriceMajor = suggestedPriceStr(prod, null)
+                    )
+                }
+            } else {
+                prodVariants.forEach { variant ->
+                    val vKey = VariantKey(prod.id, variant.id)
+                    if (selectedKeys[vKey] == true) {
+                        picks += CatalogVariantSelection(
+                            productId = prod.id,
+                            variantId = variant.id,
+                            suggestedUnitPriceMajor = suggestedPriceStr(prod, variant)
+                        )
+                    }
+                }
+            }
+        }
+        return picks
     }
 
     Box(
@@ -303,6 +334,53 @@ fun PoCatalogProductVariantPickerSheet(
                     } else {
                         Spacer(modifier = Modifier.height(10.dp))
                     }
+
+                    val collapsibleProducts = filteredGroups.filter { it.second.isNotEmpty() }.map { it.first }
+                    if (collapsibleProducts.isNotEmpty()) {
+                        val allMinimized = collapsibleProducts.all { collapsedProductIds[it.id] == true }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (isBangla)
+                                    "মোট পণ্য: ${filteredGroups.size}"
+                                else
+                                    "${filteredGroups.size} matching products",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                            TextButton(
+                                onClick = {
+                                    val nextState = !allMinimized
+                                    collapsibleProducts.forEach { collapsedProductIds[it.id] = nextState }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.testTag("po_catalog_minimize_all_btn")
+                            ) {
+                                Icon(
+                                    imageVector = if (allMinimized) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+                                    contentDescription = null,
+                                    tint = PrimaryPurple,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (allMinimized) {
+                                        if (isBangla) "সব প্রসারিত করুন" else "Expand All"
+                                    } else {
+                                        if (isBangla) "সব মিনিমাইজ" else "Minimize All"
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PrimaryPurple
+                                )
+                            }
+                        }
+                    }
                 }
 
                 HorizontalDivider(color = ERPDivider)
@@ -339,6 +417,12 @@ fun PoCatalogProductVariantPickerSheet(
                         }
                         val cat = categoryMap[prod.categoryId]
                         val catTitle = cat?.let { if (isBangla && it.nameBn.isNotBlank()) it.nameBn else it.nameEn }.orEmpty()
+                        val isCollapsed = prodVariants.isNotEmpty() && collapsedProductIds[prod.id] == true
+                        val selectedInProductCount = if (prodVariants.isEmpty()) {
+                            if (selectedKeys[VariantKey(prod.id, null)] == true) 1 else 0
+                        } else {
+                            prodVariants.count { selectedKeys[VariantKey(prod.id, it.id)] == true }
+                        }
 
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -395,6 +479,48 @@ fun PoCatalogProductVariantPickerSheet(
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                        if (prodVariants.isNotEmpty() || selectedInProductCount > 0) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (prodVariants.isNotEmpty()) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = ERPSurfaceVariant
+                                                    ) {
+                                                        Text(
+                                                            text = if (isBangla) "${prodVariants.size} ভ্যারিয়েন্ট" else "${prodVariants.size} variants",
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextSecondary,
+                                                            fontWeight = FontWeight.SemiBold
+                                                        )
+                                                    }
+                                                }
+                                                if (selectedInProductCount > 0) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = PrimaryPurple.copy(alpha = 0.12f)
+                                                    ) {
+                                                        Text(
+                                                            text = if (prodVariants.isEmpty()) {
+                                                                if (isBangla) "নির্বাচিত" else "Selected"
+                                                            } else if (isBangla) {
+                                                                "নির্বাচিত: $selectedInProductCount/${prodVariants.size}"
+                                                            } else {
+                                                                "Selected: $selectedInProductCount/${prodVariants.size}"
+                                                            },
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = PrimaryPurple,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                     if (!singleSelectMode && prodVariants.size > 1) {
                                         val allChecked = prodVariants.all { selectedKeys[VariantKey(prod.id, it.id)] == true }
@@ -405,7 +531,7 @@ fun PoCatalogProductVariantPickerSheet(
                                                     if (allChecked) selectedKeys.remove(k) else selectedKeys[k] = true
                                                 }
                                             },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
                                         ) {
                                             Text(
                                                 text = if (allChecked) {
@@ -419,8 +545,27 @@ fun PoCatalogProductVariantPickerSheet(
                                             )
                                         }
                                     }
+                                    if (prodVariants.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { collapsedProductIds[prod.id] = !isCollapsed },
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .testTag("po_catalog_minimize_${prod.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isCollapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+                                                contentDescription = if (isCollapsed) {
+                                                    if (isBangla) "ভ্যারিয়েন্ট দেখুন" else "Expand variants"
+                                                } else {
+                                                    if (isBangla) "ভ্যারিয়েন্ট মিনিমাইজ করুন" else "Minimize variants"
+                                                },
+                                                tint = PrimaryPurple
+                                            )
+                                        }
+                                    }
                                 }
 
+                                if (!isCollapsed) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 HorizontalDivider(color = ERPSurfaceVariant)
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -573,6 +718,7 @@ fun PoCatalogProductVariantPickerSheet(
                                         )
                                     }
                                 }
+                                }
                             }
                         }
                     }
@@ -590,78 +736,26 @@ fun PoCatalogProductVariantPickerSheet(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val selectedCount = selectedKeys.count { it.value }
-                        if (!singleSelectMode) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedTextField(
-                                    value = defaultQtyStr,
-                                    onValueChange = { defaultQtyStr = it.filter { ch -> ch.isDigit() } },
-                                    label = { Text(if (isBangla) "ডিফল্ট পরিমাণ (PCS)" else "Default Qty (PCS)") },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Button(
-                                    enabled = selectedCount > 0,
-                                    onClick = {
-                                        val picks = selectedKeys.entries
-                                            .filter { it.value }
-                                            .mapNotNull { (key, _) ->
-                                                val prod = products.find { it.id == key.productId } ?: return@mapNotNull null
-                                                val variant = key.variantId?.let { vid -> variants.find { it.id == vid } }
-                                                CatalogVariantSelection(
-                                                    productId = prod.id,
-                                                    variantId = variant?.id,
-                                                    suggestedUnitPriceMajor = suggestedPriceStr(prod, variant)
-                                                )
-                                            }
-                                        onConfirmSelection(picks, defaultQtyStr.ifBlank { "100" })
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier
-                                        .weight(1.3f)
-                                        .heightIn(min = 50.dp)
-                                        .testTag("po_catalog_confirm_btn")
-                                ) {
-                                    Text(
-                                        text = if (isBangla) "যোগ করুন ($selectedCount)" else "Add Selected ($selectedCount)",
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        } else {
-                            Button(
-                                enabled = selectedCount > 0,
-                                onClick = {
-                                    val picks = selectedKeys.entries
-                                        .filter { it.value }
-                                        .mapNotNull { (key, _) ->
-                                            val prod = products.find { it.id == key.productId } ?: return@mapNotNull null
-                                            val variant = key.variantId?.let { vid -> variants.find { it.id == vid } }
-                                            CatalogVariantSelection(
-                                                productId = prod.id,
-                                                variantId = variant?.id,
-                                                suggestedUnitPriceMajor = suggestedPriceStr(prod, variant)
-                                            )
-                                        }
-                                    onConfirmSelection(picks, defaultQtyStr.ifBlank { "100" })
+                        Button(
+                            enabled = selectedCount > 0,
+                            onClick = {
+                                onConfirmSelection(buildSelectedPicks(), "")
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("po_catalog_confirm_btn")
+                        ) {
+                            Text(
+                                text = if (singleSelectMode) {
+                                    if (isBangla) "নির্বাচন নিশ্চিত করুন" else "Confirm Variant"
+                                } else {
+                                    if (isBangla) "যোগ করুন ($selectedCount)" else "Add Selected ($selectedCount)"
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .testTag("po_catalog_confirm_btn")
-                            ) {
-                                Text(
-                                    text = if (isBangla) "নির্বাচন নিশ্চিত করুন" else "Confirm Variant",
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

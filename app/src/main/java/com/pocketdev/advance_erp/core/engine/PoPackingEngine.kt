@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.core.engine
 
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.Locale
 
 /**
@@ -10,6 +12,22 @@ import java.util.Locale
  * label is only a mutable display sequence (see [formatCartonNumber]).
  */
 data class VariantKey(val productId: String, val variantId: String?)
+
+data class PoOrderItemGroupLine(
+    val productId: String,
+    val variantId: String?,
+    val quantityStr: String = "",
+    val unitPriceStr: String = "",
+    val manualQuantityOverride: Boolean = false,
+    val manualPriceOverride: Boolean = false
+)
+
+data class PoProductGroupSummary(
+    val productId: String,
+    val variantCount: Int,
+    val totalQuantity: Int,
+    val totalAmountMajor: BigDecimal
+)
 
 data class PackingOrderLine(val key: VariantKey, val orderedQty: Int)
 
@@ -208,5 +226,89 @@ object PoPackingEngine {
             val remaining = summary[key]?.remaining?.coerceAtLeast(0) ?: 0
             remaining / perCarton
         }
+    }
+
+    private inline fun updateProductVariantField(
+        lines: List<PoOrderItemGroupLine>,
+        targetIndex: Int,
+        newValue: String,
+        getValue: (PoOrderItemGroupLine) -> String,
+        isOverridden: (PoOrderItemGroupLine) -> Boolean,
+        copyLine: (PoOrderItemGroupLine, value: String, override: Boolean) -> PoOrderItemGroupLine
+    ): List<PoOrderItemGroupLine> {
+        val target = lines.getOrNull(targetIndex) ?: return lines
+        val firstIdx = lines.indexOfFirst { it.productId == target.productId }
+        if (firstIdx < 0) return lines
+        val firstValue = getValue(lines[firstIdx])
+        return lines.mapIndexed { idx, line ->
+            when {
+                line.productId != target.productId -> line
+                targetIndex == firstIdx && idx == firstIdx ->
+                    copyLine(line, newValue, isOverridden(line))
+                targetIndex == firstIdx && !isOverridden(line) ->
+                    copyLine(line, newValue, false)
+                targetIndex != firstIdx && idx == targetIndex ->
+                    copyLine(line, newValue, newValue.isNotBlank() && newValue != firstValue)
+                else -> line
+            }
+        }
+    }
+
+    /**
+     * Updates a variant's quantity in [lines]; editing the 1st variant of a product propagates
+     * the value to all other variants of the same product without a manual override.
+     */
+    fun updateProductVariantQuantity(
+        lines: List<PoOrderItemGroupLine>,
+        targetIndex: Int,
+        newQuantityStr: String
+    ): List<PoOrderItemGroupLine> = updateProductVariantField(
+        lines = lines,
+        targetIndex = targetIndex,
+        newValue = newQuantityStr,
+        getValue = { it.quantityStr },
+        isOverridden = { it.manualQuantityOverride },
+        copyLine = { line, value, override ->
+            line.copy(quantityStr = value, manualQuantityOverride = override)
+        }
+    )
+
+    /**
+     * Updates a variant's unit price in [lines]; editing the 1st variant of a product propagates
+     * the price to all other variants of the same product without a manual override.
+     */
+    fun updateProductVariantPrice(
+        lines: List<PoOrderItemGroupLine>,
+        targetIndex: Int,
+        newPriceStr: String
+    ): List<PoOrderItemGroupLine> = updateProductVariantField(
+        lines = lines,
+        targetIndex = targetIndex,
+        newValue = newPriceStr,
+        getValue = { it.unitPriceStr },
+        isOverridden = { it.manualPriceOverride },
+        copyLine = { line, value, override ->
+            line.copy(unitPriceStr = value, manualPriceOverride = override)
+        }
+    )
+
+    /** Computes total ordered quantity and total amount in PO currency for a single product group. */
+    fun summarizeProductGroup(
+        lines: List<PoOrderItemGroupLine>,
+        productId: String
+    ): PoProductGroupSummary {
+        val group = lines.filter { it.productId == productId }
+        val totalQuantity = group.sumOf { (it.quantityStr.trim().toIntOrNull() ?: 0).coerceAtLeast(0) }
+        val totalAmountMajor = group.fold(BigDecimal.ZERO) { acc, item ->
+            val q = BigDecimal((item.quantityStr.trim().toIntOrNull() ?: 0).coerceAtLeast(0))
+            val p = (item.unitPriceStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO).coerceAtLeast(BigDecimal.ZERO)
+            acc.add(q.multiply(p))
+        }.setScale(2, RoundingMode.HALF_UP)
+        return PoProductGroupSummary(
+            productId = productId,
+            variantCount = group.size,
+            totalQuantity = totalQuantity,
+            totalAmountMajor = totalAmountMajor
+        )
     }
 }
