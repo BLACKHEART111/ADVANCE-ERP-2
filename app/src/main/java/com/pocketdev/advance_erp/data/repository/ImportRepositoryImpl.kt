@@ -2446,6 +2446,18 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         database.withTransaction {
+            val paidPoFreightMinor = database.accountingDao()
+                .getActiveEntriesForReference("PO_FREIGHT_PAYMENT", orderId)
+                .sumOf { it.totalDebitMinor }
+            if (paidPoFreightMinor > 0L) {
+                val totalLandedSnapMinor = snapshots.sumOf { it.totalReceivedQuantity.toLong() * it.unitLandedCostBdtMinor }
+                val alreadyPostedDirectMinor = actualCosts.filter { it.isPosted }.sumOf { it.bdtAmountMinor }
+                val newAccruedFreightMinor = (totalLandedSnapMinor - po.totalBdtAmountMinor - alreadyPostedDirectMinor).coerceAtLeast(0L)
+                require(paidPoFreightMinor <= newAccruedFreightMinor) {
+                    "নতুন ফ্রেইট ও আমদানি বিল (৳${Formatters.formatMinorUnit(newAccruedFreightMinor)}) ইতিমধ্যে পরিশোধিত ফ্রেইট পেমেন্ট (৳${Formatters.formatMinorUnit(paidPoFreightMinor)})-এর চেয়ে কম। খরচ ফাইনাল করার আগে পেমেন্ট ট্যাব থেকে অতিরিক্ত ফ্রেইট পেমেন্ট রিভার্স করুন।"
+                }
+            }
+
             importCostDao.replaceAllocationsAndSnapshots(batchShipment.id, allAllocations, snapshots)
             if (actualCosts.isNotEmpty()) {
                 importCostDao.markCostItemsCapitalized(actualCosts.map { it.id }, "FINALIZED")
@@ -2488,6 +2500,145 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         return snapshots
+    }
+
+    override suspend fun reopenPurchaseOrderForEditing(orderId: String): Unit = database.withTransaction {
+        val po = purchaseOrderDao.getOrderById(orderId)
+            ?: throw IllegalArgumentException("ক্রয়াদেশ খুঁজে পাওয়া যায়নি: $orderId")
+        require(po.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
+            "খসড়া বা বাতিলকৃত PO আনলক করার প্রয়োজন নেই।"
+        }
+
+        val allLinkedShipments = (
+            importShipmentDao.getShipmentsByOrderIdSync(orderId) +
+                listOfNotNull(
+                    importShipmentDao.getBatchShipmentForOrder(orderId),
+                    po.shipmentId?.let { importShipmentDao.getShipmentById(it) }
+                )
+            ).distinctBy { it.id }
+
+        val singlePoShipments = allLinkedShipments.filter { shp ->
+            val ordersInShp = purchaseOrderDao.getOrdersForShipmentSync(shp.id)
+            shp.purchaseOrderId == orderId && ordersInShp.all { it.id == orderId }
+        }
+        val singlePoShipmentIds = singlePoShipments.map { it.id }.toSet()
+
+        val receipts = (
+            warehouseReceiptDao.getReceiptsByOrderSync(orderId) +
+                singlePoShipments.flatMap { warehouseReceiptDao.getReceiptsByShipmentSync(it.id) }
+            ).distinctBy { it.id }
+            .filter { it.purchaseOrderId == orderId || it.shipmentId in singlePoShipmentIds }
+        val receiptIds = receipts.map { it.id }.toSet()
+
+        val costLayers = (
+            inventoryCostLayerDao.getLayersForOrderSync(orderId) +
+                singlePoShipments.flatMap { inventoryCostLayerDao.getLayersForShipmentSync(it.id) } +
+                inventoryCostLayerDao.getAllCostLayersSync().filter { it.warehouseReceiptId in receiptIds }
+            ).distinctBy { it.id }
+
+        val soldBlockers = PoPackingEngine.findSoldCostLayerBlockers(
+            costLayers.map {
+                PoPackingEngine.ReceivedLayerState(
+                    productId = it.productId,
+                    initialQuantity = it.initialQuantity,
+                    remainingQuantity = it.remainingQuantity,
+                    isActive = it.isActive
+                )
+            }
+        )
+        if (soldBlockers.isNotEmpty()) {
+            val soldQty = soldBlockers.sumOf { it.initialQuantity - it.remainingQuantity }
+            val blockedNames = mutableListOf<String>()
+            for (pid in soldBlockers.map { it.productId }.distinct().take(3)) {
+                blockedNames.add(productDao.getProductById(pid)?.nameEn ?: pid)
+            }
+            val names = blockedNames.joinToString(", ")
+            throw IllegalStateException(
+                "এই PO-র রিসিভকৃত স্টক থেকে ইতিমধ্যে $soldQty পিস ($names) বিক্রি হয়ে গেছে। বিক্রীত ইনভয়েস বাতিল বা সেলস রিটার্ন না করা পর্যন্ত রিসিভ প্রত্যাহার করে এডিট করা যাবে না।"
+            )
+        }
+
+        val now = System.currentTimeMillis()
+        for (layer in costLayers.filter { it.isActive && it.remainingQuantity > 0 }) {
+            val existingBal = if (layer.variantId != null) {
+                stockBalanceDao.getVariantBalance(layer.warehouseId, layer.productId, layer.variantId)
+            } else {
+                stockBalanceDao.getBalance(layer.warehouseId, layer.productId)
+            }
+            val sellableAvailable = (existingBal?.quantity ?: 0) - (existingBal?.reservedQuantity ?: 0)
+            require(existingBal != null && sellableAvailable >= layer.remainingQuantity) {
+                "গুদামে পর্যাপ্ত অবিক্রীত স্টক নেই (সংরক্ষিত বা সমন্বয়কৃত); রিসিভ প্রত্যাহার করা সম্ভব নয়।"
+            }
+            val newQty = (existingBal.quantity - layer.remainingQuantity).coerceAtLeast(0)
+            stockBalanceDao.insertOrUpdate(existingBal.copy(quantity = newQty, updatedAt = now))
+
+            stockMovementDao.insertMovement(
+                StockMovement(
+                    id = MovementNumberGenerator.generateId("mov"),
+                    movementNumber = MovementNumberGenerator.generate("SM-2026"),
+                    warehouseId = layer.warehouseId,
+                    productId = layer.productId,
+                    variantId = layer.variantId,
+                    movementType = StockMovementType.PURCHASE_RETURN.code,
+                    quantity = layer.remainingQuantity,
+                    unitCostMinor = layer.unitLandedCostBdtMinor,
+                    balanceAfterMovement = newQty,
+                    totalCostImpactMinor = layer.remainingQuantity.toLong() * layer.unitLandedCostBdtMinor,
+                    referenceType = "PO_REOPEN_EDIT",
+                    referenceId = po.poNumber,
+                    purchaseOrderId = po.poNumber,
+                    purchaseBatchId = layer.receiptNumber,
+                    notes = "PO ${po.poNumber} reopened for editing (reversed receipt ${layer.receiptNumber})",
+                    createdAt = now
+                )
+            )
+
+            runCatching {
+                inventoryCostLayerDao.deleteCostLayerById(layer.id)
+            }.onFailure {
+                inventoryCostLayerDao.updateRemainingQuantity(layer.id, 0, false)
+            }
+        }
+
+        val accountingDao = database.accountingDao()
+        for (receipt in receipts) {
+            listOf("WAREHOUSE_RECEIPT", "DAMAGE_WRITE_OFF", "SHORTAGE_CLAIM").forEach { refType ->
+                accountingDao.getActiveEntriesForReference(refType, receipt.receiptNumber).forEach { je ->
+                    accountingRepository.reverseJournalEntry(je.id)
+                }
+            }
+            warehouseReceiptDao.deleteReceiptItems(receipt.id)
+            warehouseReceiptDao.deleteReceipt(receipt.id)
+        }
+
+        minimalImportDao.deleteDamageRecordsForOrder(orderId)
+        minimalImportDao.deleteShortageRecordsForOrder(orderId)
+        minimalImportDao.deleteCompletionRecordsForOrder(orderId)
+
+        accountingDao.getActiveEntriesForReference("PO_IMPORT_EXPENSE", orderId).forEach {
+            accountingRepository.reverseJournalEntry(it.id)
+        }
+        accountingDao.getActiveEntriesForReference("PO_LANDED_CAPITALIZE", orderId).forEach {
+            accountingRepository.reverseJournalEntry(it.id)
+        }
+
+        for (shp in singlePoShipments) {
+            accountingDao.getActiveEntriesForReference("LANDING_COST_FINALIZE", shp.shipmentNumber).forEach {
+                accountingRepository.reverseJournalEntry(it.id)
+            }
+            importCostDao.deleteAllocationsForShipment(shp.id)
+            importCostDao.deleteSnapshotsForShipment(shp.id)
+            importCostDao.uncapitalizeCostItemsForShipment(shp.id)
+            importShipmentDao.updateShipment(
+                shp.copy(status = ShipmentStatus.DRAFT.name, actualArrivalDate = null, updatedAt = now)
+            )
+        }
+        importCostDao.uncapitalizeCostItemsForOrder(orderId)
+
+        purchaseOrderDao.resetReceivedQuantitiesForOrder(orderId)
+        val reopenedStatus = PoPackingEngine.resolveReopenedPoStatus(po.paidAmountMinor, po.totalAmountMinor)
+        purchaseOrderDao.reopenFinalizedOrder(orderId, reopenedStatus, now)
+        purchaseOrderDao.getOrderById(orderId)?.let { syncPoCommitmentJournal(it) }
     }
 
     override suspend fun createPurchaseReceiving(
@@ -3127,11 +3278,22 @@ class ImportRepositoryImpl @Inject constructor(
 
     private suspend fun requireEditableOrder(orderId: String): PurchaseOrder {
         val po = purchaseOrderDao.getOrderById(orderId) ?: error("Purchase order not found")
-        require(!po.isActualCostFinalized && po.status !in listOf(PurchaseOrderStatus.CANCELLED.name, PurchaseOrderStatus.COMPLETED.name)) {
-            "Finalized, completed or cancelled orders cannot be changed"
+        require(po.status != PurchaseOrderStatus.CANCELLED.name) {
+            "বাতিলকৃত ক্রয়াদেশ পরিবর্তন করা যাবে না"
         }
-        require(po.paidAmountMinor == 0L && warehouseReceiptDao.getReceiptsByOrderSync(orderId).isEmpty()) {
-            "Financial changes are locked after payment or receiving"
+        val hasReceipts = warehouseReceiptDao.getReceiptsByOrderSync(orderId).isNotEmpty()
+        val hasReceivedQty = purchaseOrderDao.getItemsForOrderSync(orderId).any { it.receivedQuantity > 0 }
+        require(
+            !po.isActualCostFinalized &&
+                po.status !in listOf(
+                    PurchaseOrderStatus.COMPLETED.name,
+                    PurchaseOrderStatus.RECEIVED.name,
+                    PurchaseOrderStatus.PARTIALLY_RECEIVED.name
+                ) &&
+                !hasReceipts &&
+                !hasReceivedQty
+        ) {
+            "পণ্য রিসিভ বা খরচ ফাইনাল করা থাকায় সরাসরি পরিবর্তন লক আছে। আগে 'আনলক ও এডিট' অপশন ব্যবহার করে আনলক করুন।"
         }
         return po
     }
@@ -3237,12 +3399,12 @@ class ImportRepositoryImpl @Inject constructor(
             ?: throw IllegalArgumentException("Purchase order not found: $orderId")
 
         require(!existingOrder.isActualCostFinalized && existingOrder.status != PurchaseOrderStatus.CANCELLED.name) {
-            "Finalized or cancelled orders cannot be edited"
+            "বাতিল বা ফাইনালকৃত ক্রয়াদেশ সরাসরি এডিট করা যাবে না"
         }
         requireEditableOrder(orderId)
         val existingItems = purchaseOrderDao.getItemsForOrderSync(orderId)
-        require(existingItems.all { it.receivedQuantity == 0 } && existingOrder.paidAmountMinor == 0L) {
-            "Orders with receipts or payments cannot be financially edited"
+        require(existingItems.all { it.receivedQuantity == 0 }) {
+            "পণ্য রিসিভ করা অবস্থায় সরাসরি এডিট করা যাবে না। আগে আনলক করুন।"
         }
         require(items.map { it.productId to it.variantId }.distinct().size == items.size) { "Duplicate product variants are not allowed" }
         require(cartons.map { it.cartonNumber.trim() }.distinct().size == cartons.size && cartons.all { it.cartonNumber.isNotBlank() }) {
@@ -3311,9 +3473,28 @@ class ImportRepositoryImpl @Inject constructor(
             poItems.fold(BigDecimal.ZERO) { acc, it -> acc.add(BigDecimal(it.cbm.ifBlank { "0" })) }
         }
 
+        if (existingOrder.paidAmountMinor > 0L) {
+            require(supplierId == existingOrder.supplierId) {
+                "সাপ্লায়ার পেমেন্ট থাকায় সরবরাহকারী পরিবর্তন করা যাবে না।"
+            }
+            require(currency.equals(existingOrder.currency, ignoreCase = true)) {
+                "সাপ্লায়ার পেমেন্ট থাকায় মুদ্রা (${existingOrder.currency}) পরিবর্তন করা যাবে না।"
+            }
+            require(totalOriginalMinor >= existingOrder.paidAmountMinor && totalBdtMinor >= existingOrder.paidBdtAmountMinor) {
+                "নতুন PO মূল্য ($currency ${Formatters.formatMinorUnit(totalOriginalMinor)}) ইতিমধ্যে পরিশোধিত সাপ্লায়ার পেমেন্ট ($currency ${Formatters.formatMinorUnit(existingOrder.paidAmountMinor)})-এর চেয়ে কম হতে পারবে না। কম মূল্যে নামাতে আগে পেমেন্ট ট্যাব থেকে সাপ্লায়ার পেমেন্ট রিভার্স করুন।"
+            }
+        }
+
+        val resolvedStatus = PoPackingEngine.resolveEditedPaidPoStatus(
+            previousStatus = existingOrder.status,
+            requestedDraftOrConfirmedStatus = status.name,
+            paidAmountMinor = existingOrder.paidAmountMinor,
+            newTotalAmountMinor = totalOriginalMinor
+        )
+
         val updatedOrder = existingOrder.copy(
             supplierId = supplierId,
-            status = if (existingOrder.status == PurchaseOrderStatus.DRAFT.name) status.name else existingOrder.status,
+            status = resolvedStatus,
             orderDate = if (updateSchedule) orderDateMillis ?: existingOrder.orderDate else existingOrder.orderDate,
             expectedArrivalDate = if (updateSchedule) expectedArrivalDateMillis else existingOrder.expectedArrivalDate,
             currency = currency,
@@ -3606,10 +3787,23 @@ class ImportRepositoryImpl @Inject constructor(
         val newCartons = allItems.sumOf { it.cartonQuantity }
         val newGross = allItems.fold(BigDecimal.ZERO) { acc, itm -> acc.add(BigDecimal(itm.grossWeightKg.ifBlank { "0" })) }.toPlainString()
 
+        if (po.paidAmountMinor > 0L) {
+            require(newTotalMinor >= po.paidAmountMinor && newTotalBdtMinor >= po.paidBdtAmountMinor) {
+                "নতুন PO মূল্য (${po.currency} ${Formatters.formatMinorUnit(newTotalMinor)}) পরিশোধিত সাপ্লায়ার পেমেন্ট (${po.currency} ${Formatters.formatMinorUnit(po.paidAmountMinor)})-এর চেয়ে কম হতে পারবে না।"
+            }
+        }
+
         if (po.status != PurchaseOrderStatus.DRAFT.name) supplierDao.getSupplierById(po.supplierId)?.let {
             supplierDao.updateOutstandingPayable(it.id, it.outstandingPayableMinor + newTotalBdtMinor - po.totalBdtAmountMinor)
         }
+        val resolvedStatus = PoPackingEngine.resolveEditedPaidPoStatus(
+            previousStatus = po.status,
+            requestedDraftOrConfirmedStatus = po.status,
+            paidAmountMinor = po.paidAmountMinor,
+            newTotalAmountMinor = newTotalMinor
+        )
         val updatedPo = po.copy(
+            status = resolvedStatus,
             totalAmountMinor = newTotalMinor,
             totalBdtAmountMinor = newTotalBdtMinor,
             totalCartons = newCartons,
@@ -3634,10 +3828,23 @@ class ImportRepositoryImpl @Inject constructor(
         val newCartons = allItems.sumOf { it.cartonQuantity }
         val newGross = allItems.fold(BigDecimal.ZERO) { acc, itm -> acc.add(BigDecimal(itm.grossWeightKg.ifBlank { "0" })) }.toPlainString()
 
+        if (po.paidAmountMinor > 0L) {
+            require(newTotalMinor >= po.paidAmountMinor && newTotalBdtMinor >= po.paidBdtAmountMinor) {
+                "নতুন PO মূল্য (${po.currency} ${Formatters.formatMinorUnit(newTotalMinor)}) পরিশোধিত সাপ্লায়ার পেমেন্ট (${po.currency} ${Formatters.formatMinorUnit(po.paidAmountMinor)})-এর চেয়ে কম হতে পারবে না।"
+            }
+        }
+
         if (po.status != PurchaseOrderStatus.DRAFT.name) supplierDao.getSupplierById(po.supplierId)?.let {
             supplierDao.updateOutstandingPayable(it.id, it.outstandingPayableMinor + newTotalBdtMinor - po.totalBdtAmountMinor)
         }
+        val resolvedStatus = PoPackingEngine.resolveEditedPaidPoStatus(
+            previousStatus = po.status,
+            requestedDraftOrConfirmedStatus = po.status,
+            paidAmountMinor = po.paidAmountMinor,
+            newTotalAmountMinor = newTotalMinor
+        )
         val updatedPo = po.copy(
+            status = resolvedStatus,
             totalAmountMinor = newTotalMinor,
             totalBdtAmountMinor = newTotalBdtMinor,
             totalCartons = newCartons,

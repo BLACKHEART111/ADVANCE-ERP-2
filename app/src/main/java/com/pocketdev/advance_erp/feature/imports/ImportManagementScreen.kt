@@ -684,8 +684,13 @@ fun ImportManagementScreen(
             resolveProductImage = viewModel::resolvePurchaseProductImage,
                 isBangla = isBangla,
                 editingOrder = currentEditingPo,
-                metadataOnly = currentEditingPo.isActualCostFinalized || currentEditingPo.paidAmountMinor > 0 ||
-                    currentEditingPo.status == PurchaseOrderStatus.COMPLETED.name || editItems.any { it.receivedQuantity > 0 } ||
+                metadataOnly = currentEditingPo.isActualCostFinalized ||
+                    currentEditingPo.status in setOf(
+                        PurchaseOrderStatus.COMPLETED.name,
+                        PurchaseOrderStatus.RECEIVED.name,
+                        PurchaseOrderStatus.PARTIALLY_RECEIVED.name
+                    ) ||
+                    editItems.any { it.receivedQuantity > 0 } ||
                     editReceipts.isNotEmpty(),
                 onUpdateMetadata = { notes, attachments ->
                     viewModel.updatePurchaseOrderMetadata(orderId, notes, attachments, onSaved = onOrderSaved)
@@ -1085,6 +1090,17 @@ fun ImportManagementScreen(
             onAddAdditionalCost = { showAddAdditionalCostDialog = true },
             onCompletePo = { showCompletionDialog = true },
             onEditFullPo = { po -> editingPoId = po.id },
+            onReopenPoForEdit = { po ->
+                viewModel.reopenPurchaseOrderForEditing(po.id) {
+                    EditorDraftStore(context).apply {
+                        remove("purchase:${po.id}")
+                        remove("purchase:${po.id}:metadata")
+                        remove("receiving:${po.id}")
+                    }
+                    viewModel.selectPurchaseOrder(null)
+                    editingPoId = po.id
+                }
+            },
             onSharePdf = { po -> poToShare = po },
             onCancelPo = { orderId, reason ->
                 viewModel.cancelPurchaseOrder(orderId, reason)

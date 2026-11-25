@@ -32,6 +32,13 @@ enum class ContactsTab {
     SUPPLIERS
 }
 
+data class ContactDialogState(
+    val showAddDialog: Boolean = false,
+    val editingCustomer: Customer? = null,
+    val editingSupplier: Supplier? = null,
+    val canEditSupplierCurrency: Boolean = true
+)
+
 data class ContactsUiState(
     val selectedTab: ContactsTab = ContactsTab.CUSTOMERS,
     val customers: List<Customer> = emptyList(),
@@ -39,6 +46,9 @@ data class ContactsUiState(
     val language: AppLanguage = AppLanguage.BANGLA,
     val currency: CurrencyCode = CurrencyCode.BDT,
     val showAddDialog: Boolean = false,
+    val editingCustomer: Customer? = null,
+    val editingSupplier: Supplier? = null,
+    val canEditSupplierCurrency: Boolean = true,
     val userMessage: String? = null,
     val activeDueReminderData: DueReminderStatementData? = null
 )
@@ -53,7 +63,7 @@ class ContactsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _selectedTab = MutableStateFlow(ContactsTab.CUSTOMERS)
-    private val _showAddDialog = MutableStateFlow(false)
+    private val _dialogState = MutableStateFlow(ContactDialogState())
     private val _userMessage = MutableStateFlow<String?>(null)
     private val _activeDueReminderData = MutableStateFlow<DueReminderStatementData?>(null)
 
@@ -61,14 +71,14 @@ class ContactsViewModel @Inject constructor(
         _selectedTab,
         combine(contactsRepository.getAllCustomers(), contactsRepository.getAllSuppliers()) { c, s -> Pair(c, s) },
         combine(preferencesRepository.selectedLanguage, preferencesRepository.selectedCurrency) { l, c -> Pair(l, c) },
-        _showAddDialog,
+        _dialogState,
         _userMessage,
         _activeDueReminderData
     ) { args: Array<Any?> ->
         val tab = args[0] as ContactsTab
         val (customers, suppliers) = args[1] as Pair<List<Customer>, List<Supplier>>
         val (language, currency) = args[2] as Pair<AppLanguage, CurrencyCode>
-        val showAdd = args[3] as Boolean
+        val dialog = args[3] as ContactDialogState
         val msg = args[4] as? String
         val dueReminder = args[5] as? DueReminderStatementData
         ContactsUiState(
@@ -77,7 +87,10 @@ class ContactsViewModel @Inject constructor(
             suppliers = suppliers,
             language = language,
             currency = currency,
-            showAddDialog = showAdd,
+            showAddDialog = dialog.showAddDialog,
+            editingCustomer = dialog.editingCustomer,
+            editingSupplier = dialog.editingSupplier,
+            canEditSupplierCurrency = dialog.canEditSupplierCurrency,
             userMessage = msg,
             activeDueReminderData = dueReminder
         )
@@ -92,7 +105,27 @@ class ContactsViewModel @Inject constructor(
     }
 
     fun setAddDialogVisible(visible: Boolean) {
-        _showAddDialog.value = visible
+        _dialogState.value = if (visible) ContactDialogState(showAddDialog = true) else ContactDialogState()
+    }
+
+    fun openEditCustomer(customer: Customer) {
+        _dialogState.value = ContactDialogState(editingCustomer = customer)
+    }
+
+    fun openEditSupplier(supplier: Supplier) {
+        viewModelScope.launch {
+            val canChangeCurrency = runCatching {
+                contactsRepository.canChangeSupplierCurrency(supplier.id)
+            }.getOrDefault(false)
+            _dialogState.value = ContactDialogState(
+                editingSupplier = supplier,
+                canEditSupplierCurrency = canChangeCurrency
+            )
+        }
+    }
+
+    fun dismissContactDialog() {
+        _dialogState.value = ContactDialogState()
     }
 
     fun clearMessage() {
@@ -105,27 +138,78 @@ class ContactsViewModel @Inject constructor(
         email: String?,
         address: String,
         creditLimitMinor: Long,
-        profileImagePath: String? = null
+        profileImagePath: String? = null,
+        openingDueMinor: Long = 0L,
+        openingNote: String? = null
     ) {
         viewModelScope.launch {
-            val customer = Customer(
-                id = UUID.randomUUID().toString(),
-                customerCode = "CUST-${System.currentTimeMillis() % 10000}",
-                name = name.trim(),
-                phone = phone.trim(),
-                email = email?.trim()?.ifBlank { null },
-                address = address.trim(),
-                creditLimitMinor = creditLimitMinor,
-                outstandingBalanceMinor = 0L,
-                profileImagePath = profileImagePath,
-                isActive = true
-            )
-            contactsRepository.addCustomer(customer)
-            _showAddDialog.value = false
-            _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
-                "গ্রাহক সফলভাবে যোগ করা হয়েছে"
-            } else {
-                "Customer added successfully"
+            try {
+                val customer = Customer(
+                    id = UUID.randomUUID().toString(),
+                    customerCode = "CUST-${System.currentTimeMillis() % 10000}",
+                    name = name.trim(),
+                    phone = phone.trim(),
+                    email = email?.trim()?.ifBlank { null },
+                    address = address.trim(),
+                    creditLimitMinor = creditLimitMinor,
+                    outstandingBalanceMinor = 0L,
+                    profileImagePath = profileImagePath,
+                    isActive = true
+                )
+                contactsRepository.addCustomerWithOptionalOpeningDue(
+                    customer = customer,
+                    openingDueMinor = openingDueMinor,
+                    openingNote = openingNote
+                )
+                dismissContactDialog()
+                _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                    if (openingDueMinor > 0L) "গ্রাহক ও পূর্বের বকেয়া সফলভাবে সংরক্ষিত হয়েছে" else "গ্রাহক সফলভাবে যোগ করা হয়েছে"
+                } else {
+                    if (openingDueMinor > 0L) "Customer and opening due recorded successfully" else "Customer added successfully"
+                }
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: if (uiState.value.language == AppLanguage.BANGLA) "গ্রাহক সংরক্ষণ করা যায়নি" else "Failed to save customer"
+            }
+        }
+    }
+
+    fun updateCustomerDetails(
+        customer: Customer,
+        name: String,
+        phone: String,
+        email: String?,
+        address: String,
+        creditLimitMinor: Long,
+        profileImagePath: String?,
+        additionalOpeningDueMinor: Long = 0L,
+        openingNote: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val updated = customer.copy(
+                    name = name.trim(),
+                    phone = phone.trim(),
+                    email = email?.trim()?.ifBlank { null },
+                    address = address.trim(),
+                    creditLimitMinor = creditLimitMinor,
+                    profileImagePath = profileImagePath
+                )
+                contactsRepository.updateCustomer(updated)
+                if (additionalOpeningDueMinor > 0L) {
+                    contactsRepository.recordCustomerOpeningDue(
+                        customerId = updated.id,
+                        amountMinor = additionalOpeningDueMinor,
+                        note = openingNote
+                    )
+                }
+                dismissContactDialog()
+                _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                    if (additionalOpeningDueMinor > 0L) "গ্রাহকের তথ্য ও পূর্বের বকেয়া আপডেট হয়েছে" else "গ্রাহকের তথ্য সফলভাবে আপডেট হয়েছে"
+                } else {
+                    if (additionalOpeningDueMinor > 0L) "Customer details & opening due updated" else "Customer details updated"
+                }
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: if (uiState.value.language == AppLanguage.BANGLA) "গ্রাহকের তথ্য আপডেট করা যায়নি" else "Failed to update customer"
             }
         }
     }
@@ -196,27 +280,88 @@ class ContactsViewModel @Inject constructor(
         }
     }
 
-    fun addSupplier(companyName: String, contactPerson: String?, phone: String, email: String?, address: String, country: String, currency: String) {
+    fun addSupplier(
+        companyName: String,
+        contactPerson: String?,
+        phone: String,
+        email: String?,
+        address: String,
+        country: String,
+        currency: String,
+        openingPayableBdtMinor: Long = 0L,
+        openingNote: String? = null
+    ) {
         viewModelScope.launch {
-            val supplier = Supplier(
-                id = UUID.randomUUID().toString(),
-                supplierCode = "SUP-${System.currentTimeMillis() % 10000}",
-                companyName = companyName.trim(),
-                contactPerson = contactPerson?.trim()?.ifBlank { null },
-                phone = phone.trim(),
-                email = email?.trim()?.ifBlank { null },
-                address = address.trim(),
-                country = country.trim(),
-                currency = currency.trim(),
-                outstandingPayableMinor = 0L,
-                isActive = true
-            )
-            contactsRepository.addSupplier(supplier)
-            _showAddDialog.value = false
-            _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
-                "সরবরাহকারী সফলভাবে যোগ করা হয়েছে"
-            } else {
-                "Supplier added successfully"
+            try {
+                val supplier = Supplier(
+                    id = UUID.randomUUID().toString(),
+                    supplierCode = "SUP-${System.currentTimeMillis() % 10000}",
+                    companyName = companyName.trim(),
+                    contactPerson = contactPerson?.trim()?.ifBlank { null },
+                    phone = phone.trim(),
+                    email = email?.trim()?.ifBlank { null },
+                    address = address.trim(),
+                    country = country.trim(),
+                    currency = currency.trim(),
+                    outstandingPayableMinor = 0L,
+                    isActive = true
+                )
+                contactsRepository.addSupplierWithOptionalOpeningPayable(
+                    supplier = supplier,
+                    openingPayableBdtMinor = openingPayableBdtMinor,
+                    openingNote = openingNote
+                )
+                dismissContactDialog()
+                _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                    if (openingPayableBdtMinor > 0L) "সরবরাহকারী ও পূর্বের প্রদেয় বকেয়া সংরক্ষিত হয়েছে" else "সরবরাহকারী সফলভাবে যোগ করা হয়েছে"
+                } else {
+                    if (openingPayableBdtMinor > 0L) "Supplier and opening payable recorded" else "Supplier added successfully"
+                }
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: if (uiState.value.language == AppLanguage.BANGLA) "সরবরাহকারী সংরক্ষণ করা যায়নি" else "Failed to save supplier"
+            }
+        }
+    }
+
+    fun updateSupplierDetails(
+        supplier: Supplier,
+        companyName: String,
+        contactPerson: String?,
+        phone: String,
+        email: String?,
+        address: String,
+        country: String,
+        currency: String,
+        additionalOpeningPayableBdtMinor: Long = 0L,
+        openingNote: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val updated = supplier.copy(
+                    companyName = companyName.trim(),
+                    contactPerson = contactPerson?.trim()?.ifBlank { null },
+                    phone = phone.trim(),
+                    email = email?.trim()?.ifBlank { null },
+                    address = address.trim(),
+                    country = country.trim(),
+                    currency = currency.trim()
+                )
+                contactsRepository.updateSupplier(updated)
+                if (additionalOpeningPayableBdtMinor > 0L) {
+                    contactsRepository.recordSupplierOpeningPayable(
+                        supplierId = updated.id,
+                        amountBdtMinor = additionalOpeningPayableBdtMinor,
+                        note = openingNote
+                    )
+                }
+                dismissContactDialog()
+                _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                    if (additionalOpeningPayableBdtMinor > 0L) "সরবরাহকারীর তথ্য ও পূর্বের বকেয়া আপডেট হয়েছে" else "সরবরাহকারীর তথ্য সফলভাবে আপডেট হয়েছে"
+                } else {
+                    if (additionalOpeningPayableBdtMinor > 0L) "Supplier details & opening payable updated" else "Supplier details updated"
+                }
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: if (uiState.value.language == AppLanguage.BANGLA) "সরবরাহকারীর তথ্য আপডেট করা যায়নি" else "Failed to update supplier"
             }
         }
     }

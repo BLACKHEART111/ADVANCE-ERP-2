@@ -108,6 +108,12 @@ interface PurchaseOrderDao {
     @Query("UPDATE purchase_order_items SET receivedQuantity = receivedQuantity + :addedQty WHERE id = :itemId")
     suspend fun incrementReceivedQuantity(itemId: String, addedQty: Int)
 
+    @Query("UPDATE purchase_order_items SET receivedQuantity = 0 WHERE purchaseOrderId = :orderId")
+    suspend fun resetReceivedQuantitiesForOrder(orderId: String)
+
+    @Query("UPDATE purchase_orders SET isActualCostFinalized = 0, actualCostFinalizedAt = NULL, status = :status, updatedAt = :updatedAt WHERE id = :orderId")
+    suspend fun reopenFinalizedOrder(orderId: String, status: String, updatedAt: Long = System.currentTimeMillis())
+
     @Query("SELECT * FROM purchase_orders WHERE shipmentId = :shipmentId ORDER BY createdAt ASC")
     fun getOrdersForShipment(shipmentId: String): Flow<List<PurchaseOrder>>
 

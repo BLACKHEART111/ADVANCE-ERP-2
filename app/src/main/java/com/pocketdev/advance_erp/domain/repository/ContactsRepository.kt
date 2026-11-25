@@ -16,5 +16,31 @@ interface ContactsRepository {
     suspend fun addCustomer(customer: Customer)
     suspend fun updateCustomer(customer: Customer)
     suspend fun addSupplier(supplier: Supplier)
+    suspend fun updateSupplier(supplier: Supplier)
+    suspend fun canChangeSupplierCurrency(supplierId: String): Boolean
+    suspend fun recordCustomerOpeningDue(
+        customerId: String,
+        amountMinor: Long,
+        entryDate: Long = System.currentTimeMillis(),
+        note: String? = null
+    ): String
+    suspend fun recordSupplierOpeningPayable(
+        supplierId: String,
+        amountBdtMinor: Long,
+        entryDate: Long = System.currentTimeMillis(),
+        note: String? = null
+    ): String
+    suspend fun addCustomerWithOptionalOpeningDue(
+        customer: Customer,
+        openingDueMinor: Long = 0L,
+        entryDate: Long = System.currentTimeMillis(),
+        openingNote: String? = null
+    )
+    suspend fun addSupplierWithOptionalOpeningPayable(
+        supplier: Supplier,
+        openingPayableBdtMinor: Long = 0L,
+        entryDate: Long = System.currentTimeMillis(),
+        openingNote: String? = null
+    )
     suspend fun deleteOrArchiveCustomer(customerId: String, operator: String = "SYSTEM_ADMIN"): CustomerDeleteResult
 }

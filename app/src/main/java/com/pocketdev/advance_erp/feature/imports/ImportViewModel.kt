@@ -1665,6 +1665,33 @@ class ImportViewModel @Inject constructor(
         }
     }
 
+    fun reopenPurchaseOrderForEditing(
+        orderId: String,
+        onReopened: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                importRepository.reopenPurchaseOrderForEditing(orderId)
+                val msg = if (_uiState.value.language == AppLanguage.BANGLA) {
+                    "রিসিভ প্রত্যাহার করে PO এডিটের জন্য আনলক করা হয়েছে!"
+                } else {
+                    "PO receiving reversed and unlocked for editing!"
+                }
+                _uiState.update { it.copy(isLoading = false, userMessage = msg) }
+                onReopened()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        userMessage = e.message ?: "PO আনলক করা যায়নি"
+                    )
+                }
+            }
+        }
+    }
+
     fun addNewProductFromPurchase(
         nameEn: String,
         nameBn: String,

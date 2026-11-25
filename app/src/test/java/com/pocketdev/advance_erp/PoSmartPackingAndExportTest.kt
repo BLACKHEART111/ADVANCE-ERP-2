@@ -376,4 +376,45 @@ class PoSmartPackingAndExportTest {
             )
         )
     }
+
+    @Test
+    fun scenario16_reopenSoldGuardAndPaidPoEditStatusResolutionWorkSafely() {
+        val unsoldLayers = listOf(
+            PoPackingEngine.ReceivedLayerState("prod-a", initialQuantity = 200, remainingQuantity = 200, isActive = true),
+            PoPackingEngine.ReceivedLayerState("prod-b", initialQuantity = 500, remainingQuantity = 500, isActive = true)
+        )
+        assertTrue(PoPackingEngine.findSoldCostLayerBlockers(unsoldLayers).isEmpty())
+
+        val partiallySoldLayers = listOf(
+            PoPackingEngine.ReceivedLayerState("prod-a", initialQuantity = 200, remainingQuantity = 150, isActive = true),
+            PoPackingEngine.ReceivedLayerState("prod-b", initialQuantity = 500, remainingQuantity = 500, isActive = true)
+        )
+        val blockers = PoPackingEngine.findSoldCostLayerBlockers(partiallySoldLayers)
+        assertEquals(1, blockers.size)
+        assertEquals("prod-a", blockers.single().productId)
+
+        assertEquals("CONFIRMED", PoPackingEngine.resolveReopenedPoStatus(paidAmountMinor = 0L, totalAmountMinor = 307_600L))
+        assertEquals("PARTIALLY_PAID", PoPackingEngine.resolveReopenedPoStatus(paidAmountMinor = 150_000L, totalAmountMinor = 307_600L))
+        assertEquals("PAID", PoPackingEngine.resolveReopenedPoStatus(paidAmountMinor = 307_600L, totalAmountMinor = 307_600L))
+
+        // After reopening a paid PO and adding another product (+50,000), status automatically shifts from PAID -> PARTIALLY_PAID.
+        assertEquals(
+            "PARTIALLY_PAID",
+            PoPackingEngine.resolveEditedPaidPoStatus(
+                previousStatus = "PAID",
+                requestedDraftOrConfirmedStatus = "CONFIRMED",
+                paidAmountMinor = 307_600L,
+                newTotalAmountMinor = 357_600L
+            )
+        )
+        assertEquals(
+            "PAID",
+            PoPackingEngine.resolveEditedPaidPoStatus(
+                previousStatus = "PARTIALLY_PAID",
+                requestedDraftOrConfirmedStatus = "CONFIRMED",
+                paidAmountMinor = 307_600L,
+                newTotalAmountMinor = 307_600L
+            )
+        )
+    }
 }

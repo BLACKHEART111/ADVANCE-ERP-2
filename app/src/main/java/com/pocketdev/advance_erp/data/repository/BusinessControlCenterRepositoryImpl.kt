@@ -520,6 +520,20 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                 ))
             }
         }
+        if (filterState.selectedCustomerId == null) {
+            for (adjustment in database.accountingDao().getSupplierLedgerAdjustments(filterState.selectedSupplierId)) {
+                val supplier = adjustment.referenceId?.let { suppliers[it] ?: supplierDao.getSupplierById(it) } ?: continue
+                val delta = com.pocketdev.advance_erp.core.engine.SupplierLedgerAdjustment.delta(adjustment)
+                allList.add(UnifiedTransactionItem(
+                    id = adjustment.id, referenceNumber = adjustment.entryNumber, date = adjustment.entryDate,
+                    category = ReportCategory.SUPPLIER_LEDGER, primaryEntityName = supplier.companyName,
+                    primaryEntityId = supplier.id, particulars = adjustment.descriptionEn,
+                    amountMinor = kotlin.math.abs(delta), isInflow = false, status = "POSTED",
+                    rawType = "SUPPLIER_ADJUSTMENT", effectSign = if (delta >= 0L) 1 else -1,
+                    createdAt = adjustment.createdAt
+                ))
+            }
+        }
         val customerNet = allList.filter { LedgerReportEngine.isCustomer(it) }.groupBy { it.primaryEntityId }
             .mapValues { (_, rows) -> rows.sumOf { LedgerReportEngine.delta(it) } }
         val supplierNet = allList.filter { LedgerReportEngine.isSupplier(it) }.groupBy { it.primaryEntityId }
@@ -578,6 +592,23 @@ class BusinessControlCenterRepositoryImpl @Inject constructor(
                     amountMinor = kotlin.math.abs(delta), isInflow = delta > 0L,
                     status = if (entry.isReversed) "REVERSED" else if (entry.isPosted) "POSTED" else "DRAFT",
                     rawType = "CUSTOMER_ADJUSTMENT", effectSign = if (delta >= 0L) 1 else -1,
+                    accountingPosted = entry.isPosted && !entry.isReversed, createdAt = entry.createdAt
+                ), referenceDocument = entry.entryNumber, auditTrailInfo = entry.descriptionEn)
+            }
+            "SUPPLIER_ADJUSTMENT" -> {
+                val entry = database.accountingDao().getJournalEntryById(id) ?: return null
+                if (entry.referenceType !in setOf(
+                        com.pocketdev.advance_erp.core.engine.SupplierLedgerAdjustment.CREDIT,
+                        com.pocketdev.advance_erp.core.engine.SupplierLedgerAdjustment.DEBIT)) return null
+                val supplier = entry.referenceId?.let { supplierDao.getSupplierById(it) } ?: return null
+                val delta = com.pocketdev.advance_erp.core.engine.SupplierLedgerAdjustment.delta(entry)
+                TransactionDetailRecord(transaction = UnifiedTransactionItem(
+                    id = entry.id, referenceNumber = entry.entryNumber, date = entry.entryDate,
+                    category = ReportCategory.SUPPLIER_LEDGER, primaryEntityName = supplier.companyName,
+                    primaryEntityId = supplier.id, particulars = entry.descriptionEn,
+                    amountMinor = kotlin.math.abs(delta), isInflow = false,
+                    status = if (entry.isReversed) "REVERSED" else if (entry.isPosted) "POSTED" else "DRAFT",
+                    rawType = "SUPPLIER_ADJUSTMENT", effectSign = if (delta >= 0L) 1 else -1,
                     accountingPosted = entry.isPosted && !entry.isReversed, createdAt = entry.createdAt
                 ), referenceDocument = entry.entryNumber, auditTrailInfo = entry.descriptionEn)
             }

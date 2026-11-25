@@ -13,11 +13,11 @@ object LedgerReportEngine {
 
     fun type(row: UnifiedTransactionItem) = row.rawType.removeSuffix("_REVERSAL")
     fun isCustomer(row: UnifiedTransactionItem) = type(row) in setOf("INVOICE", "PAYMENT", "RETURN", "OPENING_CUSTOMER", "CUSTOMER_ADJUSTMENT")
-    fun isSupplier(row: UnifiedTransactionItem) = type(row) in setOf("PURCHASE", "SUPPLIER_PAYMENT", "OPENING_SUPPLIER")
+    fun isSupplier(row: UnifiedTransactionItem) = type(row) in setOf("PURCHASE", "SUPPLIER_PAYMENT", "OPENING_SUPPLIER", "SUPPLIER_ADJUSTMENT")
     fun delta(row: UnifiedTransactionItem): Long {
         if (!row.accountingPosted) return 0L
         val sign = when (type(row)) {
-            "INVOICE", "PURCHASE", "OPENING_CUSTOMER", "OPENING_SUPPLIER", "CUSTOMER_ADJUSTMENT" -> 1
+            "INVOICE", "PURCHASE", "OPENING_CUSTOMER", "OPENING_SUPPLIER", "CUSTOMER_ADJUSTMENT", "SUPPLIER_ADJUSTMENT" -> 1
             "PAYMENT", "SUPPLIER_PAYMENT" -> -1
             "RETURN" -> if (row.paymentMethod == "CUSTOMER_CREDIT") -1 else 0
             else -> 0

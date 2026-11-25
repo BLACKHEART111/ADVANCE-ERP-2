@@ -336,6 +336,9 @@ interface ImportRepository {
     suspend fun getCostItemsForOrderSync(orderId: String): List<ImportCostItem>
     suspend fun finalizePurchaseActualCost(orderId: String): List<LandedCostSnapshot>
 
+    /** Reverses unconsumed warehouse receipts/FIFO layers & cost finalization so a received PO can be edited cleanly. */
+    suspend fun reopenPurchaseOrderForEditing(orderId: String)
+
     suspend fun createPurchaseReceiving(
         orderId: String,
         warehouseId: String,

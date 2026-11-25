@@ -685,11 +685,11 @@ fun RecordCustomerPaymentDialog(
 
                     item {
                         ExposedDropdownMenuBox(expanded=invoiceExpanded,onExpandedChange={invoiceExpanded=it}) {
-                            OutlinedTextField(value=allocationInvoice?.invoiceNumber ?: if(isBangla) "সাধারণ আদায় / unallocated credit" else "Standalone / unallocated credit",
+                            OutlinedTextField(value=allocationInvoice?.invoiceNumber ?: if(isBangla) "সাধারণ বকেয়া আদায় / অগ্রিম (চালান ছাড়া)" else "General Due Collection / Advance (no invoice)",
                                 onValueChange={},readOnly=true, label={Text(if(isBangla) "ইনভয়েসে বরাদ্দ (ঐচ্ছিক)" else "Allocate to invoice (optional)")},
                                 modifier=Modifier.menuAnchor().fillMaxWidth(),trailingIcon={ExposedDropdownMenuDefaults.TrailingIcon(invoiceExpanded)})
                             ExposedDropdownMenu(expanded=invoiceExpanded,onDismissRequest={invoiceExpanded=false}) {
-                                DropdownMenuItem(text={Text(if(isBangla)"কোনো invoice-এ বরাদ্দ নয়" else "Do not allocate")},onClick={allocationInvoiceId=null;invoiceExpanded=false})
+                                DropdownMenuItem(text={Text(if(isBangla)"কোনো নির্দিষ্ট চালানে বরাদ্দ নয় (পূর্বের বকেয়া / সাধারণ আদায়)" else "Do not allocate to a specific invoice (Opening Due / General)")},onClick={allocationInvoiceId=null;invoiceExpanded=false})
                                 unpaidInvoicesForCustomer.filter { it.isPosted && it.status!="CANCELLED" }.forEach { invoice ->
                                     DropdownMenuItem(text={Text(invoice.invoiceNumber+" • ৳"+Formatters.formatMinorUnit(invoice.dueAmountMinor))},onClick={allocationInvoiceId=invoice.id;invoiceExpanded=false})
                                 }

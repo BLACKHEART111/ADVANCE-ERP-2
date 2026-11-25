@@ -7,11 +7,13 @@ import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.pdf.CentralizedPdfEngine
 import com.pocketdev.advance_erp.core.pdf.CentralizedPdfReportRegistry
+import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.core.util.DueCollectionStatementData
 import com.pocketdev.advance_erp.core.util.DueReminderStatementData
 import com.pocketdev.advance_erp.core.util.InvoicePdfGenerator
 import com.pocketdev.advance_erp.data.dao.BusinessProfileDao
 import com.pocketdev.advance_erp.data.dao.CustomerDao
+import com.pocketdev.advance_erp.data.dao.ProductImageDao
 import com.pocketdev.advance_erp.data.dao.ProductVariantDao
 import com.pocketdev.advance_erp.data.dao.StockBalanceDao
 import com.pocketdev.advance_erp.data.dao.WarehouseDao
@@ -72,6 +74,9 @@ data class SalesUiState(
     val productWiseReport: List<ProductWiseSalesItem> = emptyList(),
     val customerWiseReport: List<CustomerWiseSalesItem> = emptyList(),
     val businessProfile: BusinessProfile? = null,
+    val productImages: Map<String, String> = emptyMap(),
+    val variantImages: Map<String, String> = emptyMap(),
+    val userRole: UserRole = UserRole.OWNER_ADMIN,
     val nextPaymentNumber: String? = null,
     val language: AppLanguage = AppLanguage.BANGLA,
     val isLoading: Boolean = false,
@@ -86,6 +91,7 @@ class SalesViewModel @Inject constructor(
     private val salesRepository: SalesRepository,
     private val productRepository: ProductRepository,
     private val productVariantDao: ProductVariantDao,
+    private val productImageDao: ProductImageDao,
     private val customerDao: CustomerDao,
     private val warehouseDao: WarehouseDao,
     private val stockBalanceDao: StockBalanceDao,
@@ -120,7 +126,9 @@ class SalesViewModel @Inject constructor(
                 salesRepository.getAllPayments(),
                 salesRepository.getAllReturns()
             ) { productsWithDetails, payments, returns ->
+                val fallbackImages = mutableMapOf<String, String>()
                 val products = productsWithDetails.map { pwd ->
+                    pwd.primaryImageUri?.takeIf { it.isNotBlank() }?.let { fallbackImages[pwd.id] = it }
                     Product(
                         id = pwd.id,
                         categoryId = pwd.categoryId,
@@ -138,24 +146,27 @@ class SalesViewModel @Inject constructor(
                         updatedAt = pwd.createdAt
                     )
                 }
-                Triple(products, payments, returns)
+                Triple(products to fallbackImages, payments, returns)
             }
 
             combine(
                 streamA,
                 streamB,
                 preferencesRepository.selectedLanguage
-            ) { (invoices, customers, warehouses), (products, payments, returns), lang ->
+            ) { (invoices, customers, warehouses), (productsAndImages, payments, returns), lang ->
+                val (products, fallbackImages) = productsAndImages
                 val currentSelectedId = _uiState.value.selectedInvoice?.id
                 val updatedSelectedInvoice = if (currentSelectedId != null) {
                     invoices.find { it.id == currentSelectedId }
                 } else null
+                val mergedProdImages = fallbackImages + _uiState.value.productImages
 
                 _uiState.value.copy(
                     invoices = invoices,
                     customers = customers,
                     warehouses = warehouses,
                     products = products,
+                    productImages = mergedProdImages,
                     payments = payments,
                     returns = returns,
                     selectedInvoice = updatedSelectedInvoice ?: _uiState.value.selectedInvoice,
@@ -164,6 +175,31 @@ class SalesViewModel @Inject constructor(
                 )
             }.collect { newState ->
                 _uiState.value = newState
+            }
+        }
+
+        viewModelScope.launch {
+            productImageDao.getAllImages().collect { allImages ->
+                val prodMap = mutableMapOf<String, String>()
+                val varMap = mutableMapOf<String, String>()
+                for (img in allImages) {
+                    if (img.imageUri.isBlank()) continue
+                    if (img.variantId == null) {
+                        if (!prodMap.containsKey(img.productId)) prodMap[img.productId] = img.imageUri
+                    } else {
+                        if (!varMap.containsKey(img.variantId)) varMap[img.variantId] = img.imageUri
+                    }
+                }
+                _uiState.update { state ->
+                    val merged = state.productImages.toMutableMap().apply { putAll(prodMap) }
+                    state.copy(productImages = merged, variantImages = varMap)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            preferencesRepository.selectedUserRole.collect { role ->
+                _uiState.update { it.copy(userRole = role) }
             }
         }
 

@@ -328,4 +328,35 @@ object PoPackingEngine {
         val hasCompletedWithReceipts = status == "COMPLETED" && completionReceivedQuantity > 0
         return !(hasReceivedStatus || hasReceivedItems || hasPostedWarehouseReceipt || hasCompletedWithReceipts)
     }
+
+    data class ReceivedLayerState(
+        val productId: String,
+        val initialQuantity: Int,
+        val remainingQuantity: Int,
+        val isActive: Boolean
+    )
+
+    /** Returns received layers whose inventory has already been consumed by sales/transfers, blocking PO reopen. */
+    fun findSoldCostLayerBlockers(layers: List<ReceivedLayerState>): List<ReceivedLayerState> =
+        layers.filter { it.isActive && it.remainingQuantity < it.initialQuantity }
+
+    /** Computes the unlocked PO status after reversing warehouse receipts while preserving supplier payments. */
+    fun resolveReopenedPoStatus(paidAmountMinor: Long, totalAmountMinor: Long): String = when {
+        paidAmountMinor <= 0L -> "CONFIRMED"
+        totalAmountMinor > 0L && paidAmountMinor >= totalAmountMinor -> "PAID"
+        else -> "PARTIALLY_PAID"
+    }
+
+    /** Resolves PO status when editing line items/totals of an existing (possibly already paid) PO. */
+    fun resolveEditedPaidPoStatus(
+        previousStatus: String,
+        requestedDraftOrConfirmedStatus: String,
+        paidAmountMinor: Long,
+        newTotalAmountMinor: Long
+    ): String = when {
+        previousStatus == "DRAFT" -> requestedDraftOrConfirmedStatus
+        paidAmountMinor <= 0L -> if (requestedDraftOrConfirmedStatus == "DRAFT") "CONFIRMED" else requestedDraftOrConfirmedStatus
+        newTotalAmountMinor > 0L && paidAmountMinor >= newTotalAmountMinor -> "PAID"
+        else -> "PARTIALLY_PAID"
+    }
 }

@@ -1,8 +1,7 @@
 package com.pocketdev.advance_erp.feature.sales
 
-import com.pocketdev.advance_erp.core.designsystem.StatusSuccessContainer
-import androidx.compose.runtime.saveable.rememberSaveable
-import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,49 +11,42 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.outlined.PersonAdd
-import androidx.compose.material.icons.outlined.Save
-import androidx.compose.material.icons.outlined.ShoppingBag
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Equalizer
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.LocalOffer
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,43 +56,47 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import com.pocketdev.advance_erp.core.designsystem.DeepNavy
-import com.pocketdev.advance_erp.core.designsystem.ERPBackground
-import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
-import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
+import com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme
 import com.pocketdev.advance_erp.core.designsystem.StatusError
-import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
-import com.pocketdev.advance_erp.core.designsystem.StatusWarning
-import com.pocketdev.advance_erp.core.designsystem.TextMuted
-import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import com.pocketdev.advance_erp.core.engine.LineCalculation
+import com.pocketdev.advance_erp.core.engine.SalesInvoiceCalculator
+import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.BangladeshBanks
-import com.pocketdev.advance_erp.core.model.Money
+import com.pocketdev.advance_erp.core.security.SecurityManager
+import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.core.util.Formatters
-import com.pocketdev.advance_erp.data.entity.ChartOfAccount
-import com.pocketdev.advance_erp.data.entity.Customer
-import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
-import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.core.util.firstInStockProduct
 import com.pocketdev.advance_erp.core.util.firstInStockVariant
 import com.pocketdev.advance_erp.core.util.resolveUnitCostMinorForSale
 import com.pocketdev.advance_erp.core.util.sellableStockForProduct
 import com.pocketdev.advance_erp.core.util.sellableStockForSelection
 import com.pocketdev.advance_erp.core.util.sellableStockForVariant
+import com.pocketdev.advance_erp.data.entity.ChartOfAccount
+import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
+import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
+import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Warehouse
@@ -108,7 +104,9 @@ import com.pocketdev.advance_erp.domain.repository.CustomerSummary
 import com.pocketdev.advance_erp.domain.repository.InvoiceItemDraft
 import com.pocketdev.advance_erp.domain.repository.NewCustomerDraft
 import com.pocketdev.advance_erp.domain.repository.SalesInvoiceDraft
-import java.math.BigDecimal
+import com.pocketdev.advance_erp.feature.inventory.BarcodeQrScannerDialog
+import java.util.Locale
+import java.util.UUID
 
 class ItemDraftState(
     productId: String,
@@ -116,18 +114,19 @@ class ItemDraftState(
     quantityStr: String = "1",
     unitPriceStr: String = "0.00",
     discountStr: String = "0.00",
-    isPercentageDiscount: Boolean = false
+    isPercentageDiscount: Boolean = true,
+    isExpanded: Boolean = true,
+    val uid: String = UUID.randomUUID().toString()
 ) {
-    // Backed by Compose state so edits (qty, price, discount) recompose immediately.
     var productId by mutableStateOf(productId)
     var variantId by mutableStateOf(variantId)
     var quantityStr by mutableStateOf(quantityStr)
     var unitPriceStr by mutableStateOf(unitPriceStr)
     var discountStr by mutableStateOf(discountStr)
     var isPercentageDiscount by mutableStateOf(isPercentageDiscount)
+    var isExpanded by mutableStateOf(isExpanded)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateInvoiceDialog(
     customers: List<Customer>,
@@ -137,6 +136,9 @@ fun CreateInvoiceDialog(
     stockBalances: List<StockBalance> = emptyList(),
     costLayers: List<InventoryCostLayer> = emptyList(),
     liquidAccounts: List<ChartOfAccount> = emptyList(),
+    productImages: Map<String, String> = emptyMap(),
+    variantImages: Map<String, String> = emptyMap(),
+    userRole: UserRole = UserRole.OWNER_ADMIN,
     customerSummary: CustomerSummary? = null,
     isBangla: Boolean,
     onDismiss: () -> Unit,
@@ -145,23 +147,40 @@ fun CreateInvoiceDialog(
     onSubmitDraft: (SalesInvoiceDraft) -> Unit = onSubmit,
     onConfirmSale: (SalesInvoiceDraft) -> Unit = onSubmit
 ) {
-    var selectedCustomerId by remember { mutableStateOf(customers.firstOrNull()?.id ?: "") }
+    val context = LocalContext.current
+    val isDark = LocalIsDarkTheme.current
+    val palette = rememberSalesInvoicePalette()
+
+    val canViewCost = SecurityManager.canViewCost(userRole)
+    val canViewProfit = SecurityManager.canViewProfit(userRole)
+    val canViewAnyCostOrProfit = canViewCost || canViewProfit
+
+    var selectedCustomerId by rememberSaveable { mutableStateOf(customers.firstOrNull()?.id ?: "") }
     var pendingNewCustomerDraft by remember { mutableStateOf<NewCustomerDraft?>(null) }
     var showCustomerLookup by rememberSaveable { mutableStateOf(false) }
 
-    var selectedWarehouseId by remember { mutableStateOf(warehouses.firstOrNull()?.id ?: "") }
-    var warehouseExpanded by rememberSaveable { mutableStateOf(false) }
+    var selectedWarehouseId by rememberSaveable { mutableStateOf(warehouses.firstOrNull()?.id ?: "") }
 
     var invoiceDiscountStr by rememberSaveable { mutableStateOf("0.00") }
-    var isInvoiceDiscountPercentage by rememberSaveable { mutableStateOf(false) }
+    var isInvoiceDiscountPercentage by rememberSaveable { mutableStateOf(true) }
     var additionalChargesStr by rememberSaveable { mutableStateOf("0.00") }
     var paidAmountStr by rememberSaveable { mutableStateOf("0.00") }
     var isFullPaymentSelected by rememberSaveable { mutableStateOf(false) }
-    var paymentMethod by rememberSaveable { mutableStateOf("CASH") } // CASH, BANK, MFS, CREDIT
-    var selectedPaymentAccountId by rememberSaveable { mutableStateOf("coa-1010") }
+    var paymentMethod by rememberSaveable { mutableStateOf("CASH") }
+    var selectedPaymentAccountId by rememberSaveable {
+        mutableStateOf(
+            liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
+        )
+    }
     var notes by rememberSaveable { mutableStateOf("") }
-    var showCostAndProfit by rememberSaveable { mutableStateOf(true) }
+    var showCostAndProfit by rememberSaveable { mutableStateOf(canViewAnyCostOrProfit) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    var showItemSearchBar by rememberSaveable { mutableStateOf(false) }
+    var itemSearchQuery by rememberSaveable { mutableStateOf("") }
+    var showAddItemPicker by rememberSaveable { mutableStateOf(false) }
+    var pickingForItemIndex by remember { mutableStateOf<Int?>(null) }
+    var showBarcodeScanner by rememberSaveable { mutableStateOf(false) }
 
     // Option C Credit Limit Control State
     var showCreditLimitWarningDialog by rememberSaveable { mutableStateOf(false) }
@@ -175,16 +194,12 @@ fun CreateInvoiceDialog(
         }
     }
 
-    val variantsByProduct = remember(variants) {
-        variants.groupBy { it.productId }
-    }
-    val productsMap = remember(products) {
-        products.associateBy { it.id }
-    }
+    val variantsByProduct = remember(variants) { variants.groupBy { it.productId } }
+    val productsMap = remember(products) { products.associateBy { it.id } }
 
     fun createDefaultItemDraft(warehouseId: String): ItemDraftState {
         val p = firstInStockProduct(stockBalances, warehouseId, products, variantsByProduct)
-            ?: return ItemDraftState(productId = "", variantId = null, quantityStr = "1", unitPriceStr = "0.00")
+            ?: return ItemDraftState(productId = "", variantId = null, quantityStr = "1", unitPriceStr = "0.00", isExpanded = true)
         val pVars = variantsByProduct[p.id].orEmpty()
         val firstV = if (pVars.isNotEmpty()) firstInStockVariant(stockBalances, warehouseId, p.id, pVars) else null
         val initialPriceMinor = firstV?.variantPriceMinor ?: p.sellingPriceMinor
@@ -192,7 +207,8 @@ fun CreateInvoiceDialog(
             productId = p.id,
             variantId = firstV?.id,
             quantityStr = "1",
-            unitPriceStr = BigDecimal(initialPriceMinor).divide(BigDecimal(100)).toPlainString()
+            unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(initialPriceMinor),
+            isExpanded = true
         )
     }
 
@@ -225,7 +241,7 @@ fun CreateInvoiceDialog(
                     val nextV = firstInStockVariant(stockBalances, whId, itemDraft.productId, pVars)
                     itemDraft.variantId = nextV?.id
                     if (nextV != null) {
-                        itemDraft.unitPriceStr = BigDecimal(nextV.variantPriceMinor).divide(BigDecimal(100)).toPlainString()
+                        itemDraft.unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(nextV.variantPriceMinor)
                     }
                 }
             }
@@ -235,43 +251,6 @@ fun CreateInvoiceDialog(
     val selectedCustomer = customers.find { it.id == selectedCustomerId }
     val selectedWarehouse = warehouses.find { it.id == selectedWarehouseId }
 
-    // Real-time Calculations
-    var subtotalMinor = 0L
-    itemsList.forEach { item ->
-        val qty = item.quantityStr.toIntOrNull() ?: 0
-        val price = runCatching { Money.parseFromString(item.unitPriceStr).minorUnits }.getOrDefault(0L)
-        val lineGross = qty * price
-        val discAmount = if (item.isPercentageDiscount) {
-            val pct = item.discountStr.toDoubleOrNull() ?: 0.0
-            val validPct = pct.coerceIn(0.0, 100.0)
-            ((lineGross * validPct) / 100.0).toLong()
-        } else {
-            runCatching { Money.parseFromString(item.discountStr).minorUnits }.getOrDefault(0L)
-        }
-        val validDisc = minOf(discAmount, lineGross)
-        val line = maxOf(0L, lineGross - validDisc)
-        subtotalMinor += line
-    }
-
-    val rawInvDiscountMinor = if (isInvoiceDiscountPercentage) {
-        val pct = invoiceDiscountStr.toDoubleOrNull() ?: 0.0
-        val validPct = pct.coerceIn(0.0, 100.0)
-        ((subtotalMinor * validPct) / 100.0).toLong()
-    } else {
-        runCatching { Money.parseFromString(invoiceDiscountStr).minorUnits }.getOrDefault(0L)
-    }
-    val invDiscountMinor = minOf(rawInvDiscountMinor, subtotalMinor)
-    val addChargesMinor = runCatching { Money.parseFromString(additionalChargesStr).minorUnits }.getOrDefault(0L)
-    val grandTotalMinor = maxOf(0L, subtotalMinor - invDiscountMinor + addChargesMinor)
-
-    val currentPaidMinor = if (isFullPaymentSelected) {
-        grandTotalMinor
-    } else {
-        runCatching { Money.parseFromString(paidAmountStr).minorUnits }.getOrDefault(0L)
-    }
-    val dueAmountMinor = maxOf(0L, grandTotalMinor - currentPaidMinor)
-
-    // Helper: Compute sellable stock for (warehouse, product, variant)
     fun getSellableStock(productId: String, variantId: String?): Int =
         sellableStockForSelection(
             stockBalances = stockBalances,
@@ -280,6 +259,120 @@ fun CreateInvoiceDialog(
             variantId = variantId,
             productVariants = variantsByProduct[productId].orEmpty()
         )
+
+    fun resolveItemUnitCostMinor(product: Product?, variant: ProductVariant?): Long {
+        if (product == null) return 0L
+        return resolveUnitCostMinorForSale(
+            layers = costLayers,
+            productId = product.id,
+            variantId = variant?.id,
+            warehouseId = selectedWarehouseId,
+            variantCostMinor = variant?.variantCostMinor,
+            productPurchasePriceMinor = product.purchasePriceMinor
+        )
+    }
+
+    // Live per-line & invoice totals
+    val lineCalculations: List<LineCalculation> = itemsList.map { item ->
+        val prod = productsMap[item.productId]
+        val prodVariants = variantsByProduct[item.productId].orEmpty()
+        val curVar = prodVariants.find { it.id == item.variantId }
+        val unitCostMinor = resolveItemUnitCostMinor(prod, curVar)
+        val qty = Formatters.normalizeAsciiNumberInput(item.quantityStr).toIntOrNull() ?: 0
+        val priceMinor = SalesInvoiceCalculator.parseMajorToMinor(item.unitPriceStr)
+        SalesInvoiceCalculator.computeLineAmounts(
+            quantity = qty,
+            unitPriceMinor = priceMinor,
+            discountInput = item.discountStr,
+            isPercentDiscount = item.isPercentageDiscount,
+            unitCostMinor = unitCostMinor
+        )
+    }
+
+    val totals = SalesInvoiceCalculator.computeInvoiceTotals(
+        lines = lineCalculations,
+        invoiceDiscountInput = invoiceDiscountStr,
+        isInvoicePercentDiscount = isInvoiceDiscountPercentage,
+        additionalChargesInput = additionalChargesStr,
+        paidAmountInput = paidAmountStr,
+        isFullPay = isFullPaymentSelected,
+        isCreditMethod = paymentMethod == "CREDIT"
+    )
+
+    fun handleScannedCode(rawCode: String) {
+        val code = rawCode.trim()
+        if (code.isBlank()) return
+        val whId = selectedWarehouseId
+        val matchedVariant = variants.find {
+            it.barcode.equals(code, ignoreCase = true) ||
+                it.qrCode.equals(code, ignoreCase = true) ||
+                it.sku.equals(code, ignoreCase = true)
+        }
+        if (matchedVariant != null) {
+            val prod = productsMap[matchedVariant.productId]
+            if (prod != null) {
+                val stock = sellableStockForVariant(stockBalances, whId, prod.id, matchedVariant.id)
+                if (stock <= 0) {
+                    errorMessage = if (isBangla) "স্ক্যান করা ভেরিয়েন্টটি স্টকে নেই" else "Scanned variant is out of stock"
+                    return
+                }
+                val existing = itemsList.find { it.productId == prod.id && it.variantId == matchedVariant.id }
+                if (existing != null) {
+                    val curQty = Formatters.normalizeAsciiNumberInput(existing.quantityStr).toIntOrNull() ?: 0
+                    existing.quantityStr = (curQty + 1).toString()
+                    existing.isExpanded = true
+                } else {
+                    itemsList.add(
+                        ItemDraftState(
+                            productId = prod.id,
+                            variantId = matchedVariant.id,
+                            quantityStr = "1",
+                            unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(matchedVariant.variantPriceMinor),
+                            isExpanded = true
+                        )
+                    )
+                }
+                errorMessage = null
+                Toast.makeText(context, if (isBangla) "যোগ হয়েছে: ${prod.nameEn}" else "Added: ${prod.nameEn}", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+        val matchedProduct = products.find {
+            it.barcode.equals(code, ignoreCase = true) ||
+                it.qrCode.equals(code, ignoreCase = true) ||
+                it.baseSku.equals(code, ignoreCase = true)
+        }
+        if (matchedProduct != null) {
+            val pVars = variantsByProduct[matchedProduct.id].orEmpty()
+            val prodStock = sellableStockForProduct(stockBalances, whId, matchedProduct.id, pVars)
+            if (prodStock <= 0) {
+                errorMessage = if (isBangla) "স্ক্যান করা পণ্যটি স্টকে নেই" else "Scanned product is out of stock"
+                return
+            }
+            val firstV = if (pVars.isNotEmpty()) firstInStockVariant(stockBalances, whId, matchedProduct.id, pVars) else null
+            val existing = itemsList.find { it.productId == matchedProduct.id && it.variantId == firstV?.id }
+            if (existing != null) {
+                val curQty = Formatters.normalizeAsciiNumberInput(existing.quantityStr).toIntOrNull() ?: 0
+                existing.quantityStr = (curQty + 1).toString()
+                existing.isExpanded = true
+            } else {
+                val priceMinor = firstV?.variantPriceMinor ?: matchedProduct.sellingPriceMinor
+                itemsList.add(
+                    ItemDraftState(
+                        productId = matchedProduct.id,
+                        variantId = firstV?.id,
+                        quantityStr = "1",
+                        unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(priceMinor),
+                        isExpanded = true
+                    )
+                )
+            }
+            errorMessage = null
+            Toast.makeText(context, if (isBangla) "যোগ হয়েছে: ${matchedProduct.nameEn}" else "Added: ${matchedProduct.nameEn}", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, if (isBangla) "কোড পাওয়া যায়নি: $code" else "Product not found for code: $code", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     fun buildInvoiceDraft(): SalesInvoiceDraft? {
         if (selectedCustomerId.isBlank() && pendingNewCustomerDraft == null) {
@@ -298,42 +391,45 @@ fun CreateInvoiceDialog(
             errorMessage = if (isBangla) "অনুগ্রহ করে স্টকে থাকা পণ্য নির্বাচন করুন" else "Please select an in-stock product for every row"
             return null
         }
-        if (itemsList.any { getSellableStock(it.productId, it.variantId) <= 0 }) {
-            errorMessage = if (isBangla) "স্টক আউট পণ্য বিক্রয় করা যাবে না" else "Cannot sell out-of-stock item"
-            return null
-        }
 
-        val draftItems = itemsList.mapNotNull { item ->
-            val qty = item.quantityStr.toIntOrNull() ?: 0
-            val price = runCatching { Money.parseFromString(item.unitPriceStr).minorUnits }.getOrDefault(0L)
-            val lineGross = qty * price
-            val discAmount = if (item.isPercentageDiscount) {
-                val pct = item.discountStr.toDoubleOrNull() ?: 0.0
-                val validPct = pct.coerceIn(0.0, 100.0)
-                ((lineGross * validPct) / 100.0).toLong()
-            } else {
-                runCatching { Money.parseFromString(item.discountStr).minorUnits }.getOrDefault(0L)
-            }
-            val disc = minOf(discAmount, lineGross)
-            if (qty > 0 && price >= 0) {
+        val draftItems = itemsList.mapIndexedNotNull { idx, item ->
+            val calc = lineCalculations[idx]
+            if (calc.quantity > 0) {
                 InvoiceItemDraft(
                     productId = item.productId,
                     variantId = item.variantId,
-                    quantity = qty,
-                    unitPriceMinor = price,
-                    discountMinor = disc
+                    quantity = calc.quantity,
+                    unitPriceMinor = calc.unitPriceMinor,
+                    discountMinor = calc.discountMinor
                 )
             } else null
         }
 
-        if (draftItems.isEmpty()) {
-            errorMessage = if (isBangla) "সব পণ্যের সঠিক পরিমাণ ও মূল্য দিন" else "All items must have valid quantity > 0 and price >= 0"
+        if (draftItems.size != itemsList.size || draftItems.isEmpty()) {
+            errorMessage = if (isBangla) "সব পণ্যের সঠিক পরিমাণ (> ০) দিন" else "All items must have quantity > 0"
             return null
+        }
+
+        // Validate aggregated requested qty per product/variant against warehouse sellable stock
+        for ((selection, grouped) in draftItems.groupBy { it.productId to it.variantId }) {
+            val stock = getSellableStock(selection.first, selection.second)
+            val totalReq = grouped.sumOf { it.quantity }
+            if (stock <= 0 || totalReq > stock) {
+                val pName = productsMap[selection.first]?.nameEn ?: "Product"
+                errorMessage = if (isBangla) {
+                    "'$pName'-এর জন্য পর্যাপ্ত স্টক নেই (মজুদ: $stock, চাওয়া হয়েছে: $totalReq)"
+                } else {
+                    "Insufficient stock for '$pName' (Available: $stock, Requested: $totalReq)"
+                }
+                return null
+            }
         }
 
         val resolvedAccount = liquidAccounts.find { it.id == selectedPaymentAccountId }
         val resolvedAccountId = when (paymentMethod) {
-            "CASH" -> resolvedAccount?.takeIf { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
+            "CASH" -> resolvedAccount?.takeIf { it.liquidKind == LiquidAccountKind.CASH }?.id
+                ?: liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id
+                ?: "coa-1010"
             "BANK" -> resolvedAccount?.takeIf { it.liquidKind == LiquidAccountKind.BANK }?.id
                 ?: liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.BANK }?.id
                 ?: "coa-1020"
@@ -352,902 +448,612 @@ fun CreateInvoiceDialog(
             customerId = selectedCustomerId,
             warehouseId = selectedWarehouseId,
             invoiceDate = System.currentTimeMillis(),
-            discountMinor = invDiscountMinor,
-            additionalChargesMinor = addChargesMinor,
-            paidAmountMinor = currentPaidMinor,
+            discountMinor = totals.invoiceDiscountMinor,
+            additionalChargesMinor = totals.additionalChargesMinor,
+            paidAmountMinor = totals.paidMinor,
             paymentMethod = resolvedPaymentMethod,
             paymentAccountId = resolvedAccountId,
-            notes = notes.ifBlank { null },
+            notes = notes.trim().ifBlank { null },
             items = draftItems,
             newCustomerDraft = pendingNewCustomerDraft
         )
     }
 
-    Dialog(
+    val visibleIndices = remember(itemsList.size, itemsList.map { "${it.productId}|${it.variantId}" }, itemSearchQuery, productsMap, variantsByProduct) {
+        val q = itemSearchQuery.trim()
+        itemsList.indices.filter { idx ->
+            if (q.isBlank()) true
+            else {
+                val item = itemsList[idx]
+                val p = productsMap[item.productId]
+                val v = variantsByProduct[item.productId]?.find { it.id == item.variantId }
+                (p?.nameEn?.contains(q, true) == true) ||
+                    (p?.nameBn?.contains(q, true) == true) ||
+                    (p?.baseSku?.contains(q, true) == true) ||
+                    (v?.sku?.contains(q, true) == true) ||
+                    (v?.color?.contains(q, true) == true) ||
+                    (v?.size?.contains(q, true) == true)
+            }
+        }
+    }
+
+    ERPFullScreenEditor(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        applySafeDrawingPadding = false,
+        lightStatusBarIcons = false,
+        statusBarColor = android.graphics.Color.TRANSPARENT
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.92f)
-                .widthIn(max = 640.dp)
-                .clip(RoundedCornerShape(16.dp)),
-            color = ERPBackground
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                // Top Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(PrimaryPurple.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Outlined.ShoppingBag, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(20.dp))
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = if (isBangla) "নতুন বিক্রয় চালান" else "New Sales Invoice",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = if (isBangla) "গ্রাহক তথ্য, ভেরিয়েন্ট পণ্য ও পেমেন্ট" else "Customer details, variant items & payment",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = { showCostAndProfit = !showCostAndProfit },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (showCostAndProfit) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                                contentDescription = "Cost & Profit Visibility",
-                                tint = if (showCostAndProfit) PrimaryPurple else TextMuted
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
-                        }
-                    }
-                }
+        Box(modifier = Modifier.fillMaxSize()) {
+            SalesInvoiceHeroBackground(
+                isDark = isDark,
+                modifier = Modifier.height(180.dp)
+            )
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = DeepNavy.copy(alpha = 0.08f))
+            Column(modifier = Modifier.fillMaxSize()) {
+                SalesInvoiceHeroHeader(
+                    title = if (isBangla) "নতুন বিক্রয় চালান" else "New Sales Invoice",
+                    subtitle = if (isBangla) "চালান তৈরি, পণ্য যোগ ও পেমেন্ট নিন" else "Create invoice, add items & take payment",
+                    canToggleCostOrProfit = canViewAnyCostOrProfit,
+                    showCostAndProfit = showCostAndProfit,
+                    onBack = onDismiss,
+                    onToggleCostProfit = { showCostAndProfit = !showCostAndProfit },
+                    onScanBarcode = { showBarcodeScanner = true }
+                )
 
-                LazyColumn(
+                // Main Rounded Sheet overlapping bottom of hero gradient
+                Surface(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+                    color = palette.sheetBg
                 ) {
-                    // 1. Customer Summary Card
-                    item {
-                        if (pendingNewCustomerDraft != null) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(CircleShape)
-                                                .background(SecondaryTeal.copy(alpha = 0.15f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Outlined.PersonAdd, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(22.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column {
-                                            Text(
-                                                text = "${pendingNewCustomerDraft!!.name} (New Customer)",
-                                                fontWeight = FontWeight.Bold,
-                                                color = TextPrimary
-                                            )
-                                            Text(
-                                                text = "${pendingNewCustomerDraft!!.phone} • ${pendingNewCustomerDraft!!.address}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = TextSecondary
-                                            )
-                                        }
-                                    }
-                                    OutlinedButton(
-                                        onClick = { showCustomerLookup = true },
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text(if (isBangla) "পরিবর্তন" else "Change", fontSize = 11.sp)
-                                    }
-                                }
-                            }
-                        } else {
-                            CustomerSummaryCard(
-                                customer = selectedCustomer,
-                                summary = customerSummary,
-                                isBangla = isBangla,
-                                onChangeCustomerClick = { showCustomerLookup = true }
-                            )
-                        }
-                    }
-
-                    // 2. Dispatch Warehouse Selector
-                    item {
-                        Text(
-                            text = if (isBangla) "বিতরণ ওয়্যারহাউস / DISPATCH WAREHOUSE *" else "DISPATCH WAREHOUSE *",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextSecondary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        ExposedDropdownMenuBox(
-                            expanded = warehouseExpanded,
-                            onExpandedChange = { warehouseExpanded = it }
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            OutlinedTextField(
-                                value = selectedWarehouse?.let { "${it.name} (${it.code})" } ?: "Select Warehouse",
-                                onValueChange = {},
-                                readOnly = true,
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = warehouseExpanded) },
-                                modifier = Modifier
-                                    .menuAnchor()
-                                    .fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PrimaryPurple,
-                                    unfocusedBorderColor = DeepNavy.copy(alpha = 0.2f),
-                                    focusedContainerColor = Color.White,
-                                    unfocusedContainerColor = Color.White
+                            // 1. Customer Summary Card + 4-Across Historical Metrics
+                            item(key = "customer_section") {
+                                SalesCustomerHeroSection(
+                                    customer = selectedCustomer,
+                                    pendingNewCustomer = pendingNewCustomerDraft,
+                                    summary = customerSummary,
+                                    isBangla = isBangla,
+                                    palette = palette,
+                                    onChangeCustomerClick = { showCustomerLookup = true }
                                 )
-                            )
-                            ExposedDropdownMenu(
-                                expanded = warehouseExpanded,
-                                onDismissRequest = { warehouseExpanded = false }
-                            ) {
-                                warehouses.forEach { wh ->
-                                    DropdownMenuItem(
-                                        text = { Text("${wh.name} (${wh.code})") },
-                                        onClick = {
-                                            selectedWarehouseId = wh.id
-                                            warehouseExpanded = false
-                                        }
-                                    )
-                                }
                             }
-                        }
-                    }
 
-                    // 3. Invoice Items Header & Add Button
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (isBangla) "পণ্য ও ভেরিয়েন্ট সমূহ (${itemsList.size})" else "INVOICE ITEMS (${itemsList.size})",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Button(
-                                onClick = {
-                                    if (products.isNotEmpty()) {
-                                        itemsList.add(createDefaultItemDraft(selectedWarehouseId))
+                            // 2. Dispatch Warehouse Card
+                            item(key = "warehouse_section") {
+                                SalesWarehouseSelectorCard(
+                                    warehouses = warehouses,
+                                    selectedWarehouse = selectedWarehouse,
+                                    isBangla = isBangla,
+                                    palette = palette,
+                                    onSelectWarehouse = { wh ->
+                                        selectedWarehouseId = wh.id
+                                        errorMessage = null
                                     }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(if (isBangla) "পণ্য যোগ করুন" else "Add Item", fontSize = 12.sp)
+                                )
                             }
-                        }
-                    }
 
-                    // 4. Product Rows with Variant Selection & Sellable Stock
-                    itemsIndexed(itemsList) { index, itemDraft ->
-                        var productDropdown by rememberSaveable { mutableStateOf(false) }
-                        var variantDropdown by rememberSaveable { mutableStateOf(false) }
-
-                        val curProduct = productsMap[itemDraft.productId]
-                        val prodVariants: List<ProductVariant> = variantsByProduct[itemDraft.productId] ?: emptyList()
-                        val curVariant = prodVariants.find { it.id == itemDraft.variantId }
-
-                        val sellableStock = getSellableStock(itemDraft.productId, itemDraft.variantId)
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "#${index + 1} ${curProduct?.nameEn ?: "Select Item"}",
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimary
-                                        )
-                                        if (curVariant != null) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Surface(
-                                                color = SecondaryTeal.copy(alpha = 0.12f),
-                                                shape = RoundedCornerShape(4.dp)
-                                            ) {
-                                                val varLabel = buildString {
-                                                    curVariant.color?.let { append(it) }
-                                                    if (curVariant.color != null && curVariant.size != null) append("-")
-                                                    curVariant.size?.let { append(it) }
-                                                    if (isEmpty()) append(curVariant.sku)
-                                                }
-                                                Text(
-                                                    text = varLabel,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = SecondaryTeal,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    if (itemsList.size > 1) {
-                                        IconButton(onClick = { itemsList.removeAt(index) }, modifier = Modifier.size(24.dp)) {
-                                            Icon(Icons.Outlined.Delete, contentDescription = "Delete", tint = Color.Red, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Product selector dropdown
-                                ExposedDropdownMenuBox(
-                                    expanded = productDropdown,
-                                    onExpandedChange = { productDropdown = it }
-                                ) {
-                                    OutlinedTextField(
-                                        value = curProduct?.let { "${it.nameEn} [${it.baseSku}]" }
-                                            ?: if (isBangla) "পণ্য নির্বাচন করুন" else "Select Product",
-                                        onValueChange = {},
-                                        readOnly = true,
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = productDropdown) },
-                                        modifier = Modifier
-                                            .menuAnchor()
-                                            .fillMaxWidth(),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = PrimaryPurple,
-                                            unfocusedBorderColor = DeepNavy.copy(alpha = 0.2f)
-                                        )
-                                    )
-                                    ExposedDropdownMenu(
-                                        expanded = productDropdown,
-                                        onDismissRequest = { productDropdown = false }
-                                    ) {
-                                        val washedColor = TextMuted.copy(alpha = 0.42f)
-                                        products.forEach { prod ->
-                                            val pVars = variantsByProduct[prod.id].orEmpty()
-                                            val prodStock = sellableStockForProduct(stockBalances, selectedWarehouseId, prod.id, pVars)
-                                            val isProdInStock = prodStock > 0
-                                            DropdownMenuItem(
-                                                enabled = isProdInStock,
-                                                colors = MenuDefaults.itemColors(
-                                                    textColor = TextPrimary,
-                                                    disabledTextColor = washedColor
-                                                ),
-                                                text = {
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            text = "${prod.nameEn} (${prod.baseSku})",
-                                                            modifier = Modifier.weight(1f).padding(end = 8.dp),
-                                                            color = if (isProdInStock) TextPrimary else washedColor,
-                                                            fontWeight = if (isProdInStock) FontWeight.Medium else FontWeight.Normal
-                                                        )
-                                                        Text(
-                                                            text = if (isProdInStock) {
-                                                                if (isBangla) "স্টক: $prodStock" else "Stock: $prodStock"
-                                                            } else {
-                                                                if (isBangla) "স্টক নেই" else "Stock Out"
-                                                            },
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = if (isProdInStock) SecondaryTeal else washedColor,
-                                                            fontWeight = if (isProdInStock) FontWeight.SemiBold else FontWeight.Normal
-                                                        )
-                                                    }
-                                                },
-                                                onClick = {
-                                                    if (!isProdInStock) return@DropdownMenuItem
-                                                    itemDraft.productId = prod.id
-                                                    val firstV = if (pVars.isNotEmpty()) {
-                                                        firstInStockVariant(stockBalances, selectedWarehouseId, prod.id, pVars)
-                                                    } else null
-                                                    itemDraft.variantId = firstV?.id
-                                                    val priceMinor = firstV?.variantPriceMinor ?: prod.sellingPriceMinor
-                                                    itemDraft.unitPriceStr = BigDecimal(priceMinor).divide(BigDecimal(100)).toPlainString()
-                                                    productDropdown = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Variant selector dropdown if product has variants
-                                if (prodVariants.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    ExposedDropdownMenuBox(
-                                        expanded = variantDropdown,
-                                        onExpandedChange = { variantDropdown = it }
-                                    ) {
-                                        val variantTitle = curVariant?.let { v ->
-                                            listOfNotNull(v.color, v.size, v.sku).joinToString(" - ")
-                                        } ?: if (isBangla) "ভেরিয়েন্ট নির্বাচন করুন" else "Select Variant"
-                                        OutlinedTextField(
-                                            value = variantTitle,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            label = { Text(if (isBangla) "ভেরিয়েন্ট" else "Variant") },
-                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = variantDropdown) },
-                                            modifier = Modifier
-                                                .menuAnchor()
-                                                .fillMaxWidth(),
-                                            shape = RoundedCornerShape(8.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = SecondaryTeal,
-                                                unfocusedBorderColor = DeepNavy.copy(alpha = 0.2f)
-                                            )
-                                        )
-                                        ExposedDropdownMenu(
-                                            expanded = variantDropdown,
-                                            onDismissRequest = { variantDropdown = false }
-                                        ) {
-                                            val washedColor = TextMuted.copy(alpha = 0.42f)
-                                            for (v in prodVariants) {
-                                                val varStock = sellableStockForVariant(stockBalances, selectedWarehouseId, itemDraft.productId, v.id)
-                                                val isVarInStock = varStock > 0
-                                                DropdownMenuItem(
-                                                    enabled = isVarInStock,
-                                                    colors = MenuDefaults.itemColors(
-                                                        textColor = TextPrimary,
-                                                        disabledTextColor = washedColor
-                                                    ),
-                                                    text = {
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                                            verticalAlignment = Alignment.CenterVertically
-                                                        ) {
-                                                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                                                                Text(
-                                                                    text = listOfNotNull(v.color, v.size, v.sku).joinToString(" • "),
-                                                                    fontWeight = if (isVarInStock) FontWeight.Bold else FontWeight.Normal,
-                                                                    color = if (isVarInStock) TextPrimary else washedColor
-                                                                )
-                                                                Text(
-                                                                    text = "Price: ৳" + Formatters.formatMinorUnit(v.variantPriceMinor),
-                                                                    style = MaterialTheme.typography.bodySmall,
-                                                                    color = if (isVarInStock) TextSecondary else TextMuted.copy(alpha = 0.35f)
-                                                                )
-                                                            }
-                                                            Text(
-                                                                text = if (isVarInStock) {
-                                                                    if (isBangla) "স্টক: $varStock" else "Stock: $varStock"
-                                                                } else {
-                                                                    if (isBangla) "স্টক নেই" else "Stock Out"
-                                                                },
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = if (isVarInStock) SecondaryTeal else washedColor,
-                                                                fontWeight = if (isVarInStock) FontWeight.SemiBold else FontWeight.Normal
-                                                            )
-                                                        }
-                                                    },
-                                                    onClick = {
-                                                        if (!isVarInStock) return@DropdownMenuItem
-                                                        itemDraft.variantId = v.id
-                                                        itemDraft.unitPriceStr = BigDecimal(v.variantPriceMinor).divide(BigDecimal(100)).toPlainString()
-                                                        variantDropdown = false
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                // Sellable Stock Indicator
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Inventory2,
-                                        contentDescription = null,
-                                        tint = if (sellableStock > 0) StatusSuccess else StatusError,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isBangla) {
-                                            "বিক্রয়যোগ্য স্টক: $sellableStock টি (${selectedWarehouse?.name ?: "Warehouse"})"
-                                        } else {
-                                            "Sellable Stock: $sellableStock units (${selectedWarehouse?.name ?: "Warehouse"})"
-                                        },
-                                        fontSize = 11.sp,
-                                        color = if (sellableStock > 0) TextSecondary else StatusError,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                // Qty, Unit Price (Editable!), Line Discount
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = itemDraft.quantityStr,
-                                        onValueChange = { itemDraft.quantityStr = it },
-                                        label = { Text("Qty") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    OutlinedTextField(
-                                        value = itemDraft.unitPriceStr,
-                                        onValueChange = { itemDraft.unitPriceStr = it },
-                                        label = { Text("Price (৳)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.weight(1.3f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    OutlinedTextField(
-                                        value = itemDraft.discountStr,
-                                        onValueChange = { itemDraft.discountStr = it },
-                                        label = { Text("Disc (৳)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                }
-
-                                if (showCostAndProfit && curProduct != null) {
-                                    val unitCostMinor = resolveUnitCostMinorForSale(
-                                        layers = costLayers,
-                                        productId = curProduct.id,
-                                        variantId = curVariant?.id,
-                                        warehouseId = selectedWarehouseId,
-                                        variantCostMinor = curVariant?.variantCostMinor,
-                                        productPurchasePriceMinor = curProduct.purchasePriceMinor
-                                    )
-                                    val qty = itemDraft.quantityStr.toIntOrNull() ?: 0
-                                    val priceMinor = runCatching { Money.parseFromString(itemDraft.unitPriceStr).minorUnits }.getOrDefault(0L)
-                                    val discMinor = runCatching { Money.parseFromString(itemDraft.discountStr).minorUnits }.getOrDefault(0L)
-                                    val lineGrossMinor = qty * priceMinor
-                                    val lineNetMinor = (lineGrossMinor - discMinor).coerceAtLeast(0L)
-                                    val lineCostMinor = unitCostMinor * qty
-                                    val lineProfitMinor = lineNetMinor - lineCostMinor
-                                    val profitColor = if (lineProfitMinor >= 0) StatusSuccess else StatusError
-
-                                    Spacer(modifier = Modifier.height(6.dp))
+                            // 3. Invoice Items Header
+                            item(key = "items_header") {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(ERPSurfaceVariant, RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = if (isBangla) "ক্রয়: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc" else "Cost: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = TextSecondary
-                                        )
-                                        Text(
-                                            text = if (isBangla) "আনুমানিক লাভ: ৳${Formatters.formatMinorUnit(lineProfitMinor)}" else "Profit: ৳${Formatters.formatMinorUnit(lineProfitMinor)}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = profitColor
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 5. Discount, Additional Charges & Notes
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = invoiceDiscountStr,
-                                    onValueChange = { invoiceDiscountStr = it },
-                                    label = { Text(if (isBangla) "চালান বাট্টা (৳)" else "Invoice Discount (৳)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                OutlinedTextField(
-                                    value = additionalChargesStr,
-                                    onValueChange = { additionalChargesStr = it },
-                                    label = { Text(if (isBangla) "অতিরিক্ত চার্জ (ডেলিভারি/ট্যাক্স ৳)" else "Additional Charges (৳)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                            }
-                            OutlinedTextField(
-                                value = notes,
-                                onValueChange = { notes = it },
-                                label = { Text(if (isBangla) "নোট / শর্তাবলী" else "Notes / Terms") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                        }
-                    }
-
-                    // 6. Payment Method & Paid Amount
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    text = if (isBangla) "পেমেন্ট মাধ্যম ও পরিশোধ" else "Payment Method & Settlement",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                val paymentOptions = listOf(
-                                    "CASH" to if (isBangla) "নগদ (Cash)" else "Cash (নগদ)",
-                                    "BANK" to if (isBangla) "ব্যাংক (Bank)" else "Bank (ব্যাংক)",
-                                    "MFS" to if (isBangla) "বিকাশ / নগদ (MFS)" else "MFS (bKash/Nagad)",
-                                    "CREDIT" to if (isBangla) "বকেয়া (Credit)" else "Credit (বকেয়া)"
-                                )
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    paymentOptions.chunked(2).forEach { rowOptions ->
                                         Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            rowOptions.forEach { (code, label) ->
-                                                val isSelected = paymentMethod == code
-                                                Surface(
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .clickable {
-                                                            paymentMethod = code
-                                                            when (code) {
-                                                                "CREDIT" -> {
-                                                                    isFullPaymentSelected = false
-                                                                    paidAmountStr = "0.00"
-                                                                }
-                                                                "CASH" -> selectedPaymentAccountId =
-                                                                    liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
-                                                                "BANK" -> selectedPaymentAccountId =
-                                                                    liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.BANK }?.id ?: "coa-1020"
-                                                                "MFS" -> selectedPaymentAccountId =
-                                                                    liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }?.id ?: "coa-1060"
-                                                            }
-                                                        },
-                                                    color = if (isSelected) PrimaryPurple else ERPBackground,
-                                                    border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, DeepNavy.copy(alpha = 0.12f))
-                                                ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.ViewInAr,
+                                                contentDescription = null,
+                                                tint = palette.primaryPurple,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isBangla) "চালানের পণ্যসমূহ (${itemsList.size})" else "Invoice Items (${itemsList.size})",
+                                                fontSize = 14.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = palette.textPrimary
+                                            )
+                                        }
+
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                modifier = Modifier.size(34.dp),
+                                                onClick = { showItemSearchBar = !showItemSearchBar },
+                                                shape = RoundedCornerShape(9.dp),
+                                                color = if (showItemSearchBar) palette.iconBadgeBg else palette.cardBg,
+                                                border = BorderStroke(1.dp, palette.cardBorder)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Search,
+                                                        contentDescription = "Search Items",
+                                                        tint = palette.primaryPurple,
+                                                        modifier = Modifier.size(17.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Surface(
+                                                modifier = Modifier.size(34.dp),
+                                                onClick = { showBarcodeScanner = true },
+                                                shape = RoundedCornerShape(9.dp),
+                                                color = palette.cardBg,
+                                                border = BorderStroke(1.dp, palette.cardBorder)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.QrCodeScanner,
+                                                        contentDescription = "Scan Item Barcode",
+                                                        tint = palette.primaryPurple,
+                                                        modifier = Modifier.size(17.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .height(34.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(purplePillGradient)
+                                                    .clickable {
+                                                        pickingForItemIndex = null
+                                                        showAddItemPicker = true
+                                                    }
+                                                    .padding(horizontal = 12.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Add,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
                                                     Text(
-                                                        text = label,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextPrimary,
-                                                        textAlign = TextAlign.Center,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .padding(vertical = 8.dp, horizontal = 6.dp),
-                                                        maxLines = 1
+                                                        text = if (isBangla) "পণ্য যোগ" else "Add Item",
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        softWrap = false
                                                     )
                                                 }
                                             }
                                         }
                                     }
-                                }
 
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                val channelAccounts = when (paymentMethod) {
-                                    "CASH" -> liquidAccounts.filter { it.liquidKind == LiquidAccountKind.CASH }
-                                    "BANK" -> liquidAccounts.filter { it.liquidKind == LiquidAccountKind.BANK }
-                                    "MFS" -> liquidAccounts.filter { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }
-                                    else -> emptyList()
-                                }
-                                if (paymentMethod != "CREDIT" && channelAccounts.isNotEmpty()) {
-                                    Text(
-                                        text = if (isBangla) "জমার হিসাব নির্বাচন করুন:" else "Deposit To Account:",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextSecondary
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        items(channelAccounts) { acc ->
-                                            val isAccSel = selectedPaymentAccountId == acc.id
-                                            Surface(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable { selectedPaymentAccountId = acc.id },
-                                                color = if (isAccSel) SecondaryTeal else ERPBackground,
-                                                border = if (isAccSel) null else androidx.compose.foundation.BorderStroke(1.dp, DeepNavy.copy(alpha = 0.12f))
-                                            ) {
+                                    if (showItemSearchBar) {
+                                        OutlinedTextField(
+                                            value = itemSearchQuery,
+                                            onValueChange = { itemSearchQuery = it },
+                                            placeholder = {
                                                 Text(
-                                                    text = if (isBangla && acc.nameBn.isNotBlank()) acc.nameBn else acc.nameEn,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = if (isAccSel) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (isAccSel) MaterialTheme.colorScheme.onPrimary else TextPrimary,
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                                    text = if (isBangla) "তালিকায় থাকা পণ্য খুঁজুন (নাম, SKU, ভেরিয়েন্ট)..." else "Filter added items by name, SKU or variant...",
+                                                    fontSize = 12.sp
                                                 )
-                                            }
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedTextField(
-                                        value = if (isFullPaymentSelected) BigDecimal(grandTotalMinor).divide(BigDecimal(100)).toPlainString() else paidAmountStr,
-                                        onValueChange = {
-                                            isFullPaymentSelected = false
-                                            paidAmountStr = it
-                                        },
-                                        label = { Text(if (isBangla) "পরিশোধিত অর্থ (৳)" else "Paid Amount (৳)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-
-                                    OutlinedButton(
-                                        onClick = {
-                                            isFullPaymentSelected = true
-                                            paidAmountStr = BigDecimal(grandTotalMinor).divide(BigDecimal(100)).toPlainString()
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = SecondaryTeal)
-                                    ) {
-                                        Text(if (isBangla) "সম্পূর্ণ পরিশোধ" else "Full Pay", fontSize = 11.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 7. Dynamic Financial Summary Box
-                    item {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            color = DeepNavy
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(if (isBangla) "উপমোট:" else "Subtotal:", color = Color.White.copy(alpha = 0.8f))
-                                    Text("৳" + Formatters.formatMinorUnit(subtotalMinor), color = Color.White, fontWeight = FontWeight.SemiBold)
-                                }
-                                if (invDiscountMinor > 0) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(if (isBangla) "চালান বাট্টা:" else "Invoice Discount:", color = StatusError)
-                                        Text("-৳" + Formatters.formatMinorUnit(invDiscountMinor), color = StatusError, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                                if (addChargesMinor > 0) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(if (isBangla) "অতিরিক্ত চার্জ:" else "Additional Charges:", color = Color.White.copy(alpha = 0.8f))
-                                        Text("+৳" + Formatters.formatMinorUnit(addChargesMinor), color = Color.White, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.2f))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(if (isBangla) "সর্বমোট বিল:" else "Grand Total:", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                                    Text("৳" + Formatters.formatMinorUnit(grandTotalMinor), color = StatusSuccess, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(if (isBangla) "পরিশোধিত:" else "Paid Amount:", color = Color.White.copy(alpha = 0.8f))
-                                    Text("৳" + Formatters.formatMinorUnit(currentPaidMinor), color = Color.White, fontWeight = FontWeight.SemiBold)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(if (isBangla) "বকেয়া:" else "Due Amount:", color = if (dueAmountMinor > 0) StatusError else Color.White.copy(alpha = 0.8f))
-                                    Text("৳" + Formatters.formatMinorUnit(dueAmountMinor), color = if (dueAmountMinor > 0) StatusError else Color.White, fontWeight = FontWeight.Bold)
-                                }
-
-                                if (showCostAndProfit && itemsList.isNotEmpty()) {
-                                    val totalCostMinor = itemsList.sumOf { item ->
-                                        val prod = productsMap[item.productId]
-                                        val pVars = variantsByProduct[item.productId] ?: emptyList()
-                                        val curV = pVars.find { it.id == item.variantId }
-                                        val unitCost = if (prod != null) {
-                                            resolveUnitCostMinorForSale(
-                                                layers = costLayers,
-                                                productId = prod.id,
-                                                variantId = curV?.id,
-                                                warehouseId = selectedWarehouseId,
-                                                variantCostMinor = curV?.variantCostMinor,
-                                                productPurchasePriceMinor = prod.purchasePriceMinor
-                                            )
-                                        } else {
-                                            0L
-                                        }
-                                        val q = item.quantityStr.toIntOrNull() ?: 0
-                                        unitCost * q
-                                    }
-                                    val totalProfitMinor = grandTotalMinor - totalCostMinor
-                                    val marginPct = if (grandTotalMinor > 0) (totalProfitMinor.toDouble() / grandTotalMinor.toDouble()) * 100 else 0.0
-                                    HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = Color.White.copy(alpha = 0.2f))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(if (isBangla) "আনুমানিক লাভ:" else "Estimated Profit:", color = StatusSuccessContainer, fontWeight = FontWeight.SemiBold)
-                                        Text(
-                                            "৳" + Formatters.formatMinorUnit(totalProfitMinor) + " (${String.format(java.util.Locale.US, "%.1f", marginPct)}%)",
-                                            color = StatusSuccessContainer,
-                                            fontWeight = FontWeight.Bold
+                                            },
+                                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                            trailingIcon = {
+                                                if (itemSearchQuery.isNotBlank()) {
+                                                    IconButton(onClick = { itemSearchQuery = "" }) {
+                                                        Icon(Icons.Outlined.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            singleLine = true,
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
                                 }
                             }
-                        }
-                    }
 
-                    if (errorMessage != null) {
-                        item {
-                            Text(
-                                text = errorMessage!!,
-                                color = StatusError,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = DeepNavy.copy(alpha = 0.08f))
-
-                // Bottom Action Buttons: Save Draft vs Confirm Sale
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = if (isBangla) "বাতিল" else "Cancel",
-                            color = TextSecondary,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    // 1. Save Draft (No stock reduction, No accounting post)
-                    OutlinedButton(
-                        onClick = {
-                            val draft = buildInvoiceDraft() ?: return@OutlinedButton
-                            onSubmitDraft(draft)
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DeepNavy),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isBangla) "খসড়া সংরক্ষণ" else "Save Draft",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    // 2. Confirm Sale (Atomic Stock Deduction + FIFO Depletion + Journal Posting)
-                    Button(
-                        onClick = {
-                            val draft = buildInvoiceDraft() ?: return@Button
-                            val cust = customers.find { it.id == selectedCustomerId }
-                            val existingDue = customerSummary?.outstandingBalanceMinor ?: cust?.outstandingBalanceMinor ?: 0L
-                            val expectedDue = existingDue + maxOf(0L, grandTotalMinor - currentPaidMinor)
-                            val limit = cust?.creditLimitMinor ?: 0L
-
-                            if (limit > 0 && expectedDue > limit && !creditLimitApproved) {
-                                showCreditLimitWarningDialog = true
-                            } else {
-                                val finalDraft = if (creditLimitApproved) {
-                                    draft.copy(notes = "${draft.notes ?: ""}\n[CREDIT OVERRIDE APPROVED by $creditApproverName: $creditApprovalReason]".trim())
-                                } else draft
-                                onConfirmSale(finalDraft)
+                            // Empty items card if user removed all items
+                            if (itemsList.isEmpty()) {
+                                item(key = "empty_items") {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = palette.cardBg,
+                                        border = BorderStroke(1.dp, palette.cardBorder)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(20.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isBangla) "এখনও কোনো পণ্য যোগ করা হয়নি" else "No items added yet",
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = palette.textSecondary
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    pickingForItemIndex = null
+                                                    showAddItemPicker = true
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = palette.primaryPurpleStrong),
+                                                shape = RoundedCornerShape(10.dp)
+                                            ) {
+                                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(if (isBangla) "পণ্য নির্বাচন করুন" else "Select Item")
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = StatusSuccess),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1.15f),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isBangla) "নিশ্চিত বিক্রয়" else "Confirm Sale",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+
+                            // 4. Item Cards (Expanded & Minimized states matching reference 1:1)
+                            itemsIndexed(
+                                items = visibleIndices,
+                                key = { _, realIndex -> itemsList[realIndex].uid }
+                            ) { _, index ->
+                                val itemDraft = itemsList[index]
+                                val calc = lineCalculations[index]
+                                val curProduct = productsMap[itemDraft.productId]
+                                val prodVariants = variantsByProduct[itemDraft.productId].orEmpty()
+                                val curVariant = prodVariants.find { it.id == itemDraft.variantId }
+                                val sellableStock = getSellableStock(itemDraft.productId, itemDraft.variantId)
+                                val thumbUri = curVariant?.let { variantImages[it.id] }
+                                    ?: curProduct?.let { productImages[it.id] }
+
+                                val unitCostMinor = resolveItemUnitCostMinor(curProduct, curVariant)
+
+                                SalesInvoiceItemCard(
+                                    index = index,
+                                    itemDraft = itemDraft,
+                                    calculation = calc,
+                                    product = curProduct,
+                                    variants = prodVariants,
+                                    selectedVariant = curVariant,
+                                    thumbnailUri = thumbUri,
+                                    sellableStock = sellableStock,
+                                    unitCostMinor = unitCostMinor,
+                                    stockBalances = stockBalances,
+                                    warehouseId = selectedWarehouseId,
+                                    showCost = canViewCost && showCostAndProfit,
+                                    showProfit = canViewProfit && showCostAndProfit,
+                                    isBangla = isBangla,
+                                    palette = palette,
+                                    onToggleExpand = { itemDraft.isExpanded = !itemDraft.isExpanded },
+                                    onDuplicate = {
+                                        val clone = ItemDraftState(
+                                            productId = itemDraft.productId,
+                                            variantId = itemDraft.variantId,
+                                            quantityStr = itemDraft.quantityStr,
+                                            unitPriceStr = itemDraft.unitPriceStr,
+                                            discountStr = itemDraft.discountStr,
+                                            isPercentageDiscount = itemDraft.isPercentageDiscount,
+                                            isExpanded = true
+                                        )
+                                        itemsList.add(index + 1, clone)
+                                        errorMessage = null
+                                    },
+                                    onDelete = {
+                                        itemsList.removeAt(index)
+                                        errorMessage = null
+                                    },
+                                    onOpenProductPicker = {
+                                        pickingForItemIndex = index
+                                        showAddItemPicker = true
+                                    },
+                                    onSelectVariant = { chosenVariant ->
+                                        itemDraft.variantId = chosenVariant.id
+                                        itemDraft.unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(chosenVariant.variantPriceMinor)
+                                        errorMessage = null
+                                    }
+                                )
+                            }
+
+                            // 5. Invoice Discount + Additional Charges Side-by-Side
+                            item(key = "discount_and_charges") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Invoice Discount Card
+                                    Surface(
+                                        modifier = Modifier.weight(1.38f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = palette.cardBg,
+                                        border = BorderStroke(1.dp, palette.cardBorder),
+                                        shadowElevation = if (palette.isDark) 0.dp else 1.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 7.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(18.dp)
+                                                    .clip(RoundedCornerShape(5.dp))
+                                                    .background(palette.iconBadgeBg),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.LocalOffer,
+                                                    contentDescription = null,
+                                                    tint = palette.primaryPurple,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = if (isBangla) "বাট্টা" else "Invoice Discount",
+                                                fontSize = 9.sp,
+                                                letterSpacing = (-0.25).sp,
+                                                color = palette.textSecondary,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            DiscountModeToggle(
+                                                isPercent = isInvoiceDiscountPercentage,
+                                                palette = palette,
+                                                height = 31.dp,
+                                                segmentWidth = 21.dp,
+                                                onToggle = { pct ->
+                                                    if (isInvoiceDiscountPercentage != pct) {
+                                                        isInvoiceDiscountPercentage = pct
+                                                        if (pct) {
+                                                            val bps = SalesInvoiceCalculator.parsePercentBasisPoints(invoiceDiscountStr)
+                                                            if (SalesInvoiceCalculator.parseMajorToMinor(invoiceDiscountStr) > 10_000L && bps == 10_000L) {
+                                                                invoiceDiscountStr = "100.00"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                            CompactNumericInputBox(
+                                                value = invoiceDiscountStr,
+                                                onValueChange = { invoiceDiscountStr = it },
+                                                palette = palette,
+                                                height = 31.dp,
+                                                fontSize = 11.sp,
+                                                suffix = if (isInvoiceDiscountPercentage) "%" else "৳",
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+
+                                    // Additional Charges Card
+                                    Surface(
+                                        modifier = Modifier.weight(0.92f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = palette.cardBg,
+                                        border = BorderStroke(1.dp, palette.cardBorder),
+                                        shadowElevation = if (palette.isDark) 0.dp else 1.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 7.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(RoundedCornerShape(7.dp))
+                                                    .background(palette.iconBadgeBg),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Layers,
+                                                    contentDescription = null,
+                                                    tint = palette.primaryPurple,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = if (isBangla) "অতিরিক্ত চার্জ (৳)" else "Additional Charges (৳)",
+                                                    fontSize = 8.5.sp,
+                                                    letterSpacing = (-0.25).sp,
+                                                    color = palette.textSecondary,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    lineHeight = 11.sp
+                                                )
+                                                BasicTextField(
+                                                    value = additionalChargesStr,
+                                                    onValueChange = { additionalChargesStr = it },
+                                                    singleLine = true,
+                                                    textStyle = TextStyle(
+                                                        color = palette.textPrimary,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    ),
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                    cursorBrush = SolidColor(palette.primaryPurple),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 6. Notes / Terms Row Card
+                            item(key = "notes_section") {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = palette.cardBg,
+                                    border = BorderStroke(1.dp, palette.cardBorder),
+                                    shadowElevation = if (palette.isDark) 0.dp else 1.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(palette.iconBadgeBg),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Description,
+                                                contentDescription = null,
+                                                tint = palette.primaryPurple,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                            if (notes.isEmpty()) {
+                                                Text(
+                                                    text = if (isBangla) "নোট / শর্তাবলী (ঐচ্ছিক)" else "Notes / Terms (optional)",
+                                                    fontSize = 13.sp,
+                                                    color = palette.textMuted
+                                                )
+                                            }
+                                            BasicTextField(
+                                                value = notes,
+                                                onValueChange = { notes = it },
+                                                singleLine = true,
+                                                textStyle = TextStyle(
+                                                    color = palette.textPrimary,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                ),
+                                                cursorBrush = SolidColor(palette.primaryPurple),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 7. Payment Method & Settlement Card
+                            item(key = "payment_section") {
+                                SalesPaymentSettlementCard(
+                                    paymentMethod = paymentMethod,
+                                    selectedAccountId = selectedPaymentAccountId,
+                                    liquidAccounts = liquidAccounts,
+                                    paidAmountStr = paidAmountStr,
+                                    isFullPaySelected = isFullPaymentSelected,
+                                    grandTotalMinor = totals.grandTotalMinor,
+                                    isBangla = isBangla,
+                                    palette = palette,
+                                    onSelectPaymentMethod = { code ->
+                                        paymentMethod = code
+                                        when (code) {
+                                            "CREDIT" -> {
+                                                isFullPaymentSelected = false
+                                                paidAmountStr = "0.00"
+                                            }
+                                            "CASH" -> selectedPaymentAccountId =
+                                                liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
+                                            "BANK" -> selectedPaymentAccountId =
+                                                liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.BANK }?.id ?: "coa-1020"
+                                            "MFS" -> selectedPaymentAccountId =
+                                                liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.MOBILE_BANKING }?.id ?: "coa-1060"
+                                        }
+                                    },
+                                    onSelectAccountId = { selectedPaymentAccountId = it },
+                                    onPaidAmountChange = {
+                                        isFullPaymentSelected = false
+                                        paidAmountStr = it
+                                    },
+                                    onFullPayClick = {
+                                        if (paymentMethod == "CREDIT") {
+                                            paymentMethod = "CASH"
+                                            selectedPaymentAccountId = liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
+                                        }
+                                        isFullPaymentSelected = true
+                                        paidAmountStr = SalesInvoiceCalculator.formatMajorEditable(totals.grandTotalMinor)
+                                    }
+                                )
+                            }
+
+                            // 8. Dark Purple Wave Invoice Summary Card
+                            item(key = "summary_section") {
+                                SalesInvoiceSummaryCard(
+                                    itemCount = itemsList.size,
+                                    totals = totals,
+                                    showProfit = canViewProfit && showCostAndProfit,
+                                    hasItems = itemsList.isNotEmpty(),
+                                    isBangla = isBangla
+                                )
+                            }
+
+                            if (errorMessage != null) {
+                                item(key = "error_banner") {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = palette.kpiDueBg,
+                                        border = BorderStroke(1.dp, palette.errorText.copy(alpha = 0.4f))
+                                    ) {
+                                        Text(
+                                            text = errorMessage!!,
+                                            color = palette.errorText,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            item(key = "bottom_spacer") {
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        }
+
+                        // Sticky Bottom Action Bar
+                        SalesInvoiceStickyFooter(
+                            isBangla = isBangla,
+                            palette = palette,
+                            onCancel = onDismiss,
+                            onSaveDraft = {
+                                val draft = buildInvoiceDraft() ?: return@SalesInvoiceStickyFooter
+                                onSubmitDraft(draft)
+                            },
+                            onConfirmSale = {
+                                val draft = buildInvoiceDraft() ?: return@SalesInvoiceStickyFooter
+                                val cust = customers.find { it.id == selectedCustomerId }
+                                val existingDue = customerSummary?.outstandingBalanceMinor ?: cust?.outstandingBalanceMinor ?: 0L
+                                val expectedDue = existingDue + totals.dueMinor
+                                val limit = cust?.creditLimitMinor ?: 0L
+
+                                if (limit > 0L && expectedDue > limit && !creditLimitApproved) {
+                                    showCreditLimitWarningDialog = true
+                                } else {
+                                    val finalDraft = if (creditLimitApproved) {
+                                        draft.copy(
+                                            notes = "${draft.notes ?: ""}\n[CREDIT OVERRIDE APPROVED by $creditApproverName: $creditApprovalReason]".trim()
+                                        )
+                                    } else draft
+                                    onConfirmSale(finalDraft)
+                                }
+                            }
                         )
                     }
                 }
@@ -1271,10 +1077,61 @@ fun CreateInvoiceDialog(
         )
     }
 
+    if (showAddItemPicker) {
+        SalesProductVariantPickerDialog(
+            products = products,
+            variantsByProduct = variantsByProduct,
+            stockBalances = stockBalances,
+            warehouseId = selectedWarehouseId,
+            productImages = productImages,
+            variantImages = variantImages,
+            isBangla = isBangla,
+            palette = palette,
+            onDismiss = {
+                showAddItemPicker = false
+                pickingForItemIndex = null
+            },
+            onSelectProductAndVariant = { chosenProduct, chosenVariant ->
+                val priceMinor = chosenVariant?.variantPriceMinor ?: chosenProduct.sellingPriceMinor
+                val targetIndex = pickingForItemIndex
+                if (targetIndex != null && targetIndex in itemsList.indices) {
+                    val target = itemsList[targetIndex]
+                    target.productId = chosenProduct.id
+                    target.variantId = chosenVariant?.id
+                    target.unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(priceMinor)
+                } else {
+                    itemsList.add(
+                        ItemDraftState(
+                            productId = chosenProduct.id,
+                            variantId = chosenVariant?.id,
+                            quantityStr = "1",
+                            unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(priceMinor),
+                            isExpanded = true
+                        )
+                    )
+                }
+                errorMessage = null
+                showAddItemPicker = false
+                pickingForItemIndex = null
+            }
+        )
+    }
+
+    if (showBarcodeScanner) {
+        BarcodeQrScannerDialog(
+            language = if (isBangla) AppLanguage.BANGLA else AppLanguage.ENGLISH,
+            onDismiss = { showBarcodeScanner = false },
+            onCodeScanned = { scannedCode ->
+                showBarcodeScanner = false
+                handleScannedCode(scannedCode)
+            }
+        )
+    }
+
     if (showCreditLimitWarningDialog) {
         val cust = customers.find { it.id == selectedCustomerId }
         val existingDue = customerSummary?.outstandingBalanceMinor ?: cust?.outstandingBalanceMinor ?: 0L
-        val expectedDue = existingDue + maxOf(0L, grandTotalMinor - currentPaidMinor)
+        val expectedDue = existingDue + totals.dueMinor
         val limit = cust?.creditLimitMinor ?: 0L
 
         Dialog(onDismissRequest = { showCreditLimitWarningDialog = false }) {
@@ -1341,6 +1198,626 @@ fun CreateInvoiceDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SalesInvoiceItemCard(
+    index: Int,
+    itemDraft: ItemDraftState,
+    calculation: LineCalculation,
+    product: Product?,
+    variants: List<ProductVariant>,
+    selectedVariant: ProductVariant?,
+    thumbnailUri: String?,
+    sellableStock: Int,
+    unitCostMinor: Long,
+    stockBalances: List<StockBalance>,
+    warehouseId: String,
+    showCost: Boolean,
+    showProfit: Boolean,
+    isBangla: Boolean,
+    palette: SalesInvoicePalette,
+    onToggleExpand: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+    onOpenProductPicker: () -> Unit,
+    onSelectVariant: (ProductVariant) -> Unit
+) {
+    val variantChipLabel = remember(selectedVariant) {
+        selectedVariant?.let { v ->
+            listOfNotNull(v.color, v.size).joinToString("-").ifBlank { v.sku }
+        }
+    }
+    val productName = if (product != null) {
+        if (isBangla && product.nameBn.isNotBlank()) product.nameBn else product.nameEn
+    } else {
+        if (isBangla) "পণ্য নির্বাচন করুন" else "Select Item"
+    }
+
+    var variantMenuExpanded by rememberSaveable(itemDraft.uid) { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (!itemDraft.isExpanded) {
+                    Modifier.clickable(onClick = onToggleExpand)
+                } else Modifier
+            ),
+        shape = RoundedCornerShape(15.dp),
+        color = palette.cardBg,
+        border = BorderStroke(1.dp, palette.cardBorder),
+        shadowElevation = if (palette.isDark) 0.dp else 1.5.dp
+    ) {
+        if (!itemDraft.isExpanded) {
+            // MINIMIZED STATE
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 9.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SalesProductThumbnail(
+                    imageUri = thumbnailUri,
+                    contentDescription = productName,
+                    size = 42.dp,
+                    cornerRadius = 10.dp,
+                    palette = palette
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text(
+                            text = "#${index + 1} $productName",
+                            fontSize = 13.sp,
+                            letterSpacing = (-0.2).sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (variantChipLabel != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = palette.variantChipBg
+                            ) {
+                                Text(
+                                    text = variantChipLabel,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = palette.variantChipText,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    val qtyPart = if (isBangla) "পরিমাণ: ${calculation.quantity}" else "Qty: ${calculation.quantity}"
+                    val pricePart = "${if (isBangla) "দর" else "Price"}: ৳${Formatters.formatMinorUnit(calculation.unitPriceMinor)}"
+                    val totalPrefix = "${if (isBangla) "মোট" else "Total"}: "
+                    val totalVal = "৳${Formatters.formatMinorUnit(calculation.netTotalMinor)}"
+                    val fullSummaryLen = qtyPart.length + pricePart.length + totalPrefix.length + totalVal.length + 6
+                    val summaryFontSize = when {
+                        fullSummaryLen >= 44 -> 9.sp
+                        fullSummaryLen >= 38 -> 9.8.sp
+                        else -> 10.8.sp
+                    }
+
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = palette.textSecondary, fontWeight = FontWeight.Normal)) {
+                                append("$qtyPart | $pricePart | $totalPrefix")
+                            }
+                            withStyle(SpanStyle(color = palette.primaryPurple, fontWeight = FontWeight.Bold)) {
+                                append(totalVal)
+                            }
+                        },
+                        fontSize = summaryFontSize,
+                        letterSpacing = (-0.2).sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                ItemActionIconsRow(
+                    isExpanded = false,
+                    palette = palette,
+                    onDuplicate = onDuplicate,
+                    onDelete = onDelete,
+                    onToggleExpand = onToggleExpand
+                )
+            }
+        } else {
+            // EXPANDED STATE
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 11.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Box(modifier = Modifier.clickable(onClick = onOpenProductPicker)) {
+                        SalesProductThumbnail(
+                            imageUri = thumbnailUri,
+                            contentDescription = productName,
+                            size = 56.dp,
+                            cornerRadius = 12.dp,
+                            palette = palette
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Text(
+                                    text = "#${index + 1} $productName",
+                                    fontSize = 13.sp,
+                                    letterSpacing = (-0.2).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = palette.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .clickable(onClick = onOpenProductPicker)
+                                )
+                                if (variantChipLabel != null) {
+                                    Surface(
+                                        onClick = { if (variants.isNotEmpty()) variantMenuExpanded = true else onOpenProductPicker() },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = palette.variantChipBg
+                                    ) {
+                                        Text(
+                                            text = variantChipLabel,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = palette.variantChipText,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            ItemActionIconsRow(
+                                isExpanded = true,
+                                palette = palette,
+                                onDuplicate = onDuplicate,
+                                onDelete = onDelete,
+                                onToggleExpand = onToggleExpand
+                            )
+                        }
+
+                        if (product != null) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${product.nameEn} [${product.baseSku}]",
+                                fontSize = 10.5.sp,
+                                letterSpacing = (-0.15).sp,
+                                fontWeight = FontWeight.Medium,
+                                color = palette.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClick = onOpenProductPicker)
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = if (isBangla) "পণ্য নির্বাচন করতে এখানে ট্যাপ করুন" else "Tap here to choose a product",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = palette.primaryPurple,
+                                modifier = Modifier.clickable(onClick = onOpenProductPicker)
+                            )
+                        }
+
+                        if (variants.isNotEmpty()) {
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                val variantFullLabel = selectedVariant?.let { v ->
+                                    listOfNotNull(v.color, v.size, v.sku).joinToString(" - ")
+                                } ?: if (isBangla) "নির্বাচন করুন" else "Select"
+                                Text(
+                                    text = "Variant: $variantFullLabel",
+                                    fontSize = 10.5.sp,
+                                    letterSpacing = (-0.15).sp,
+                                    color = palette.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 1.dp)
+                                        .clickable { variantMenuExpanded = true }
+                                )
+
+                                DropdownMenu(
+                                    expanded = variantMenuExpanded,
+                                    onDismissRequest = { variantMenuExpanded = false },
+                                    modifier = Modifier.background(palette.cardBg)
+                                ) {
+                                    variants.forEach { v ->
+                                        val vStock = sellableStockForVariant(stockBalances, warehouseId, itemDraft.productId, v.id)
+                                        val vInStock = vStock > 0
+                                        DropdownMenuItem(
+                                            enabled = vInStock,
+                                            colors = MenuDefaults.itemColors(
+                                                textColor = palette.textPrimary,
+                                                disabledTextColor = palette.textMuted.copy(alpha = 0.45f)
+                                            ),
+                                            text = {
+                                                Text(
+                                                    text = "${listOfNotNull(v.color, v.size, v.sku).joinToString(" - ")} • ৳${Formatters.formatMinorUnit(v.variantPriceMinor)} ($vStock)",
+                                                    fontSize = 12.sp
+                                                )
+                                            },
+                                            onClick = {
+                                                onSelectVariant(v)
+                                                variantMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Editable Row: Qty [- qty +] | Price (৳) | Discount [% | ৳ value] | Item Total (৳)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    // 1. Qty Stepper
+                    Column(
+                        modifier = Modifier.weight(0.92f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isBangla) "পরিমাণ" else "Qty",
+                            fontSize = 10.sp,
+                            color = palette.textSecondary,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(33.dp),
+                            shape = RoundedCornerShape(9.dp),
+                            color = palette.inputBg,
+                            border = BorderStroke(1.dp, palette.inputBorder)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            val cur = Formatters.normalizeAsciiNumberInput(itemDraft.quantityStr).toIntOrNull() ?: 1
+                                            if (cur > 1) itemDraft.quantityStr = (cur - 1).toString()
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Remove,
+                                        contentDescription = "Decrease Qty",
+                                        tint = palette.primaryPurple,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+
+                                BasicTextField(
+                                    value = itemDraft.quantityStr,
+                                    onValueChange = { itemDraft.quantityStr = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        color = palette.textPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    cursorBrush = SolidColor(palette.primaryPurple),
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            val cur = Formatters.normalizeAsciiNumberInput(itemDraft.quantityStr).toIntOrNull() ?: 0
+                                            itemDraft.quantityStr = (cur + 1).toString()
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Add,
+                                        contentDescription = "Increase Qty",
+                                        tint = palette.primaryPurple,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Price (৳)
+                    Column(
+                        modifier = Modifier.weight(0.85f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isBangla) "দর (৳)" else "Price (৳)",
+                            fontSize = 10.sp,
+                            color = palette.textSecondary,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        CompactNumericInputBox(
+                            value = itemDraft.unitPriceStr,
+                            onValueChange = { itemDraft.unitPriceStr = it },
+                            palette = palette,
+                            height = 33.dp,
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // 3. Discount [% | ৳] + Input
+                    Column(
+                        modifier = Modifier.weight(1.60f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isBangla) "বাট্টা" else "Discount",
+                            fontSize = 10.sp,
+                            color = palette.textSecondary,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            DiscountModeToggle(
+                                isPercent = itemDraft.isPercentageDiscount,
+                                palette = palette,
+                                height = 33.dp,
+                                segmentWidth = 23.dp,
+                                onToggle = { pct ->
+                                    if (itemDraft.isPercentageDiscount != pct) {
+                                        itemDraft.isPercentageDiscount = pct
+                                        if (pct) {
+                                            val bps = SalesInvoiceCalculator.parsePercentBasisPoints(itemDraft.discountStr)
+                                            if (SalesInvoiceCalculator.parseMajorToMinor(itemDraft.discountStr) > 10_000L && bps == 10_000L) {
+                                                itemDraft.discountStr = "100.00"
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                            CompactNumericInputBox(
+                                value = itemDraft.discountStr,
+                                onValueChange = { itemDraft.discountStr = it },
+                                palette = palette,
+                                height = 33.dp,
+                                fontSize = 11.sp,
+                                suffix = if (itemDraft.isPercentageDiscount) "%" else "৳",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // 4. Live Item Total Box
+                    Surface(
+                        modifier = Modifier
+                            .weight(0.98f)
+                            .height(47.dp),
+                        shape = RoundedCornerShape(11.dp),
+                        color = palette.itemTotalBg
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = if (isBangla) "মোট (৳)" else "Item Total (৳)",
+                                fontSize = 8.5.sp,
+                                color = palette.itemTotalLabel,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val totalStr = Formatters.formatMinorUnit(calculation.netTotalMinor)
+                            Text(
+                                text = totalStr,
+                                fontSize = if (totalStr.length > 9) 11.sp else 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = palette.itemTotalValue,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.65f), thickness = 0.7.dp)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Bottom Stock / Restricted Cost / Restricted Profit strip
+                val stockInsufficient = sellableStock <= 0 || calculation.quantity > sellableStock
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Layers,
+                            contentDescription = null,
+                            tint = if (stockInsufficient) palette.errorText else palette.stockOkText,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = if (isBangla) "স্টক: $sellableStock টি" else "Stock: $sellableStock units",
+                            fontSize = 9.sp,
+                            letterSpacing = (-0.2).sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (stockInsufficient) palette.errorText else palette.textPrimary,
+                            maxLines = 1
+                        )
+                    }
+
+                    if (showCost && product != null) {
+                        Text("|", color = palette.cardBorder, fontSize = 9.5.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.LocalOffer,
+                                contentDescription = null,
+                                tint = palette.primaryPurple,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = if (isBangla) "ক্রয়: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc"
+                                else "Cost: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc",
+                                fontSize = 9.sp,
+                                letterSpacing = (-0.2).sp,
+                                fontWeight = FontWeight.Medium,
+                                color = palette.textSecondary,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    if (showProfit && product != null) {
+                        val profitPos = calculation.profitMinor >= 0L
+                        val pColor = if (profitPos) palette.profitText else palette.errorText
+                        Text("|", color = palette.cardBorder, fontSize = 9.5.sp)
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Equalizer,
+                                contentDescription = null,
+                                tint = pColor,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = if (isBangla) {
+                                    "লাভ: ৳${Formatters.formatMinorUnit(calculation.profitMinor)} (${String.format(Locale.US, "%.1f", calculation.profitMarginPercent)}%)"
+                                } else {
+                                    "Profit: ৳${Formatters.formatMinorUnit(calculation.profitMinor)} (${String.format(Locale.US, "%.1f", calculation.profitMarginPercent)}%)"
+                                },
+                                fontSize = 9.sp,
+                                letterSpacing = (-0.2).sp,
+                                fontWeight = FontWeight.Bold,
+                                color = pColor,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ItemActionIconsRow(
+    isExpanded: Boolean,
+    palette: SalesInvoicePalette,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+    onToggleExpand: () -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = onDuplicate,
+            modifier = Modifier.size(23.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.ContentCopy,
+                contentDescription = "Duplicate Item",
+                tint = palette.primaryPurple,
+                modifier = Modifier.size(15.dp)
+            )
+        }
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(23.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.DeleteOutline,
+                contentDescription = "Delete Item",
+                tint = palette.errorText,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(25.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(palette.chevronBoxBg)
+                .clickable(onClick = onToggleExpand),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                contentDescription = if (isExpanded) "Collapse Item" else "Expand Item",
+                tint = palette.primaryPurple,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }

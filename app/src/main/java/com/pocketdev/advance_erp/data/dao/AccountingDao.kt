@@ -146,4 +146,12 @@ interface AccountingDao {
         ORDER BY entryDate, createdAt, id
     """)
     suspend fun getCustomerLedgerAdjustments(customerId: String?): List<JournalEntry>
+
+    @Query("""
+        SELECT * FROM journal_entries WHERE isPosted = 1 AND isReversed = 0
+        AND referenceType IN ('SUPPLIER_LEDGER_CREDIT_ADJUSTMENT', 'SUPPLIER_LEDGER_DEBIT_ADJUSTMENT')
+        AND (:supplierId IS NULL OR referenceId = :supplierId)
+        ORDER BY entryDate, createdAt, id
+    """)
+    suspend fun getSupplierLedgerAdjustments(supplierId: String?): List<JournalEntry>
 }

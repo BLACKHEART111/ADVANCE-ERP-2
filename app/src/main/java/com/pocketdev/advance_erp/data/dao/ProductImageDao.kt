@@ -23,6 +23,9 @@ interface ProductImageDao {
     @Query("SELECT * FROM product_images WHERE variantId = :variantId ORDER BY isPrimary DESC, sortOrder ASC, createdAt ASC")
     suspend fun getImagesForVariantSync(variantId: String): List<ProductImage>
 
+    @Query("SELECT * FROM product_images ORDER BY isPrimary DESC, sortOrder ASC, createdAt ASC")
+    fun getAllImages(): Flow<List<ProductImage>>
+
     @Query("SELECT * FROM product_images WHERE productId = :productId ORDER BY isPrimary DESC, sortOrder ASC")
     fun getAllImagesForProduct(productId: String): Flow<List<ProductImage>>
 

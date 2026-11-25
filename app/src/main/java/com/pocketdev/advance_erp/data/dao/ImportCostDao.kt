@@ -84,4 +84,10 @@ interface ImportCostDao {
 
     @Query("UPDATE import_cost_items SET isCapitalized = 1, costAdjustmentReference = :adjustmentRef WHERE id IN (:ids)")
     suspend fun markCostItemsCapitalized(ids: List<String>, adjustmentRef: String? = null)
+
+    @Query("UPDATE import_cost_items SET isCapitalized = 0, costAdjustmentReference = NULL WHERE shipmentId = :shipmentId")
+    suspend fun uncapitalizeCostItemsForShipment(shipmentId: String)
+
+    @Query("UPDATE import_cost_items SET isCapitalized = 0, costAdjustmentReference = NULL WHERE purchaseOrderId = :orderId")
+    suspend fun uncapitalizeCostItemsForOrder(orderId: String)
 }

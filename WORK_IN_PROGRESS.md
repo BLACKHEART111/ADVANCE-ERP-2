@@ -1,5 +1,18 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## New Sales Invoice Redesign, Editable Contacts/Opening Due & Received PO Reopen/Edit — 2026-11-25
+
+Implemented and verified three major enhancements without modifying Room DB v13 schema or live database records:
+1. **New Sales Invoice UI Redesign (`CreateInvoiceDialog.kt`, `SalesInvoiceDesignComponents.kt`, `SalesInvoiceCalculator.kt`, `SalesRepositoryImpl.kt`, `ProductImageDao.kt`, `SalesViewModel.kt`, `SalesScreen.kt`, `SalesInvoiceRedesignCalculationsTest.kt`)**:
+   - Purple-teal wave hero header, customer banner with separate 4-across historical KPI strip (`Total Sales`, `Paid`, `Due`, `Returns`), warehouse selector, `Invoice Items` card list with product thumbnails, **Expand/Minimize**, **Duplicate**, and **Delete** controls.
+   - Exact `BigDecimal` calculation engine supporting both `%` and `৳` discounts at item and invoice levels, additional charges, notes/terms, 4-across payment settlement tiles + account dropdown + `Full Pay`, dark-purple wave `Invoice Summary`, sticky bottom footer, full Light/Dark theme support, and role-gated Cost (`canViewCost`) & Profit (`canViewProfit`) visibility.
+2. **Editable Customers & Suppliers + Opening Due / Payable (`ContactsScreen.kt`, `ContactsViewModel.kt`, `ContactsRepository.kt`, `ContactsRepositoryImpl.kt`, `RecordCustomerPaymentDialog.kt`, `CustomerLedgerAdjustment.kt`, `PaymentAllocationValidation.kt`, `LedgerReportEngine.kt`, `AccountingDao.kt`, `BusinessControlCenterRepositoryImpl.kt`, `AccountingRepositoryImpl.kt`, `CustomerLedgerAdjustmentTest.kt`)**:
+   - Full edit dialogs and opening due/payable balance tracking integrated into customer & supplier ledgers and reports.
+3. **Received/Paid PO Reopen & Edit (`ImportRepository.kt`, `ImportRepositoryImpl.kt`, `ImportViewModel.kt`, `ImportManagementScreen.kt`, `PurchaseOrderDetailDialog.kt`, `PurchaseOrderDao.kt`, `ImportCostDao.kt`, `InventoryCostLayerDao.kt`, `PoPackingEngine.kt`, `PoSmartPackingAndExportTest.kt`)**:
+   - Safe reopen & product/carton modification for received/paid POs with full accounting and inventory reversal integrity.
+
+Verified via `adev` pinned Gradle 8.13: `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` **BUILD SUCCESSFUL**, **439/439 JVM tests passed** across 81 files (`0` failures, `0` skipped); `git diff --check` passed. Debug APK (`app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `16b69a99b0889d8ff1d5871d1c75cf894e92b3b38dc96c18ac3119346dd11ac0`) installed in-place on `OnePlus CPH2745` (`com.pocketdev.advance_erp2`, `firstInstallTime=2026-11-22 02:39:36` intact) and visually confirmed by the user on-device.
+
 ## PO Product Selection Minimization, First-Variant Propagation & Product Summary — 2026-11-25
 
 Implemented the four requested PO Section 2 (**পণ্য / Products**) enhancements across `PoPackingEngine.kt`, `PoProductVariantPicker.kt`, and `CreatePurchaseOrderDialog.kt`, plus unit test coverage in `PoSmartPackingAndExportTest.kt`:

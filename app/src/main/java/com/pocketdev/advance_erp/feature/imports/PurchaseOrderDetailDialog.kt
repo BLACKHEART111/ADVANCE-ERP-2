@@ -173,6 +173,7 @@ fun PurchaseOrderDetailDialog(
     onReverseFreightPayment: ((journalEntryId: String) -> Unit)? = null,
     onDuplicatePo: ((orderId: String) -> Unit)? = null,
     onEditFullPo: ((order: PurchaseOrder) -> Unit)? = null,
+    onReopenPoForEdit: ((order: PurchaseOrder) -> Unit)? = null,
     onSelectShipment: ((ImportShipment) -> Unit)? = null,
     onDeleteCarton: ((orderId: String, cartonNumber: String) -> Unit)? = null,
     onDeleteCostItem: ((costItemId: String) -> Unit)? = null,
@@ -191,6 +192,7 @@ fun PurchaseOrderDetailDialog(
     val productMap = remember(products) { products.associateBy { it.id } }
     var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var showDeletePoConfirmDialog by rememberSaveable { mutableStateOf(false) }
+    var showReopenForEditDialog by rememberSaveable { mutableStateOf(false) }
     var reversingPayment by remember { mutableStateOf<SupplierPayment?>(null) }
     var showFreightPaymentDialog by rememberSaveable { mutableStateOf(false) }
     var reversingFreightPayment by remember { mutableStateOf<PoFreightPaymentRecord?>(null) }
@@ -282,6 +284,13 @@ fun PurchaseOrderDetailDialog(
     val canDeletePo = onDeletePo != null && !isOrderReceived
 
     val isCostFinalized = order.isActualCostFinalized || order.status == PurchaseOrderStatus.ACTUAL_COST_FINALIZED.name
+    val requiresReopenBeforeEdit = isOrderReceived ||
+        isCostFinalized ||
+        order.status in setOf(
+            PurchaseOrderStatus.RECEIVED.name,
+            PurchaseOrderStatus.PARTIALLY_RECEIVED.name,
+            PurchaseOrderStatus.COMPLETED.name
+        )
     var collapsedDetailProductIds by remember(order.id) { mutableStateOf(emptySet<String>()) }
     val landedSummary = remember(
         order,
@@ -331,7 +340,19 @@ fun PurchaseOrderDetailDialog(
             Column(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(horizontal=16.dp)) {
                     PoTopBar(if(isBangla) "PO বিস্তারিত" else "PO details",onBack=onDismiss,actions={
-                        if(onEditFullPo!=null && order.status !in setOf("COMPLETED","CANCELLED")) IconButton(onClick={onEditFullPo(order)}) { Icon(Icons.Outlined.Edit,if(isBangla) "সম্পাদনা" else "Edit") }
+                        if (order.status != PurchaseOrderStatus.CANCELLED.name && (onEditFullPo != null || onReopenPoForEdit != null)) {
+                            IconButton(
+                                onClick = {
+                                    if (requiresReopenBeforeEdit && onReopenPoForEdit != null) {
+                                        showReopenForEditDialog = true
+                                    } else {
+                                        onEditFullPo?.invoke(order)
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Outlined.Edit, if (isBangla) "সম্পাদনা" else "Edit")
+                            }
+                        }
                         IconButton(onClick={onSharePdf(order)}) { Icon(Icons.Outlined.Print,if(isBangla) "PDF প্রিন্ট / শেয়ার" else "Print / share PDF") }
                         if (canDeletePo) {
                             IconButton(onClick = { showDeletePoConfirmDialog = true }) {
@@ -503,20 +524,33 @@ fun PurchaseOrderDetailDialog(
                             }
                             val isFullyReceived = order.status == PurchaseOrderStatus.RECEIVED.name ||
                                 (totalOrderedQuantity > 0 && totalReceivedQuantity >= totalOrderedQuantity)
-                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            val quickActions = buildList<Triple<String, androidx.compose.ui.graphics.vector.ImageVector, () -> Unit>> {
                                 if (remainingBalanceMinor > 0 && order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)) {
-                                    PoDetailAction(if (isBangla) "সাপ্লায়ার পেমেন্ট" else "Supplier Pay", Icons.Outlined.Payment, Modifier.weight(1f)) { onMakePayment(order) }
+                                    add(Triple(if (isBangla) "সাপ্লায়ার পেমেন্ট" else "Supplier Pay", Icons.Outlined.Payment) { onMakePayment(order) })
                                 }
                                 if (onRecordFreightPayment != null &&
                                     freightPayableSummary.remainingFreightBillMinor > 0L &&
                                     order.status !in setOf(PurchaseOrderStatus.DRAFT.name, PurchaseOrderStatus.CANCELLED.name)
                                 ) {
-                                    PoDetailAction(if (isBangla) "ফ্রেইট পেমেন্ট" else "Pay Freight", Icons.Outlined.LocalShipping, Modifier.weight(1f)) { showFreightPaymentDialog = true }
+                                    add(Triple(if (isBangla) "ফ্রেইট পেমেন্ট" else "Pay Freight", Icons.Outlined.LocalShipping) { showFreightPaymentDialog = true })
+                                }
+                                if (requiresReopenBeforeEdit && onReopenPoForEdit != null && order.status != PurchaseOrderStatus.CANCELLED.name) {
+                                    add(Triple(if (isBangla) "আনলক ও এডিট" else "Unlock & Edit", Icons.Outlined.Edit) { showReopenForEditDialog = true })
+                                }
+                                if (!isFullyReceived && !isCostFinalized && order.status !in setOf("DRAFT", "CANCELLED", "COMPLETED")) {
+                                    add(Triple(if (isBangla) "খরচ ফাইনাল" else "Finalize Cost", Icons.Outlined.CheckCircle) { onFinalizeActualCost(order.id) })
                                 }
                                 if (!isFullyReceived && order.status !in setOf("DRAFT", "CANCELLED", "COMPLETED")) {
-                                    PoDetailAction(if (isBangla) "রিসিভ করুন" else "Receive", Icons.Outlined.Warehouse, Modifier.weight(1f)) { onReceiveProducts(order) }
+                                    add(Triple(if (isBangla) "রিসিভ করুন" else "Receive", Icons.Outlined.Warehouse) { onReceiveProducts(order) })
                                 }
-                                PoDetailAction(if (isBangla) "PDF প্রিন্ট/শেয়ার" else "PDF / Share", Icons.Outlined.PictureAsPdf, Modifier.weight(1f)) { onSharePdf(order) }
+                                add(Triple(if (isBangla) "PDF প্রিন্ট/শেয়ার" else "PDF / Share", Icons.Outlined.PictureAsPdf) { onSharePdf(order) })
+                            }
+                            quickActions.chunked(3).forEach { rowActions ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    rowActions.forEach { (label, icon, act) ->
+                                        PoDetailAction(label, icon, Modifier.weight(1f), act)
+                                    }
+                                }
                             }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -2344,11 +2378,15 @@ fun PurchaseOrderDetailDialog(
                                 )
                             }
 
-                            if (onEditFullPo != null && order.status != PurchaseOrderStatus.CANCELLED.name) {
+                            if ((onEditFullPo != null || onReopenPoForEdit != null) && order.status != PurchaseOrderStatus.CANCELLED.name) {
                                 OutlinedButton(
                                     onClick = {
-                                        onEditFullPo(order)
-                                        onDismiss()
+                                        if (requiresReopenBeforeEdit && onReopenPoForEdit != null) {
+                                            showReopenForEditDialog = true
+                                        } else {
+                                            onEditFullPo?.invoke(order)
+                                            onDismiss()
+                                        }
                                     },
                                     modifier = Modifier
                                         .widthIn(min = 104.dp)
@@ -2359,7 +2397,11 @@ fun PurchaseOrderDetailDialog(
                                     Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = if (isBangla) "PO এডিট" else "Edit PO",
+                                        text = if (requiresReopenBeforeEdit && onReopenPoForEdit != null) {
+                                            if (isBangla) "আনলক ও PO এডিট" else "Unlock & Edit PO"
+                                        } else {
+                                            if (isBangla) "PO এডিট" else "Edit PO"
+                                        },
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 13.sp,
                                         maxLines = 1,
@@ -2485,6 +2527,49 @@ fun PurchaseOrderDetailDialog(
     }
 
     } // PO palette
+
+    if (showReopenForEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showReopenForEditDialog = false },
+            title = {
+                Text(
+                    text = if (isBangla) "রিসিভ প্রত্যাহার করে PO এডিট করবেন?" else "Reopen PO for Editing?",
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryPurple
+                )
+            },
+            text = {
+                Text(
+                    text = if (isBangla) {
+                        "এই PO-র পণ্য অবিক্রীত থাকলে গুদামের স্টক, FIFO ব্যাচ এবং রিসিভ জাবেদা সাময়িকভাবে প্রত্যাহার করে পূর্ণাঙ্গ PO এডিটর খুলে দেওয়া হবে।\n\n" +
+                            "• সাপ্লায়ার ও ফ্রেইট ফরোয়ার্ডারকে দেওয়া পেমেন্ট অক্ষুণ্ণ থাকবে।\n" +
+                            "• পণ্য যোগ/বাদ ও কার্টন আপডেট করে সেভ করার পর আবার 'খরচ ফাইনাল' ও 'রিসিভ করুন' চাপলে নতুন ল্যান্ডিং কস্ট অনুযায়ী স্টক যুক্ত হবে।"
+                    } else {
+                        "If received stock from ${order.poNumber} is still unsold, its warehouse receipt, FIFO batches, and landed journals will be safely reversed so you can edit products and cartons while preserving supplier & freight payments.\n\n" +
+                            "After saving your edits, tap 'Finalize Cost' and 'Receive' to restock with recalculated landed costs."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showReopenForEditDialog = false
+                        onReopenPoForEdit?.invoke(order)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
+                ) {
+                    Text(if (isBangla) "আনলক ও এডিটর খুলুন" else "Unlock & Open Editor")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReopenForEditDialog = false }) {
+                    Text(if (isBangla) "বাতিল" else "Cancel")
+                }
+            }
+        )
+    }
 
     // Cancel PO Confirmation Alert with Reason input
     if (showCancelConfirmDialog) {

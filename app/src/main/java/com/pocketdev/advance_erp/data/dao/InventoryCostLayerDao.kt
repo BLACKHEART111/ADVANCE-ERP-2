@@ -49,6 +49,12 @@ interface InventoryCostLayerDao {
     @Query("SELECT * FROM inventory_cost_layers WHERE shipmentId = :shipmentId")
     suspend fun getLayersForShipmentSync(shipmentId: String): List<InventoryCostLayer>
 
+    @Query("SELECT * FROM inventory_cost_layers WHERE purchaseOrderId = :orderId")
+    suspend fun getLayersForOrderSync(orderId: String): List<InventoryCostLayer>
+
+    @Query("DELETE FROM inventory_cost_layers WHERE id = :layerId")
+    suspend fun deleteCostLayerById(layerId: String)
+
     @Query("SELECT * FROM inventory_cost_layers WHERE purchaseBatchId = :purchaseBatchId ORDER BY receiptDate DESC")
     fun getCostLayersForBatch(purchaseBatchId: String): Flow<List<InventoryCostLayer>>
 

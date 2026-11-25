@@ -2,7 +2,9 @@ package com.pocketdev.advance_erp.data.repository
 
 import androidx.room.withTransaction
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
+import com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment
 import com.pocketdev.advance_erp.core.engine.ErpAccountingGuard
+import com.pocketdev.advance_erp.core.engine.SupplierLedgerAdjustment
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.dao.AccountingDao
 import com.pocketdev.advance_erp.data.entity.AccountType
@@ -304,6 +306,28 @@ class AccountingRepositoryImpl @Inject constructor(
             }
         }
 
+        val custLedgerCustomer = if (
+            original.referenceType in setOf(CustomerLedgerAdjustment.DEBIT, CustomerLedgerAdjustment.CREDIT) &&
+            !original.referenceId.isNullOrBlank()
+        ) database.customerDao().getCustomerById(original.referenceId) else null
+        val custLedgerDelta = if (custLedgerCustomer != null) CustomerLedgerAdjustment.delta(original) else 0L
+        if (custLedgerCustomer != null && custLedgerDelta > 0L) {
+            require(custLedgerCustomer.outstandingBalanceMinor >= custLedgerDelta) {
+                "গ্রাহক '${custLedgerCustomer.name}'-এর বর্তমান বকেয়া (৳${Formatters.formatMinorUnit(custLedgerCustomer.outstandingBalanceMinor)}) এই এন্ট্রির পরিমাণের চেয়ে কম হওয়ায় আগে গৃহীত পেমেন্ট বাতিল না করে রিভার্স করা যাবে না।"
+            }
+        }
+
+        val supLedgerSupplier = if (
+            original.referenceType in setOf(SupplierLedgerAdjustment.CREDIT, SupplierLedgerAdjustment.DEBIT) &&
+            !original.referenceId.isNullOrBlank()
+        ) database.supplierDao().getSupplierById(original.referenceId) else null
+        val supLedgerDelta = if (supLedgerSupplier != null) SupplierLedgerAdjustment.delta(original) else 0L
+        if (supLedgerSupplier != null && supLedgerDelta > 0L) {
+            require(supLedgerSupplier.outstandingPayableMinor >= supLedgerDelta) {
+                "সরবরাহকারী '${supLedgerSupplier.companyName}'-এর বর্তমান প্রদেয় বকেয়া (৳${Formatters.formatMinorUnit(supLedgerSupplier.outstandingPayableMinor)}) এই এন্ট্রির পরিমাণের চেয়ে কম হওয়ায় আগে পেমেন্ট রিভার্স না করে এটি বাতিল করা যাবে না।"
+            }
+        }
+
         val entryCount = accountingDao.getEntryCount()
         val reversalNumber = "JE-2026-%04d".format(entryCount + 1)
         val reversalId = "je-${UUID.randomUUID()}"
@@ -340,6 +364,19 @@ class AccountingRepositoryImpl @Inject constructor(
 
         accountingDao.postJournalEntryWithLines(reversalEntry, reversalLines)
         accountingDao.markEntryReversed(original.id, reversalId)
+
+        if (custLedgerCustomer != null && custLedgerDelta != 0L) {
+            database.customerDao().updateOutstandingBalance(
+                custLedgerCustomer.id,
+                (custLedgerCustomer.outstandingBalanceMinor - custLedgerDelta).coerceAtLeast(0L)
+            )
+        }
+        if (supLedgerSupplier != null && supLedgerDelta != 0L) {
+            database.supplierDao().updateOutstandingPayable(
+                supLedgerSupplier.id,
+                (supLedgerSupplier.outstandingPayableMinor - supLedgerDelta).coerceAtLeast(0L)
+            )
+        }
 
         reversalId
     }

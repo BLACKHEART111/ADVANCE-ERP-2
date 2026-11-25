@@ -125,10 +125,11 @@ class SalesRepositoryImpl @Inject constructor(
         val invoiceItems = draft.items.map { itemDraft ->
             val product = productDao.getProductById(itemDraft.productId)
                 ?: throw IllegalArgumentException("Product not found: ${itemDraft.productId}")
+            val variantSku = itemDraft.variantId?.let { db.productVariantDao().getVariantById(it)?.sku }
 
             val lineGross = itemDraft.quantity.toLong() * itemDraft.unitPriceMinor
             val lineTotal = maxOf(0L, lineGross - itemDraft.discountMinor)
-            subtotalMinor += lineGross
+            subtotalMinor += lineTotal
 
             SalesInvoiceItem(
                 id = UUID.randomUUID().toString(),
@@ -137,7 +138,7 @@ class SalesRepositoryImpl @Inject constructor(
                 variantId = itemDraft.variantId,
                 productNameEn = product.nameEn,
                 productNameBn = product.nameBn,
-                sku = product.baseSku,
+                sku = variantSku ?: product.baseSku,
                 quantity = itemDraft.quantity,
                 returnedQuantity = 0,
                 unitPriceMinor = itemDraft.unitPriceMinor,
@@ -215,9 +216,10 @@ class SalesRepositoryImpl @Inject constructor(
         val invoiceItems = draft.items.map { itemDraft ->
             val product = productDao.getProductById(itemDraft.productId)
                 ?: throw IllegalArgumentException("Product not found")
+            val variantSku = itemDraft.variantId?.let { db.productVariantDao().getVariantById(it)?.sku }
             val lineGross = itemDraft.quantity.toLong() * itemDraft.unitPriceMinor
             val lineTotal = maxOf(0L, lineGross - itemDraft.discountMinor)
-            subtotalMinor += lineGross
+            subtotalMinor += lineTotal
 
             SalesInvoiceItem(
                 id = UUID.randomUUID().toString(),
@@ -226,7 +228,7 @@ class SalesRepositoryImpl @Inject constructor(
                 variantId = itemDraft.variantId,
                 productNameEn = product.nameEn,
                 productNameBn = product.nameBn,
-                sku = product.baseSku,
+                sku = variantSku ?: product.baseSku,
                 quantity = itemDraft.quantity,
                 returnedQuantity = 0,
                 unitPriceMinor = itemDraft.unitPriceMinor,
@@ -237,7 +239,7 @@ class SalesRepositoryImpl @Inject constructor(
             )
         }
 
-        val totalAmount = maxOf(0L, subtotalMinor - draft.discountMinor)
+        val totalAmount = maxOf(0L, subtotalMinor - draft.discountMinor + draft.additionalChargesMinor)
         val initialPaid = minOf(draft.paidAmountMinor, totalAmount)
         val initialDue = maxOf(0L, totalAmount - initialPaid)
 
@@ -249,6 +251,7 @@ class SalesRepositoryImpl @Inject constructor(
             warehouseName = warehouse.name,
             subtotalMinor = subtotalMinor,
             discountMinor = draft.discountMinor,
+            taxMinor = draft.additionalChargesMinor,
             totalAmountMinor = totalAmount,
             paidAmountMinor = if (draft.paidAmountMinor > 0L) initialPaid else existing.paidAmountMinor,
             dueAmountMinor = if (draft.paidAmountMinor > 0L) initialDue else maxOf(0L, totalAmount - existing.paidAmountMinor),
@@ -294,19 +297,22 @@ class SalesRepositoryImpl @Inject constructor(
             }
             val customerBalanceBaseline = captureCustomerBalanceBaseline(invoice.customerId)
 
-            // 1. Stock availability validation (sellable stock = quantity - reservedQuantity)
-            for (item in items) {
-                val balance = if (item.variantId != null) {
-                    stockBalanceDao.getVariantBalance(invoice.warehouseId, item.productId, item.variantId)
-                        ?: stockBalanceDao.getBalance(invoice.warehouseId, item.productId)
+            // 1. Aggregate stock availability validation across repeated product/variant lines
+            val requestedBySelection = items.groupBy { it.productId to it.variantId }
+            for ((selection, groupItems) in requestedBySelection) {
+                val (prodId, varId) = selection
+                val balance = if (varId != null) {
+                    stockBalanceDao.getVariantBalance(invoice.warehouseId, prodId, varId)
+                        ?: stockBalanceDao.getBalance(invoice.warehouseId, prodId)
                 } else {
-                    stockBalanceDao.getBalance(invoice.warehouseId, item.productId)
+                    stockBalanceDao.getBalance(invoice.warehouseId, prodId)
                 }
                 val sellableQty = maxOf(0, (balance?.quantity ?: 0) - (balance?.reservedQuantity ?: 0))
-                if (sellableQty < item.quantity) {
+                val totalRequested = groupItems.sumOf { it.quantity }
+                if (sellableQty < totalRequested) {
                     return Result.failure(
                         IllegalStateException(
-                            "Insufficient sellable stock for '${item.productNameEn}'. Available: $sellableQty, Requested: ${item.quantity}"
+                            "Insufficient sellable stock for '${groupItems.first().productNameEn}'. Available: $sellableQty, Requested: $totalRequested"
                         )
                     )
                 }
@@ -509,8 +515,10 @@ class SalesRepositoryImpl @Inject constructor(
             }
 
             // 3. Double-Entry Accounting Integration
-            // Entry A: Sales Revenue, Accounts Receivable, and Cash/Bank/MFS Received
+            // Entry A: Sales Revenue, Accounts Receivable, Additional Charges, and Cash/Bank/MFS Received
             val revenueLines = mutableListOf<JournalLineDraft>()
+            val grossCreditRevenue = invoice.subtotalMinor + invoice.taxMinor
+            val effectiveDiscount = minOf(invoice.discountMinor, grossCreditRevenue)
 
             if (cashPaid > 0L) {
                 revenueLines.add(
@@ -542,33 +550,34 @@ class SalesRepositoryImpl @Inject constructor(
                     )
                 )
             }
-            if (invoice.discountMinor > 0L) {
+            if (effectiveDiscount > 0L) {
                 revenueLines.add(
                     JournalLineDraft(
                         accountId = "coa-4030",
                         isDebit = true,
-                        amountMinor = invoice.discountMinor,
+                        amountMinor = effectiveDiscount,
                         description = "Sales Discount: Inv #${invoice.invoiceNumber}"
                     )
                 )
             }
-            revenueLines.add(
-                JournalLineDraft(
-                    accountId = "coa-4010",
-                    isDebit = false,
-                    amountMinor = invoice.subtotalMinor,
-                    description = "Sales Revenue: Inv #${invoice.invoiceNumber}"
+            if (grossCreditRevenue > 0L) {
+                revenueLines.add(
+                    JournalLineDraft(
+                        accountId = "coa-4010",
+                        isDebit = false,
+                        amountMinor = grossCreditRevenue,
+                        description = "Sales Revenue: Inv #${invoice.invoiceNumber}"
+                    )
                 )
-            )
-
-            accountingRepository.postJournalEntry(
-                entryDate = now,
-                descEn = "Sales Invoice #${invoice.invoiceNumber} posted for ${invoice.customerName}",
-                descBn = "গ্রাহক ${invoice.customerName} এর জন্য বিক্রয় চালান #${invoice.invoiceNumber} পোস্ট করা হয়েছে",
-                referenceType = "SALES_INVOICE",
-                referenceId = invoice.id,
-                lines = revenueLines
-            )
+                accountingRepository.postJournalEntry(
+                    entryDate = now,
+                    descEn = "Sales Invoice #${invoice.invoiceNumber} posted for ${invoice.customerName}",
+                    descBn = "গ্রাহক ${invoice.customerName} এর জন্য বিক্রয় চালান #${invoice.invoiceNumber} পোস্ট করা হয়েছে",
+                    referenceType = "SALES_INVOICE",
+                    referenceId = invoice.id,
+                    lines = revenueLines
+                )
+            }
 
             // Entry B: COGS Recognition & Inventory Asset Deduction
             if (totalInvoiceCogs > 0) {
@@ -650,8 +659,13 @@ class SalesRepositoryImpl @Inject constructor(
                 totalAllocated = 0L
             }
 
-            val unallocatedCredit = maxOf(0L, draft.amountMinor - totalAllocated)
-            val isAdvance = unallocatedCredit > 0 && totalAllocated == 0L
+            val prePaymentReceivableMinor = maxOf(
+                0L,
+                if (customer.outstandingBalanceMinor != 0L) customer.outstandingBalanceMinor else netBefore
+            )
+            val (arSettledMinor, advanceCreditMinor) = com.pocketdev.advance_erp.core.engine.PaymentAllocationValidation
+                .splitPaymentIntoReceivableAndAdvance(draft.amountMinor, totalAllocated, prePaymentReceivableMinor)
+            val isAdvance = advanceCreditMinor > 0L && arSettledMinor == 0L
 
             val payment = CustomerPayment(
                 id = paymentId,
@@ -659,8 +673,8 @@ class SalesRepositoryImpl @Inject constructor(
                 customerId = customer.id,
                 customerName = customer.name,
                 amountMinor = draft.amountMinor,
-                allocatedAmountMinor = totalAllocated,
-                unallocatedCreditMinor = unallocatedCredit,
+                allocatedAmountMinor = arSettledMinor,
+                unallocatedCreditMinor = advanceCreditMinor,
                 paymentDate = draft.paymentDate,
                 paymentMethod = draft.paymentMethod,
                 accountId = draft.accountId,
@@ -685,24 +699,28 @@ class SalesRepositoryImpl @Inject constructor(
                     description = "Customer payment received: Receipt #${paymentNumber}"
                 )
             )
-            // Credit: Accounts Receivable for allocated portion
-            if (totalAllocated > 0) {
+            // Credit: Accounts Receivable for invoiced + prior/opening receivable settlement
+            if (arSettledMinor > 0L) {
                 journalLines.add(
                     JournalLineDraft(
                         accountId = "coa-1040",
                         isDebit = false,
-                        amountMinor = totalAllocated,
-                        description = "Payment allocated to invoice(s): Receipt #${paymentNumber}"
+                        amountMinor = arSettledMinor,
+                        description = if (totalAllocated > 0L) {
+                            "Payment allocated to invoice(s): Receipt #${paymentNumber}"
+                        } else {
+                            "Customer receivable collection: Receipt #${paymentNumber}"
+                        }
                     )
                 )
             }
-            // Credit: Customer Advance for unallocated portion
-            if (unallocatedCredit > 0) {
+            // Credit: Customer Advance for overpayment beyond current receivable
+            if (advanceCreditMinor > 0L) {
                 journalLines.add(
                     JournalLineDraft(
                         accountId = "coa-2030",
                         isDebit = false,
-                        amountMinor = unallocatedCredit,
+                        amountMinor = advanceCreditMinor,
                         description = "Customer advance deposit: Receipt #${paymentNumber}"
                     )
                 )
@@ -1354,9 +1372,10 @@ class SalesRepositoryImpl @Inject constructor(
         val items = draft.items.map { itemDraft ->
             val p = productDao.getProductById(itemDraft.productId)
                 ?: throw IllegalArgumentException("Product not found: ${itemDraft.productId}")
+            val variantSku = itemDraft.variantId?.let { db.productVariantDao().getVariantById(it)?.sku }
             val lineGross = itemDraft.quantity.toLong() * itemDraft.unitPriceMinor
             val lineTotal = maxOf(0L, lineGross - itemDraft.discountMinor)
-            subtotal += lineGross
+            subtotal += lineTotal
 
             SalesInvoiceItem(
                 id = UUID.randomUUID().toString(),
@@ -1365,7 +1384,7 @@ class SalesRepositoryImpl @Inject constructor(
                 variantId = itemDraft.variantId,
                 productNameEn = p.nameEn,
                 productNameBn = p.nameBn,
-                sku = p.baseSku,
+                sku = variantSku ?: p.baseSku,
                 quantity = itemDraft.quantity,
                 returnedQuantity = 0,
                 unitPriceMinor = itemDraft.unitPriceMinor,
@@ -1389,7 +1408,7 @@ class SalesRepositoryImpl @Inject constructor(
             status = InvoiceStatus.QUOTATION.name,
             subtotalMinor = subtotal,
             discountMinor = draft.discountMinor,
-            taxMinor = 0L,
+            taxMinor = draft.additionalChargesMinor,
             totalAmountMinor = totalAmount,
             paidAmountMinor = 0L,
             dueAmountMinor = totalAmount,
@@ -2120,14 +2139,17 @@ class SalesRepositoryImpl @Inject constructor(
                     }
                 } else {
                     val revLines = mutableListOf<JournalLineDraft>()
-                    revLines.add(
-                        JournalLineDraft(
-                            accountId = "coa-4010",
-                            isDebit = true,
-                            amountMinor = invoice.subtotalMinor,
-                            description = "Reversal of Sales Revenue: Inv #${invoice.invoiceNumber}"
+                    val grossRevReversal = invoice.subtotalMinor + invoice.taxMinor
+                    if (grossRevReversal > 0L) {
+                        revLines.add(
+                            JournalLineDraft(
+                                accountId = "coa-4010",
+                                isDebit = true,
+                                amountMinor = grossRevReversal,
+                                description = "Reversal of Sales Revenue: Inv #${invoice.invoiceNumber}"
+                            )
                         )
-                    )
+                    }
                     if (invoice.discountMinor > 0) {
                         revLines.add(
                             JournalLineDraft(
@@ -2149,14 +2171,16 @@ class SalesRepositoryImpl @Inject constructor(
                             )
                         )
                     }
-                    revRevId = accountingRepository.postJournalEntry(
-                        entryDate = now,
-                        descEn = "Cancellation reversal for Invoice #${invoice.invoiceNumber}",
-                        descBn = "ইনভয়েস #${invoice.invoiceNumber} বাতিলের বিপরীত দাখিলা",
-                        referenceType = "VOID_INVOICE_SALES",
-                        referenceId = invoiceId,
-                        lines = revLines
-                    )
+                    if (revLines.isNotEmpty() && grossRevReversal > 0L) {
+                        revRevId = accountingRepository.postJournalEntry(
+                            entryDate = now,
+                            descEn = "Cancellation reversal for Invoice #${invoice.invoiceNumber}",
+                            descBn = "ইনভয়েস #${invoice.invoiceNumber} বাতিলের বিপরীত দাখিলা",
+                            referenceType = "VOID_INVOICE_SALES",
+                            referenceId = invoiceId,
+                            lines = revLines
+                        )
+                    }
                 }
 
                 // Reverse COGS
