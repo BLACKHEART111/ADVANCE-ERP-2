@@ -90,20 +90,25 @@ interface AccountingDao {
         SELECT jl.* FROM journal_lines jl
         INNER JOIN journal_entries je ON jl.journalEntryId = je.id
         WHERE je.isPosted = 1 AND je.isReversed = 0
+          AND je.referenceType != 'REVERSAL' AND je.reversalOfEntryId IS NULL
     """)
     suspend fun getActivePostedLines(): List<JournalLine>
 
     @Query("""
         SELECT jl.* FROM journal_lines jl
         INNER JOIN journal_entries je ON jl.journalEntryId = je.id
-        WHERE je.isPosted = 1 AND je.isReversed = 0 AND je.entryDate <= :upToMillis
+        WHERE je.isPosted = 1 AND je.isReversed = 0
+          AND je.referenceType != 'REVERSAL' AND je.reversalOfEntryId IS NULL
+          AND je.entryDate <= :upToMillis
     """)
     suspend fun getActivePostedLinesUpTo(upToMillis: Long): List<JournalLine>
 
     @Query("""
         SELECT jl.* FROM journal_lines jl
         INNER JOIN journal_entries je ON jl.journalEntryId = je.id
-        WHERE je.isPosted = 1 AND je.isReversed = 0 AND je.entryDate >= :fromMillis AND je.entryDate <= :toMillis
+        WHERE je.isPosted = 1 AND je.isReversed = 0
+          AND je.referenceType != 'REVERSAL' AND je.reversalOfEntryId IS NULL
+          AND je.entryDate >= :fromMillis AND je.entryDate <= :toMillis
     """)
     suspend fun getActivePostedLinesInRange(fromMillis: Long, toMillis: Long): List<JournalLine>
 
@@ -111,7 +116,9 @@ interface AccountingDao {
         SELECT COALESCE(SUM(CASE WHEN jl.isDebit = 1 THEN jl.amountMinor ELSE -jl.amountMinor END), 0)
         FROM journal_lines jl
         INNER JOIN journal_entries je ON jl.journalEntryId = je.id
-        WHERE je.isPosted = 1 AND je.isReversed = 0 AND jl.accountCode = :accountCode
+        WHERE je.isPosted = 1 AND je.isReversed = 0
+          AND je.referenceType != 'REVERSAL' AND je.reversalOfEntryId IS NULL
+          AND jl.accountCode = :accountCode
     """)
     suspend fun getNetDebitBalanceForAccount(accountCode: String): Long
 

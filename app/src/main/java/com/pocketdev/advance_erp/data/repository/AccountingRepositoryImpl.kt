@@ -150,9 +150,12 @@ class AccountingRepositoryImpl @Inject constructor(
     override suspend fun deleteLiquidAccount(accountId: String) {
         val existing = accountingDao.getAccountById(accountId)
             ?: throw IllegalArgumentException("Account not found: $accountId")
-        require(existing.isLiquid) { "Only Cash / Bank / MFS accounts can be deleted here." }
+        val isCustomEquity = existing.accountType == AccountType.EQUITY.name && existing.id !in PROTECTED_ACCOUNT_IDS
+        require(existing.isLiquid || isCustomEquity) {
+            "শুধুমাত্র অতিরিক্ত নগদ/ব্যাংক/MFS বা কাস্টম ইনভেস্টর হিসাব ডিলিট করা যাবে।"
+        }
         require(existing.id != MAIN_CASH_ACCOUNT_ID && existing.id !in PROTECTED_ACCOUNT_IDS) {
-            "নগদ তহবিল (${existing.nameEn}) মূল হিসাব হওয়ায় ডিলিট করা যাবে না।"
+            "${existing.nameBn.ifBlank { existing.nameEn }} মূল হিসাব হওয়ায় ডিলিট করা যাবে না।"
         }
         val netBalanceMinor = accountingDao.getNetDebitBalanceForAccount(existing.accountCode)
         if (netBalanceMinor != 0L) {
@@ -269,14 +272,37 @@ class AccountingRepositoryImpl @Inject constructor(
         return entryId
     }
 
-    override suspend fun reverseJournalEntry(entryId: String): String {
+    override suspend fun reverseJournalEntry(entryId: String): String = database.withTransaction {
         val original = accountingDao.getJournalEntryById(entryId)
             ?: throw IllegalArgumentException("Journal entry not found: $entryId")
 
-        require(!original.isReversed) { "Entry is already reversed: ${original.entryNumber}" }
+        require(!original.isReversed && original.referenceType != "REVERSAL" && original.reversalOfEntryId == null) {
+            "এই জাবেদাটি ইতিমধ্যে রিভার্স করা হয়েছে বা এটি একটি রিভার্সাল অডিট এন্ট্রি: ${original.entryNumber}"
+        }
 
         val originalLines = accountingDao.getLinesForEntrySync(entryId)
         require(originalLines.isNotEmpty()) { "No journal lines found for entry: $entryId" }
+
+        originalLines.groupBy { it.accountId }.forEach { (accountId, accLines) ->
+            val netOriginalDebit = accLines.sumOf { if (it.isDebit) it.amountMinor else -it.amountMinor }
+            if (netOriginalDebit > 0L) {
+                requireSufficientLiquidBalance(accountId, netOriginalDebit)
+            } else if (netOriginalDebit < 0L) {
+                val acc = accountingDao.getAccountById(accountId)
+                if (acc != null &&
+                    acc.accountType == AccountType.EQUITY.name &&
+                    acc.accountCode != "3020" &&
+                    acc.id != OWNER_CAPITAL_ACCOUNT_ID
+                ) {
+                    val requiredCredit = -netOriginalDebit
+                    val currentCredit = (-accountingDao.getNetDebitBalanceForAccount(acc.accountCode)).coerceAtLeast(0L)
+                    val eqLabel = acc.nameBn.ifBlank { acc.nameEn }
+                    require(currentCredit >= requiredCredit) {
+                        "$eqLabel-এর অবশিষ্ট মূলধন ব্যালেন্স (৳${Formatters.formatMinorUnit(currentCredit)}) রিভার্স করার জন্য পর্যাপ্ত নয়।"
+                    }
+                }
+            }
+        }
 
         val entryCount = accountingDao.getEntryCount()
         val reversalNumber = "JE-2026-%04d".format(entryCount + 1)
@@ -315,7 +341,7 @@ class AccountingRepositoryImpl @Inject constructor(
         accountingDao.postJournalEntryWithLines(reversalEntry, reversalLines)
         accountingDao.markEntryReversed(original.id, reversalId)
 
-        return reversalId
+        reversalId
     }
 
     override suspend fun getTrialBalance(): List<TrialBalanceItem> {

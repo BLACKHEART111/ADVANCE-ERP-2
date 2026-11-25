@@ -1420,45 +1420,41 @@ fun AccountsScreen(
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                            val isReversalAudit = entry.referenceType == "REVERSAL" || entry.reversalOfEntryId != null
                                             Box(
                                                 modifier = Modifier
                                                     .background(
-                                                        if (entry.isPosted) StatusSuccess.copy(alpha = 0.14f)
-                                                        else MaterialTheme.colorScheme.surfaceVariant,
+                                                        when {
+                                                            entry.isReversed -> StatusErrorContainer
+                                                            isReversalAudit -> SecondaryTeal.copy(alpha = 0.14f)
+                                                            entry.isPosted -> StatusSuccess.copy(alpha = 0.14f)
+                                                            else -> MaterialTheme.colorScheme.surfaceVariant
+                                                        },
                                                         RoundedCornerShape(6.dp)
                                                     )
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
                                                 Text(
-                                                    text = if (entry.isPosted) {
-                                                        if (isBangla) "পোস্ট হয়েছে" else "Posted"
-                                                    } else {
-                                                        if (isBangla) "খসড়া" else "Draft"
+                                                    text = when {
+                                                        entry.isReversed -> if (isBangla) "রিভার্সড / বাতিল" else "REVERSED"
+                                                        isReversalAudit -> if (isBangla) "বিপরীত লগ (অডিট)" else "REVERSAL LOG"
+                                                        entry.isPosted -> if (isBangla) "পোস্ট হয়েছে" else "Posted"
+                                                        else -> if (isBangla) "খসড়া" else "Draft"
                                                     },
-                                                    color = if (entry.isPosted) StatusSuccess else TextMuted,
+                                                    color = when {
+                                                        entry.isReversed -> StatusError
+                                                        isReversalAudit -> SecondaryTeal
+                                                        entry.isPosted -> StatusSuccess
+                                                        else -> TextMuted
+                                                    },
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.SemiBold,
                                                     maxLines = 1
                                                 )
                                             }
-                                            if (entry.isReversed) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .background(StatusErrorContainer, RoundedCornerShape(6.dp))
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "REVERSED",
-                                                        color = StatusError,
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                            }
                                         }
 
-                                        if (!entry.isReversed && entry.referenceType != "REVERSAL") {
+                                        if (!entry.isReversed && entry.referenceType != "REVERSAL" && entry.reversalOfEntryId == null) {
                                             OutlinedButton(
                                                 onClick = { entryToReverse = entry },
                                                 shape = RoundedCornerShape(8.dp),

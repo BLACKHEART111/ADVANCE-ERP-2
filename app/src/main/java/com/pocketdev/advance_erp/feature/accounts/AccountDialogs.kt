@@ -1170,8 +1170,10 @@ fun AccountDetailDialog(
     } else {
         (trialItem?.totalCreditMinor ?: 0L) - (trialItem?.totalDebitMinor ?: 0L)
     }
+    val isDeletableCustomEquity = account.accountType == AccountType.EQUITY.name &&
+        account.id !in AccountingRepositoryImpl.PROTECTED_ACCOUNT_IDS
     val canDeleteAccount = onDeleteAccount != null &&
-        account.isLiquid &&
+        (account.isLiquid || isDeletableCustomEquity) &&
         account.id != AccountingRepositoryImpl.MAIN_CASH_ACCOUNT_ID &&
         account.id !in AccountingRepositoryImpl.PROTECTED_ACCOUNT_IDS
 
