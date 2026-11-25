@@ -35,7 +35,13 @@ private fun Context.fragmentActivity(): FragmentActivity? {
 
 /** Strong system biometrics only: no app PIN or device-credential fallback for cost disclosure. */
 @Composable
-internal fun rememberBiometricCostVisibility(key: Any?, allowed: Boolean, isBangla: Boolean): BiometricCostVisibility {
+internal fun rememberBiometricCostVisibility(
+    key: Any?,
+    allowed: Boolean,
+    isBangla: Boolean,
+    promptTitle: String? = null,
+    promptSubtitle: String? = null
+): BiometricCostVisibility {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val activity = remember(context) { context.fragmentActivity() }
@@ -59,7 +65,7 @@ internal fun rememberBiometricCostVisibility(key: Any?, allowed: Boolean, isBang
         }
     }
 
-    return remember(gate, activity, isBangla) {
+    return remember(gate, activity, isBangla, promptTitle, promptSubtitle) {
         BiometricCostVisibility(gate) toggle@{
             if (gate.isVisible) {
                 gate.lock()
@@ -101,8 +107,8 @@ internal fun rememberBiometricCostVisibility(key: Any?, allowed: Boolean, isBang
             promptHolder[0] = prompt
             try {
                 prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
-                    .setTitle(if (isBangla) "ল্যান্ডেড খরচ দেখুন" else "View landed cost")
-                    .setSubtitle(if (isBangla) "খরচ দেখতে fingerprint দিয়ে যাচাই করুন" else "Verify your biometric to reveal cost")
+                    .setTitle(promptTitle ?: if (isBangla) "ল্যান্ডেড খরচ দেখুন" else "View landed cost")
+                    .setSubtitle(promptSubtitle ?: if (isBangla) "খরচ দেখতে fingerprint দিয়ে যাচাই করুন" else "Verify your biometric to reveal cost")
                     .setAllowedAuthenticators(authenticators)
                     .setNegativeButtonText(if (isBangla) "বাতিল" else "Cancel")
                     .build())

@@ -88,7 +88,19 @@ fun PosDialog(
     var selectedWarehouse by remember { mutableStateOf(warehouses.firstOrNull()) }
     var selectedCustomer by remember { mutableStateOf<Customer?>(null) }
     var isWholesale by rememberSaveable { mutableStateOf(false) }
-    var showCostAndProfit by rememberSaveable { mutableStateOf(true) }
+    val posUiState by salesViewModel.uiState.collectAsState()
+    val isPosBangla = posUiState.language == com.pocketdev.advance_erp.core.model.AppLanguage.BANGLA
+    val canViewPosCost = com.pocketdev.advance_erp.core.security.SecurityManager.canViewCost(posUiState.userRole)
+    val canViewPosProfit = com.pocketdev.advance_erp.core.security.SecurityManager.canViewProfit(posUiState.userRole)
+    val canViewPosCostOrProfit = canViewPosCost || canViewPosProfit
+    val posCostProfitVisibility = com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility(
+        key = "pos-cost-profit",
+        allowed = canViewPosCostOrProfit,
+        isBangla = isPosBangla,
+        promptTitle = if (isPosBangla) "ক্রয়মূল্য ও লাভ দেখুন" else "View Cost & Profit",
+        promptSubtitle = if (isPosBangla) "ক্রয়মূল্য ও লাভ দেখতে ফিঙ্গারপ্রিন্ট দিয়ে যাচাই করুন" else "Verify your fingerprint to view purchase price & profit"
+    )
+    val showCostAndProfit = posCostProfitVisibility.isVisible
 
     val cartItems = remember { mutableStateListOf<PosCartItem>() }
     var barcodeInput by rememberSaveable { mutableStateOf("") }
@@ -260,15 +272,17 @@ fun PosDialog(
                         label = { Text(if (isWholesale) "পাইকারি" else "খুচরা", maxLines = 1) }
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    IconButton(
-                        onClick = { showCostAndProfit = !showCostAndProfit },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (showCostAndProfit) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                            contentDescription = "Cost & Profit Visibility",
-                            tint = if (showCostAndProfit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                        )
+                    if (canViewPosCostOrProfit) {
+                        IconButton(
+                            onClick = posCostProfitVisibility.toggle,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (showCostAndProfit) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                                contentDescription = "Cost & Profit Visibility",
+                                tint = if (showCostAndProfit) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
                     }
                     IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, contentDescription = "Close") }
                 }
@@ -440,7 +454,7 @@ fun PosDialog(
                                     }
                                     Text("Line total: ৳${Formatters.formatMinorUnit(item.lineTotalMinor)}", fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.End))
 
-                                    if (showCostAndProfit) {
+                                    if (showCostAndProfit && (canViewPosCost || canViewPosProfit)) {
                                         val unitCostMinor = resolveUnitCostMinorForSale(
                                             layers = costLayers,
                                             productId = item.product.id,
@@ -461,17 +475,21 @@ fun PosDialog(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = "কেনা: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Text(
-                                                text = "লাভ: ৳${Formatters.formatMinorUnit(lineProfitMinor)}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = profitColor
-                                            )
+                                            if (canViewPosCost) {
+                                                Text(
+                                                    text = "কেনা: ৳${Formatters.formatMinorUnit(unitCostMinor)}/pc",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            if (canViewPosProfit) {
+                                                Text(
+                                                    text = "লাভ: ৳${Formatters.formatMinorUnit(lineProfitMinor)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = profitColor
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -511,7 +529,7 @@ fun PosDialog(
                         Text("৳${Formatters.formatMinorUnit(netTotalMinor)}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                     }
 
-                    if (showCostAndProfit && cartItems.isNotEmpty()) {
+                    if (showCostAndProfit && canViewPosProfit && cartItems.isNotEmpty()) {
                         val totalCostMinor = cartItems.sumOf { item ->
                             val unitCost = resolveUnitCostMinorForSale(
                                 layers = costLayers,

@@ -1,6 +1,7 @@
 package com.pocketdev.advance_erp
 
 import com.pocketdev.advance_erp.core.engine.SalesInvoiceCalculator
+import com.pocketdev.advance_erp.core.security.CostRevealGate
 import com.pocketdev.advance_erp.core.security.SecurityManager
 import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.data.entity.Customer
@@ -213,5 +214,29 @@ class SalesInvoiceRedesignCalculationsTest {
         assertEquals("cust-id-1", CustomerLookupMatcher.findScannedCustomer(customers, "CUST-3205")?.id)
         assertEquals("cust-id-2", CustomerLookupMatcher.findScannedCustomer(customers, "01711223344")?.id)
         assertNull(CustomerLookupMatcher.findScannedCustomer(customers, "NO-MATCH-999"))
+    }
+
+    @Test
+    fun salesInvoiceCostAndProfitHiddenByDefaultAndUnlockedOnlyAfterBiometricAuth() {
+        val gate = CostRevealGate()
+
+        // Default locked state keeps purchase cost & profit hidden even for OWNER_ADMIN
+        assertFalse(SecurityManager.canViewCost(UserRole.OWNER_ADMIN) && gate.isVisible)
+        assertFalse(SecurityManager.canViewProfit(UserRole.OWNER_ADMIN) && gate.isVisible)
+
+        // Biometric verification reveals cost & profit according to role permissions
+        val ownerToken = requireNotNull(
+            gate.begin(SecurityManager.canViewCost(UserRole.OWNER_ADMIN) || SecurityManager.canViewProfit(UserRole.OWNER_ADMIN))
+        )
+        gate.authenticated(ownerToken)
+        assertTrue(SecurityManager.canViewCost(UserRole.OWNER_ADMIN) && gate.isVisible)
+        assertTrue(SecurityManager.canViewProfit(UserRole.OWNER_ADMIN) && gate.isVisible)
+        assertTrue(SecurityManager.canViewCost(UserRole.MANAGER) && gate.isVisible)
+        assertFalse(SecurityManager.canViewProfit(UserRole.MANAGER) && gate.isVisible)
+
+        // Locking hides both again immediately
+        gate.lock()
+        assertFalse(SecurityManager.canViewCost(UserRole.OWNER_ADMIN) && gate.isVisible)
+        assertFalse(SecurityManager.canViewProfit(UserRole.OWNER_ADMIN) && gate.isVisible)
     }
 }

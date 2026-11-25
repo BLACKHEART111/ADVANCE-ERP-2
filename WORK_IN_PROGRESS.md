@@ -1,5 +1,14 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Sales Invoice & POS Biometric Cost/Profit Protection — 2026-11-25
+
+Protected purchase cost (`Cost`) and profit (`Profit` / `Estimated Profit`) behind Android system biometric/fingerprint authentication in both **New Sales Invoice** and **Quick POS**, keeping them hidden by default (`isVisible = false`):
+- **Custom Biometric Prompt Strings (`BiometricCostVisibility.kt`)**: Added optional `promptTitle` and `promptSubtitle` parameters to `rememberBiometricCostVisibility` while preserving `BIOMETRIC_STRONG` gating and `ON_STOP` / disposal auto-lock (`CostRevealGate`).
+- **New Sales Invoice & Quick POS Gating (`CreateInvoiceDialog.kt`, `PosDialog.kt`)**: Replaced open-by-default `showCostAndProfit` state with `rememberBiometricCostVisibility`, requiring fingerprint verification when tapping the visibility eye button (`VisibilityOff` -> `Visibility`), while enforcing role permissions (`SecurityManager.canViewCost` / `canViewProfit`).
+- **Unit Test (`SalesInvoiceRedesignCalculationsTest.kt`)**: Added `salesInvoiceCostAndProfitHiddenByDefaultAndUnlockedOnlyAfterBiometricAuth`.
+
+Verified via `adev` pinned Gradle 8.13: `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` **BUILD SUCCESSFUL**, **441/441 JVM tests passed** across 81 files (`0` failures, `0` skipped); `git diff --check` passed. Debug APK (`app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `757357f282b44d46a1b851a529996f5b8991d4f0b34f8f315d30fc7439549cc4`) installed in-place on `OnePlus CPH2745` (`com.pocketdev.advance_erp2`, `firstInstallTime=2026-11-22 02:39:36` intact) and tested by the user on-device.
+
 ## Customer Lookup & Selection UI Redesign — 2026-11-25
 
 Redesigned `CustomerLookupDialog` to match the premium purple-teal modal reference in both Light and Dark modes while preserving Room DB v13 schema and existing invoice/customer state:

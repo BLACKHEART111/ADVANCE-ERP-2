@@ -85,6 +85,7 @@ import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.BangladeshBanks
 import com.pocketdev.advance_erp.core.security.SecurityManager
 import com.pocketdev.advance_erp.core.security.UserRole
+import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.firstInStockProduct
 import com.pocketdev.advance_erp.core.util.firstInStockVariant
@@ -174,7 +175,14 @@ fun CreateInvoiceDialog(
         )
     }
     var notes by rememberSaveable { mutableStateOf("") }
-    var showCostAndProfit by rememberSaveable { mutableStateOf(canViewAnyCostOrProfit) }
+    val costProfitVisibility = rememberBiometricCostVisibility(
+        key = "sales-invoice-cost-profit",
+        allowed = canViewAnyCostOrProfit,
+        isBangla = isBangla,
+        promptTitle = if (isBangla) "ক্রয়মূল্য ও লাভ দেখুন" else "View Cost & Profit",
+        promptSubtitle = if (isBangla) "ক্রয়মূল্য ও লাভ দেখতে ফিঙ্গারপ্রিন্ট দিয়ে যাচাই করুন" else "Verify your fingerprint to view purchase price & profit"
+    )
+    val showCostAndProfit = costProfitVisibility.isVisible
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     var showItemSearchBar by rememberSaveable { mutableStateOf(false) }
@@ -497,7 +505,7 @@ fun CreateInvoiceDialog(
                     canToggleCostOrProfit = canViewAnyCostOrProfit,
                     showCostAndProfit = showCostAndProfit,
                     onBack = onDismiss,
-                    onToggleCostProfit = { showCostAndProfit = !showCostAndProfit },
+                    onToggleCostProfit = costProfitVisibility.toggle,
                     onScanBarcode = { showBarcodeScanner = true }
                 )
 
