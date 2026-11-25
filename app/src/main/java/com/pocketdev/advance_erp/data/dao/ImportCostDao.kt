@@ -25,6 +25,15 @@ interface ImportCostDao {
     @Query("SELECT * FROM import_cost_items WHERE shipmentId = :shipmentId ORDER BY costDate ASC")
     suspend fun getCostItemsForShipmentSync(shipmentId: String): List<ImportCostItem>
 
+    @Query("SELECT * FROM import_cost_items ORDER BY costDate ASC")
+    suspend fun getAllCostItemsSync(): List<ImportCostItem>
+
+    @Query("SELECT * FROM landed_cost_allocations")
+    suspend fun getAllAllocationsSync(): List<LandedCostAllocation>
+
+    @Query("SELECT * FROM landed_cost_snapshots")
+    suspend fun getAllSnapshotsSync(): List<LandedCostSnapshot>
+
     @Query("SELECT * FROM import_cost_items WHERE purchaseOrderId = :orderId ORDER BY costDate ASC")
     fun getCostItemsForOrder(orderId: String): Flow<List<ImportCostItem>>
 

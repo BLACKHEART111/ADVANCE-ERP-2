@@ -56,6 +56,18 @@ interface MinimalImportDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAdditionalCost(cost: AdditionalProductCost)
 
+    @androidx.room.Update
+    suspend fun updateAdditionalCost(cost: AdditionalProductCost)
+
+    @Query("SELECT * FROM damage_records ORDER BY createdAt DESC")
+    suspend fun getAllDamageRecordsSync(): List<DamageRecord>
+
+    @Query("SELECT * FROM shortage_records ORDER BY createdAt DESC")
+    suspend fun getAllShortageRecordsSync(): List<ShortageRecord>
+
+    @Query("SELECT * FROM additional_product_costs ORDER BY expenseDate DESC")
+    suspend fun getAllAdditionalCostsSync(): List<AdditionalProductCost>
+
     @Query("SELECT * FROM additional_product_costs WHERE purchaseOrderId = :orderId ORDER BY expenseDate DESC")
     fun getAdditionalCostsForOrder(orderId: String): Flow<List<AdditionalProductCost>>
 

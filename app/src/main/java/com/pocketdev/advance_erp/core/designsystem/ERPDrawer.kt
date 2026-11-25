@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.FolderSpecial
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Inventory
@@ -132,6 +133,7 @@ enum class DrawerDestination(
     PURCHASES("purchases", Icons.Outlined.ShoppingCart, R.string.nav_purchases),
     IMPORT_MANAGEMENT("import_management", Icons.Outlined.Public, R.string.nav_import_management),
     SHIPMENTS("shipments", Icons.Outlined.FlightTakeoff, R.string.nav_shipments),
+    IMPORT_VAULT("import_vault", Icons.Outlined.FolderSpecial, R.string.nav_import_vault),
     CUSTOMERS("customers", Icons.Outlined.Group, R.string.nav_customers),
     SUPPLIERS("suppliers", Icons.Outlined.Storefront, R.string.nav_suppliers),
     SALES("sales", Icons.Outlined.ShoppingBag, R.string.nav_sales),
@@ -148,6 +150,7 @@ internal val drawerPrimaryMenuItems: List<DrawerDestination> = listOf(
     DrawerDestination.PURCHASES,
     DrawerDestination.IMPORT_MANAGEMENT,
     DrawerDestination.SHIPMENTS,
+    DrawerDestination.IMPORT_VAULT,
     DrawerDestination.CUSTOMERS,
     DrawerDestination.SUPPLIERS,
     DrawerDestination.SALES,
@@ -155,6 +158,14 @@ internal val drawerPrimaryMenuItems: List<DrawerDestination> = listOf(
     DrawerDestination.LEDGER,
     DrawerDestination.SETTINGS
 )
+
+internal fun visibleDrawerMenuItems(userRole: UserRole): List<DrawerDestination> {
+    return if (com.pocketdev.advance_erp.core.security.SecurityManager.canAccessImportVault(userRole)) {
+        drawerPrimaryMenuItems
+    } else {
+        drawerPrimaryMenuItems.filter { it != DrawerDestination.IMPORT_VAULT }
+    }
+}
 
 internal fun isDrawerDestinationSelected(
     destination: DrawerDestination,
@@ -185,6 +196,7 @@ internal fun drawerDestinationLabel(
         DrawerDestination.PURCHASES -> if (isBn) "ক্রয়" else "Purchase"
         DrawerDestination.IMPORT_MANAGEMENT -> if (isBn) "আমদানি ব্যবস্থাপনা" else "Import Management"
         DrawerDestination.SHIPMENTS -> if (isBn) "চালানসমূহ" else "Delivery Challans"
+        DrawerDestination.IMPORT_VAULT -> if (isBn) "আমদানি আর্কাইভ" else "Import Vault"
         DrawerDestination.CUSTOMERS -> if (isBn) "গ্রাহকবৃন্দ" else "Customers"
         DrawerDestination.SUPPLIERS -> if (isBn) "সরবরাহকারী" else "Suppliers"
         DrawerDestination.SALES -> if (isBn) "বিক্রয়" else "Sales"
@@ -305,7 +317,8 @@ fun ERPDrawer(
                         .padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    drawerPrimaryMenuItems.forEachIndexed { index, destination ->
+                    val visibleMenuItems = visibleDrawerMenuItems(userRole)
+                    visibleMenuItems.forEachIndexed { index, destination ->
                         val isSelected = isDrawerDestinationSelected(destination, currentRoute)
                         val countBadge: Int? = when (destination) {
                             DrawerDestination.CUSTOMERS -> customerCount
@@ -319,7 +332,7 @@ fun ERPDrawer(
                             isSelected = isSelected,
                             countBadge = countBadge,
                             language = language,
-                            showDivider = index < drawerPrimaryMenuItems.lastIndex && !isSelected,
+                            showDivider = index < visibleMenuItems.lastIndex && !isSelected,
                             tokens = tokens,
                             onClick = { onNavigate(destination) }
                         )

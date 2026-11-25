@@ -24,6 +24,10 @@ object SecurityManager {
         return role == UserRole.OWNER_ADMIN
     }
 
+    fun canAccessImportVault(role: UserRole): Boolean {
+        return canViewProfit(role)
+    }
+
     fun canViewCost(role: UserRole): Boolean {
         return role == UserRole.OWNER_ADMIN || role == UserRole.MANAGER || role == UserRole.ACCOUNTANT || role == UserRole.PURCHASE_OPERATOR
     }

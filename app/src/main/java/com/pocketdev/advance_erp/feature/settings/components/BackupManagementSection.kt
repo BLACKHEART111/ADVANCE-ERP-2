@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -89,6 +91,7 @@ fun BackupManagementSection(
     onDeleteBackup: (recordId: String) -> Unit,
     onToggleFridayAutoBackup: (enabled: Boolean) -> Unit,
     onSelectBackupFolder: ((uri: Uri?) -> Unit)? = null,
+    onResetTestDataKeepMasters: ((onFinished: () -> Unit) -> Unit)? = null,
     embeddedInAccordion: Boolean = false
 ) {
     val context = LocalContext.current
@@ -97,6 +100,8 @@ fun BackupManagementSection(
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US) }
 
     var isCreatingBackup by rememberSaveable { mutableStateOf(false) }
+    var isResettingTestData by rememberSaveable { mutableStateOf(false) }
+    var showResetTestDataConfirm by rememberSaveable { mutableStateOf(false) }
     var backupToRestore by remember { mutableStateOf<BackupRecord?>(null) }
     var backupToDelete by remember { mutableStateOf<BackupRecord?>(null) }
     var pendingUriToRestore by remember { mutableStateOf<Uri?>(null) }
@@ -342,7 +347,82 @@ fun BackupManagementSection(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = ERPDivider)
 
-
+                if (onResetTestDataKeepMasters != null) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.WarningAmber,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = if (isBn) {
+                                    "টেস্ট ডাটা রিসেট (প্রোডাক্ট ও কন্টাক্ট অক্ষত রাখুন)"
+                                } else {
+                                    "Reset Test Data (Keep Products & Contacts)"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (isBn) {
+                                "আপনার যোগ করা সকল প্রোডাক্ট, ক্যাটাগরি, ভ্যারিয়েন্ট, ছবি এবং কাস্টমার/সাপ্লায়ার অক্ষত থাকবে। শুধুমাত্র সকল ইনভয়েস, পিও, শিপমেন্ট, পেমেন্ট, লেজার হিসাব এবং স্টক (০) ক্লিয়ার হবে।"
+                            } else {
+                                "Keeps all products, categories, variants, photos, customers & suppliers intact while clearing test invoices, POs, shipments, payments, ledgers & stock back to 0."
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { showResetTestDataConfirm = true },
+                            enabled = !isResettingTestData && !isCreatingBackup,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.55f))
+                        ) {
+                            if (isResettingTestData) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = MaterialTheme.colorScheme.error,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isBn) "টেস্ট ডাটা ক্লিয়ার হচ্ছে..." else "Clearing Test Data...",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 12.5.sp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(17.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isBn) {
+                                        "প্রোডাক্ট ও কন্টাক্ট রেখে টেস্ট ডাটা ক্লিয়ার করুন"
+                                    } else {
+                                        "Clear Test Data (Keep Products & Contacts)"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 12.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -658,5 +738,59 @@ fun BackupManagementSection(
         )
     }
 
+    // Confirmation Dialog for Resetting Test Transactions & Stock While Keeping Products & Contacts
+    if (showResetTestDataConfirm && onResetTestDataKeepMasters != null) {
+        AlertDialog(
+            onDismissRequest = { showResetTestDataConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.WarningAmber,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text(
+                    text = if (isBn) "টেস্ট ডাটা রিসেট নিশ্চিত করুন" else "Confirm Test Data Reset",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (isBn) {
+                            "অক্ষত থাকবে:\n• সকল প্রোডাক্ট, ক্যাটাগরি, ভ্যারিয়েন্ট ও ছবি\n• সকল কাস্টমার ও সাপ্লায়ার (বকেয়া ৳০ হবে)\n• ব্যবসা প্রোফাইল, ওয়্যারহাউস, অ্যাকাউন্ট তালিকা ও ব্যাকআপ হিস্টোরি\n\nমুছে যাবে (০ হবে):\n• সকল স্টক ব্যালেন্স ও মুভমেন্ট\n• সকল ক্রয় অর্ডার (PO), শিপমেন্ট ও রিসিপ্ট\n• সকল সেলস ইনভয়েস, পেমেন্ট, খরচ ও জার্নাল লেজার\n\nরিসেটের আগে বর্তমান ডাটাবেজের একটি সেফটি কপি স্বয়ংক্রিয়ভাবে সংরক্ষণ করা হবে।"
+                        } else {
+                            "Will remain intact:\n• All products, categories, variants & product images\n• All customers & suppliers (balances reset to 0)\n• Business profile, warehouses, chart of accounts & backup history\n\nWill be cleared to 0:\n• All stock balances & stock movements\n• All purchase orders (PO), shipments & receipts\n• All sales invoices, payments, expenses & accounting journals\n\nA safety copy of your current database will be saved automatically before resetting."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetTestDataConfirm = false
+                        isResettingTestData = true
+                        onResetTestDataKeepMasters {
+                            isResettingTestData = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(
+                        text = if (isBn) "হ্যাঁ, টেস্ট ডাটা ক্লিয়ার করুন" else "Yes, Clear Test Data",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetTestDataConfirm = false }) {
+                    Text(if (isBn) "বাতিল" else "Cancel")
+                }
+            }
+        )
+    }
 
 }

@@ -134,6 +134,9 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE isActive = 1 ORDER BY nameEn ASC")
     suspend fun getAllProductsSync(): List<Product>
 
+    @Query("SELECT * FROM products ORDER BY nameEn ASC")
+    suspend fun getAllProductsIncludingInactiveSync(): List<Product>
+
     @Query("UPDATE products SET isActive = 0 WHERE id = :id")
     suspend fun softDeleteProduct(id: String)
 }

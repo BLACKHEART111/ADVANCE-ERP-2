@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.FlightTakeoff
+import androidx.compose.material.icons.outlined.FolderSpecial
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Settings
@@ -52,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pocketdev.advance_erp.R
 import com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme
+import com.pocketdev.advance_erp.core.security.SecurityManager
+import com.pocketdev.advance_erp.core.security.UserRole
 
 private data class MoreHubItem(
     val route: String,
@@ -62,19 +65,29 @@ private data class MoreHubItem(
 )
 
 @Composable
-fun MoreHubScreen(onNavigate: (String) -> Unit, modifier: Modifier = Modifier) {
+fun MoreHubScreen(
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    userRole: UserRole = UserRole.OWNER_ADMIN
+) {
     val colors = MaterialTheme.colorScheme
-    val items = listOf(
+    val allItems = listOf(
         MoreHubItem("products", R.string.nav_products, R.string.more_products_subtitle, Icons.Outlined.Category, Color(0xFF087E8B)),
         MoreHubItem("import_management", R.string.nav_import_management, R.string.more_import_subtitle, Icons.Outlined.Public, Color(0xFF087E8B)),
         MoreHubItem("purchases", R.string.nav_purchases, R.string.more_purchases_subtitle, Icons.Outlined.ShoppingCart, Color(0xFFD04C72)),
         MoreHubItem("shipments", R.string.nav_shipments, R.string.more_shipments_subtitle, Icons.Outlined.FlightTakeoff, Color(0xFF3977B8)),
+        MoreHubItem("import_vault", R.string.nav_import_vault, R.string.more_import_vault_subtitle, Icons.Outlined.FolderSpecial, Color(0xFF6B2485)),
         MoreHubItem("customers", R.string.nav_customers, R.string.more_customers_subtitle, Icons.Outlined.Group, Color(0xFF23845B)),
         MoreHubItem("suppliers", R.string.nav_suppliers, R.string.more_suppliers_subtitle, Icons.Outlined.Storefront, Color(0xFFAA7417)),
         MoreHubItem("accounts", R.string.accounts_ledger, R.string.more_accounts_subtitle, Icons.Outlined.AccountBalance, Color(0xFF8726A0)),
         MoreHubItem("reports", R.string.nav_reports, R.string.more_reports_subtitle, Icons.Outlined.Assessment, Color(0xFF23845B)),
         MoreHubItem("settings", R.string.nav_settings, R.string.more_settings_subtitle, Icons.Outlined.Settings, Color(0xFF6C6074))
     )
+    val items = if (SecurityManager.canAccessImportVault(userRole)) {
+        allItems
+    } else {
+        allItems.filter { it.route != "import_vault" }
+    }
     val dark = LocalIsDarkTheme.current
 
     LazyVerticalGrid(

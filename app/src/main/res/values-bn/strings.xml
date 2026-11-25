@@ -12,6 +12,7 @@
     <string name="nav_purchases">ক্রয়</string>
     <string name="nav_import_management">আমদানি ব্যবস্থাপনা</string>
     <string name="nav_shipments">চালানসমূহ</string>
+    <string name="nav_import_vault">আমদানি আর্কাইভ</string>
     <string name="nav_customers">গ্রাহকবৃন্দ</string>
     <string name="nav_suppliers">সরবরাহকারী</string>
     <string name="nav_ledger">কেন্দ্রীয় লেজার</string>
@@ -27,6 +28,7 @@
     <string name="more_import_subtitle">আমদানি সারসংক্ষেপ ও কার্যপ্রবাহ</string>
     <string name="more_purchases_subtitle">ক্রয়াদেশ ও সরবরাহকারী পেমেন্ট</string>
     <string name="more_shipments_subtitle">চালান ও কার্টন ট্র্যাকিং</string>
+    <string name="more_import_vault_subtitle">ডিজিটাল আর্কাইভ, মুনাফা ও মূলধন বিশ্লেষণ</string>
     <string name="more_customers_subtitle">গ্রাহক তথ্য ও বকেয়া</string>
     <string name="more_suppliers_subtitle">সরবরাহকারী তথ্য ও দেনা</string>
     <string name="more_ledger_subtitle">গ্রাহক ও সরবরাহকারী খতিয়ান</string>

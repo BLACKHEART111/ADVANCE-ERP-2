@@ -89,6 +89,7 @@ fun MainAppScaffold(
         Destinations.PURCHASES -> "ADVANCE ERP"
         Destinations.IMPORT_MANAGEMENT -> stringResource(R.string.nav_import_management)
         Destinations.SHIPMENTS -> stringResource(R.string.nav_shipments)
+        Destinations.IMPORT_VAULT -> if (currentLanguage == AppLanguage.BANGLA) "আমদানি আর্কাইভ" else "Import Vault"
         Destinations.CUSTOMERS -> stringResource(R.string.nav_customers)
         Destinations.SUPPLIERS -> stringResource(R.string.nav_suppliers)
         Destinations.LEDGER -> stringResource(R.string.nav_ledger)
@@ -222,7 +223,10 @@ fun MainAppScaffold(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                AdvanceErpNavGraph(navController = navController)
+                AdvanceErpNavGraph(
+                    navController = navController,
+                    userRole = drawerMetrics.userRole
+                )
             }
         }
     }

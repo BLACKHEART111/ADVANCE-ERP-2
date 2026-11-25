@@ -115,27 +115,19 @@ class InventoryRepositoryImpl @Inject constructor(
             } else {
                 StockMovementType.STOCK_ADJUSTMENT_OUT.code
             }
+            val now = System.currentTimeMillis()
+            val movementId = MovementNumberGenerator.generateId("adj")
+            val movementNumber = MovementNumberGenerator.generate("ADJ")
+            val isDamage = reason.contains("damage", ignoreCase = true) || reason.contains("নষ্ট", ignoreCase = true)
 
-            val movement = StockMovement(
-                id = MovementNumberGenerator.generateId("adj"),
-                movementNumber = MovementNumberGenerator.generate("ADJ"),
-                warehouseId = warehouseId,
-                productId = productId,
-                variantId = variantId,
-                movementType = movementType,
-                quantity = quantityChange,
-                unitCostMinor = unitCost,
-                balanceAfterMovement = newQty,
-                totalCostImpactMinor = quantityChange.toLong() * unitCost,
-                referenceType = "MANUAL_ADJUSTMENT",
-                referenceId = reason,
-                notes = reason,
-                createdAt = System.currentTimeMillis()
-            )
-            stockMovementDao.insertMovement(movement)
+            // Pre-calculate actual depleted FIFO layers for stock decreases before inserting movement/journal
+            val fifoConsumptionsToInsert = mutableListOf<com.pocketdev.advance_erp.data.entity.FifoConsumption>()
+            val totalAdjustmentMinor: Long
+            val effectiveUnitCost: Long
 
-            // FIFO Cost Layer updates
             if (isIncrease) {
+                totalAdjustmentMinor = quantityChange.toLong() * unitCost
+                effectiveUnitCost = unitCost
                 val layer = InventoryCostLayer(
                     id = "icl-${UUID.randomUUID()}",
                     productId = productId,
@@ -144,7 +136,7 @@ class InventoryRepositoryImpl @Inject constructor(
                     shipmentId = "ADJ",
                     shipmentNumber = "MANUAL-ADJUSTMENT",
                     warehouseReceiptId = "ADJ-${UUID.randomUUID().toString().take(8)}",
-                    receiptNumber = "ADJ-${System.currentTimeMillis() % 1000000}",
+                    receiptNumber = "ADJ-${now % 1000000}",
                     initialQuantity = quantityChange,
                     remainingQuantity = quantityChange,
                     unitLandedCostBdtMinor = unitCost,
@@ -152,13 +144,16 @@ class InventoryRepositoryImpl @Inject constructor(
                     originalPurchasePriceMinor = unitCost,
                     exchangeRateToBdt = "1.0",
                     allocatedExpensePerUnitBdtMinor = 0L,
-                    receiptDate = System.currentTimeMillis(),
+                    receiptDate = now,
                     isActive = true,
-                    createdAt = System.currentTimeMillis()
+                    originReceiptDate = now,
+                    layerSourceType = "MANUAL_ADJUSTMENT",
+                    createdAt = now
                 )
                 inventoryCostLayerDao.insertCostLayer(layer)
             } else {
                 var needed = quantityChange
+                var depletedCostSum = 0L
                 val activeLayers = if (variantId != null) {
                     inventoryCostLayerDao.getActiveLayersForVariantAndWarehouseSync(productId, variantId, warehouseId)
                 } else {
@@ -167,20 +162,62 @@ class InventoryRepositoryImpl @Inject constructor(
                 for (layer in activeLayers) {
                     if (needed <= 0) break
                     val take = minOf(needed, layer.remainingQuantity)
+                    val takeCost = take.toLong() * layer.unitLandedCostBdtMinor
+                    depletedCostSum += takeCost
                     val newRemaining = layer.remainingQuantity - take
                     inventoryCostLayerDao.updateRemainingQuantity(
                         layerId = layer.id,
                         remainingQuantity = newRemaining,
                         isActive = newRemaining > 0
                     )
+                    fifoConsumptionsToInsert.add(
+                        com.pocketdev.advance_erp.data.entity.FifoConsumption(
+                            invoiceId = null,
+                            invoiceItemId = null,
+                            costLayerId = layer.id,
+                            productId = productId,
+                            variantId = variantId,
+                            warehouseId = warehouseId,
+                            quantity = take,
+                            unitCostBdtMinor = layer.unitLandedCostBdtMinor,
+                            totalCogsBdtMinor = takeCost,
+                            referenceType = if (isDamage) "DAMAGE_WRITE_OFF" else "ADJUSTMENT",
+                            referenceId = movementId,
+                            createdAt = now
+                        )
+                    )
                     needed -= take
                 }
+                if (needed > 0) {
+                    depletedCostSum += needed.toLong() * unitCost
+                }
+                totalAdjustmentMinor = depletedCostSum
+                effectiveUnitCost = if (quantityChange > 0) totalAdjustmentMinor / quantityChange else unitCost
             }
 
-            // Balanced Double-Entry Accounting
-            val totalAdjustmentMinor = quantityChange.toLong() * unitCost
+            val movement = StockMovement(
+                id = movementId,
+                movementNumber = movementNumber,
+                warehouseId = warehouseId,
+                productId = productId,
+                variantId = variantId,
+                movementType = movementType,
+                quantity = quantityChange,
+                unitCostMinor = effectiveUnitCost,
+                balanceAfterMovement = newQty,
+                totalCostImpactMinor = totalAdjustmentMinor,
+                referenceType = "MANUAL_ADJUSTMENT",
+                referenceId = reason,
+                notes = reason,
+                createdAt = now
+            )
+            stockMovementDao.insertMovement(movement)
+            if (fifoConsumptionsToInsert.isNotEmpty()) {
+                db.fifoConsumptionDao().insertConsumptions(fifoConsumptionsToInsert)
+            }
+
+            // Balanced Double-Entry Accounting using actual FIFO depleted cost
             if (totalAdjustmentMinor > 0) {
-                val isDamage = reason.contains("damage", ignoreCase = true) || reason.contains("নষ্ট", ignoreCase = true)
                 val lines = if (isIncrease) {
                     listOf(
                         JournalLineDraft(
@@ -399,6 +436,7 @@ class InventoryRepositoryImpl @Inject constructor(
             var totalValue = 0L
             for (tl in transferLayers) {
                 val orig = inventoryCostLayerDao.getCostLayerById(tl.costLayerId)
+                val preservedReceiptDate = orig?.originReceiptDate ?: orig?.receiptDate ?: transfer.transferDate
                 val destLayer = InventoryCostLayer(
                     id = "icl-${UUID.randomUUID()}",
                     productId = transfer.productId,
@@ -415,10 +453,14 @@ class InventoryRepositoryImpl @Inject constructor(
                     originalPurchasePriceMinor = orig?.originalPurchasePriceMinor ?: tl.unitCostMinor,
                     exchangeRateToBdt = orig?.exchangeRateToBdt ?: "1.0",
                     allocatedExpensePerUnitBdtMinor = orig?.allocatedExpensePerUnitBdtMinor ?: 0L,
-                    receiptDate = System.currentTimeMillis(),
+                    receiptDate = preservedReceiptDate,
                     isActive = true,
                     purchaseOrderId = orig?.purchaseOrderId,
+                    purchaseOrderItemId = orig?.purchaseOrderItemId,
                     purchaseBatchId = orig?.purchaseBatchId,
+                    originCostLayerId = orig?.originCostLayerId ?: orig?.id,
+                    originReceiptDate = preservedReceiptDate,
+                    layerSourceType = "TRANSFER_REPLICA",
                     createdAt = System.currentTimeMillis()
                 )
                 inventoryCostLayerDao.insertCostLayer(destLayer)

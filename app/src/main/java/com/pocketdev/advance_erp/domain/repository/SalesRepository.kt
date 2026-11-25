@@ -134,7 +134,8 @@ data class ReturnItemDraft(
     val variantId: String? = null,
     val returnQuantity: Int,
     val isDamaged: Boolean = false,
-    val damagedQuantity: Int = 0
+    val damagedQuantity: Int = 0,
+    val targetCostLayerId: String? = null
 )
 
 data class SalesReturnDraft(

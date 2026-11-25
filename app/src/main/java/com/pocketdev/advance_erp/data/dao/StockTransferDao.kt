@@ -97,6 +97,12 @@ interface StockTransferDao {
     @Query("SELECT * FROM stock_transfers ORDER BY createdAt DESC")
     fun getAllTransfers(): Flow<List<StockTransfer>>
 
+    @Query("SELECT * FROM stock_transfers ORDER BY createdAt DESC")
+    suspend fun getAllTransfersSync(): List<StockTransfer>
+
+    @Query("SELECT * FROM stock_transfer_cost_layers")
+    suspend fun getAllTransferCostLayersSync(): List<StockTransferCostLayer>
+
     @Query("SELECT * FROM stock_transfers WHERE sourceWarehouseId = :whId OR destinationWarehouseId = :whId ORDER BY createdAt DESC")
     fun getTransfersByWarehouse(whId: String): Flow<List<StockTransfer>>
 

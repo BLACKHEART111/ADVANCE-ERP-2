@@ -95,7 +95,8 @@ data class ImportShipment(
         Index("shipmentId"),
         Index("productId"),
         Index("variantId"),
-        Index("purchaseOrderId")
+        Index("purchaseOrderId"),
+        Index("purchaseOrderItemId")
     ]
 )
 data class ShipmentCarton(
@@ -113,6 +114,8 @@ data class ShipmentCarton(
     val netWeightKg: String = "14.0",
     val cbm: String = "0.060000",
     val purchaseOrderId: String? = null,
+    val purchaseOrderItemId: String? = null,
+    val supplierDeclaredGrossWeightKg: String? = null,
     val isMixedCarton: Boolean = false,
     val totalCartonQuantity: Int = 0,
     val cartonGrossWeightKg: String = "0.000",

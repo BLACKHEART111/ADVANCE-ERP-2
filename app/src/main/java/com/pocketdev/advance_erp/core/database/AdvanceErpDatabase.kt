@@ -17,6 +17,7 @@ import com.pocketdev.advance_erp.data.dao.ExpenseDao
 import com.pocketdev.advance_erp.data.dao.FifoConsumptionDao
 import com.pocketdev.advance_erp.data.dao.ImportCostDao
 import com.pocketdev.advance_erp.data.dao.ImportShipmentDao
+import com.pocketdev.advance_erp.data.dao.ImportVaultDao
 import com.pocketdev.advance_erp.data.dao.InventoryCostAdjustmentDao
 import com.pocketdev.advance_erp.data.dao.InventoryCostLayerDao
 import com.pocketdev.advance_erp.data.dao.InventoryReconciliationDao
@@ -49,10 +50,14 @@ import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.CustomerPayment
 import com.pocketdev.advance_erp.data.entity.DamageRecord
+import com.pocketdev.advance_erp.data.entity.ExpenseAllocation
+import com.pocketdev.advance_erp.data.entity.ExpenseAllocationRule
 import com.pocketdev.advance_erp.data.entity.ExpenseVoucher
 import com.pocketdev.advance_erp.data.entity.FifoConsumption
 import com.pocketdev.advance_erp.data.entity.ImportCostItem
 import com.pocketdev.advance_erp.data.entity.ImportShipment
+import com.pocketdev.advance_erp.data.entity.ImportVaultAttachment
+import com.pocketdev.advance_erp.data.entity.ImportVaultEntry
 import com.pocketdev.advance_erp.data.entity.InventoryCostAdjustment
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.InventoryReconciliation
@@ -69,11 +74,13 @@ import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.PurchaseCompletionRecord
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderItem
+import com.pocketdev.advance_erp.data.entity.SaleLayerAllocation
 import com.pocketdev.advance_erp.data.entity.SalesCostLayerUsage
 import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.data.entity.SalesInvoiceItem
 import com.pocketdev.advance_erp.data.entity.SalesReturn
 import com.pocketdev.advance_erp.data.entity.SalesReturnItem
+import com.pocketdev.advance_erp.data.entity.SalesReturnLayerAllocation
 import com.pocketdev.advance_erp.data.entity.ShipmentCarton
 import com.pocketdev.advance_erp.data.entity.ShipmentFreightRate
 import com.pocketdev.advance_erp.data.entity.ShipmentSupplier
@@ -148,9 +155,16 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
         ShipmentSupplier::class,
         ShipmentFreightRate::class,
         // Phase 08 Smart Suggestions:
-        SavedSuggestion::class
+        SavedSuggestion::class,
+        // Phase 09 Import Vault & Lineage Schema:
+        SaleLayerAllocation::class,
+        SalesReturnLayerAllocation::class,
+        ExpenseAllocationRule::class,
+        ExpenseAllocation::class,
+        ImportVaultEntry::class,
+        ImportVaultAttachment::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = true
 )
 abstract class AdvanceErpDatabase : RoomDatabase() {
@@ -197,9 +211,12 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
     abstract fun inventoryCostAdjustmentDao(): InventoryCostAdjustmentDao
     abstract fun inventoryReconciliationDao(): InventoryReconciliationDao
 
+    // Phase 09 Import Vault DAO:
+    abstract fun importVaultDao(): ImportVaultDao
+
     companion object {
         const val DATABASE_NAME = "advance_erp.db"
-        const val DATABASE_VERSION = 13
+        const val DATABASE_VERSION = 14
 
         fun buildDatabase(context: Context): AdvanceErpDatabase {
             return Room.databaseBuilder(
@@ -220,7 +237,8 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                     DatabaseMigrations.MIGRATION_9_10,
                     DatabaseMigrations.MIGRATION_10_11,
                     DatabaseMigrations.MIGRATION_11_12,
-                    DatabaseMigrations.MIGRATION_12_13
+                    DatabaseMigrations.MIGRATION_12_13,
+                    DatabaseMigrations.MIGRATION_13_14
                 )
                 .addCallback(object : Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {

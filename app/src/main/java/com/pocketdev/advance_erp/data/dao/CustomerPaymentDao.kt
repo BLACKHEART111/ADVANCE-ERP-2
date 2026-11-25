@@ -54,6 +54,9 @@ interface CustomerPaymentDao {
     @Query("SELECT * FROM payment_allocations WHERE invoiceId = :invoiceId")
     suspend fun getAllocationsForInvoiceSync(invoiceId: String): List<PaymentAllocation>
 
+    @Query("SELECT * FROM payment_allocations")
+    suspend fun getAllAllocationsSync(): List<PaymentAllocation>
+
     @Query("SELECT COALESCE(SUM(amountMinor), 0) FROM customer_payments WHERE isPosted = 1 AND isVoided = 0")
     fun getTotalCollectedMinor(): Flow<Long>
 

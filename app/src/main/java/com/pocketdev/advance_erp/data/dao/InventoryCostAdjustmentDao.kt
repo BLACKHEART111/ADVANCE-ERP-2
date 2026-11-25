@@ -44,6 +44,9 @@ interface InventoryCostAdjustmentDao {
     @Query("SELECT * FROM inventory_cost_adjustments ORDER BY createdAt DESC")
     fun getAllAdjustments(): Flow<List<InventoryCostAdjustment>>
 
+    @Query("SELECT * FROM inventory_cost_adjustments ORDER BY createdAt ASC")
+    suspend fun getAllAdjustmentsSync(): List<InventoryCostAdjustment>
+
     @Query("SELECT * FROM inventory_cost_adjustments WHERE id = :id LIMIT 1")
     suspend fun getAdjustmentById(id: String): InventoryCostAdjustment?
 

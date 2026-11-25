@@ -8,6 +8,7 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.domain.model.ReportCategory
 import com.pocketdev.advance_erp.feature.accounts.AccountsScreen
 import com.pocketdev.advance_erp.feature.accounts.AccountsTab
@@ -17,6 +18,7 @@ import com.pocketdev.advance_erp.feature.controlcenter.BusinessControlCenterScre
 import com.pocketdev.advance_erp.feature.dashboard.DashboardScreen
 import com.pocketdev.advance_erp.feature.imports.ImportManagementScreen
 import com.pocketdev.advance_erp.feature.imports.ImportModuleTab
+import com.pocketdev.advance_erp.feature.importvault.ImportVaultRootScreen
 import com.pocketdev.advance_erp.feature.inventory.InventoryScreen
 import com.pocketdev.advance_erp.feature.more.MoreHubScreen
 import com.pocketdev.advance_erp.feature.product.ProductListScreen
@@ -33,6 +35,7 @@ object Destinations {
     const val PURCHASES = "purchases"
     const val IMPORT_MANAGEMENT = "import_management"
     const val SHIPMENTS = "shipments"
+    const val IMPORT_VAULT = "import_vault"
     const val CUSTOMERS = "customers"
     const val SUPPLIERS = "suppliers"
     const val LEDGER = "ledger"
@@ -43,7 +46,8 @@ object Destinations {
 @Composable
 fun AdvanceErpNavGraph(
     navController: NavHostController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userRole: UserRole = UserRole.OWNER_ADMIN
 ) {
     androidx.compose.runtime.CompositionLocalProvider(com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate provides { destination ->
         navController.navigate(destination.route) {
@@ -89,7 +93,10 @@ fun AdvanceErpNavGraph(
         }
 
         composable(Destinations.MORE) {
-            MoreHubScreen(onNavigate = { route -> navController.navigate(route) })
+            MoreHubScreen(
+                onNavigate = { route -> navController.navigate(route) },
+                userRole = userRole
+            )
         }
 
         composable(Destinations.PURCHASES) {
@@ -102,6 +109,17 @@ fun AdvanceErpNavGraph(
 
         composable(Destinations.SHIPMENTS) {
             ImportManagementScreen(initialTab = ImportModuleTab.SHIPMENTS)
+        }
+
+        composable(Destinations.IMPORT_VAULT) {
+            ImportVaultRootScreen(
+                onNavigateToRoute = { route ->
+                    navController.navigate(route) { launchSingleTop = true }
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
 
         composable(Destinations.CUSTOMERS) {

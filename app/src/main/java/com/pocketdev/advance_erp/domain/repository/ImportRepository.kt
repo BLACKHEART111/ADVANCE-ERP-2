@@ -81,7 +81,9 @@ data class ShipmentCartonDraft(
     val supplierId: String? = null,
     val purchaseOrderId: String? = null,
     val categoryId: String? = null,
-    val categoryName: String? = null
+    val categoryName: String? = null,
+    val purchaseOrderItemId: String? = null,
+    val supplierDeclaredGrossWeightKg: String? = null
 )
 
 data class PoMixedCartonDraft(
@@ -108,7 +110,9 @@ data class ReceiptItemDraft(
     val excessQuantity: Int = 0,
     val conditionNotes: String? = null,
     val goodQuantity: Int = -1,
-    val pendingQuantity: Int = -1
+    val pendingQuantity: Int = -1,
+    val purchaseOrderId: String? = null,
+    val purchaseOrderItemId: String? = null
 )
 
 data class PoRemainingItem(

@@ -889,7 +889,7 @@ fun SettingsScreen(
                 item(key = "cat_backup") {
                     SettingsAccordionCard(
                         title = if (isBn) "ডাটা ব্যাকআপ ও রিস্টোর" else "Data Backup & Restore",
-                        subtitle = if (isBn) "ম্যানুয়াল ও অটো ব্যাকআপ" else "Manual & auto backup",
+                        subtitle = if (isBn) "ম্যানুয়াল, অটো ব্যাকআপ ও টেস্ট ডাটা রিসেট" else "Manual, auto backup & test data reset",
                         icon = Icons.Outlined.Storage,
                         expanded = expandBackup,
                         onToggle = { expandBackup = !expandBackup },
@@ -910,6 +910,7 @@ fun SettingsScreen(
                             onDeleteBackup = { recordId -> viewModel.deleteBackup(recordId) },
                             onToggleFridayAutoBackup = { enabled -> viewModel.toggleFridayAutoBackup(enabled) },
                             onSelectBackupFolder = { uri -> viewModel.setBackupFolderUri(uri) },
+                            onResetTestDataKeepMasters = { onFinished -> viewModel.resetTestDataKeepProductsAndContacts(onFinished) },
                             embeddedInAccordion = true
                         )
                     }

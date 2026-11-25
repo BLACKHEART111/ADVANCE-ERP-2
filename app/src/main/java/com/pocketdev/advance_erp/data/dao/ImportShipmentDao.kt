@@ -27,6 +27,18 @@ interface ImportShipmentDao {
     @Query("SELECT * FROM import_shipments ORDER BY createdAt DESC")
     fun getAllShipments(): Flow<List<ImportShipment>>
 
+    @Query("SELECT * FROM import_shipments ORDER BY createdAt DESC")
+    suspend fun getAllShipmentsSync(): List<ImportShipment>
+
+    @Query("SELECT * FROM shipment_cartons ORDER BY cartonNumber ASC")
+    suspend fun getAllCartonsSync(): List<ShipmentCarton>
+
+    @Query("SELECT * FROM shipment_suppliers ORDER BY createdAt ASC")
+    suspend fun getAllShipmentSuppliersSync(): List<ShipmentSupplier>
+
+    @Query("SELECT * FROM shipment_freight_rates ORDER BY categoryNameEn ASC")
+    suspend fun getAllFreightRatesSync(): List<ShipmentFreightRate>
+
     @Query("SELECT * FROM import_shipments WHERE id = :shipmentId")
     suspend fun getShipmentById(shipmentId: String): ImportShipment?
 

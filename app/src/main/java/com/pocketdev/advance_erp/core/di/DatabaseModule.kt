@@ -141,4 +141,7 @@ object DatabaseModule {
 
     @Provides
     fun provideInventoryReconciliationDao(db: AdvanceErpDatabase): com.pocketdev.advance_erp.data.dao.InventoryReconciliationDao = db.inventoryReconciliationDao()
+
+    @Provides
+    fun provideImportVaultDao(db: AdvanceErpDatabase): com.pocketdev.advance_erp.data.dao.ImportVaultDao = db.importVaultDao()
 }

@@ -30,7 +30,9 @@ import androidx.room.PrimaryKey
     indices = [
         Index("shipmentId"),
         Index("costItemId"),
-        Index("productId")
+        Index("productId"),
+        Index("purchaseOrderId"),
+        Index("purchaseOrderItemId")
     ]
 )
 data class LandedCostAllocation(
@@ -40,6 +42,8 @@ data class LandedCostAllocation(
     val costItemId: String,
     val productId: String,
     val variantId: String? = null,
+    val purchaseOrderId: String? = null,
+    val purchaseOrderItemId: String? = null,
     val allocationBasis: String,
     val basisValue: String,
     val basisPercentage: String,
@@ -65,7 +69,9 @@ data class LandedCostAllocation(
     ],
     indices = [
         Index("shipmentId"),
-        Index("productId")
+        Index("productId"),
+        Index("purchaseOrderId"),
+        Index("purchaseOrderItemId")
     ]
 )
 data class LandedCostSnapshot(
@@ -74,6 +80,8 @@ data class LandedCostSnapshot(
     val shipmentId: String,
     val productId: String,
     val variantId: String? = null,
+    val purchaseOrderId: String? = null,
+    val purchaseOrderItemId: String? = null,
     val productNameEn: String,
     val productNameBn: String,
     val sku: String,

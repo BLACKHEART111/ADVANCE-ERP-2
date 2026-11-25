@@ -15,6 +15,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.BufferedReader
+import java.io.File
 
 class SettingsLogicTest {
 
@@ -64,7 +66,116 @@ class SettingsLogicTest {
     }
 
     @Test
-    fun databaseVersionConstant_matchesRoomSchemaV13() {
-        assertEquals(13, AdvanceErpDatabase.DATABASE_VERSION)
+    fun databaseVersionConstant_matchesRoomSchemaV14() {
+        assertEquals(14, AdvanceErpDatabase.DATABASE_VERSION)
+    }
+
+    @Test
+    fun resetTestTransactionsKeepMasters_preservesProductsAndContactsAndClearsStockAndLedgersWithoutFkErrors() {
+        val schemaFile = File("schemas/com.pocketdev.advance_erp.core.database.AdvanceErpDatabase/14.json")
+        val daoFile = File("src/main/java/com/pocketdev/advance_erp/data/dao/BackupDao.kt")
+        val repoFile = File("src/main/java/com/pocketdev/advance_erp/data/repository/BackupRepositoryImpl.kt")
+        assertTrue("Schema 14.json must exist at ${schemaFile.absolutePath}", schemaFile.exists())
+        assertTrue("BackupDao.kt must exist at ${daoFile.absolutePath}", daoFile.exists())
+        assertTrue("BackupRepositoryImpl.kt must exist at ${repoFile.absolutePath}", repoFile.exists())
+
+        val script = """
+            import json, re, sqlite3
+
+            s = json.load(open(r"${schemaFile.absolutePath}"))['database']
+            conn = sqlite3.connect(':memory:')
+            cur = conn.cursor()
+            cur.execute('PRAGMA foreign_keys = ON')
+            for e in s['entities']:
+                cur.execute(e['createSql'].replace('${'$'}{TABLE_NAME}', e['tableName']))
+
+            entities = {e['tableName']: e for e in s['entities']}
+            inserted = set()
+
+            def insert_entity(tname):
+                if tname in inserted:
+                    return
+                e = entities[tname]
+                for fk in e.get('foreignKeys', []):
+                    if fk['table'] != tname:
+                        insert_entity(fk['table'])
+                fk_map = {}
+                for fk in e.get('foreignKeys', []):
+                    for col, ref_col in zip(fk['columns'], fk['referencedColumns']):
+                        fk_map[col] = (fk['table'], ref_col)
+                cols = []
+                vals = []
+                for f in e['fields']:
+                    cname = f['columnName']
+                    cols.append(f'`{cname}`')
+                    if cname in fk_map:
+                        ref_tbl, ref_col = fk_map[cname]
+                        vals.append(f'ref-{ref_tbl}-1' if ref_col == 'id' else '1')
+                    elif f['affinity'] == 'INTEGER':
+                        if cname == 'isActive':
+                            vals.append(0 if tname in ('customers', 'suppliers') else 1)
+                        elif cname in ('outstandingBalanceMinor', 'outstandingPayableMinor'):
+                            vals.append(50000)
+                        else:
+                            vals.append(1)
+                    elif f['affinity'] == 'REAL':
+                        vals.append(1.0)
+                    elif cname == 'id':
+                        vals.append(f'ref-{tname}-1')
+                    elif cname == 'recordType' and tname == 'audit_logs':
+                        vals.append('SALE')
+                    else:
+                        vals.append(f'{tname}-{cname}-1')
+                placeholders = ','.join(['?'] * len(cols))
+                cur.execute(f"INSERT INTO `{tname}` ({','.join(cols)}) VALUES ({placeholders})", vals)
+                inserted.add(tname)
+
+            for t in entities:
+                insert_entity(t)
+
+            cur.execute("INSERT INTO audit_logs (id, recordType, recordId, action, details, operator, timestamp) VALUES ('audit-bak-1', 'BACKUP', 'bak-1', 'BACKUP', 'Backup kept', 'SYSTEM_ADMIN', 1)")
+
+            dao_src = open(r"${daoFile.absolutePath}").read()
+            sql_by_method = {}
+            for m in re.finditer(r'@Query\("([^"]+)"\)\s+suspend fun (\w+)\(', dao_src):
+                sql_by_method[m.group(2)] = m.group(1)
+
+            repo_src = open(r"${repoFile.absolutePath}").read()
+            reset_body = repo_src.split('override suspend fun resetTestTransactionsKeepMasters()')[1].split('auditLogDao.insertAuditLog')[0]
+            calls = re.findall(r'backupDao\.(\w+)\(\)', reset_body)
+            assert len(calls) == 47, f'Expected 47 reset DAO calls, got {len(calls)}'
+
+            for fn in calls:
+                cur.execute(sql_by_method[fn])
+
+            cur.execute('PRAGMA foreign_key_check')
+            assert cur.fetchall() == [], 'Foreign key check must pass with zero violations'
+
+            preserved = {
+                'business_profiles', 'product_categories', 'products', 'product_variants',
+                'product_images', 'warehouses', 'customers', 'suppliers', 'app_settings',
+                'chart_of_accounts', 'backup_records', 'saved_suggestions'
+            }
+            for t in entities:
+                cnt = cur.execute(f'SELECT COUNT(*) FROM `{t}`').fetchone()[0]
+                if t in preserved:
+                    assert cnt == 1, f'{t} should preserve 1 row, got {cnt}'
+                elif t == 'audit_logs':
+                    assert cnt == 1, f'audit_logs should keep 1 BACKUP row, got {cnt}'
+                else:
+                    assert cnt == 0, f'{t} should be cleared to 0, got {cnt}'
+
+            assert cur.execute('SELECT outstandingBalanceMinor, isActive FROM customers').fetchone() == (0, 1)
+            assert cur.execute('SELECT outstandingPayableMinor, isActive FROM suppliers').fetchone() == (0, 1)
+            print('RESET_VERIFIED_57_TABLES')
+        """.trimIndent()
+
+        val process = ProcessBuilder("python3", "-c", script)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().use(BufferedReader::readText)
+        val exitCode = process.waitFor()
+        assertEquals("SQLite test-reset verification failed:\n$output", 0, exitCode)
+        assertEquals("RESET_VERIFIED_57_TABLES", output.trim())
     }
 }

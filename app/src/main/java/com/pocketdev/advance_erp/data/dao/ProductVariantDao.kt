@@ -20,6 +20,9 @@ interface ProductVariantDao {
     @Query("SELECT * FROM product_variants WHERE isActive = 1")
     suspend fun getAllVariantsSync(): List<ProductVariant>
 
+    @Query("SELECT * FROM product_variants")
+    suspend fun getAllVariantsIncludingInactiveSync(): List<ProductVariant>
+
     @Query("SELECT * FROM product_variants WHERE productId = :productId AND isActive = 1")
     suspend fun getVariantsForProductSync(productId: String): List<ProductVariant>
 

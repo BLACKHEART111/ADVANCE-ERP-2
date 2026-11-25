@@ -49,7 +49,9 @@ enum class ExpenseCategory(
         Index("expenseAccountId"),
         Index("voucherDate"),
         Index("warehouseId"),
-        Index("salesInvoiceId")
+        Index("salesInvoiceId"),
+        Index("purchaseOrderId"),
+        Index("shipmentId")
     ]
 )
 data class ExpenseVoucher(
@@ -77,5 +79,7 @@ data class ExpenseVoucher(
     val warehouseId: String? = null,
     val rentMonth: String? = null,
     val salesInvoiceId: String? = null,
-    val deliveryChallanNumber: String? = null
+    val deliveryChallanNumber: String? = null,
+    val purchaseOrderId: String? = null,
+    val shipmentId: String? = null
 )

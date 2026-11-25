@@ -8,6 +8,7 @@ import com.pocketdev.advance_erp.core.designsystem.LightDrawerTokens
 import com.pocketdev.advance_erp.core.designsystem.drawerDestinationLabel
 import com.pocketdev.advance_erp.core.designsystem.drawerPrimaryMenuItems
 import com.pocketdev.advance_erp.core.designsystem.isDrawerDestinationSelected
+import com.pocketdev.advance_erp.core.designsystem.visibleDrawerMenuItems
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.data.entity.Warehouse
@@ -64,6 +65,11 @@ class DrawerLogicTest {
         }
         assertEquals(listOf(DrawerDestination.LEDGER), selectedForReports)
 
+        val selectedForVault = drawerPrimaryMenuItems.filter {
+            isDrawerDestinationSelected(it, "import_vault")
+        }
+        assertEquals(listOf(DrawerDestination.IMPORT_VAULT), selectedForVault)
+
         val selectedForUnknown = drawerPrimaryMenuItems.filter {
             isDrawerDestinationSelected(it, "nonexistent")
         }
@@ -76,6 +82,8 @@ class DrawerLogicTest {
         assertEquals("Dashboard", drawerDestinationLabel(DrawerDestination.DASHBOARD, AppLanguage.ENGLISH))
         assertEquals("চালানসমূহ", drawerDestinationLabel(DrawerDestination.SHIPMENTS, AppLanguage.BANGLA))
         assertEquals("Delivery Challans", drawerDestinationLabel(DrawerDestination.SHIPMENTS, AppLanguage.ENGLISH))
+        assertEquals("আমদানি আর্কাইভ", drawerDestinationLabel(DrawerDestination.IMPORT_VAULT, AppLanguage.BANGLA))
+        assertEquals("Import Vault", drawerDestinationLabel(DrawerDestination.IMPORT_VAULT, AppLanguage.ENGLISH))
         assertEquals("হিসাব ও লেজার", drawerDestinationLabel(DrawerDestination.ACCOUNTS, AppLanguage.BANGLA))
         assertEquals("Accounting & Ledger", drawerDestinationLabel(DrawerDestination.ACCOUNTS, AppLanguage.ENGLISH))
         assertEquals("খতিয়ান ও রিপোর্ট", drawerDestinationLabel(DrawerDestination.LEDGER, AppLanguage.BANGLA))
@@ -101,5 +109,28 @@ class DrawerLogicTest {
         assertEquals(UserRole.OWNER_ADMIN, UserRole.fromCode("OWNER_ADMIN"))
         assertEquals("Owner / Admin", UserRole.OWNER_ADMIN.titleEn)
         assertNotEquals(UserRole.OWNER_ADMIN, UserRole.MANAGER)
+    }
+
+    @Test
+    fun visibleDrawerMenuItems_showsImportVaultOnlyToOwnerAdmin() {
+        val ownerMenu = visibleDrawerMenuItems(UserRole.OWNER_ADMIN)
+        assertTrue(DrawerDestination.IMPORT_VAULT in ownerMenu)
+
+        val nonOwnerRoles = listOf(
+            UserRole.MANAGER,
+            UserRole.SALES_OPERATOR,
+            UserRole.PURCHASE_OPERATOR,
+            UserRole.ACCOUNTANT,
+            UserRole.INVENTORY_OPERATOR
+        )
+        for (role in nonOwnerRoles) {
+            val menu = visibleDrawerMenuItems(role)
+            assertFalse(
+                "Expected IMPORT_VAULT hidden for role ${role.code}",
+                DrawerDestination.IMPORT_VAULT in menu
+            )
+            assertTrue(DrawerDestination.DASHBOARD in menu)
+            assertTrue(DrawerDestination.SETTINGS in menu)
+        }
     }
 }

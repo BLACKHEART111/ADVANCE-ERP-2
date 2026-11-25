@@ -42,6 +42,9 @@ interface FifoConsumptionDao {
     @Query("SELECT * FROM fifo_consumptions ORDER BY createdAt DESC")
     fun getAllConsumptions(): Flow<List<FifoConsumption>>
 
+    @Query("SELECT * FROM fifo_consumptions ORDER BY createdAt ASC")
+    suspend fun getAllConsumptionsSync(): List<FifoConsumption>
+
     @Query("SELECT * FROM fifo_consumptions WHERE invoiceId = :invoiceId ORDER BY createdAt ASC")
     fun getConsumptionsForInvoice(invoiceId: String): Flow<List<FifoConsumption>>
 

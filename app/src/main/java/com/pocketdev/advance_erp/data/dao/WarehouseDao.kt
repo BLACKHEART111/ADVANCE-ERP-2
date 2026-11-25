@@ -17,6 +17,9 @@ interface WarehouseDao {
     @Query("SELECT * FROM warehouses WHERE isActive = 1 ORDER BY isDefault DESC, name ASC")
     suspend fun getAllWarehousesSync(): List<Warehouse>
 
+    @Query("SELECT * FROM warehouses ORDER BY isDefault DESC, name ASC")
+    suspend fun getAllWarehousesIncludingInactiveSync(): List<Warehouse>
+
     @Query("SELECT * FROM warehouses WHERE isDefault = 1 LIMIT 1")
     suspend fun getDefaultWarehouse(): Warehouse?
 

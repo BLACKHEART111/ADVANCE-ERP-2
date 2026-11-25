@@ -8,6 +8,7 @@ import com.pocketdev.advance_erp.data.repository.CostHistoryRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.DashboardRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.FinancialRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.ImportRepositoryImpl
+import com.pocketdev.advance_erp.data.repository.ImportVaultRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.InventoryRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.ProductRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.SalesRepositoryImpl
@@ -20,6 +21,7 @@ import com.pocketdev.advance_erp.domain.repository.CostHistoryRepository
 import com.pocketdev.advance_erp.domain.repository.DashboardRepository
 import com.pocketdev.advance_erp.domain.repository.FinancialRepository
 import com.pocketdev.advance_erp.domain.repository.ImportRepository
+import com.pocketdev.advance_erp.domain.repository.ImportVaultRepository
 import com.pocketdev.advance_erp.domain.repository.InventoryRepository
 import com.pocketdev.advance_erp.domain.repository.ProductRepository
 import com.pocketdev.advance_erp.domain.repository.SalesRepository
@@ -57,6 +59,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindImportRepository(impl: ImportRepositoryImpl): ImportRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindImportVaultRepository(impl: ImportVaultRepositoryImpl): ImportVaultRepository
 
     @Binds
     @Singleton

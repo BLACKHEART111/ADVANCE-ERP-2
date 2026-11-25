@@ -33,7 +33,10 @@ import androidx.room.PrimaryKey
         Index("warehouseId"),
         Index("shipmentNumber"),
         Index("receiptNumber"),
-        Index("purchaseOrderId")
+        Index("purchaseOrderId"),
+        Index("purchaseOrderItemId"),
+        Index("originCostLayerId"),
+        Index("layerSourceType")
     ]
 )
 data class InventoryCostLayer(
@@ -56,6 +59,10 @@ data class InventoryCostLayer(
     val receiptDate: Long = System.currentTimeMillis(),
     val isActive: Boolean = true,
     val purchaseOrderId: String? = null,
+    val purchaseOrderItemId: String? = null,
     val purchaseBatchId: String? = null,
+    val originCostLayerId: String? = null,
+    val originReceiptDate: Long = receiptDate,
+    val layerSourceType: String = "IMPORT_RECEIPT",
     val createdAt: Long = System.currentTimeMillis()
 )

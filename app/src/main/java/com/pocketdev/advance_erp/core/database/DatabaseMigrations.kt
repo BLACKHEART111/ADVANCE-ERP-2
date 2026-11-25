@@ -1337,4 +1337,235 @@ object DatabaseMigrations {
             // Columns missing (pre-v13 schema) – migration will handle it.
         }
     }
+
+    /**
+     * v14: Import Vault & Profit Intelligence lineage, archive metadata, expense allocation rules,
+     * supplier-declared gross weight, and origin receipt date / source type tracking.
+     */
+    val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 1. Extend shipment_cartons
+            db.execSQL("ALTER TABLE shipment_cartons ADD COLUMN purchaseOrderItemId TEXT")
+            db.execSQL("ALTER TABLE shipment_cartons ADD COLUMN supplierDeclaredGrossWeightKg TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_shipment_cartons_purchaseOrderItemId ON shipment_cartons(purchaseOrderItemId)")
+
+            // 2. Extend warehouse_receipt_items
+            db.execSQL("ALTER TABLE warehouse_receipt_items ADD COLUMN purchaseOrderId TEXT")
+            db.execSQL("ALTER TABLE warehouse_receipt_items ADD COLUMN purchaseOrderItemId TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_warehouse_receipt_items_purchaseOrderId ON warehouse_receipt_items(purchaseOrderId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_warehouse_receipt_items_purchaseOrderItemId ON warehouse_receipt_items(purchaseOrderItemId)")
+
+            // 3. Extend landed_cost_allocations & landed_cost_snapshots
+            db.execSQL("ALTER TABLE landed_cost_allocations ADD COLUMN purchaseOrderId TEXT")
+            db.execSQL("ALTER TABLE landed_cost_allocations ADD COLUMN purchaseOrderItemId TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_landed_cost_allocations_purchaseOrderId ON landed_cost_allocations(purchaseOrderId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_landed_cost_allocations_purchaseOrderItemId ON landed_cost_allocations(purchaseOrderItemId)")
+
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN purchaseOrderId TEXT")
+            db.execSQL("ALTER TABLE landed_cost_snapshots ADD COLUMN purchaseOrderItemId TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_landed_cost_snapshots_purchaseOrderId ON landed_cost_snapshots(purchaseOrderId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_landed_cost_snapshots_purchaseOrderItemId ON landed_cost_snapshots(purchaseOrderItemId)")
+
+            // 4. Extend inventory_cost_layers + safe provenance/aging backfill (zero fabricated PO/shipment IDs)
+            db.execSQL("ALTER TABLE inventory_cost_layers ADD COLUMN purchaseOrderItemId TEXT")
+            db.execSQL("ALTER TABLE inventory_cost_layers ADD COLUMN originCostLayerId TEXT")
+            db.execSQL("ALTER TABLE inventory_cost_layers ADD COLUMN originReceiptDate INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE inventory_cost_layers ADD COLUMN layerSourceType TEXT NOT NULL DEFAULT 'IMPORT_RECEIPT'")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_inventory_cost_layers_purchaseOrderItemId ON inventory_cost_layers(purchaseOrderItemId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_inventory_cost_layers_originCostLayerId ON inventory_cost_layers(originCostLayerId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_inventory_cost_layers_layerSourceType ON inventory_cost_layers(layerSourceType)")
+
+            db.execSQL("UPDATE inventory_cost_layers SET originReceiptDate = receiptDate WHERE originReceiptDate = 0")
+            db.execSQL("UPDATE inventory_cost_layers SET layerSourceType = 'SALES_RETURN_RESTORE' WHERE shipmentId = 'RET'")
+            db.execSQL("UPDATE inventory_cost_layers SET layerSourceType = 'MANUAL_ADJUSTMENT' WHERE shipmentId IN ('ADJ', 'RESTOCK')")
+            db.execSQL("UPDATE inventory_cost_layers SET layerSourceType = 'OPENING_STOCK' WHERE shipmentId = 'INIT' OR shipmentId LIKE 'OPEN%'")
+            db.execSQL("UPDATE inventory_cost_layers SET layerSourceType = 'TRANSFER_REPLICA' WHERE shipmentId LIKE 'TR-%'")
+
+            // 5. Extend expense_vouchers
+            db.execSQL("ALTER TABLE expense_vouchers ADD COLUMN purchaseOrderId TEXT")
+            db.execSQL("ALTER TABLE expense_vouchers ADD COLUMN shipmentId TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_expense_vouchers_purchaseOrderId ON expense_vouchers(purchaseOrderId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_expense_vouchers_shipmentId ON expense_vouchers(shipmentId)")
+
+            // 6. Create sale_layer_allocations
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `sale_layer_allocations` (
+                    `id` TEXT NOT NULL,
+                    `invoiceId` TEXT,
+                    `invoiceItemId` TEXT,
+                    `costLayerId` TEXT,
+                    `productId` TEXT NOT NULL,
+                    `variantId` TEXT,
+                    `warehouseId` TEXT NOT NULL,
+                    `purchaseOrderId` TEXT,
+                    `purchaseOrderItemId` TEXT,
+                    `shipmentId` TEXT,
+                    `quantity` INTEGER NOT NULL,
+                    `unitCostBdtMinor` INTEGER NOT NULL,
+                    `totalCogsBdtMinor` INTEGER NOT NULL,
+                    `allocatedGrossRevenueMinor` INTEGER NOT NULL,
+                    `allocatedLineDiscountMinor` INTEGER NOT NULL,
+                    `allocatedInvoiceDiscountMinor` INTEGER NOT NULL,
+                    `allocatedNetRevenueMinor` INTEGER NOT NULL,
+                    `isUnattributedFallback` INTEGER NOT NULL,
+                    `isReversed` INTEGER NOT NULL,
+                    `sourceType` TEXT NOT NULL,
+                    `referenceId` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`invoiceId`) REFERENCES `sales_invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`invoiceItemId`) REFERENCES `sales_invoice_items`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`costLayerId`) REFERENCES `inventory_cost_layers`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(`productId`) REFERENCES `products`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                    FOREIGN KEY(`variantId`) REFERENCES `product_variants`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(`warehouseId`) REFERENCES `warehouses`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_invoiceId` ON `sale_layer_allocations` (`invoiceId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_invoiceItemId` ON `sale_layer_allocations` (`invoiceItemId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_costLayerId` ON `sale_layer_allocations` (`costLayerId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_productId` ON `sale_layer_allocations` (`productId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_variantId` ON `sale_layer_allocations` (`variantId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_warehouseId` ON `sale_layer_allocations` (`warehouseId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_purchaseOrderId` ON `sale_layer_allocations` (`purchaseOrderId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_shipmentId` ON `sale_layer_allocations` (`shipmentId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sale_layer_allocations_createdAt` ON `sale_layer_allocations` (`createdAt`)")
+
+            // 7. Create sales_return_layer_allocations
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `sales_return_layer_allocations` (
+                    `id` TEXT NOT NULL,
+                    `returnId` TEXT NOT NULL,
+                    `returnItemId` TEXT NOT NULL,
+                    `invoiceId` TEXT NOT NULL,
+                    `invoiceItemId` TEXT NOT NULL,
+                    `saleLayerAllocationId` TEXT,
+                    `costLayerId` TEXT,
+                    `restoredCostLayerId` TEXT,
+                    `productId` TEXT NOT NULL,
+                    `variantId` TEXT,
+                    `purchaseOrderId` TEXT,
+                    `purchaseOrderItemId` TEXT,
+                    `shipmentId` TEXT,
+                    `soundQuantity` INTEGER NOT NULL,
+                    `damagedQuantity` INTEGER NOT NULL,
+                    `reversedGrossRevenueMinor` INTEGER NOT NULL,
+                    `reversedDiscountMinor` INTEGER NOT NULL,
+                    `reversedNetRevenueMinor` INTEGER NOT NULL,
+                    `reversedCogsMinor` INTEGER NOT NULL,
+                    `damageLossMinor` INTEGER NOT NULL,
+                    `isUnattributed` INTEGER NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`returnId`) REFERENCES `sales_returns`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`returnItemId`) REFERENCES `sales_return_items`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`invoiceId`) REFERENCES `sales_invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`saleLayerAllocationId`) REFERENCES `sale_layer_allocations`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(`costLayerId`) REFERENCES `inventory_cost_layers`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL,
+                    FOREIGN KEY(`productId`) REFERENCES `products`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                    FOREIGN KEY(`variantId`) REFERENCES `product_variants`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_returnId` ON `sales_return_layer_allocations` (`returnId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_returnItemId` ON `sales_return_layer_allocations` (`returnItemId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_invoiceId` ON `sales_return_layer_allocations` (`invoiceId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_saleLayerAllocationId` ON `sales_return_layer_allocations` (`saleLayerAllocationId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_costLayerId` ON `sales_return_layer_allocations` (`costLayerId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_productId` ON `sales_return_layer_allocations` (`productId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_variantId` ON `sales_return_layer_allocations` (`variantId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_purchaseOrderId` ON `sales_return_layer_allocations` (`purchaseOrderId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_sales_return_layer_allocations_shipmentId` ON `sales_return_layer_allocations` (`shipmentId`)")
+
+            // 8. Create expense_allocation_rules
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `expense_allocation_rules` (
+                    `id` TEXT NOT NULL,
+                    `ruleName` TEXT NOT NULL,
+                    `ruleVersion` INTEGER NOT NULL,
+                    `allocationBasis` TEXT NOT NULL,
+                    `periodStartMillis` INTEGER NOT NULL,
+                    `periodEndMillis` INTEGER NOT NULL,
+                    `targetScopeType` TEXT NOT NULL,
+                    `isActive` INTEGER NOT NULL,
+                    `notes` TEXT,
+                    `createdBy` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocation_rules_allocationBasis` ON `expense_allocation_rules` (`allocationBasis`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocation_rules_isActive` ON `expense_allocation_rules` (`isActive`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocation_rules_periodStartMillis` ON `expense_allocation_rules` (`periodStartMillis`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocation_rules_periodEndMillis` ON `expense_allocation_rules` (`periodEndMillis`)")
+
+            // 9. Create expense_allocations
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `expense_allocations` (
+                    `id` TEXT NOT NULL,
+                    `ruleId` TEXT NOT NULL,
+                    `expenseVoucherId` TEXT NOT NULL,
+                    `targetScopeType` TEXT NOT NULL,
+                    `targetId` TEXT NOT NULL,
+                    `allocationBasis` TEXT NOT NULL,
+                    `basisValue` TEXT NOT NULL,
+                    `basisPercentage` TEXT NOT NULL,
+                    `allocatedAmountBdtMinor` INTEGER NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`ruleId`) REFERENCES `expense_allocation_rules`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`expenseVoucherId`) REFERENCES `expense_vouchers`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocations_ruleId` ON `expense_allocations` (`ruleId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocations_expenseVoucherId` ON `expense_allocations` (`expenseVoucherId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocations_targetScopeType` ON `expense_allocations` (`targetScopeType`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_expense_allocations_targetId` ON `expense_allocations` (`targetId`)")
+
+            // 10. Create import_vault_entries
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `import_vault_entries` (
+                    `id` TEXT NOT NULL,
+                    `scopeType` TEXT NOT NULL,
+                    `sourceId` TEXT NOT NULL,
+                    `displayTitle` TEXT NOT NULL,
+                    `archiveStatus` TEXT NOT NULL,
+                    `isPinned` INTEGER NOT NULL,
+                    `tagsJson` TEXT,
+                    `notes` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_import_vault_entries_scopeType_sourceId` ON `import_vault_entries` (`scopeType`, `sourceId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_vault_entries_scopeType` ON `import_vault_entries` (`scopeType`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_vault_entries_sourceId` ON `import_vault_entries` (`sourceId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_vault_entries_archiveStatus` ON `import_vault_entries` (`archiveStatus`)")
+
+            // 11. Create import_vault_attachments
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `import_vault_attachments` (
+                    `id` TEXT NOT NULL,
+                    `vaultEntryId` TEXT,
+                    `scopeType` TEXT NOT NULL,
+                    `sourceId` TEXT NOT NULL,
+                    `category` TEXT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `filePath` TEXT NOT NULL,
+                    `mimeType` TEXT NOT NULL,
+                    `fileSizeBytes` INTEGER NOT NULL,
+                    `isImmutableSnapshot` INTEGER NOT NULL,
+                    `createdBy` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`),
+                    FOREIGN KEY(`vaultEntryId`) REFERENCES `import_vault_entries`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_vault_attachments_vaultEntryId` ON `import_vault_attachments` (`vaultEntryId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_vault_attachments_scopeType` ON `import_vault_attachments` (`scopeType`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_vault_attachments_sourceId` ON `import_vault_attachments` (`sourceId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_import_vault_attachments_category` ON `import_vault_attachments` (`category`)")
+        }
+    }
 }

@@ -244,6 +244,8 @@ class ProductRepositoryImpl @Inject constructor(
                 allocatedExpensePerUnitBdtMinor = 0L,
                 receiptDate = now,
                 isActive = true,
+                originReceiptDate = now,
+                layerSourceType = if (previousQty > 0) "MANUAL_ADJUSTMENT" else "OPENING_STOCK",
                 createdAt = now
             )
         )

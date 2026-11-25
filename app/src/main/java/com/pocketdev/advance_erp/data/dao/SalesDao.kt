@@ -79,17 +79,26 @@ interface SalesDao {
     @Query("UPDATE sales_invoice_items SET returnedQuantity = returnedQuantity + :returnedQty WHERE id = :itemId")
     suspend fun recordItemReturn(itemId: String, returnedQty: Int)
 
-    @Query("SELECT COALESCE(SUM(totalAmountMinor), 0) FROM sales_invoices WHERE isPosted = 1")
+    @Query("UPDATE sales_invoice_items SET unitCostMinor = :unitCostMinor, totalCogsMinor = :totalCogsMinor WHERE id = :itemId")
+    suspend fun updateInvoiceItemCogs(itemId: String, unitCostMinor: Long, totalCogsMinor: Long)
+
+    @Query("UPDATE sales_invoices SET totalCogsMinor = :totalCogsMinor, updatedAt = :now WHERE id = :invoiceId")
+    suspend fun updateInvoiceCogs(invoiceId: String, totalCogsMinor: Long, now: Long = System.currentTimeMillis())
+
+    @Query("SELECT COALESCE(SUM(totalAmountMinor), 0) FROM sales_invoices WHERE isPosted = 1 AND status != 'CANCELLED'")
     fun getTotalSalesRevenueMinor(): Flow<Long>
 
-    @Query("SELECT COALESCE(SUM(totalCogsMinor), 0) FROM sales_invoices WHERE isPosted = 1")
+    @Query("SELECT COALESCE(SUM(totalCogsMinor), 0) FROM sales_invoices WHERE isPosted = 1 AND status != 'CANCELLED'")
     fun getTotalCogsMinor(): Flow<Long>
 
-    @Query("SELECT COALESCE(SUM(dueAmountMinor), 0) FROM sales_invoices WHERE isPosted = 1")
+    @Query("SELECT COALESCE(SUM(dueAmountMinor), 0) FROM sales_invoices WHERE isPosted = 1 AND status != 'CANCELLED'")
     fun getTotalReceivableMinor(): Flow<Long>
 
     @Query("SELECT * FROM sales_invoices WHERE isPosted = 1 AND invoiceDate >= :fromMillis AND invoiceDate <= :toMillis ORDER BY invoiceDate DESC")
     suspend fun getPostedInvoicesInRange(fromMillis: Long, toMillis: Long): List<SalesInvoice>
+
+    @Query("SELECT * FROM sales_invoices WHERE isPosted = 1 AND status != 'CANCELLED' AND invoiceDate >= :fromMillis AND invoiceDate <= :toMillis ORDER BY invoiceDate DESC")
+    suspend fun getActivePostedInvoicesInRange(fromMillis: Long, toMillis: Long): List<SalesInvoice>
 
     @Query("DELETE FROM sales_invoices WHERE id = :invoiceId")
     suspend fun deleteInvoice(invoiceId: String)

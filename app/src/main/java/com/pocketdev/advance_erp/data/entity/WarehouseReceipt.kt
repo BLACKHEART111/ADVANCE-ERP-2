@@ -77,7 +77,9 @@ data class WarehouseReceipt(
     indices = [
         Index("receiptId"),
         Index("productId"),
-        Index("variantId")
+        Index("variantId"),
+        Index("purchaseOrderId"),
+        Index("purchaseOrderItemId")
     ]
 )
 data class WarehouseReceiptItem(
@@ -87,6 +89,8 @@ data class WarehouseReceiptItem(
     val cartonId: String? = null,
     val productId: String,
     val variantId: String? = null,
+    val purchaseOrderId: String? = null,
+    val purchaseOrderItemId: String? = null,
     val expectedQuantity: Int,
     val receivedQuantity: Int,
     val damagedQuantity: Int = 0,

@@ -31,6 +31,12 @@ interface WarehouseReceiptDao {
     @Query("SELECT * FROM warehouse_receipts ORDER BY createdAt DESC")
     fun getAllReceipts(): Flow<List<WarehouseReceipt>>
 
+    @Query("SELECT * FROM warehouse_receipts ORDER BY createdAt DESC")
+    suspend fun getAllReceiptsSync(): List<WarehouseReceipt>
+
+    @Query("SELECT * FROM warehouse_receipt_items")
+    suspend fun getAllReceiptItemsSync(): List<WarehouseReceiptItem>
+
     @Query("SELECT * FROM warehouse_receipts WHERE id = :receiptId")
     suspend fun getReceiptById(receiptId: String): WarehouseReceipt?
 

@@ -273,6 +273,38 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun resetTestDataKeepProductsAndContacts(onFinished: () -> Unit) {
+        viewModelScope.launch {
+            val isBn = uiState.value.language == AppLanguage.BANGLA
+            try {
+                val res = backupRepository.resetTestTransactionsKeepMasters()
+                if (res.isSuccess) {
+                    _userMessage.value = if (isBn) {
+                        "সকল প্রোডাক্ট, ছবি, কাস্টমার ও সাপ্লায়ার অক্ষত রেখে বাকি সব টেস্ট লেনদেন ও স্টক (০) ক্লিয়ার করা হয়েছে!"
+                    } else {
+                        "Cleared all test transactions and reset stock to 0 while keeping products, photos, and contacts!"
+                    }
+                } else {
+                    _userMessage.value = if (isBn) {
+                        "টেস্ট ডাটা রিসেট ব্যর্থ: ${res.exceptionOrNull()?.message}"
+                    } else {
+                        "Test data reset failed: ${res.exceptionOrNull()?.message}"
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _userMessage.value = if (isBn) {
+                    "টেস্ট ডাটা রিসেট ব্যর্থ: ${e.localizedMessage}"
+                } else {
+                    "Test data reset failed: ${e.localizedMessage}"
+                }
+            } finally {
+                onFinished()
+            }
+        }
+    }
+
     fun clearMessage() {
         _userMessage.value = null
     }

@@ -14,4 +14,5 @@ interface BackupRepository {
     suspend fun verifyBackupFile(backupFile: File): Boolean
     suspend fun shareBackup(context: Context, backupFile: File)
     suspend fun deleteBackup(recordId: String): Boolean
+    suspend fun resetTestTransactionsKeepMasters(): Result<Boolean>
 }

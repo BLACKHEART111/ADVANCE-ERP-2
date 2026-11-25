@@ -10,6 +10,7 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import androidx.room.withTransaction
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.notification.BackupNotificationHelper
@@ -65,6 +66,8 @@ class BackupRepositoryImpl @Inject constructor(
         val imageFiles = if (imagesDir.exists()) imagesDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
         val poAttachmentsDir = File(context.filesDir, "po_attachments")
         val poAttachmentFiles = if (poAttachmentsDir.exists()) poAttachmentsDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
+        val vaultAttachmentsDir = File(context.filesDir, "vault_attachments")
+        val vaultAttachmentFiles = if (vaultAttachmentsDir.exists()) vaultAttachmentsDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
         val avatarFiles = context.filesDir.listFiles()?.filter { it.isFile && (it.name.startsWith("avatar_") || it.name.endsWith(".jpg") || it.name.endsWith(".png")) && !it.name.endsWith(".zip") } ?: emptyList()
 
         val schemaVersion = database.openHelper.readableDatabase.version
@@ -102,6 +105,14 @@ class BackupRepositoryImpl @Inject constructor(
                 zos.closeEntry()
             }
 
+            // Entry K..L: Import Vault Attachments & Immutable Snapshots
+            for (vAtt in vaultAttachmentFiles) {
+                val vEntry = ZipEntry("vault_attachments/${vAtt.name}")
+                zos.putNextEntry(vEntry)
+                FileInputStream(vAtt).use { fis -> fis.copyTo(zos) }
+                zos.closeEntry()
+            }
+
             // Entry M+1: Metadata JSON
             val metadataContent = buildString {
                 append("{\n")
@@ -111,6 +122,7 @@ class BackupRepositoryImpl @Inject constructor(
                 append("  \"schemaVersion\": $schemaVersion,\n")
                 append("  \"dbChecksumSha256\": \"$dbChecksum\",\n")
                 append("  \"totalImages\": ${imageFiles.size + avatarFiles.size},\n")
+                append("  \"totalVaultAttachments\": ${vaultAttachmentFiles.size},\n")
                 append("  \"notes\": \"${notes?.replace("\"", "\\\"") ?: "Offline Comprehensive Backup"}\"\n")
                 append("}\n")
             }
@@ -285,11 +297,8 @@ class BackupRepositoryImpl @Inject constructor(
 
     private fun verifyZipBackup(zipBackupFile: File): Boolean {
         return try {
+            if (!verifyBackupZipEntriesIntegrity(zipBackupFile)) return false
             ZipFile(zipBackupFile).use { zip ->
-                val entries = zip.entries()
-                while (entries.hasMoreElements()) {
-                    if (!isSafeBackupZipEntry(entries.nextElement().name)) return false
-                }
                 val dbEntry = zip.getEntry("database/advance_erp.db") ?: return false
                 val tempDbFile = File(context.cacheDir, "verify_db_${UUID.randomUUID()}.db")
                 try {
@@ -388,9 +397,11 @@ class BackupRepositoryImpl @Inject constructor(
                         }
                     }
 
-                    // Extract product images, PO attachments & avatars
+                    // Extract product images, PO attachments, Import Vault attachments & avatars
                     val targetImagesDir = File(context.filesDir, "product_images").apply { if (!exists()) mkdirs() }
                     val targetPoAttachmentsDir = File(context.filesDir, "po_attachments").apply { if (!exists()) mkdirs() }
+                    val targetVaultAttachmentsDir = File(context.filesDir, "vault_attachments").apply { if (!exists()) mkdirs() }
+                    extractVaultAttachmentsFromZip(zip, targetVaultAttachmentsDir)
                     val entries = zip.entries()
                     while (entries.hasMoreElements()) {
                         val entry = entries.nextElement()
@@ -450,6 +461,7 @@ class BackupRepositoryImpl @Inject constructor(
 
             Result.success(true)
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             e.printStackTrace()
             Result.failure(e)
         } finally {
@@ -520,6 +532,113 @@ class BackupRepositoryImpl @Inject constructor(
         } else false
     }
 
+    /**
+     * Clears all transactional, ledger, and stock tables in foreign-key-safe order while
+     * preserving products, categories, variants, product photos, customers, and suppliers.
+     */
+    override suspend fun resetTestTransactionsKeepMasters(): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val dbFile = context.getDatabasePath(AdvanceErpDatabase.DATABASE_NAME)
+            if (dbFile.exists()) {
+                checkpointDatabase()
+                val safetyDir = File(context.filesDir, "safety_backups").apply { if (!exists()) mkdirs() }
+                val safetyFile = File(safetyDir, "safety_before_test_reset_${System.currentTimeMillis()}.db.bak")
+                FileInputStream(dbFile).use { input ->
+                    FileOutputStream(safetyFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+
+            database.withTransaction {
+                // 1. Sales, Layer Attributions & Customer Payments
+                backupDao.clearSalesReturnLayerAllocations()
+                backupDao.clearSaleLayerAllocations()
+                backupDao.clearPaymentAllocations()
+                backupDao.clearCustomerPayments()
+                backupDao.clearSalesReturnItems()
+                backupDao.clearSalesReturns()
+                backupDao.clearSalesCostLayerUsages()
+                backupDao.clearSalesInvoiceItems()
+                backupDao.clearSalesInvoices()
+
+                // 2. Inventory Stock, Movements, Transfers, FIFO & Reconciliations
+                backupDao.clearFifoConsumptions()
+                backupDao.clearInventoryCostAdjustments()
+                backupDao.clearStockTransferCostLayers()
+                backupDao.clearStockTransfers()
+                backupDao.clearInventoryReconciliationItems()
+                backupDao.clearInventoryReconciliations()
+                backupDao.clearInventoryCostLayers()
+                backupDao.clearStockMovements()
+                backupDao.clearStockBalances()
+
+                // 3. Purchase Orders, Shipments, Receipts & Landed Costs
+                backupDao.clearDamageRecords()
+                backupDao.clearShortageRecords()
+                backupDao.clearWarehouseReceiptItems()
+                backupDao.clearWarehouseReceipts()
+                backupDao.clearLandedCostAllocations()
+                backupDao.clearLandedCostSnapshots()
+                backupDao.clearImportCostItems()
+                backupDao.clearShipmentCartons()
+                backupDao.clearShipmentSuppliers()
+                backupDao.clearShipmentFreightRates()
+                backupDao.clearImportShipments()
+                backupDao.clearAdditionalProductCosts()
+                backupDao.clearPurchaseCompletionRecords()
+                backupDao.clearSupplierPayments()
+                backupDao.clearPurchaseOrderItems()
+                backupDao.clearPurchaseOrders()
+
+                // 4. Accounting, Vault Metadata & Financial Transactions (keep chart_of_accounts)
+                backupDao.clearExpenseAllocations()
+                backupDao.clearExpenseAllocationRules()
+                backupDao.clearImportVaultAttachments()
+                backupDao.clearImportVaultEntries()
+                backupDao.clearBankReconciliationItems()
+                backupDao.clearBankReconciliations()
+                backupDao.clearAccountTransfers()
+                backupDao.clearExpenseVouchers()
+                backupDao.clearJournalLines()
+                backupDao.clearJournalEntries()
+
+                // 5. Reset Customer & Supplier Opening/Outstanding Balances to 0
+                backupDao.resetAllCustomerBalances()
+                backupDao.resetAllSupplierPayables()
+
+                // 6. Clear transaction audit logs (keep backup logs) and log this reset
+                backupDao.clearTransactionAuditLogs()
+                auditLogDao.insertAuditLog(
+                    AuditLog(
+                        id = "audit-${UUID.randomUUID()}",
+                        recordType = "SYSTEM_RESET",
+                        recordId = "TEST_DATA_RESET",
+                        action = "RESET_TEST_DATA",
+                        details = "Cleared all test transactions, ledgers, and stock to 0 while preserving products, categories, variants, images, customers, and suppliers."
+                    )
+                )
+            }
+
+            // Clear unposted editor draft buffers and transactional PO/Vault attachments (keep product_images & avatars)
+            context.getSharedPreferences("editor_drafts_v1", Context.MODE_PRIVATE).edit().clear().commit()
+            val poAttachmentsDir = File(context.filesDir, "po_attachments")
+            if (poAttachmentsDir.exists()) {
+                poAttachmentsDir.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
+            }
+            val vaultAttachmentsDir = File(context.filesDir, "vault_attachments")
+            if (vaultAttachmentsDir.exists()) {
+                vaultAttachmentsDir.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
+            }
+
+            Result.success(true)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
     private fun calculateSha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         FileInputStream(file).use { fis ->
@@ -546,9 +665,57 @@ internal fun isSafeBackupZipEntry(name: String): Boolean {
     val parts = name.split('/')
     if (parts.any { it == "." || it == ".." }) return false
     if (name == "metadata.json" || name == "database/advance_erp.db") return true
-    if (name == "product_images/" || name == "avatars/" || name == "po_attachments/") return true
+    if (name == "product_images/" || name == "avatars/" || name == "po_attachments/" || name == "vault_attachments/") return true
     return (parts.size == 2 && parts[1].isNotBlank() &&
-        (parts[0] == "product_images" || parts[0] == "avatars" || parts[0] == "po_attachments"))
+        (parts[0] == "product_images" || parts[0] == "avatars" || parts[0] == "po_attachments" || parts[0] == "vault_attachments"))
+}
+
+internal fun verifyBackupZipEntriesIntegrity(zipBackupFile: File): Boolean {
+    return try {
+        ZipFile(zipBackupFile).use { zip ->
+            var hasDatabaseEntry = false
+            val buffer = ByteArray(8192)
+            val entries = zip.entries()
+            while (entries.hasMoreElements()) {
+                val entry = entries.nextElement()
+                if (!isSafeBackupZipEntry(entry.name)) return false
+                if (entry.name == "database/advance_erp.db") {
+                    hasDatabaseEntry = true
+                }
+                if (!entry.isDirectory) {
+                    zip.getInputStream(entry).use { input ->
+                        while (input.read(buffer) != -1) {
+                            // Drain full stream so ZIP CRC32 and deflate blocks are validated
+                        }
+                    }
+                }
+            }
+            hasDatabaseEntry
+        }
+    } catch (_: Exception) {
+        false
+    }
+}
+
+internal fun extractVaultAttachmentsFromZip(zip: ZipFile, targetVaultAttachmentsDir: File): Int {
+    if (!targetVaultAttachmentsDir.exists()) targetVaultAttachmentsDir.mkdirs()
+    var count = 0
+    val entries = zip.entries()
+    while (entries.hasMoreElements()) {
+        val entry = entries.nextElement()
+        if (entry.name.startsWith("vault_attachments/") && !entry.isDirectory) {
+            val vaultFileName = safeBackupEntryFileName(entry.name, "vault_attachments/")
+                ?: throw IllegalArgumentException("Unsafe backup vault attachment path")
+            val destVaultFile = File(targetVaultAttachmentsDir, vaultFileName)
+            zip.getInputStream(entry).use { input ->
+                FileOutputStream(destVaultFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            count++
+        }
+    }
+    return count
 }
 
 private fun safeBackupEntryFileName(entryName: String, prefix: String): String? {
