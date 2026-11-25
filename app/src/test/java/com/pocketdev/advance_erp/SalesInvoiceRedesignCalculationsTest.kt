@@ -3,8 +3,11 @@ package com.pocketdev.advance_erp
 import com.pocketdev.advance_erp.core.engine.SalesInvoiceCalculator
 import com.pocketdev.advance_erp.core.security.SecurityManager
 import com.pocketdev.advance_erp.core.security.UserRole
+import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.feature.sales.CustomerLookupMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -168,5 +171,47 @@ class SalesInvoiceRedesignCalculationsTest {
         val customerHistoricalDueMinor = 1745500L
         assertEquals(60000L, totals.dueMinor)
         assertFalse(totals.dueMinor == totals.dueMinor + customerHistoricalDueMinor)
+    }
+
+    @Test
+    fun customerLookupMatchesEnglishBanglaMobileCustomerIdAndScannedQr() {
+        val customers = listOf(
+            Customer(
+                id = "cust-id-1",
+                customerCode = "CUST-3205",
+                name = "Md Salauddin Mojumdar",
+                phone = "01935812761",
+                address = "New Elephant Road Dhaka 1205"
+            ),
+            Customer(
+                id = "cust-id-2",
+                customerCode = "CUST-4110",
+                name = "রহিম ট্রেডার্স",
+                phone = "01711223344",
+                address = "চকবাজার, ঢাকা"
+            )
+        )
+
+        // Blank returns all
+        assertEquals(2, CustomerLookupMatcher.filterCustomers(customers, "").size)
+
+        // English name
+        assertEquals(listOf("cust-id-1"), CustomerLookupMatcher.filterCustomers(customers, "salauddin").map { it.id })
+
+        // Bangla name
+        assertEquals(listOf("cust-id-2"), CustomerLookupMatcher.filterCustomers(customers, "রহিম").map { it.id })
+
+        // English & Bangla phone digits
+        assertEquals(listOf("cust-id-1"), CustomerLookupMatcher.filterCustomers(customers, "01935812761").map { it.id })
+        assertEquals(listOf("cust-id-1"), CustomerLookupMatcher.filterCustomers(customers, "০১৯৩৫৮").map { it.id })
+
+        // Customer ID (with prefix, numeric suffix, and Bangla digits)
+        assertEquals(listOf("cust-id-1"), CustomerLookupMatcher.filterCustomers(customers, "CUST-3205").map { it.id })
+        assertEquals(listOf("cust-id-2"), CustomerLookupMatcher.filterCustomers(customers, "৪১১০").map { it.id })
+
+        // QR / Barcode lookup
+        assertEquals("cust-id-1", CustomerLookupMatcher.findScannedCustomer(customers, "CUST-3205")?.id)
+        assertEquals("cust-id-2", CustomerLookupMatcher.findScannedCustomer(customers, "01711223344")?.id)
+        assertNull(CustomerLookupMatcher.findScannedCustomer(customers, "NO-MATCH-999"))
     }
 }

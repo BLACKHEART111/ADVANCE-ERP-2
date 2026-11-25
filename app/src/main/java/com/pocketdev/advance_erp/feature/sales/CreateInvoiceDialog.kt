@@ -143,6 +143,7 @@ fun CreateInvoiceDialog(
     isBangla: Boolean,
     onDismiss: () -> Unit,
     onCustomerSelected: (String) -> Unit = {},
+    onCreateCustomerImmediate: ((NewCustomerDraft, onCreated: (Customer) -> Unit, onError: (String) -> Unit) -> Unit)? = null,
     onSubmit: (SalesInvoiceDraft) -> Unit = {},
     onSubmitDraft: (SalesInvoiceDraft) -> Unit = onSubmit,
     onConfirmSale: (SalesInvoiceDraft) -> Unit = onSubmit
@@ -1064,6 +1065,8 @@ fun CreateInvoiceDialog(
     if (showCustomerLookup) {
         CustomerLookupDialog(
             customers = customers,
+            selectedCustomerId = selectedCustomerId,
+            pendingNewCustomer = pendingNewCustomerDraft,
             isBangla = isBangla,
             onDismiss = { showCustomerLookup = false },
             onSelectCustomer = { cust ->
@@ -1073,6 +1076,19 @@ fun CreateInvoiceDialog(
             onCreateNewCustomer = { newCustDraft ->
                 pendingNewCustomerDraft = newCustDraft
                 selectedCustomerId = ""
+            },
+            onCreateCustomerImmediate = onCreateCustomerImmediate?.let { createFn ->
+                { draft, onDone, onErr ->
+                    createFn(
+                        draft,
+                        { createdCustomer ->
+                            selectedCustomerId = createdCustomer.id
+                            pendingNewCustomerDraft = null
+                            onDone(createdCustomer)
+                        },
+                        onErr
+                    )
+                }
             }
         )
     }

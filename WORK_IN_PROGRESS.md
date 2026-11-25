@@ -1,5 +1,15 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Customer Lookup & Selection UI Redesign — 2026-11-25
+
+Redesigned `CustomerLookupDialog` to match the premium purple-teal modal reference in both Light and Dark modes while preserving Room DB v13 schema and existing invoice/customer state:
+- **Redesigned Modal Header & List (`CustomerLookupDialog.kt`)**: Soft lavender wave banner, `Groups` rounded icon badge, circular `X` dismiss button, purple-bordered search bar with QR/Barcode scan trigger (`BarcodeQrScannerDialog`), teal-to-purple gradient `+ New Customer — Create & Continue >` CTA, `Customers (N)` header, avatar/name/mobile/code cards, and selected purple checkmark (`✓`) indicator.
+- **Bangla/English/Phone/ID Search & QR Lookup (`CustomerLookupMatcher`)**: Supports instant filtering by English/Bangla customer name, English/Bangla mobile digits (`০`–`৯`), customer ID (`CUST-xxxx`), address, or scanned QR/Barcode value.
+- **Inline Customer Persistence (`SalesViewModel.createCustomerInline`, `SalesScreen.kt`, `CreateInvoiceDialog.kt`)**: Persists newly created customers via `ContactsRepository.addCustomerWithOptionalOpeningDue`, generates a unique `CUST-xxxx` code, loads their summary, and auto-selects them on the active invoice without losing items or calculations.
+- **Unit Tests (`SalesInvoiceRedesignCalculationsTest.kt`)**: Added `customerLookupMatchesEnglishBanglaMobileCustomerIdAndScannedQr`.
+
+Verified via `adev` pinned Gradle 8.13: `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` **BUILD SUCCESSFUL**, **440/440 JVM tests passed** across 81 files (`0` failures, `0` skipped); `git diff --check` passed. Debug APK (`app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `d7c70227bc98a2f1d74b4b2d49686cf22bcb3852128cdf5c25b356f5e2f8eb55`) installed in-place on `OnePlus CPH2745` (`com.pocketdev.advance_erp2`, `firstInstallTime=2026-11-22 02:39:36` intact) and checked by the user on-device.
+
 ## New Sales Invoice Redesign, Editable Contacts/Opening Due & Received PO Reopen/Edit — 2026-11-25
 
 Implemented and verified three major enhancements without modifying Room DB v13 schema or live database records:

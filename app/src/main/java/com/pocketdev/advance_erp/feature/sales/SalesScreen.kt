@@ -428,6 +428,9 @@ fun SalesScreen(
             onCustomerSelected = { custId ->
                 viewModel.loadCustomerSummary(custId)
             },
+            onCreateCustomerImmediate = { newCustDraft, onCreated, onError ->
+                viewModel.createCustomerInline(newCustDraft, onCreated, onError)
+            },
             onSubmitDraft = { draft ->
                 viewModel.createInvoice(draft) {
                     showCreateInvoiceDialog = false

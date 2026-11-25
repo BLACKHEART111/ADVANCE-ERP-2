@@ -32,10 +32,12 @@ import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Warehouse
 import com.pocketdev.advance_erp.domain.repository.AccountingRepository
+import com.pocketdev.advance_erp.domain.repository.ContactsRepository
 import com.pocketdev.advance_erp.domain.repository.CustomerLedgerEntry
 import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
 import com.pocketdev.advance_erp.domain.repository.CustomerSummary
 import com.pocketdev.advance_erp.domain.repository.CustomerWiseSalesItem
+import com.pocketdev.advance_erp.domain.repository.NewCustomerDraft
 import com.pocketdev.advance_erp.domain.repository.ProductRepository
 import com.pocketdev.advance_erp.domain.repository.ProductWiseSalesItem
 import com.pocketdev.advance_erp.domain.repository.SalesInvoiceDraft
@@ -98,6 +100,7 @@ class SalesViewModel @Inject constructor(
     private val inventoryCostLayerDao: InventoryCostLayerDao,
     private val businessProfileDao: BusinessProfileDao,
     private val accountingRepository: AccountingRepository,
+    private val contactsRepository: ContactsRepository,
     private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
@@ -279,6 +282,65 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val summary = salesRepository.getCustomerSummary(customerId)
             _uiState.update { it.copy(selectedCustomerSummary = summary) }
+        }
+    }
+
+    fun createCustomerInline(
+        draft: NewCustomerDraft,
+        onCreated: (Customer) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val normalizedPhone = com.pocketdev.advance_erp.core.util.Formatters
+                    .toEnglishDigits(draft.phone)
+                    .replace("[^0-9+]".toRegex(), "")
+                    .trim()
+                val existing = _uiState.value.customers.find {
+                    com.pocketdev.advance_erp.core.util.Formatters.toEnglishDigits(it.phone)
+                        .replace("[^0-9+]".toRegex(), "") == normalizedPhone
+                } ?: customerDao.getCustomerByPhone(normalizedPhone)
+                if (existing != null) {
+                    val isBn = _uiState.value.language == AppLanguage.BANGLA
+                    onError(
+                        if (isBn) "এই মোবাইল নম্বরে ইতিমধ্যে গ্রাহক নিবন্ধিত আছে: ${existing.name}"
+                        else "Customer already exists with this phone: ${existing.name}"
+                    )
+                    return@launch
+                }
+
+                val existingCodes = _uiState.value.customers.map { it.customerCode.uppercase() }.toSet()
+                var suffix = ((System.currentTimeMillis() % 9000L) + 1000L).toInt()
+                var guard = 0
+                while ("CUST-$suffix" in existingCodes && guard < 9000) {
+                    suffix = ((suffix - 1000 + 1) % 9000) + 1000
+                    guard++
+                }
+
+                val newCustomer = Customer(
+                    id = java.util.UUID.randomUUID().toString(),
+                    customerCode = "CUST-$suffix",
+                    name = draft.name.trim(),
+                    phone = normalizedPhone,
+                    email = draft.email?.trim()?.takeIf { it.isNotBlank() },
+                    address = draft.address.trim(),
+                    creditLimitMinor = 0L,
+                    outstandingBalanceMinor = 0L,
+                    profileImagePath = draft.profileImagePath,
+                    isActive = true,
+                    createdAt = System.currentTimeMillis()
+                )
+                contactsRepository.addCustomerWithOptionalOpeningDue(
+                    customer = newCustomer,
+                    openingDueMinor = draft.openingBalanceMinor
+                )
+                val saved = customerDao.getCustomerById(newCustomer.id)
+                    ?: newCustomer.copy(outstandingBalanceMinor = draft.openingBalanceMinor)
+                loadCustomerSummary(saved.id)
+                onCreated(saved)
+            } catch (e: Exception) {
+                onError(e.message ?: "Failed to create customer")
+            }
         }
     }
 
