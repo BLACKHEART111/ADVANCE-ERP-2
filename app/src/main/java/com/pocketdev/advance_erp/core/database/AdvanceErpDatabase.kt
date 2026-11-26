@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp.core.database
 
+import com.pocketdev.advance_erp.data.entity.*
+import com.pocketdev.advance_erp.data.dao.CommunicationDao
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
@@ -97,6 +99,11 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
 
 @Database(
     entities = [
+        CommunicationSettings::class,
+        CommunicationTemplate::class,
+        CommunicationPartyPreference::class,
+        CommunicationSnapshot::class,
+        CommunicationHistory::class,
         BusinessProfile::class,
         ProductCategory::class,
         Product::class,
@@ -164,10 +171,12 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
         ImportVaultEntry::class,
         ImportVaultAttachment::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 abstract class AdvanceErpDatabase : RoomDatabase() {
+
+    abstract fun communicationDao(): CommunicationDao
 
     abstract fun businessProfileDao(): BusinessProfileDao
     abstract fun productCategoryDao(): ProductCategoryDao
@@ -216,7 +225,7 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "advance_erp.db"
-        const val DATABASE_VERSION = 14
+        const val DATABASE_VERSION = 15
 
         fun buildDatabase(context: Context): AdvanceErpDatabase {
             return Room.databaseBuilder(
@@ -238,7 +247,8 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                     DatabaseMigrations.MIGRATION_10_11,
                     DatabaseMigrations.MIGRATION_11_12,
                     DatabaseMigrations.MIGRATION_12_13,
-                    DatabaseMigrations.MIGRATION_13_14
+                    DatabaseMigrations.MIGRATION_13_14,
+                    DatabaseMigrations.MIGRATION_14_15
                 )
                 .addCallback(object : Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {

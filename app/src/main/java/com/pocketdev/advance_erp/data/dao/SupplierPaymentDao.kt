@@ -46,6 +46,9 @@ interface SupplierPaymentDao {
     @Query("DELETE FROM supplier_payments WHERE id = :id")
     suspend fun deletePaymentById(id: String)
 
+    @Query("SELECT COALESCE(SUM(bdtAmountMinor), 0) FROM supplier_payments")
+    fun getTotalPaidBdtMinor(): Flow<Long>
+
     @Query("DELETE FROM supplier_payments WHERE purchaseOrderId = :orderId")
     suspend fun deletePaymentsForOrder(orderId: String)
 }

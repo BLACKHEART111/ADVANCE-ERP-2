@@ -1,0 +1,485 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :app
+WARNING: The option setting 'android.aapt2FromMavenOverride=/data/data/ai.antigem/files/usr/bin/aapt2' is experimental.
+Warning: SDK processing. This version only understands SDK XML versions up to 3 but an SDK XML file of version 4 was encountered. This can happen if you use versions of Android Studio and the command-line tools that were released at different times.
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+11-26 22:53:34.791  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c8.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040071.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040128.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040102.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04009e.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040072.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040035.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040037.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040036.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040069.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04009a.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04009d.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400de.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a6.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400dd.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04009c.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a9.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04009b.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040085.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040051.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a7.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040089.
+11-26 22:53:34.792  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04006a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04006b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040108.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040044.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b4.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c4.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f5.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b3.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f4.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040043.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400fa.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04011d.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04011e.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04011a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04011b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04011c.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040034.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040033.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040032.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040031.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040030.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ae.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04008a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ab.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040095.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040078.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04007e.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040079.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040076.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04007b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040077.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04007c.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04007d.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040086.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040135.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04013e.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040136.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040137.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04013a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040139.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04013b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040138.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04013c.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04013d.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040008.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040007.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040009.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040020.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040021.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040003.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040006.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040005.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04000a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04001e.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04000b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040004.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040001.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040002.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04000f.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040010.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04001d.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040012.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040011.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04001c.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040014.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040016.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040015.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040018.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04001a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04001b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040017.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04001f.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040013.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040019.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04010a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040111.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04010e.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040070.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04006f.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b2.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04006e.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04000d.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040081.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f7.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04000c.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040040.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04003c.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ee.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ef.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04003b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040075.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040073.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040024.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04012a.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040129.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d9.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400db.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040083.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040082.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a4.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040110.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04010f.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040113.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ec.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b7.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b9.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b8.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400bb.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400bc.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400bd.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ba.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040080.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b6.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04010b.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04010c.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04010d.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d1.
+11-26 22:53:34.793  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d3.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d2.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400af.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04005c.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04005d.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040055.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04005a.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040058.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040059.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040057.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04005f.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040068.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040056.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040027.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040025.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040026.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040028.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040112.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04003f.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04003d.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04003e.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04002f.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040046.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040047.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04004d.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04004e.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040084.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e2.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e3.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e4.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e5.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ed.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f8.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040106.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b5.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04012c.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04012b.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04005b.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040133.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b1.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400b0.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040029.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e1.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f0.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04004a.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04004b.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04004c.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04002a.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400aa.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040041.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040048.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040049.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040054.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f6.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04007a.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040097.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04002d.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04002e.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04003a.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040116.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04008d.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040091.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040092.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04008e.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04008f.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040090.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040093.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040094.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04008b.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040096.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040095.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040131.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c1.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040072.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f2.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040074.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a3.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a2.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04004f.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04002b.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400cb.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f1.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04000e.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040023.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040022.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040061.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04012d.
+11-26 22:53:34.794  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04009f.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a0.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400dc.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400fd.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04006d.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ac.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e6.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d6.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d7.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d8.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040087.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040088.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d4.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d5.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ca.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04002c.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040132.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040000.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c3.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400fb.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c5.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040099.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e7.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400cc.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400fc.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e8.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a5.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400cd.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400d0.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ad.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400a1.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e0.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04006c.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040050.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040098.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400eb.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ea.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040134.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040060.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040103.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400df.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400fe.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040045.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04005e.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400e9.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400da.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040118.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040119.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04012e.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04012f.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040130.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040117.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040107.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040104.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040105.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f9.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400f3.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04008c.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040109.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040114.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040095.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040126.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040100.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f04011f.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ff.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040120.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040123.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040122.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040124.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040121.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040125.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040066.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040062.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040064.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040065.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040067.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040063.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c0.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040042.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040053.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040052.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c7.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c6.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400be.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400bf.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040127.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040101.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400c2.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400cf.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f0400ce.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040115.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040038.
+11-26 22:53:34.795  8492  8492 E aapt2   : No package ID 7f found for resource ID 0x7f040039.
+
+> Task :app:processDebugResources
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/ai/StockForecastEngine.kt:146:9 Parameter 'productName' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/ai/StockForecastEngine.kt:148:9 Parameter 'minAlert' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/ai/StockForecastEngine.kt:149:9 Parameter 'unitsSold' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/communication/DynamicTemplateEngine.kt:62:54 Parameter 'status' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/designsystem/ERPTopBar.kt:146:9 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/pdf/CentralizedPdfReportRegistry.kt:1316:35 Destructured parameter 'id' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/util/ControlCenterPdfGenerator.kt:94:28 Variable 'currentY' initializer is redundant
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/util/PoExportDataBuilder.kt:335:25 Variable 'parentCtn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/core/util/StatementShareHelper.kt:18:9 Parameter 'phone' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:132:42 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:133:43 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:134:43 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/DashboardRepositoryImpl.kt:135:43 No cast needed
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/FinancialRepositoryImpl.kt:433:13 Variable 'bankAccount' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:298:17 Name shadowed: supplier
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:315:107 Condition 'currentOrder != null' is always 'true'
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:1074:17 Variable 'newPaidBdt' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:2212:13 Variable 'po' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:2693:13 Variable 'po' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:2943:25 Variable 'curQty' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:3166:39 Variable 'journalEntryId' initializer is redundant
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:5106:39 Variable 'journalEntryId' initializer is redundant
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/ImportRepositoryImpl.kt:5186:39 Variable 'journalEntryId' initializer is redundant
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/data/repository/InventoryRepositoryImpl.kt:281:13 Variable 'product' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:154:62 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:158:64 'MenuBook: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.MenuBook
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:869:57 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:1009:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:1018:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/accounts/AccountsScreen.kt:1084:37 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/communication/CommunicationDialog.kt:159:49 Parameter 'file' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/BusinessControlCenterScreen.kt:2046:32 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:103:39 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:281:90 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:281:121 'TrendingDown: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingDown
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:291:88 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/controlcenter/components/ControlCenterSummaryCards.kt:291:119 'TrendingDown: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingDown
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:210:35 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:400:67 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:426:67 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/DashboardScreen.kt:528:59 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/dashboard/components/DashboardPremiumComponents.kt:1787:50 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddAdditionalCostDialog.kt:72:5 Parameter 'orderId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddAdditionalCostDialog.kt:73:5 Parameter 'warehouseId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddCostItemDialog.kt:72:5 Parameter 'shipmentId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/AddCostItemDialog.kt:73:5 Parameter 'orderId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:396:9 Variable 'supplierSearch' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:442:9 Variable 'newProdNameEn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:443:9 Variable 'newProdNameBn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:444:9 Variable 'newProdSku' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:445:9 Variable 'newProdUnit' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:446:9 Variable 'newProdPurchasePriceStr' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:447:9 Variable 'newProdSellingPriceStr' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:448:9 Variable 'selectedCategoryId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:460:9 Variable 'showInlineAddCategoryDialog' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:461:9 Variable 'newCatNameEn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:462:9 Variable 'newCatNameBn' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:589:56 Parameter 'idx' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreatePurchaseOrderDialog.kt:629:39 Unsafe use of a nullable receiver of type Array<(out) PaymentTermType!>?
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:134:9 Variable 'coroutineScope' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:1080:61 Parameter 'idx' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:1148:35 Parameter 'shipmentId' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/CreateShipmentDialog.kt:1148:47 Parameter 'shipmentNumber' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:289:25 Variable 'activeShipmentsCount' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:290:25 Variable 'totalCbmSum' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:291:25 Variable 'totalExpensesBdt' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:1208:5 Parameter 'onConfirmOrder' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportManagementScreen.kt:1209:5 Parameter 'onSharePdf' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportViewModel.kt:753:21 Variable 'newId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ImportViewModel.kt:1403:24 Parameter 'orderId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoListContent.kt:18:46 Parameter 'supplierFilter' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoReferenceComponents.kt:323:9 Variable 'dark' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoReferenceComponents.kt:367:21 Variable 'status' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PoShareDialog.kt:916:45 'Label: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Label
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PremiumPurchaseOrderUi.kt:228:21 Variable 'completed' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/PurchaseOrderDetailDialog.kt:3485:42 Elvis operator (?:) always returns the left operand of non-nullable type String?
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/RecordSupplierPaymentDialog.kt:239:49 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ShipmentWorkspaceDialog.kt:548:5 Parameter 'landingPreview' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/imports/ShipmentWorkspaceDialog.kt:968:5 Parameter 'snapshots' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/importvault/ImportVaultComponents.kt:1085:37 'ShowChart: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ShowChart
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/importvault/ImportVaultDetailScreen.kt:306:5 Parameter 'scopeType' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/importvault/ImportVaultDetailScreen.kt:307:5 Parameter 'sourceId' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/importvault/ImportVaultHomeScreen.kt:1867:100 'MenuBook: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.MenuBook
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/importvault/ImportVaultHomeScreen.kt:1977:100 'MenuBook: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.MenuBook
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/importvault/ImportVaultTimelineDocumentsSection.kt:245:55 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/BarcodeQrScannerDialog.kt:228:34 'setTargetResolution(Size): Preview.Builder' is deprecated. Deprecated in Java
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/BarcodeQrScannerDialog.kt:234:34 'setTargetResolution(Size): ImageAnalysis.Builder' is deprecated. Deprecated in Java
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:744:41 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1077:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1289:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1510:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1548:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryScreen.kt:1633:5 Parameter 'language' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/InventoryViewModel.kt:557:21 Variable 'id' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/ProductLabelPrintDialog.kt:116:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/ProductLabelPrintDialog.kt:243:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/StockAdjustmentDialog.kt:139:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/StockTransferDialog.kt:133:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/cogs/CogsTraceabilityView.kt:95:39 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/cogs/CogsTraceabilityView.kt:151:29 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/costhistory/ProductCostHistoryDialog.kt:215:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/costhistory/ProductCostHistoryDialog.kt:390:41 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/inventory/reconciliation/InventoryReconciliationView.kt:233:21 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/AddProductDialog.kt:1826:5 Parameter 'baseBarcode' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:275:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:510:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:995:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/EditProductDialog.kt:1139:40 Unnecessary safe call on a non-null receiver of type ((String) -> Unit)?
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/PhotoGalleryPicker.kt:253:70 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowBack
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/PhotoGalleryPicker.kt:293:70 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ArrowForward
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:167:40 Parameter 'idx' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:312:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:379:87 Parameter 'imgIndex' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/product/ProductDetailDialog.kt:1003:13 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLedgerDialog.kt:324:53 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLedgerDialog.kt:345:49 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLookupDialog.kt:873:68 There is more than one label with such a name in this scope
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLookupDialog.kt:881:47 There is more than one label with such a name in this scope
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLookupDialog.kt:885:47 There is more than one label with such a name in this scope
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/CustomerLookupDialog.kt:898:47 There is more than one label with such a name in this scope
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DirectExchangeDialog.kt:118:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DispatchDeliveryDialog.kt:89:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueCollectionStatementShareDialog.kt:128:62 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueCollectionStatementShareDialog.kt:320:45 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueReminderDialog.kt:131:66 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/DueReminderDialog.kt:401:58 'Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/PosDialog.kt:87:9 Variable 'context' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/RecordCustomerPaymentDialog.kt:279:62 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesInvoiceDesignComponents.kt:984:64 'EventNote: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.EventNote
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:128:9 Variable 'context' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:159:76 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:264:36 'Indicator(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Use SecondaryIndicator instead.
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:377:28 Parameter 'ctx' is never used, could be renamed to _
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:653:45 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:880:5 Parameter 'onRecordPaymentClick' is never used
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:1372:58 'ReceiptLong: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.ReceiptLong
+w: file:///data/data/ai.antigem/files/home/ADVANCE-ERP-2/app/src/main/java/com/pocketdev/advance_erp/feature/sales/SalesScreen.kt:1693:49 'TrendingUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.TrendingUp
+
+BUILD SUCCESSFUL in 3m 50s
+16 actionable tasks: 7 executed, 9 up-to-date

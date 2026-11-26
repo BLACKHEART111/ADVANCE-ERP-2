@@ -1,33 +1,13 @@
 package com.pocketdev.advance_erp.feature.contacts
 
-import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
-import androidx.compose.material.icons.outlined.AddPhotoAlternate
-import androidx.compose.material.icons.outlined.CameraAlt
-import androidx.compose.material.icons.outlined.ContactPhone
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Send
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import com.pocketdev.advance_erp.core.util.AppMediaStorage
-import com.pocketdev.advance_erp.core.util.ContactPickerHelper
-import com.pocketdev.advance_erp.feature.sales.DueReminderDialog
-import kotlinx.coroutines.launch
-import java.io.File
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,25 +27,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ContactPhone
 import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Divider
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -79,55 +61,77 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.pocketdev.advance_erp.R
-import com.pocketdev.advance_erp.core.designsystem.SuggestTextField
-import com.pocketdev.advance_erp.data.entity.SuggestionType
-import com.pocketdev.advance_erp.core.designsystem.DeepNavy
 import com.pocketdev.advance_erp.core.designsystem.ERPActionButton
-import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPButtonVariant
-import com.pocketdev.advance_erp.core.designsystem.ERPCard
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.ERPEmptyState
+import com.pocketdev.advance_erp.core.designsystem.LocalDashboardTokens
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.StatusError
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
+import com.pocketdev.advance_erp.core.designsystem.SuggestTextField
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.model.Money
+import com.pocketdev.advance_erp.core.util.AppMediaStorage
+import com.pocketdev.advance_erp.core.util.ContactPickerHelper
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.data.entity.SuggestionType
 import com.pocketdev.advance_erp.data.entity.Supplier
+import com.pocketdev.advance_erp.feature.sales.CustomerLedgerDialog
+import com.pocketdev.advance_erp.feature.sales.DueReminderDialog
+import com.pocketdev.advance_erp.feature.sales.RecordCustomerPaymentDialog
+import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 fun ContactsScreen(
     viewModel: ContactsViewModel,
     initialTab: ContactsTab = ContactsTab.CUSTOMERS,
     modifier: Modifier = Modifier,
+    companyName: String = "ADVANCE ERP",
+    onOpenDrawer: () -> Unit = {},
+    onToggleLanguage: () -> Unit = {},
     onSwitchTabRoute: ((ContactsTab) -> Unit)? = null
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var customerToDelete by remember { mutableStateOf<Customer?>(null) }
-    var customerForPhotoUpdate by remember { mutableStateOf<Customer?>(null) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val tokens = LocalDashboardTokens.current
+    val isBn = state.language == AppLanguage.BANGLA
+
+    var customerToDelete by remember { mutableStateOf<Customer?>(null) }
+    var supplierToDelete by remember { mutableStateOf<Supplier?>(null) }
+    var customerForPhotoUpdate by remember { mutableStateOf<Customer?>(null) }
+    var showFilterSheet by remember { mutableStateOf(false) }
+    var showSortSheet by remember { mutableStateOf(false) }
+    var showDueAlertsSheet by remember { mutableStateOf(false) }
 
     val customerPhotoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -138,7 +142,8 @@ fun ContactsScreen(
                     try {
                         val savedPath = AppMediaStorage.saveCustomerPhoto(context, pickedUri, targetCust.id)
                         viewModel.updateCustomerPhoto(targetCust, savedPath)
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                 }
             }
         }
@@ -155,337 +160,320 @@ fun ContactsScreen(
         }
     }
 
+    val displayedCompany = state.companyName.takeIf { it.isNotBlank() && it != "ADVANCE ERP" } ?: companyName
+
+    val customerMetrics = remember(state.customers, state.totalCustomerReceivedMinor) {
+        ContactsUiLogic.computeCustomerSummaryMetrics(
+            customers = state.customers,
+            totalReceivedMinor = state.totalCustomerReceivedMinor
+        )
+    }
+    val supplierMetrics = remember(state.suppliers, state.totalSupplierPaidBdtMinor) {
+        ContactsUiLogic.computeSupplierSummaryMetrics(
+            suppliers = state.suppliers,
+            totalPaidBdtMinor = state.totalSupplierPaidBdtMinor
+        )
+    }
+
+    val filteredCustomers = remember(state.customers, state.searchQuery, state.filterState, state.sortOption) {
+        ContactsUiLogic.filterAndSortCustomers(
+            customers = state.customers,
+            query = state.searchQuery,
+            filterState = state.filterState,
+            sortOption = state.sortOption
+        )
+    }
+    val filteredSuppliers = remember(state.suppliers, state.searchQuery, state.filterState, state.sortOption) {
+        ContactsUiLogic.filterAndSortSuppliers(
+            suppliers = state.suppliers,
+            query = state.searchQuery,
+            filterState = state.filterState,
+            sortOption = state.sortOption
+        )
+    }
+
+    val availableLocations = remember(state.selectedTab, state.customers, state.suppliers) {
+        if (state.selectedTab == ContactsTab.CUSTOMERS) {
+            ContactsUiLogic.extractCustomerLocations(state.customers)
+        } else {
+            ContactsUiLogic.extractSupplierLocations(state.suppliers)
+        }
+    }
+
+    val activeMetrics = if (state.selectedTab == ContactsTab.CUSTOMERS) customerMetrics else supplierMetrics
+    val (pageBgTop, pageBgBottom) = contactsPageBgColors(tokens)
+
+    val dialPhone: (String) -> Unit = { rawPhone ->
+        val clean = rawPhone.trim()
+        if (clean.isNotBlank() && !clean.equals("N/A", ignoreCase = true)) {
+            runCatching {
+                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$clean"))
+                context.startActivity(intent)
+            }
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = ERPBackground,
+        containerColor = pageBgTop,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.setAddDialogVisible(true) },
-                containerColor = PrimaryPurple,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape
-            ) {
-                Icon(Icons.Outlined.Add, contentDescription = "Add Contact")
-            }
+            ContactsAddFab(
+                contentDescription = if (state.selectedTab == ContactsTab.CUSTOMERS) {
+                    if (isBn) "নতুন গ্রাহক যোগ করুন" else "Add Customer"
+                } else {
+                    if (isBn) "নতুন সরবরাহকারী যোগ করুন" else "Add Supplier"
+                },
+                onClick = { viewModel.setAddDialogVisible(true) }
+            )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(pageBgTop, pageBgBottom)))
                 .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Tab Selector
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
-                    .padding(4.dp)
-            ) {
-                val isCustomers = state.selectedTab == ContactsTab.CUSTOMERS
+            com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(module = com.pocketdev.advance_erp.core.communication.CommunicationModule.LEDGER, isBangla = state.language == com.pocketdev.advance_erp.core.model.AppLanguage.BANGLA)
+            // Integrated Purple Gradient Hero Header with curved light overlap cap
+            Box(modifier = Modifier.fillMaxWidth()) {
+                ContactsHeroHeader(
+                    companyName = displayedCompany,
+                    selectedTab = state.selectedTab,
+                    language = state.language,
+                    dueAlertCount = activeMetrics.duePartyCount,
+                    onOpenDrawer = onOpenDrawer,
+                    onToggleLanguage = onToggleLanguage,
+                    onDueAlertsClick = { showDueAlertsSheet = true }
+                )
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isCustomers) PrimaryPurple else Color.Transparent)
-                        .clickable {
-                            viewModel.onTabSelect(ContactsTab.CUSTOMERS)
-                            onSwitchTabRoute?.invoke(ContactsTab.CUSTOMERS)
-                        }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.customers),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (isCustomers) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isCustomers) MaterialTheme.colorScheme.onPrimary else TextPrimary
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (!isCustomers) PrimaryPurple else Color.Transparent)
-                        .clickable {
-                            viewModel.onTabSelect(ContactsTab.SUPPLIERS)
-                            onSwitchTabRoute?.invoke(ContactsTab.SUPPLIERS)
-                        }
-                        .padding(vertical = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.suppliers),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (!isCustomers) FontWeight.Bold else FontWeight.Medium,
-                        color = if (!isCustomers) MaterialTheme.colorScheme.onPrimary else TextPrimary
-                    )
-                }
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(16.dp)
+                        .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                        .background(pageBgTop)
+                )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Contact List
-            if (state.selectedTab == ContactsTab.CUSTOMERS) {
-                if (state.customers.isEmpty()) {
-                    ERPEmptyState(
-                        icon = Icons.Outlined.Group,
-                        title = stringResource(R.string.no_contacts),
-                        message = if (state.language == AppLanguage.BANGLA) "এখনও কোনো গ্রাহক নিবন্ধিত হয়নি।" else "No customers registered yet.",
-                        actionText = stringResource(R.string.add_customer),
-                        onActionClick = { viewModel.setAddDialogVisible(true) }
-                    )
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp)
-                    ) {
-                        items(state.customers, key = { it.id }) { c ->
-                            ERPCard(contentPadding = 14.dp) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.weight(1f),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            // Customer Profile Photo Avatar
-                                            val photoPath = c.profileImagePath
-                                            val hasPhoto = !photoPath.isNullOrBlank() && File(photoPath).exists()
-
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(46.dp)
-                                                    .clip(CircleShape)
-                                                    .background(PrimaryPurple.copy(alpha = 0.12f))
-                                                    .clickable {
-                                                        customerForPhotoUpdate = c
-                                                        customerPhotoLauncher.launch(
-                                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                                        )
-                                                    },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                if (hasPhoto) {
-                                                    AsyncImage(
-                                                        model = ImageRequest.Builder(context)
-                                                            .data(File(photoPath!!))
-                                                            .crossfade(true)
-                                                            .build(),
-                                                        contentDescription = c.name,
-                                                        modifier = Modifier
-                                                            .size(46.dp)
-                                                            .clip(CircleShape)
-                                                    )
-                                                } else {
-                                                    Text(
-                                                        text = c.name.take(1).uppercase(),
-                                                        style = MaterialTheme.typography.titleMedium,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = PrimaryPurple
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.width(10.dp))
-
-                                            Column {
-                                                Text(
-                                                    text = c.name,
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = TextPrimary
-                                                )
-                                                Text(
-                                                    text = "${if (state.language == AppLanguage.BANGLA) "কোড:" else "Code:"} ${c.customerCode}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = TextSecondary
-                                                )
-                                            }
-                                        }
-
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                text = Formatters.formatMoney(c.outstandingBalanceMinor, state.currency, state.language),
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (c.outstandingBalanceMinor > 0) StatusError else StatusSuccess
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.outstanding_balance),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = TextMuted
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Divider(color = ERPDivider)
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.weight(1f),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Outlined.Call, contentDescription = null, tint = SecondaryTeal, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(text = c.phone, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
-                                            Spacer(modifier = Modifier.width(16.dp))
-                                            Icon(Icons.Outlined.LocationOn, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(text = c.address, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1)
-                                        }
-
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            if (c.outstandingBalanceMinor > 0) {
-                                                Button(
-                                                    onClick = { viewModel.openDueReminder(c) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                                    modifier = Modifier.height(30.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Outlined.Send,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(12.dp),
-                                                        tint = Color.White
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        text = if (state.language == AppLanguage.BANGLA) "বকেয়া তাগাদা" else "Due Reminder",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White
-                                                    )
-                                                }
-                                            }
-
-                                            IconButton(
-                                                onClick = { viewModel.openEditCustomer(c) },
-                                                modifier = Modifier.size(30.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Edit,
-                                                    contentDescription = if (state.language == AppLanguage.BANGLA) "গ্রাহক এডিট" else "Edit Customer",
-                                                    tint = PrimaryPurple,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-
-                                            IconButton(
-                                                onClick = { customerToDelete = c },
-                                                modifier = Modifier.size(30.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.DeleteOutline,
-                                                    contentDescription = "Delete Customer",
-                                                    tint = StatusError,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 0.dp, bottom = 148.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item(key = "summary_kpis") {
+                    ContactsSummaryKpiRow(
+                        metrics = activeMetrics,
+                        selectedTab = state.selectedTab,
+                        currency = state.currency,
+                        language = state.language,
+                        activeBalanceFilter = state.filterState.balanceFilter,
+                        activeRegFilter = state.filterState.registrationFilter,
+                        onTotalCardClick = { viewModel.clearFilters() },
+                        onNewMonthCardClick = {
+                            val nextReg = if (state.filterState.registrationFilter == ContactRegistrationFilter.THIS_MONTH) {
+                                ContactRegistrationFilter.ALL
+                            } else {
+                                ContactRegistrationFilter.THIS_MONTH
                             }
+                            viewModel.updateFilterState(state.filterState.copy(registrationFilter = nextReg))
+                        },
+                        onDueCardClick = {
+                            val nextBal = if (state.filterState.balanceFilter == ContactBalanceFilter.WITH_DUE) {
+                                ContactBalanceFilter.ALL
+                            } else {
+                                ContactBalanceFilter.WITH_DUE
+                            }
+                            viewModel.updateFilterState(state.filterState.copy(balanceFilter = nextBal))
+                        },
+                        onSettledCardClick = {
+                            val nextBal = if (state.filterState.balanceFilter == ContactBalanceFilter.SETTLED) {
+                                ContactBalanceFilter.ALL
+                            } else {
+                                ContactBalanceFilter.SETTLED
+                            }
+                            viewModel.updateFilterState(state.filterState.copy(balanceFilter = nextBal))
                         }
+                    )
+                }
+
+                item(key = "segmented_tabs") {
+                    ContactsSegmentedTabBar(
+                        selectedTab = state.selectedTab,
+                        language = state.language,
+                        onSelectTab = { tab ->
+                            viewModel.onTabSelect(tab)
+                            onSwitchTabRoute?.invoke(tab)
+                        }
+                    )
+                }
+
+                item(key = "search_filter_sort") {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ContactsSearchFilterSortRow(
+                            query = state.searchQuery,
+                            activeFilterCount = state.filterState.activeCount,
+                            isSortActive = state.sortOption != ContactSortOption.NAME_ASC,
+                            language = state.language,
+                            onQueryChange = viewModel::updateSearchQuery,
+                            onOpenFilter = { showFilterSheet = true },
+                            onOpenSort = { showSortSheet = true }
+                        )
+                        ActiveContactsFilterChipsRow(
+                            filterState = state.filterState,
+                            sortOption = state.sortOption,
+                            filteredCount = if (state.selectedTab == ContactsTab.CUSTOMERS) filteredCustomers.size else filteredSuppliers.size,
+                            totalCount = if (state.selectedTab == ContactsTab.CUSTOMERS) state.customers.size else state.suppliers.size,
+                            language = state.language,
+                            onRemoveBalance = {
+                                viewModel.updateFilterState(state.filterState.copy(balanceFilter = ContactBalanceFilter.ALL))
+                            },
+                            onRemoveLocation = {
+                                viewModel.updateFilterState(state.filterState.copy(selectedLocation = null))
+                            },
+                            onRemoveRegistration = {
+                                viewModel.updateFilterState(state.filterState.copy(registrationFilter = ContactRegistrationFilter.ALL))
+                            },
+                            onResetSort = { viewModel.updateSortOption(ContactSortOption.NAME_ASC) },
+                            onClearAll = {
+                                viewModel.clearFilters()
+                                viewModel.updateSortOption(ContactSortOption.NAME_ASC)
+                            }
+                        )
                     }
                 }
-            } else {
-                if (state.suppliers.isEmpty()) {
-                    ERPEmptyState(
-                        icon = Icons.Outlined.Storefront,
-                        title = stringResource(R.string.no_contacts),
-                        message = if (state.language == AppLanguage.BANGLA) "এখনও কোনো সরবরাহকারী যোগ করা হয়নি।" else "No suppliers recorded yet.",
-                        actionText = stringResource(R.string.add_supplier),
-                        onActionClick = { viewModel.setAddDialogVisible(true) }
-                    )
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp)
-                    ) {
-                        items(state.suppliers, key = { it.id }) { s ->
-                            ERPCard(contentPadding = 14.dp) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                                            Text(text = s.companyName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                            Text(text = "${s.supplierCode} • ${s.country} (${s.currency})", style = MaterialTheme.typography.labelSmall, color = SecondaryTeal)
-                                        }
 
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                text = Formatters.formatMoney(s.outstandingPayableMinor, state.currency, state.language),
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (s.outstandingPayableMinor > 0L) StatusError else TextPrimary
-                                            )
-                                            Text(
-                                                text = if (state.language == AppLanguage.BANGLA) "প্রদেয় বকেয়া" else "Payable Due",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = TextMuted
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Divider(color = ERPDivider)
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (state.language == AppLanguage.BANGLA) {
-                                                "প্রতিনিধি: ${s.contactPerson ?: "-"} • ফোন: ${s.phone} • ${s.address}"
-                                            } else {
-                                                "Contact: ${s.contactPerson ?: "-"} • Phone: ${s.phone} • ${s.address}"
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondary,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        IconButton(
-                                            onClick = { viewModel.openEditSupplier(s) },
-                                            modifier = Modifier.size(30.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.Edit,
-                                                contentDescription = if (state.language == AppLanguage.BANGLA) "সরবরাহকারী এডিট" else "Edit Supplier",
-                                                tint = PrimaryPurple,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
+                if (state.selectedTab == ContactsTab.CUSTOMERS) {
+                    if (state.customers.isEmpty()) {
+                        item(key = "empty_customers") {
+                            ERPEmptyState(
+                                icon = Icons.Outlined.Group,
+                                title = stringResource(R.string.no_contacts),
+                                message = if (isBn) "এখনও কোনো গ্রাহক নিবন্ধিত হয়নি।" else "No customers registered yet.",
+                                actionText = stringResource(R.string.add_customer),
+                                onActionClick = { viewModel.setAddDialogVisible(true) }
+                            )
+                        }
+                    } else if (filteredCustomers.isEmpty()) {
+                        item(key = "no_match_customers") {
+                            ERPEmptyState(
+                                icon = Icons.Outlined.Search,
+                                title = if (isBn) "কোনো গ্রাহক পাওয়া যায়নি" else "No matching customers",
+                                message = if (isBn) "অনুসন্ধান বা ফিল্টার পরিবর্তন করে আবার চেষ্টা করুন।" else "Try clearing search or adjusting your filters.",
+                                actionText = if (isBn) "ফিল্টার রিসেট করুন" else "Clear Filters",
+                                onActionClick = {
+                                    viewModel.updateSearchQuery("")
+                                    viewModel.clearFilters()
                                 }
-                            }
+                            )
+                        }
+                    } else {
+                        itemsIndexed(
+                            items = filteredCustomers,
+                            key = { _, c -> c.id }
+                        ) { idx, c ->
+                            CustomerContactCard(
+                                customer = c,
+                                index = idx,
+                                currency = state.currency,
+                                language = state.language,
+                                onCardClick = { viewModel.openCustomerLedger(c) },
+                                onAvatarClick = {
+                                    customerForPhotoUpdate = c
+                                    customerPhotoLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                onDialPhone = dialPhone,
+                                onDueReminderClick = { viewModel.openDueReminder(c) },
+                                onRecordPaymentClick = { viewModel.openRecordCustomerPayment(c) },
+                                onEditClick = { viewModel.openEditCustomer(c) },
+                                onDeleteClick = { customerToDelete = c }
+                            )
+                        }
+                    }
+                } else {
+                    if (state.suppliers.isEmpty()) {
+                        item(key = "empty_suppliers") {
+                            ERPEmptyState(
+                                icon = Icons.Outlined.Storefront,
+                                title = stringResource(R.string.no_contacts),
+                                message = if (isBn) "এখনও কোনো সরবরাহকারী যোগ করা হয়নি।" else "No suppliers recorded yet.",
+                                actionText = stringResource(R.string.add_supplier),
+                                onActionClick = { viewModel.setAddDialogVisible(true) }
+                            )
+                        }
+                    } else if (filteredSuppliers.isEmpty()) {
+                        item(key = "no_match_suppliers") {
+                            ERPEmptyState(
+                                icon = Icons.Outlined.Search,
+                                title = if (isBn) "কোনো সরবরাহকারী পাওয়া যায়নি" else "No matching suppliers",
+                                message = if (isBn) "অনুসন্ধান বা ফিল্টার পরিবর্তন করে আবার চেষ্টা করুন।" else "Try clearing search or adjusting your filters.",
+                                actionText = if (isBn) "ফিল্টার রিসেট করুন" else "Clear Filters",
+                                onActionClick = {
+                                    viewModel.updateSearchQuery("")
+                                    viewModel.clearFilters()
+                                }
+                            )
+                        }
+                    } else {
+                        itemsIndexed(
+                            items = filteredSuppliers,
+                            key = { _, s -> s.id }
+                        ) { idx, s ->
+                            SupplierContactCard(
+                                supplier = s,
+                                index = idx,
+                                currency = state.currency,
+                                language = state.language,
+                                onCardClick = { viewModel.openSupplierLedger(s) },
+                                onDialPhone = dialPhone,
+                                onEditClick = { viewModel.openEditSupplier(s) },
+                                onDeleteClick = { supplierToDelete = s }
+                            )
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showFilterSheet) {
+        ContactsFilterBottomSheet(
+            currentFilter = state.filterState,
+            availableLocations = availableLocations,
+            selectedTab = state.selectedTab,
+            language = state.language,
+            onDismiss = { showFilterSheet = false },
+            onApply = viewModel::updateFilterState
+        )
+    }
+
+    if (showSortSheet) {
+        ContactsSortBottomSheet(
+            currentSort = state.sortOption,
+            language = state.language,
+            onDismiss = { showSortSheet = false },
+            onSelectSort = viewModel::updateSortOption
+        )
+    }
+
+    if (showDueAlertsSheet) {
+        ContactsDueAlertsSheet(
+            selectedTab = state.selectedTab,
+            dueCustomers = state.customers.filter { it.outstandingBalanceMinor > 0L }
+                .sortedByDescending { it.outstandingBalanceMinor },
+            dueSuppliers = state.suppliers.filter { it.outstandingPayableMinor > 0L }
+                .sortedByDescending { it.outstandingPayableMinor },
+            currency = state.currency,
+            language = state.language,
+            onDismiss = { showDueAlertsSheet = false },
+            onRemindCustomer = viewModel::openDueReminder,
+            onOpenSupplierLedger = viewModel::openSupplierLedger
+        )
     }
 
     val isDialogVisible = state.showAddDialog || state.editingCustomer != null || state.editingSupplier != null
@@ -500,7 +488,7 @@ fun ContactsScreen(
             editingCustomer = state.editingCustomer,
             editingSupplier = state.editingSupplier,
             canEditSupplierCurrency = state.canEditSupplierCurrency,
-            isBangla = state.language == AppLanguage.BANGLA,
+            isBangla = isBn,
             onDismiss = { viewModel.dismissContactDialog() },
             onSaveCustomer = { name, phone, email, address, limit, photoPath, openingDueMinor, openingNote ->
                 val editing = state.editingCustomer
@@ -561,10 +549,53 @@ fun ContactsScreen(
         )
     }
 
+    state.activeCustomerLedger?.let { (cust, entries) ->
+        CustomerLedgerDialog(
+            customer = cust,
+            ledger = entries,
+            isBangla = isBn,
+            onDismiss = viewModel::dismissCustomerLedger,
+            onShareWhatsAppStatement = { c ->
+                viewModel.dismissCustomerLedger()
+                viewModel.shareCustomerStatementWhatsApp(c)
+            },
+            onSendDueReminder = { c ->
+                viewModel.dismissCustomerLedger()
+                viewModel.openDueReminder(c)
+            }
+        )
+    }
+
+    state.activeSupplierLedger?.let { (sup, stmt) ->
+        SupplierLedgerDialog(
+            supplier = sup,
+            statement = stmt,
+            currency = state.currency,
+            language = state.language,
+            onDismiss = viewModel::dismissSupplierLedger,
+            onShareWhatsApp = { viewModel.shareSupplierLedgerWhatsApp(sup, stmt) }
+        )
+    }
+
+    state.paymentTargetCustomer?.let { targetCust ->
+        RecordCustomerPaymentDialog(
+            customers = state.customers,
+            invoices = state.allInvoices,
+            liquidAccounts = state.liquidAccounts,
+            preselectedCustomerId = targetCust.id,
+            nextPaymentNumber = state.nextPaymentNumber,
+            isBangla = isBn,
+            isSaving = state.isSavingPayment,
+            saveError = state.paymentSaveError,
+            onDismiss = viewModel::dismissRecordCustomerPayment,
+            onSubmit = viewModel::submitCustomerPayment
+        )
+    }
+
     if (state.activeDueReminderData != null) {
         DueReminderDialog(
             data = state.activeDueReminderData!!,
-            initialIsBangla = state.language == AppLanguage.BANGLA,
+            initialIsBangla = isBn,
             onDismiss = { viewModel.dismissDueReminderDialog() }
         )
     }
@@ -576,7 +607,7 @@ fun ContactsScreen(
             onDismissRequest = { customerToDelete = null },
             title = {
                 Text(
-                    text = if (state.language == AppLanguage.BANGLA) "গ্রাহক মুছুন / আর্কাইভ" else "Delete / Archive Customer",
+                    text = if (isBn) "গ্রাহক মুছুন / আর্কাইভ" else "Delete / Archive Customer",
                     fontWeight = FontWeight.Bold,
                     color = StatusError
                 )
@@ -585,7 +616,7 @@ fun ContactsScreen(
                 if (isBlocked) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = if (state.language == AppLanguage.BANGLA)
+                            text = if (isBn)
                                 "⚠️ বকেয়া রয়েছে: '${cust.name}' এর নিকট ${Formatters.formatMoney(cust.outstandingBalanceMinor, state.currency, state.language)} বকেয়া রয়েছে।"
                             else
                                 "⚠️ Outstanding Balance: '${cust.name}' has an outstanding balance of ${Formatters.formatMoney(cust.outstandingBalanceMinor, state.currency, state.language)}.",
@@ -593,7 +624,7 @@ fun ContactsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (state.language == AppLanguage.BANGLA)
+                            text = if (isBn)
                                 "বকেয়া সম্পূর্ণরূপে পরিশোধ বা সমন্বয় না হওয়া পর্যন্ত গ্রাহক মুছে ফেলা বা আর্কাইভ করা যাবে না।"
                             else
                                 "Customers with non-zero outstanding balances cannot be deleted or archived. Settle all dues first.",
@@ -603,7 +634,7 @@ fun ContactsScreen(
                     }
                 } else {
                     Text(
-                        text = if (state.language == AppLanguage.BANGLA)
+                        text = if (isBn)
                             "আপনি কি '${cust.name}' কে মুছে ফেলতে চান? যদি গ্রাহকের কোনো বিগত সেলস চালান বা পেমেন্ট রেকর্ড থাকে, তবে অডিট হিস্ট্রি সুরক্ষায় গ্রাহকটি নিরাপদে আর্কাইভ করা হবে।"
                         else
                             "Are you sure you want to delete '${cust.name}'? If the customer has past sales invoices or payments, they will be safely archived to preserve financial audit history.",
@@ -621,21 +652,94 @@ fun ContactsScreen(
                         }
                     ) {
                         Text(
-                            text = if (state.language == AppLanguage.BANGLA) "হ্যাঁ, মুছুন" else "Delete / Archive",
+                            text = if (isBn) "হ্যাঁ, মুছুন" else "Delete / Archive",
                             color = StatusError,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 } else {
                     TextButton(onClick = { customerToDelete = null }) {
-                        Text(if (state.language == AppLanguage.BANGLA) "বুঝেছি" else "Understood", color = PrimaryPurple, fontWeight = FontWeight.Bold)
+                        Text(if (isBn) "বুঝেছি" else "Understood", color = PrimaryPurple, fontWeight = FontWeight.Bold)
                     }
                 }
             },
             dismissButton = {
                 if (!isBlocked) {
                     TextButton(onClick = { customerToDelete = null }) {
-                        Text(if (state.language == AppLanguage.BANGLA) "বাতিল" else "Cancel", color = TextSecondary)
+                        Text(if (isBn) "বাতিল" else "Cancel", color = TextSecondary)
+                    }
+                }
+            }
+        )
+    }
+
+    if (supplierToDelete != null) {
+        val sup = supplierToDelete!!
+        val isBlocked = sup.outstandingPayableMinor != 0L
+        AlertDialog(
+            onDismissRequest = { supplierToDelete = null },
+            title = {
+                Text(
+                    text = if (isBn) "সরবরাহকারী মুছুন / আর্কাইভ" else "Delete / Archive Supplier",
+                    fontWeight = FontWeight.Bold,
+                    color = StatusError
+                )
+            },
+            text = {
+                if (isBlocked) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = if (isBn)
+                                "⚠️ প্রদেয় বকেয়া রয়েছে: '${sup.companyName}' এর নিকট ${Formatters.formatMoney(sup.outstandingPayableMinor, state.currency, state.language)} বকেয়া রয়েছে।"
+                            else
+                                "⚠️ Outstanding Payable: '${sup.companyName}' has an outstanding payable of ${Formatters.formatMoney(sup.outstandingPayableMinor, state.currency, state.language)}.",
+                            color = StatusError,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (isBn)
+                                "প্রদেয় বকেয়া শূন্য না হওয়া পর্যন্ত সরবরাহকারী মুছে ফেলা বা আর্কাইভ করা যাবে না।"
+                            else
+                                "Suppliers with non-zero payable balances cannot be deleted or archived. Settle all payables first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                } else {
+                    Text(
+                        text = if (isBn)
+                            "আপনি কি '${sup.companyName}' কে মুছে ফেলতে চান? যদি পূর্বে ক্রয় আদেশ বা পেমেন্ট রেকর্ড থাকে, তবে অডিট হিস্ট্রির জন্য নিরাপদে আর্কাইভ করা হবে।"
+                        else
+                            "Are you sure you want to delete '${sup.companyName}'? If purchase orders or payments exist, the supplier will be safely archived to preserve audit history.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {
+                if (!isBlocked) {
+                    TextButton(
+                        onClick = {
+                            val sId = sup.id
+                            supplierToDelete = null
+                            viewModel.deleteOrArchiveSupplier(sId)
+                        }
+                    ) {
+                        Text(
+                            text = if (isBn) "হ্যাঁ, মুছুন" else "Delete / Archive",
+                            color = StatusError,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    TextButton(onClick = { supplierToDelete = null }) {
+                        Text(if (isBn) "বুঝেছি" else "Understood", color = PrimaryPurple, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                if (!isBlocked) {
+                    TextButton(onClick = { supplierToDelete = null }) {
+                        Text(if (isBn) "বাতিল" else "Cancel", color = TextSecondary)
                     }
                 }
             }
@@ -773,7 +877,7 @@ private fun ContactFormDialog(
                     }
                 }
 
-                Divider(color = ERPDivider, modifier = Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(color = ERPDivider, modifier = Modifier.padding(vertical = 12.dp))
 
                 if (isCustomer) {
                     // Profile Photo & Phone Contact Import Header Row

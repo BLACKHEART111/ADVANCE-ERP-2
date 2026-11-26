@@ -43,4 +43,10 @@ interface SupplierDao {
 
     @Query("UPDATE suppliers SET outstandingPayableMinor = :payableMinor WHERE id = :supplierId")
     suspend fun updateOutstandingPayable(supplierId: String, payableMinor: Long)
+
+    @Query("UPDATE suppliers SET isActive = 0 WHERE id = :supplierId")
+    suspend fun archiveSupplier(supplierId: String)
+
+    @Query("DELETE FROM suppliers WHERE id = :supplierId")
+    suspend fun hardDeleteSupplier(supplierId: String)
 }

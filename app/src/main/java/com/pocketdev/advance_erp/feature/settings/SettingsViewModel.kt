@@ -229,7 +229,7 @@ class SettingsViewModel @Inject constructor(
             try {
                 val res = backupRepository.restoreBackup(file)
                 if (res.isSuccess) {
-                    _userMessage.value = "ডাটাবেজ এবং ছবি সফলভাবে রিস্টোর করা হয়েছে!"
+                    _userMessage.value = "রিস্টোর প্রস্তুত। প্রয়োগ করতে অ্যাপ বন্ধ করে পুনরায় খুলুন।"
                 } else {
                     _userMessage.value = "রিস্টোর ব্যর্থ: ${res.exceptionOrNull()?.message}"
                 }
@@ -244,7 +244,7 @@ class SettingsViewModel @Inject constructor(
             try {
                 val res = backupRepository.restoreFromUri(context, uri)
                 if (res.isSuccess) {
-                    _userMessage.value = "নির্বাচিত জিপ ফাইল থেকে সফলভাবে রিস্টোর সম্পন্ন হয়েছে!"
+                    _userMessage.value = "ব্যাকআপ যাচাই সম্পন্ন। রিস্টোর প্রয়োগ করতে অ্যাপ বন্ধ করে পুনরায় খুলুন।"
                 } else {
                     _userMessage.value = "রিস্টোর ব্যর্থ: ${res.exceptionOrNull()?.message}"
                 }

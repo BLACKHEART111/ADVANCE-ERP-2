@@ -43,6 +43,10 @@ class ContactsRepositoryImpl @Inject constructor(
 
     override fun getAllSuppliers(): Flow<List<Supplier>> = supplierDao.getAllSuppliers()
 
+    override fun getTotalCustomerReceivedMinor(): Flow<Long> = customerPaymentDao.getTotalCollectedMinor()
+
+    override fun getTotalSupplierPaidBdtMinor(): Flow<Long> = supplierPaymentDao.getTotalPaidBdtMinor()
+
     override suspend fun addCustomer(customer: Customer) {
         customerDao.insertCustomer(customer)
     }
@@ -330,6 +334,62 @@ class ContactsRepositoryImpl @Inject constructor(
                         details = "Customer '${customer.name}' (${customer.customerCode}) permanently deleted (0 transactions found).",
                         operator = operator,
                         documentNumber = customer.customerCode,
+                        operationType = "HARD_DELETE",
+                        previousStatus = "ACTIVE",
+                        newStatus = "DELETED"
+                    )
+                )
+                CustomerDeleteResult.HardDeleted
+            }
+        }
+    }
+
+    override suspend fun deleteOrArchiveSupplier(supplierId: String, operator: String): CustomerDeleteResult {
+        val supplier = supplierDao.getSupplierById(supplierId)
+            ?: return CustomerDeleteResult.Blocked("Supplier not found: $supplierId", 0L)
+
+        if (supplier.outstandingPayableMinor != 0L) {
+            val balanceFormatted = "৳" + Formatters.formatMinorUnit(supplier.outstandingPayableMinor)
+            return CustomerDeleteResult.Blocked(
+                reason = "Cannot delete supplier '${supplier.companyName}'. Outstanding payable is $balanceFormatted. Settle all dues first.",
+                balanceMinor = supplier.outstandingPayableMinor
+            )
+        }
+
+        val poCount = purchaseOrderDao.getLedgerOrdersSync(supplierId).size
+        val paymentCount = supplierPaymentDao.getLedgerPaymentsSync(supplierId).size
+        val totalHistoryCount = poCount + paymentCount
+
+        return db.withTransaction {
+            if (totalHistoryCount > 0) {
+                supplierDao.archiveSupplier(supplierId)
+                db.auditLogDao().insertAuditLog(
+                    AuditLog(
+                        recordType = "SUPPLIER",
+                        recordId = supplierId,
+                        action = "ARCHIVE",
+                        details = "Supplier '${supplier.companyName}' (${supplier.supplierCode}) archived. Found $totalHistoryCount financial records ($poCount POs, $paymentCount payments). Historical references preserved.",
+                        operator = operator,
+                        documentNumber = supplier.supplierCode,
+                        operationType = "ARCHIVE",
+                        previousStatus = "ACTIVE",
+                        newStatus = "ARCHIVED"
+                    )
+                )
+                CustomerDeleteResult.Archived(
+                    message = "Supplier '${supplier.companyName}' has $totalHistoryCount historical transactions. Safely archived to preserve audit trail.",
+                    transactionCount = totalHistoryCount
+                )
+            } else {
+                supplierDao.hardDeleteSupplier(supplierId)
+                db.auditLogDao().insertAuditLog(
+                    AuditLog(
+                        recordType = "SUPPLIER",
+                        recordId = supplierId,
+                        action = "HARD_DELETE",
+                        details = "Supplier '${supplier.companyName}' (${supplier.supplierCode}) permanently deleted (0 transactions found).",
+                        operator = operator,
+                        documentNumber = supplier.supplierCode,
                         operationType = "HARD_DELETE",
                         previousStatus = "ACTIVE",
                         newStatus = "DELETED"

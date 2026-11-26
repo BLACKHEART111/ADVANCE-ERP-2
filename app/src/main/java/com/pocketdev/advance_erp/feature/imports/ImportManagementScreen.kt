@@ -167,6 +167,7 @@ fun ImportManagementScreen(
                 .background(ERPBackground)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(module = com.pocketdev.advance_erp.core.communication.CommunicationModule.PURCHASE_ORDER, isBangla = isBangla)
             var showModuleNavigation by rememberSaveable {mutableStateOf(false)}
             if(selectedTab!=ImportModuleTab.PURCHASE_ORDERS || showModuleNavigation) {
             // Module Header Banner

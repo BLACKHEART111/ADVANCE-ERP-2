@@ -1,5 +1,18 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Smart WhatsApp Communication — paused for developer handoff (2026-11-26)
+
+**User requested implementation stop, checkpoint, commit and push so another developer can continue. This is unfinished source, not a verified release.**
+
+- **Read [full implementation handoff](docs/communication/HANDOFF.md) before resuming.** It lists implemented files/behavior, accepted decisions, known defects, restore/accounting risks, and 32 concrete completion/verification items.
+- Added centralized communication adapters/templates/secure native sharing, Compose workspace and real PDF preview, settings/history, Room v15 additive migration and schema, invoice/exchange snapshots, module entrypoints, and separate `communicationqa` build type.
+- Also started staged backup restore/startup integration and accounting transaction/snapshot changes. **These need isolated QA verification before production install.**
+- One intermediate `:app:compileDebugKotlin` passed (3m50s; [log](docs/communication/build.log)); edits continued afterward. **Final checkpoint tree NOT rebuilt. No feature unit/device tests, new APK install, screenshots, WhatsApp compatibility verification or restore tests completed.**
+- Important unresolved defect: later payment allocation/void recomputes invoice due from original total minus paid and can ignore credit returns. `previewBeforeSharing` currently stores a preference without changing behavior. Other gaps are explicit in the handoff.
+- User decisions: show historical + current balances separately on resend; do not fabricate missing historical snapshots; test on separate QA app `com.pocketdev.advance_erp2.communicationqa`. Preserve production `com.pocketdev.advance_erp2`, live data and signing; never uninstall, clear, seed or restore live app for tests.
+- Existing dirty Contacts/Import Vault/navigation work predates this task and is preserved in the checkpoint. Latest compile process finished; do not poll its old session.
+
+
 ## Import Vault Spec Cross-Check Audit Fixes & Build/Install Verification — 2026-11-26
 
 Resolved all 6 functional and UI gaps identified against `ADVANCE_ERP_Import_Vault_Master_Spec_V2.md` while keeping Room `v14` (`14.json`), `MIGRATION_13_14`, and `ERPBottomNavigation.kt` intact:

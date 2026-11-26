@@ -386,7 +386,13 @@ class SalesRepositoryImpl @Inject constructor(
         salesDao.getItemsForInvoiceFlow(invoiceId)
 
     override suspend fun postInvoice(invoiceId: String): Result<Unit> =
-        postInvoiceInternal(invoiceId, paymentMethod = "CASH", paymentAccountId = "coa-1010")
+        try {
+            db.withTransaction { postInvoiceInternal(invoiceId, paymentMethod = "CASH", paymentAccountId = "coa-1010").getOrThrow() }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
 
     private suspend fun postInvoiceInternal(
         invoiceId: String,
@@ -759,6 +765,13 @@ class SalesRepositoryImpl @Inject constructor(
 
             // 4. Update Customer Outstanding Balance preserving genuine opening balance
             updateCustomerBalanceFromBaseline(invoice.customerId, customerBalanceBaseline)
+            val closing = getCustomerLedger(invoice.customerId).lastOrNull()?.runningBalanceMinor ?: 0L
+            db.communicationDao().snapshot(com.pocketdev.advance_erp.data.entity.CommunicationSnapshot(
+                module = "INVOICE", documentId = invoice.id, number = invoice.invoiceNumber,
+                partyId = invoice.customerId, createdAt = now, originalAmountMinor = invoice.totalAmountMinor,
+                previousBalanceMinor = closing - invoice.totalAmountMinor + cashPaid,
+                allocatedPaymentMinor = cashPaid, invoiceDueMinor = arDue, closingBalanceMinor = closing
+            ))
 
             Result.success(Unit)
         } catch (e: Exception) {
@@ -1531,7 +1544,7 @@ class SalesRepositoryImpl @Inject constructor(
             allReturns.filter { it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }.sumOf { it.totalReturnAmountMinor } +
             adjustments.sumOf { com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(it) }
         val openingBal = if ((customer?.outstandingBalanceMinor ?: 0L) == 0L) 0L else (customer?.outstandingBalanceMinor ?: 0L) - netTransactions
-        if (openingBal > 0L) {
+        if (openingBal != 0L) {
             val initialDate = (customer?.createdAt ?: System.currentTimeMillis()) - (365L * 24 * 3600 * 1000)
             ledgerItems.add(
                 CustomerLedgerEntry(
@@ -1540,8 +1553,8 @@ class SalesRepositoryImpl @Inject constructor(
                     transactionType = "OPENING_BALANCE",
                     referenceNumber = "OPENING",
                     description = "Opening / Previous Due / পূর্বের বকেয়া",
-                    debitMinor = openingBal,
-                    creditMinor = 0L,
+                    debitMinor = openingBal.coerceAtLeast(0L),
+                    creditMinor = (-openingBal).coerceAtLeast(0L),
                     runningBalanceMinor = openingBal
                 )
             )
@@ -1887,6 +1900,7 @@ class SalesRepositoryImpl @Inject constructor(
         val invItems = soItems.map { it.copy(id = UUID.randomUUID().toString(), invoiceId = invId) }
 
         db.withTransaction {
+            val baseline = captureCustomerBalanceBaseline(invoice.customerId)
             salesDao.insertInvoice(invoice)
             salesDao.insertInvoiceItems(invItems)
             salesDao.updateInvoiceStatus(salesOrderId, InvoiceStatus.DELIVERED.name)
@@ -1913,6 +1927,12 @@ class SalesRepositoryImpl @Inject constructor(
                     lines = lines
                 )
             }
+            updateCustomerBalanceFromBaseline(invoice.customerId, baseline)
+            val closing = getCustomerLedger(invoice.customerId).lastOrNull()?.runningBalanceMinor ?: 0L
+            db.communicationDao().snapshot(com.pocketdev.advance_erp.data.entity.CommunicationSnapshot(
+                "INVOICE", invId, invNumber, invoice.customerId, now, invoice.totalAmountMinor,
+                closing - invoice.totalAmountMinor, 0L, invoice.dueAmountMinor, closing
+            ))
         }
 
         return Result.success(invId)
@@ -2581,6 +2601,19 @@ class SalesRepositoryImpl @Inject constructor(
                     )
                 }
 
+                val safeRows = org.json.JSONArray()
+                for (item in draft.returnedItems) {
+                    val product = productDao.getProductById(item.productId)
+                    safeRows.put(org.json.JSONArray(listOf("Return / ফেরত", product?.nameEn ?: item.productId, item.returnQuantity.toString())))
+                }
+                for (item in draft.replacementItems) {
+                    val product = productDao.getProductById(item.productId)
+                    safeRows.put(org.json.JSONArray(listOf("Replacement / প্রতিস্থাপন", product?.nameEn ?: item.productId, item.quantity.toString())))
+                }
+                db.communicationDao().snapshot(com.pocketdev.advance_erp.data.entity.CommunicationSnapshot(
+                    "EXCHANGE", exNum, exNum, draft.customerId, now, draft.netDifferenceMinor,
+                    0L, 0L, 0L, 0L, org.json.JSONObject().put("rows", safeRows).put("method", draft.paymentMethod).toString()
+                ))
                 exNum
             }
             Result.success(exchangeNumber)

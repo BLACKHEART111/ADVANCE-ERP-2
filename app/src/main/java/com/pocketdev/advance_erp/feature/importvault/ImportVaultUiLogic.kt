@@ -302,6 +302,15 @@ object ImportVaultUiLogic {
         return if (language == AppLanguage.BANGLA) Formatters.toBanglaDigits(raw) else raw
     }
 
+    fun formatPercentCompact(percent: Double?, language: AppLanguage): String {
+        if (percent == null || percent.isNaN() || percent.isInfinite()) return "—"
+        if (kotlin.math.abs(percent) < 0.005) {
+            return if (language == AppLanguage.BANGLA) "০%" else "0%"
+        }
+        val raw = String.format(Locale.US, "%.1f%%", percent)
+        return if (language == AppLanguage.BANGLA) Formatters.toBanglaDigits(raw) else raw
+    }
+
     fun formatVelocity(velocityPerDay: Double?, uom: String, language: AppLanguage): String {
         if (velocityPerDay == null || velocityPerDay.isNaN() || velocityPerDay.isInfinite()) {
             return if (language == AppLanguage.BANGLA) "প্রযোজ্য নয়" else "N/A"

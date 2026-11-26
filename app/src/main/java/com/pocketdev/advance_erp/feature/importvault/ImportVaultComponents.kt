@@ -7,6 +7,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,8 +15,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -27,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.BarChart
@@ -50,6 +56,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -65,10 +72,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -79,6 +88,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.pocketdev.advance_erp.core.designsystem.LocalDashboardTokens
@@ -122,32 +132,48 @@ val VAULT_CHART_PALETTE = listOf(
 fun VaultCard(
     modifier: Modifier = Modifier,
     borderColor: Color? = null,
+    contentPadding: PaddingValues = PaddingValues(14.dp),
+    verticalSpacing: Dp = 10.dp,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val tokens = LocalDashboardTokens.current
-    val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(18.dp)
-    val baseModifier = if (onClick != null) {
-        modifier
+    val borderBrush = borderColor?.let {
+        Brush.linearGradient(listOf(it, it))
+    } ?: Brush.horizontalGradient(listOf(tokens.cardBorderStart, tokens.cardBorderEnd))
+
+    Box(
+        modifier = modifier
             .fillMaxWidth()
+            .then(
+                if (!tokens.isDark) {
+                    Modifier.shadow(
+                        elevation = 3.dp,
+                        shape = shape,
+                        ambientColor = tokens.accentPurple.copy(alpha = 0.12f),
+                        spotColor = tokens.accentPurple.copy(alpha = 0.08f)
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .clip(shape)
-            .clickable(role = Role.Button, onClick = onClick)
-    } else {
-        modifier.fillMaxWidth()
-    }
-    Surface(
-        modifier = baseModifier,
-        shape = shape,
-        color = if (tokens.isDark) Color(0xFF151830) else colors.surface,
-        border = BorderStroke(1.dp, borderColor ?: colors.outlineVariant),
-        tonalElevation = if (tokens.isDark) 1.dp else 0.dp
+            .background(Brush.linearGradient(listOf(tokens.cardBgStart, tokens.cardBgEnd)))
+            .border(1.dp, borderBrush, shape)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(role = Role.Button, onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(contentPadding),
+            verticalArrangement = Arrangement.spacedBy(verticalSpacing),
             content = content
         )
     }
@@ -160,31 +186,60 @@ fun VaultHeroCard(
 ) {
     val tokens = LocalDashboardTokens.current
     val shape = RoundedCornerShape(22.dp)
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = shape,
-        border = BorderStroke(
-            1.dp,
-            Brush.horizontalGradient(listOf(tokens.overviewBorderStart, tokens.overviewBorderEnd))
-        ),
-        color = Color.Transparent
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (!tokens.isDark) {
+                    Modifier.shadow(
+                        elevation = 6.dp,
+                        shape = shape,
+                        ambientColor = tokens.overviewBorderStart.copy(alpha = 0.25f),
+                        spotColor = tokens.overviewBorderEnd.copy(alpha = 0.22f)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.overviewBgTop, tokens.overviewBgMid, tokens.overviewBgBottom)
+                )
+            )
+            .border(
+                width = 1.1.dp,
+                brush = Brush.horizontalGradient(listOf(tokens.overviewBorderStart, tokens.overviewBorderEnd)),
+                shape = shape
+            )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(tokens.overviewBgTop, tokens.overviewBgMid, tokens.overviewBgBottom)
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val wave = Path().apply {
+                moveTo(0f, h)
+                lineTo(0f, h * 0.84f)
+                cubicTo(w * 0.28f, h * 0.96f, w * 0.62f, h * 0.68f, w, h * 0.78f)
+                lineTo(w, h)
+                close()
+            }
+            drawPath(
+                path = wave,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        tokens.heroWaveStart.copy(alpha = if (tokens.isDark) 0.24f else 0.20f),
+                        tokens.heroWaveEnd.copy(alpha = if (tokens.isDark) 0.28f else 0.22f)
                     )
                 )
-                .padding(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                content = content
             )
         }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content
+        )
     }
 }
 
@@ -199,37 +254,41 @@ fun VaultWrappedTabBar(
     val colors = MaterialTheme.colorScheme
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = if (tokens.isDark) Color(0xFF151830) else colors.surfaceVariant.copy(alpha = 0.65f),
-        border = BorderStroke(1.dp, colors.outlineVariant)
+        shape = RoundedCornerShape(14.dp),
+        color = if (tokens.isDark) Color(0xFF151830) else Color(0xFFF1E9FA),
+        border = BorderStroke(
+            width = 1.dp,
+            brush = Brush.horizontalGradient(listOf(tokens.cardBorderStart, tokens.cardBorderEnd))
+        )
     ) {
         FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             options.forEach { (idx, label) ->
                 val selected = idx == selectedIndex
                 Surface(
                     modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .heightIn(min = 44.dp)
+                        .clip(RoundedCornerShape(11.dp))
                         .clickable(role = Role.Tab) { onSelected(idx) },
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (selected) colors.primary else Color.Transparent,
-                    border = if (selected) null else BorderStroke(0.8.dp, colors.outlineVariant)
+                    shape = RoundedCornerShape(11.dp),
+                    color = if (selected) colors.primary else Color.Transparent
                 ) {
                     Box(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = label,
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selected) colors.onPrimary else colors.onSurface
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (selected) Color.White else tokens.sectionTitleText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -248,22 +307,28 @@ fun VaultKpiPairRow(
     rightColor: Color? = null,
     modifier: Modifier = Modifier
 ) {
-    val colors = MaterialTheme.colorScheme
+    val tokens = LocalDashboardTokens.current
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Max),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         VaultKpiTile(
             label = leftLabel,
             value = leftValue,
-            valueColor = leftColor ?: colors.onSurface,
-            modifier = Modifier.weight(1f)
+            valueColor = leftColor ?: tokens.cardValueText,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
         )
         VaultKpiTile(
             label = rightLabel,
             value = rightValue,
-            valueColor = rightColor ?: colors.onSurface,
-            modifier = Modifier.weight(1f)
+            valueColor = rightColor ?: tokens.cardValueText,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
         )
     }
 }
@@ -273,37 +338,47 @@ fun VaultKpiTile(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    valueColor: Color = LocalDashboardTokens.current.cardValueText,
     subtitle: String? = null
 ) {
     val tokens = LocalDashboardTokens.current
-    val colors = MaterialTheme.colorScheme
+    val containerColor = if (tokens.isDark) Color(0xFF1A1F3C) else Color(0xFFF7F3FC)
+    val borderColor = if (tokens.isDark) Color(0xFF2E3663) else Color(0xFFE8DDF6)
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
-        color = if (tokens.isDark) Color(0xFF1B1F3A) else colors.surfaceVariant.copy(alpha = 0.55f),
-        border = BorderStroke(0.8.dp, colors.outlineVariant)
+        color = containerColor,
+        border = BorderStroke(0.9.dp, borderColor)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                color = tokens.sectionSubtitleText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = value,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = valueColor
+                fontSize = 14.5.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = valueColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant
+                    fontSize = 10.5.sp,
+                    color = tokens.sectionSubtitleText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -319,16 +394,76 @@ fun VaultStatusBadge(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = containerColor
+        shape = RoundedCornerShape(50),
+        color = containerColor,
+        border = BorderStroke(0.7.dp, contentColor.copy(alpha = 0.24f))
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            fontSize = 10.5.sp,
+            lineHeight = 14.sp,
             fontWeight = FontWeight.SemiBold,
             color = contentColor,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
+    }
+}
+
+@Composable
+fun VaultSubScreenTopBar(
+    title: String,
+    subtitle: String? = null,
+    onBack: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    val tokens = LocalDashboardTokens.current
+    Surface(
+        color = tokens.cardBgStart,
+        shadowElevation = if (tokens.isDark) 0.dp else 2.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = null,
+                        tint = tokens.sectionTitleText
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = tokens.sectionTitleText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!subtitle.isNullOrBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = tokens.sectionSubtitleText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                actions()
+            }
+            HorizontalDivider(thickness = 1.dp, color = tokens.dividerColor)
+        }
     }
 }
 
@@ -1930,15 +2065,24 @@ fun FilterOptionChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalDashboardTokens.current
     val colors = MaterialTheme.colorScheme
     Surface(
         modifier = modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = 44.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Checkbox, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) colors.primaryContainer else colors.surface,
-        border = BorderStroke(1.dp, if (selected) colors.primary else colors.outlineVariant)
+        color = when {
+            selected && tokens.isDark -> Color(0xFF281D4B)
+            selected -> colors.primaryContainer
+            tokens.isDark -> Color(0xFF151830)
+            else -> tokens.cardBgStart
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) colors.primary else tokens.cardBorderStart
+        )
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1948,7 +2092,9 @@ fun FilterOptionChip(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) colors.onPrimaryContainer else colors.onSurface
+                color = if (selected) colors.onPrimaryContainer else tokens.sectionTitleText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

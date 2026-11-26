@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -48,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -82,39 +82,27 @@ fun ImportVaultProductDrillDownScreen(
     var inStockOnly by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
+    val prodTopTitle = product?.let {
+        if (isBn) it.productNameBn.ifBlank { it.productNameEn } else it.productNameEn
+    } ?: (if (isBn) "পণ্যের ভ্যারিয়েন্ট বিশ্লেষণ" else "Product Drill-Down")
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(tokens.pageBgTop)
+            .background(Brush.verticalGradient(listOf(tokens.pageBgTop, tokens.pageBgBottom)))
     ) {
-        Surface(
-            color = colors.surface,
-            border = BorderStroke(1.dp, colors.outlineVariant)
+        VaultSubScreenTopBar(
+            title = prodTopTitle,
+            subtitle = scopeTitle,
+            onBack = onBack
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    val prodTitle = product?.let {
-                        if (isBn) it.productNameBn.ifBlank { it.productNameEn } else it.productNameEn
-                    } ?: (if (isBn) "পণ্যের ভ্যারিয়েন্ট বিশ্লেষণ" else "Product Drill-Down")
-                    Text(prodTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(scopeTitle, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
-                }
-                if (product != null) {
-                    IconButton(onClick = onOpenExportProduct, modifier = Modifier.size(48.dp)) {
-                        Icon(
-                            Icons.Outlined.Download,
-                            contentDescription = if (isBn) "পণ্য রিপোর্ট এক্সপোর্ট" else "Export Product Report",
-                            tint = colors.primary
-                        )
-                    }
+            if (product != null) {
+                IconButton(onClick = onOpenExportProduct, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        Icons.Outlined.Download,
+                        contentDescription = if (isBn) "পণ্য রিপোর্ট এক্সপোর্ট" else "Export Product Report",
+                        tint = colors.primary
+                    )
                 }
             }
         }

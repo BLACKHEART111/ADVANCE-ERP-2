@@ -424,6 +424,15 @@ class ImportVaultPhase3UiLogicTest {
         assertEquals("N/A", ImportVaultUiLogic.formatPercent(null, AppLanguage.ENGLISH))
         assertEquals("৩৬.৬৭%", ImportVaultUiLogic.formatPercent(36.6667, AppLanguage.BANGLA))
 
+        assertEquals("—", ImportVaultUiLogic.formatPercentCompact(null, AppLanguage.BANGLA))
+        assertEquals("—", ImportVaultUiLogic.formatPercentCompact(null, AppLanguage.ENGLISH))
+        assertEquals("০%", ImportVaultUiLogic.formatPercentCompact(0.0, AppLanguage.BANGLA))
+        assertEquals("0%", ImportVaultUiLogic.formatPercentCompact(0.0, AppLanguage.ENGLISH))
+        assertEquals("৩৬.৭%", ImportVaultUiLogic.formatPercentCompact(36.6667, AppLanguage.BANGLA))
+        assertEquals("36.7%", ImportVaultUiLogic.formatPercentCompact(36.6667, AppLanguage.ENGLISH))
+        assertEquals("-১২.৩%", ImportVaultUiLogic.formatPercentCompact(-12.34, AppLanguage.BANGLA))
+        assertEquals("-12.3%", ImportVaultUiLogic.formatPercentCompact(-12.34, AppLanguage.ENGLISH))
+
         val dummyAging = AgingSummary(emptyMap(), emptyMap(), 5)
         val dummyExp = ExpectedRemainingProfitEstimate(0, 0L, 0L, 0L, "Current Selling Price", 1L, 0)
         fun vRow(sku: String, profit: Long, margin: Double?, locked: Long) = VariantVaultRow(

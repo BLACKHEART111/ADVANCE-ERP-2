@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -46,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -285,22 +285,12 @@ private fun DetailLoadingOrEmptyScaffold(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(tokens.pageBgTop)
+            .background(Brush.verticalGradient(listOf(tokens.pageBgTop, tokens.pageBgBottom)))
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
-                }
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            }
-        }
+        VaultSubScreenTopBar(
+            title = title,
+            onBack = onBack
+        )
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (isLoading) {
                 CircularProgressIndicator()
@@ -420,46 +410,29 @@ private fun ImportVaultFolderScaffold(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(tokens.pageBgTop)
+            .background(Brush.verticalGradient(listOf(tokens.pageBgTop, tokens.pageBgBottom)))
     ) {
-        Surface(
-            color = colors.surface,
-            border = BorderStroke(1.dp, colors.outlineVariant)
+        VaultSubScreenTopBar(
+            title = displayTitle,
+            subtitle = "$codeSubtitle · $dateLabel",
+            onBack = onBack
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(displayTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = "$codeSubtitle · $dateLabel",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = onTogglePin, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = if (isPinned) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
-                        contentDescription = null,
-                        tint = if (isPinned) colors.primary else colors.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { showMetadataDialog = true }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Outlined.Edit, contentDescription = null, tint = colors.onSurfaceVariant)
-                }
-                IconButton(onClick = onOpenExport, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        Icons.Outlined.Download,
-                        contentDescription = if (isBn) "এক্সপোর্ট" else "Export Report",
-                        tint = colors.primary
-                    )
-                }
+            IconButton(onClick = onTogglePin, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    imageVector = if (isPinned) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
+                    contentDescription = null,
+                    tint = if (isPinned) colors.primary else tokens.sectionSubtitleText
+                )
+            }
+            IconButton(onClick = { showMetadataDialog = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Outlined.Edit, contentDescription = null, tint = tokens.sectionSubtitleText)
+            }
+            IconButton(onClick = onOpenExport, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    Icons.Outlined.Download,
+                    contentDescription = if (isBn) "এক্সপোর্ট" else "Export Report",
+                    tint = colors.primary
+                )
             }
         }
 

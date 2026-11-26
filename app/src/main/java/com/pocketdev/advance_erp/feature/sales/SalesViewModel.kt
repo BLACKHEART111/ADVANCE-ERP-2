@@ -56,6 +56,7 @@ import java.io.File
 import javax.inject.Inject
 
 data class SalesUiState(
+    val communicationInvoiceId: String? = null,
     val invoices: List<SalesInvoice> = emptyList(),
     val customers: List<Customer> = emptyList(),
     val warehouses: List<Warehouse> = emptyList(),
@@ -364,7 +365,7 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.createAndPostInvoice(draft)
             result.onSuccess { newInvoiceId ->
-                _uiState.update { it.copy(userMessage = "Sale confirmed and posted: $newInvoiceId") }
+                _uiState.update { it.copy(userMessage = "Sale confirmed and posted: $newInvoiceId", communicationInvoiceId = newInvoiceId) }
                 loadDefaultReport()
                 onSuccess()
             }.onFailure { err ->
@@ -379,7 +380,7 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.postInvoice(invoiceId)
             result.onSuccess {
-                _uiState.update { it.copy(userMessage = "Invoice posted! Stock and Accounting journals updated.") }
+                _uiState.update { it.copy(userMessage = "Invoice posted! Stock and Accounting journals updated.", communicationInvoiceId = invoiceId) }
                 val updated = salesRepository.getInvoiceById(invoiceId)
                 if (updated != null) {
                     selectInvoice(updated)
@@ -588,31 +589,7 @@ class SalesViewModel @Inject constructor(
         }
     }
 
-    fun generateInvoicePdf(context: Context, invoice: SalesInvoice): File {
-        val items = _uiState.value.selectedInvoiceItems.ifEmpty {
-            kotlinx.coroutines.runBlocking { salesRepository.getInvoiceItems(invoice.id) }
-        }
-        return InvoicePdfGenerator.generateInvoicePdf(
-            context = context,
-            invoice = invoice,
-            items = items,
-            businessProfile = _uiState.value.businessProfile,
-            isBangla = _uiState.value.language == AppLanguage.BANGLA
-        )
-    }
-
-    fun generatePaymentReceiptPdf(context: Context, payment: CustomerPayment): File {
-        val allocations = kotlinx.coroutines.runBlocking {
-            salesRepository.getAllocationsForInvoiceSync(payment.id)
-        }
-        return InvoicePdfGenerator.generatePaymentReceiptPdf(
-            context = context,
-            payment = payment,
-            allocations = allocations,
-            businessProfile = _uiState.value.businessProfile,
-            isBangla = _uiState.value.language == AppLanguage.BANGLA
-        )
-    }
+    fun dismissCommunicationSuccess() { _uiState.update { it.copy(communicationInvoiceId = null) } }
 
     fun clearUserMessage() {
         _uiState.update { it.copy(userMessage = null) }
@@ -665,7 +642,7 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.convertSalesOrderToInvoice(salesOrderId)
             result.onSuccess { invId ->
-                _uiState.update { it.copy(userMessage = "Sales Order converted to Commercial Invoice: $invId") }
+                _uiState.update { it.copy(userMessage = "Sales Order converted to Commercial Invoice: $invId", communicationInvoiceId = invId) }
                 val updated = salesRepository.getInvoiceById(salesOrderId)
                 if (updated != null) selectInvoice(updated)
                 onSuccess(invId)
@@ -679,17 +656,15 @@ class SalesViewModel @Inject constructor(
 
     suspend fun getRemainingUndeliveredItems(invoiceId: String) = salesRepository.getRemainingUndeliveredItems(invoiceId)
 
-    fun generateThermalReceiptPdf(
+    suspend fun generateThermalReceiptPdf(
         context: Context,
         invoice: SalesInvoice,
         cashTenderedMinor: Long = invoice.paidAmountMinor,
         changeReturnedMinor: Long = 0L,
         is80mm: Boolean = true
-    ): File {
-        val items = _uiState.value.selectedInvoiceItems.ifEmpty {
-            kotlinx.coroutines.runBlocking { salesRepository.getInvoiceItems(invoice.id) }
-        }
-        return InvoicePdfGenerator.generateThermalReceiptPdf(
+    ): File = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val items = salesRepository.getInvoiceItems(invoice.id)
+        InvoicePdfGenerator.generateThermalReceiptPdf(
             context = context,
             invoice = invoice,
             items = items,

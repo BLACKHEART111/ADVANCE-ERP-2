@@ -74,7 +74,7 @@ data class ImportVaultUiState(
     val datePreset: VaultDatePreset = VaultDatePreset.LIFETIME,
     val searchText: String = "",
     val shelfMode: VaultShelfMode = VaultShelfMode.SHIPMENTS,
-    val layoutMode: VaultLayoutMode = VaultLayoutMode.SHELF_GRID,
+    val layoutMode: VaultLayoutMode = VaultLayoutMode.COMPACT_LIST,
     val archiveFilter: VaultArchiveFilter = VaultArchiveFilter.ACTIVE,
     val profitSort: ProfitSortOption = ProfitSortOption.HIGHEST_PROFIT,
     val vaultStack: List<VaultRoute> = listOf(VaultRoute.Home),

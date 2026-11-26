@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Assessment
@@ -52,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -101,40 +101,19 @@ fun ImportVaultPortfolioProfitScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(tokens.pageBgTop)
+            .background(Brush.verticalGradient(listOf(tokens.pageBgTop, tokens.pageBgBottom)))
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        VaultSubScreenTopBar(
+            title = if (isBn) "মুনাফা বিশ্লেষণ (Profit Intelligence)" else "Profit Intelligence",
+            subtitle = overview?.profitLabel ?: "Attributed Net Profit",
+            onBack = onBack
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (isBn) "মুনাফা বিশ্লেষণ (Profit Intelligence)" else "Profit Intelligence",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = overview?.profitLabel ?: "Attributed Net Profit",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = onOpenExport, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        Icons.Outlined.Download,
-                        contentDescription = if (isBn) "এক্সপোর্ট" else "Export Report",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
+            IconButton(onClick = onOpenExport, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    Icons.Outlined.Download,
+                    contentDescription = if (isBn) "এক্সপোর্ট" else "Export Report",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
 

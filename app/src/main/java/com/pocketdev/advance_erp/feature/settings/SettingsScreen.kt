@@ -136,6 +136,19 @@ fun SettingsScreen(
     val context = LocalContext.current
     val tokens = LocalSettingsTokens.current
     val isBn = state.language == AppLanguage.BANGLA
+    var restorePending by remember { mutableStateOf(java.io.File(context.filesDir, "restore_staging/ready").exists()) }
+    LaunchedEffect(Unit) {
+        while(true) { restorePending = java.io.File(context.filesDir, "restore_staging/ready").exists(); kotlinx.coroutines.delay(1000) }
+    }
+    if(restorePending) AlertDialog(onDismissRequest = {}, title = { Text(if(isBn) "রিস্টোর প্রস্তুত" else "Restore ready") },
+        text = { Text(if(isBn) "যাচাইকৃত ব্যাকআপ প্রয়োগ করতে অ্যাপ পুনরায় খুলতে হবে।" else "Restart to apply the validated backup safely.") },
+        confirmButton = { TextButton(onClick = {
+            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)!!
+            val pending = android.app.PendingIntent.getActivity(context, 991, launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK), android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+            (context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager).set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 1500, pending)
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }) { Text(if(isBn) "অ্যাপ পুনরায় খুলুন" else "Restart app") } })
+
     val coroutineScope = rememberCoroutineScope()
 
     // Accordion expanded state — all 5 categories collapsed by default,
@@ -244,6 +257,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 28.dp)
             ) {
+                item(key = "smart_communication") { com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(isBangla = isBn, settings = true) }
                 // Premium Decorative Settings Header
                 item(key = "settings_header") {
                     PremiumSettingsHeader(

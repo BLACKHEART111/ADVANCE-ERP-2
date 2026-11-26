@@ -6,6 +6,11 @@ import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
 class AdvanceErpApplication : Application() {
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(base)
+        com.pocketdev.advance_erp.core.database.StagedRestore.applyPending(base)
+    }
+
     override fun onCreate() {
         super.onCreate()
         try {

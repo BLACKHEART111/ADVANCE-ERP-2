@@ -24,6 +24,15 @@ android {
         }
     }
 
+    buildTypes {
+        create("communicationqa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".communicationqa"
+            matchingFallbacks += listOf("debug")
+        }
+    }
+    testBuildType = providers.gradleProperty("communicationQa").orNull?.let { "communicationqa" } ?: "debug"
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -47,7 +47,10 @@ object Destinations {
 fun AdvanceErpNavGraph(
     navController: NavHostController,
     modifier: Modifier = Modifier,
-    userRole: UserRole = UserRole.OWNER_ADMIN
+    userRole: UserRole = UserRole.OWNER_ADMIN,
+    companyName: String = "ADVANCE ERP",
+    onOpenDrawer: () -> Unit = {},
+    onToggleLanguage: () -> Unit = {}
 ) {
     androidx.compose.runtime.CompositionLocalProvider(com.pocketdev.advance_erp.core.designsystem.LocalERPOnNavigate provides { destination ->
         navController.navigate(destination.route) {
@@ -126,6 +129,9 @@ fun AdvanceErpNavGraph(
             ContactsScreen(
                 viewModel = hiltViewModel(),
                 initialTab = ContactsTab.CUSTOMERS,
+                companyName = companyName,
+                onOpenDrawer = onOpenDrawer,
+                onToggleLanguage = onToggleLanguage,
                 onSwitchTabRoute = { tab ->
                     val target = if (tab == ContactsTab.CUSTOMERS) Destinations.CUSTOMERS else Destinations.SUPPLIERS
                     navController.navigate(target) {
@@ -140,6 +146,9 @@ fun AdvanceErpNavGraph(
             ContactsScreen(
                 viewModel = hiltViewModel(),
                 initialTab = ContactsTab.SUPPLIERS,
+                companyName = companyName,
+                onOpenDrawer = onOpenDrawer,
+                onToggleLanguage = onToggleLanguage,
                 onSwitchTabRoute = { tab ->
                     val target = if (tab == ContactsTab.CUSTOMERS) Destinations.CUSTOMERS else Destinations.SUPPLIERS
                     navController.navigate(target) {

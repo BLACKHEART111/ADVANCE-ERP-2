@@ -23,7 +23,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Download
@@ -47,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -94,42 +94,21 @@ fun ImportVaultPortfolioCapitalScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(tokens.pageBgTop)
+            .background(Brush.verticalGradient(listOf(tokens.pageBgTop, tokens.pageBgBottom)))
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        VaultSubScreenTopBar(
+            title = if (isBn) "মূলধন ও স্টক বয়স (Capital Intel)" else "Capital Intelligence",
+            subtitle = overview?.let {
+                if (isBn) "তারিখ: ${Formatters.formatDate(it.asOfMillis, language)}" else "As of ${Formatters.formatDate(it.asOfMillis, language)}"
+            }.orEmpty(),
+            onBack = onBack
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (isBn) "মূলধন ও স্টক বয়স (Capital Intel)" else "Capital Intelligence",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = overview?.let {
-                            if (isBn) "তারিখ: ${Formatters.formatDate(it.asOfMillis, language)}" else "As of ${Formatters.formatDate(it.asOfMillis, language)}"
-                        }.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = onOpenExport, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        Icons.Outlined.Download,
-                        contentDescription = if (isBn) "এক্সপোর্ট" else "Export Report",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
+            IconButton(onClick = onOpenExport, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    Icons.Outlined.Download,
+                    contentDescription = if (isBn) "এক্সপোর্ট" else "Export Report",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
 

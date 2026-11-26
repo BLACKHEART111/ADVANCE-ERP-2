@@ -13,6 +13,8 @@ sealed class CustomerDeleteResult {
 interface ContactsRepository {
     fun getAllCustomers(): Flow<List<Customer>>
     fun getAllSuppliers(): Flow<List<Supplier>>
+    fun getTotalCustomerReceivedMinor(): Flow<Long>
+    fun getTotalSupplierPaidBdtMinor(): Flow<Long>
     suspend fun addCustomer(customer: Customer)
     suspend fun updateCustomer(customer: Customer)
     suspend fun addSupplier(supplier: Supplier)
@@ -43,4 +45,5 @@ interface ContactsRepository {
         openingNote: String? = null
     )
     suspend fun deleteOrArchiveCustomer(customerId: String, operator: String = "SYSTEM_ADMIN"): CustomerDeleteResult
+    suspend fun deleteOrArchiveSupplier(supplierId: String, operator: String = "SYSTEM_ADMIN"): CustomerDeleteResult
 }

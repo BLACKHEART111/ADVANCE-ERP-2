@@ -1,5 +1,8 @@
 package com.pocketdev.advance_erp.feature.sales
 
+import com.pocketdev.advance_erp.core.communication.*
+import com.pocketdev.advance_erp.feature.communication.*
+
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.widget.Toast
@@ -124,6 +127,10 @@ fun SalesScreen(
     val isBangla = uiState.language == AppLanguage.BANGLA
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var communicationRequest by remember { mutableStateOf<CommunicationRequest?>(null) }
+    communicationRequest?.let { request -> CommunicationDialog(initialRequest = request, onDismiss = { communicationRequest = null }) }
+    uiState.communicationInvoiceId?.let { id -> CommunicationDialog(initialRequest = CommunicationRequest(CommunicationModule.INVOICE, id), success = true, onDismiss = viewModel::dismissCommunicationSuccess) }
+
 
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -246,6 +253,7 @@ fun SalesScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            CommunicationLauncher(isBangla = isBangla)
             // Top Navigation Tabs
             ScrollableTabRow(
                 selectedTabIndex = selectedTabIndex,
@@ -321,12 +329,7 @@ fun SalesScreen(
                         isBangla = isBangla,
                         language = uiState.language,
                         onShareReceipt = { pay ->
-                            try {
-                                val pdf = viewModel.generatePaymentReceiptPdf(context, pay)
-                                context.startActivity(InvoicePdfGenerator.createSharePdfIntent(context, pdf))
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
+                            communicationRequest = CommunicationRequest(CommunicationModule.PAYMENT, pay.id)
                         },
                         onVoidPayment = { paymentId, reason ->
                             viewModel.voidCustomerPayment(paymentId, reason)
@@ -372,12 +375,9 @@ fun SalesScreen(
                 showProcessReturnDialog = true
             },
             onSharePdf = { ctx ->
-                try {
-                    val file = viewModel.generateInvoicePdf(ctx, uiState.selectedInvoice!!)
-                    ctx.startActivity(InvoicePdfGenerator.createSharePdfIntent(ctx, file))
-                } catch (e: Exception) {
-                    Toast.makeText(ctx, "PDF error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                val inv = uiState.selectedInvoice!!
+                val module = when(inv.status) { "QUOTATION" -> CommunicationModule.QUOTATION; "SALES_ORDER" -> CommunicationModule.SALES_ORDER; else -> CommunicationModule.INVOICE }
+                communicationRequest = CommunicationRequest(module, inv.id)
             },
             onDispatchDelivery = {
                 coroutineScope.launch {
@@ -396,11 +396,13 @@ fun SalesScreen(
                 viewModel.convertSalesOrderToInvoice(uiState.selectedInvoice!!.id)
             },
             onPrintThermalReceipt = { ctx ->
+                coroutineScope.launch {
                 try {
                     val file = viewModel.generateThermalReceiptPdf(ctx, uiState.selectedInvoice!!)
                     ctx.startActivity(InvoicePdfGenerator.createSharePdfIntent(ctx, file))
                 } catch (e: Exception) {
                     Toast.makeText(ctx, "Receipt error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
                 }
             },
             onCancelOrDeleteInvoice = { reason ->
@@ -490,10 +492,10 @@ fun SalesScreen(
                 ledgerCustomer = null
             },
             onShareWhatsAppStatement = { cust ->
-                viewModel.openDueCollectionStatementShare(cust)
+                communicationRequest = CommunicationRequest(CommunicationModule.LEDGER, cust.id)
             },
             onSendDueReminder = { cust ->
-                viewModel.openDueReminder(cust)
+                communicationRequest = CommunicationRequest(CommunicationModule.REMINDER, cust.id)
             }
         )
     }
@@ -1623,6 +1625,7 @@ private fun ReturnsTab(
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
+                    CommunicationLauncher(CommunicationModule.RETURN, ret.id, isBangla)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween

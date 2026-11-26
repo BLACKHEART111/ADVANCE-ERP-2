@@ -8,11 +8,25 @@ import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.pdf.CentralizedPdfEngine
 import com.pocketdev.advance_erp.core.pdf.CentralizedPdfReportRegistry
+import com.pocketdev.advance_erp.core.util.DueReminderHelper
 import com.pocketdev.advance_erp.core.util.DueReminderStatementData
+import com.pocketdev.advance_erp.core.util.LedgerStatementExporter
+import com.pocketdev.advance_erp.core.util.StatementShareHelper
+import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.Customer
+import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.data.entity.Supplier
+import com.pocketdev.advance_erp.domain.model.ControlCenterFilterState
+import com.pocketdev.advance_erp.domain.model.DateRangeOption
+import com.pocketdev.advance_erp.domain.model.LedgerReport
+import com.pocketdev.advance_erp.domain.model.PartyLedgerStatement
+import com.pocketdev.advance_erp.domain.model.ReportCategory
+import com.pocketdev.advance_erp.domain.repository.AccountingRepository
+import com.pocketdev.advance_erp.domain.repository.BusinessControlCenterRepository
 import com.pocketdev.advance_erp.domain.repository.ContactsRepository
 import com.pocketdev.advance_erp.domain.repository.CustomerDeleteResult
+import com.pocketdev.advance_erp.domain.repository.CustomerLedgerEntry
+import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
 import com.pocketdev.advance_erp.domain.repository.SalesRepository
 import com.pocketdev.advance_erp.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +36,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -39,10 +54,57 @@ data class ContactDialogState(
     val canEditSupplierCurrency: Boolean = true
 )
 
+private data class CustomerPaymentModalState(
+    val targetCustomer: Customer? = null,
+    val nextPaymentNumber: String? = null,
+    val isSaving: Boolean = false,
+    val saveError: String? = null
+)
+
+private data class ContactsListBundle(
+    val customers: List<Customer>,
+    val suppliers: List<Supplier>,
+    val totalCustomerReceivedMinor: Long,
+    val totalSupplierPaidBdtMinor: Long
+)
+
+private data class ContactsPrefsBundle(
+    val language: AppLanguage,
+    val currency: CurrencyCode,
+    val companyName: String
+)
+
+private data class ContactsControlsBundle(
+    val selectedTab: ContactsTab,
+    val searchQuery: String,
+    val filterState: ContactsFilterState,
+    val sortOption: ContactSortOption,
+    val dialogState: ContactDialogState
+)
+
+private data class ContactsSalesAuxBundle(
+    val allInvoices: List<SalesInvoice>,
+    val liquidAccounts: List<ChartOfAccount>,
+    val paymentModal: CustomerPaymentModalState
+)
+
+private data class ContactsOverlaysBundle(
+    val userMessage: String?,
+    val activeDueReminderData: DueReminderStatementData?,
+    val activeCustomerLedger: Pair<Customer, List<CustomerLedgerEntry>>?,
+    val activeSupplierLedger: Pair<Supplier, PartyLedgerStatement>?
+)
+
 data class ContactsUiState(
     val selectedTab: ContactsTab = ContactsTab.CUSTOMERS,
     val customers: List<Customer> = emptyList(),
     val suppliers: List<Supplier> = emptyList(),
+    val totalCustomerReceivedMinor: Long = 0L,
+    val totalSupplierPaidBdtMinor: Long = 0L,
+    val companyName: String = "ADVANCE ERP",
+    val searchQuery: String = "",
+    val filterState: ContactsFilterState = ContactsFilterState(),
+    val sortOption: ContactSortOption = ContactSortOption.NAME_ASC,
     val language: AppLanguage = AppLanguage.BANGLA,
     val currency: CurrencyCode = CurrencyCode.BDT,
     val showAddDialog: Boolean = false,
@@ -50,7 +112,15 @@ data class ContactsUiState(
     val editingSupplier: Supplier? = null,
     val canEditSupplierCurrency: Boolean = true,
     val userMessage: String? = null,
-    val activeDueReminderData: DueReminderStatementData? = null
+    val activeDueReminderData: DueReminderStatementData? = null,
+    val activeCustomerLedger: Pair<Customer, List<CustomerLedgerEntry>>? = null,
+    val activeSupplierLedger: Pair<Supplier, PartyLedgerStatement>? = null,
+    val paymentTargetCustomer: Customer? = null,
+    val allInvoices: List<SalesInvoice> = emptyList(),
+    val liquidAccounts: List<ChartOfAccount> = emptyList(),
+    val nextPaymentNumber: String? = null,
+    val isSavingPayment: Boolean = false,
+    val paymentSaveError: String? = null
 )
 
 @HiltViewModel
@@ -59,40 +129,123 @@ class ContactsViewModel @Inject constructor(
     private val contactsRepository: ContactsRepository,
     private val salesRepository: SalesRepository,
     private val settingsRepository: SettingsRepository,
-    private val preferencesRepository: UserPreferencesRepository
+    private val preferencesRepository: UserPreferencesRepository,
+    private val businessControlCenterRepository: BusinessControlCenterRepository,
+    private val accountingRepository: AccountingRepository
 ) : ViewModel() {
 
     private val _selectedTab = MutableStateFlow(ContactsTab.CUSTOMERS)
+    private val _searchQuery = MutableStateFlow("")
+    private val _filterState = MutableStateFlow(ContactsFilterState())
+    private val _sortOption = MutableStateFlow(ContactSortOption.NAME_ASC)
     private val _dialogState = MutableStateFlow(ContactDialogState())
     private val _userMessage = MutableStateFlow<String?>(null)
     private val _activeDueReminderData = MutableStateFlow<DueReminderStatementData?>(null)
+    private val _activeCustomerLedger = MutableStateFlow<Pair<Customer, List<CustomerLedgerEntry>>?>(null)
+    private val _activeSupplierLedger = MutableStateFlow<Pair<Supplier, PartyLedgerStatement>?>(null)
+    private val _paymentModalState = MutableStateFlow(CustomerPaymentModalState())
 
-    val uiState: StateFlow<ContactsUiState> = combine(
-        _selectedTab,
-        combine(contactsRepository.getAllCustomers(), contactsRepository.getAllSuppliers()) { c, s -> Pair(c, s) },
-        combine(preferencesRepository.selectedLanguage, preferencesRepository.selectedCurrency) { l, c -> Pair(l, c) },
-        _dialogState,
-        _userMessage,
-        _activeDueReminderData
-    ) { args: Array<Any?> ->
-        val tab = args[0] as ContactsTab
-        val (customers, suppliers) = args[1] as Pair<List<Customer>, List<Supplier>>
-        val (language, currency) = args[2] as Pair<AppLanguage, CurrencyCode>
-        val dialog = args[3] as ContactDialogState
-        val msg = args[4] as? String
-        val dueReminder = args[5] as? DueReminderStatementData
-        ContactsUiState(
-            selectedTab = tab,
+    private val _listsFlow = combine(
+        contactsRepository.getAllCustomers(),
+        contactsRepository.getAllSuppliers(),
+        contactsRepository.getTotalCustomerReceivedMinor(),
+        contactsRepository.getTotalSupplierPaidBdtMinor()
+    ) { customers, suppliers, custReceived, suppPaid ->
+        ContactsListBundle(
             customers = customers,
             suppliers = suppliers,
+            totalCustomerReceivedMinor = custReceived,
+            totalSupplierPaidBdtMinor = suppPaid
+        )
+    }
+
+    private val _prefsFlow = combine(
+        preferencesRepository.selectedLanguage,
+        preferencesRepository.selectedCurrency,
+        settingsRepository.getBusinessProfile().onStart { emit(null) }
+    ) { language, currency, profile ->
+        ContactsPrefsBundle(
             language = language,
             currency = currency,
-            showAddDialog = dialog.showAddDialog,
-            editingCustomer = dialog.editingCustomer,
-            editingSupplier = dialog.editingSupplier,
-            canEditSupplierCurrency = dialog.canEditSupplierCurrency,
+            companyName = profile?.companyName?.ifBlank { null } ?: "ADVANCE ERP"
+        )
+    }
+
+    private val _controlsFlow = combine(
+        _selectedTab,
+        _searchQuery,
+        _filterState,
+        _sortOption,
+        _dialogState
+    ) { tab, query, filter, sort, dialog ->
+        ContactsControlsBundle(
+            selectedTab = tab,
+            searchQuery = query,
+            filterState = filter,
+            sortOption = sort,
+            dialogState = dialog
+        )
+    }
+
+    private val _salesAuxFlow = combine(
+        salesRepository.getAllInvoices().onStart { emit(emptyList()) },
+        accountingRepository.getLiquidAccounts().onStart { emit(emptyList()) },
+        _paymentModalState
+    ) { invoices, accounts, payModal ->
+        ContactsSalesAuxBundle(
+            allInvoices = invoices,
+            liquidAccounts = accounts,
+            paymentModal = payModal
+        )
+    }
+
+    private val _overlaysFlow = combine(
+        _userMessage,
+        _activeDueReminderData,
+        _activeCustomerLedger,
+        _activeSupplierLedger
+    ) { msg, dueReminder, custLedger, suppLedger ->
+        ContactsOverlaysBundle(
             userMessage = msg,
-            activeDueReminderData = dueReminder
+            activeDueReminderData = dueReminder,
+            activeCustomerLedger = custLedger,
+            activeSupplierLedger = suppLedger
+        )
+    }
+
+    val uiState: StateFlow<ContactsUiState> = combine(
+        _listsFlow,
+        _prefsFlow,
+        _controlsFlow,
+        _salesAuxFlow,
+        _overlaysFlow
+    ) { lists, prefs, controls, salesAux, overlays ->
+        ContactsUiState(
+            selectedTab = controls.selectedTab,
+            customers = lists.customers,
+            suppliers = lists.suppliers,
+            totalCustomerReceivedMinor = lists.totalCustomerReceivedMinor,
+            totalSupplierPaidBdtMinor = lists.totalSupplierPaidBdtMinor,
+            companyName = prefs.companyName,
+            searchQuery = controls.searchQuery,
+            filterState = controls.filterState,
+            sortOption = controls.sortOption,
+            language = prefs.language,
+            currency = prefs.currency,
+            showAddDialog = controls.dialogState.showAddDialog,
+            editingCustomer = controls.dialogState.editingCustomer,
+            editingSupplier = controls.dialogState.editingSupplier,
+            canEditSupplierCurrency = controls.dialogState.canEditSupplierCurrency,
+            userMessage = overlays.userMessage,
+            activeDueReminderData = overlays.activeDueReminderData,
+            activeCustomerLedger = overlays.activeCustomerLedger,
+            activeSupplierLedger = overlays.activeSupplierLedger,
+            paymentTargetCustomer = salesAux.paymentModal.targetCustomer,
+            allInvoices = salesAux.allInvoices,
+            liquidAccounts = salesAux.liquidAccounts,
+            nextPaymentNumber = salesAux.paymentModal.nextPaymentNumber,
+            isSavingPayment = salesAux.paymentModal.isSaving,
+            paymentSaveError = salesAux.paymentModal.saveError
         )
     }.stateIn(
         scope = viewModelScope,
@@ -101,7 +254,26 @@ class ContactsViewModel @Inject constructor(
     )
 
     fun onTabSelect(tab: ContactsTab) {
-        _selectedTab.value = tab
+        if (_selectedTab.value != tab) {
+            _selectedTab.value = tab
+            _filterState.value = ContactsFilterState()
+        }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun updateFilterState(filter: ContactsFilterState) {
+        _filterState.value = filter
+    }
+
+    fun clearFilters() {
+        _filterState.value = ContactsFilterState()
+    }
+
+    fun updateSortOption(option: ContactSortOption) {
+        _sortOption.value = option
     }
 
     fun setAddDialogVisible(visible: Boolean) {
@@ -217,7 +389,11 @@ class ContactsViewModel @Inject constructor(
     fun updateCustomerPhoto(customer: Customer, photoPath: String?) {
         viewModelScope.launch {
             contactsRepository.updateCustomer(customer.copy(profileImagePath = photoPath))
-            _userMessage.value = if (photoPath != null) "গ্রাহকের প্রোফাইল ছবি সংরক্ষিত হয়েছে" else "ছবি সরানো হয়েছে"
+            _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                if (photoPath != null) "গ্রাহকের প্রোফাইল ছবি সংরক্ষিত হয়েছে" else "ছবি সরানো হয়েছে"
+            } else {
+                if (photoPath != null) "Customer profile photo saved" else "Photo removed"
+            }
         }
     }
 
@@ -251,7 +427,11 @@ class ContactsViewModel @Inject constructor(
                 )
                 _activeDueReminderData.value = reminderData
             } catch (e: Exception) {
-                _userMessage.value = "বকেয়া তাগাদা প্রস্তুত করতে ব্যর্থ: ${e.message}"
+                _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                    "বকেয়া তাগাদা প্রস্তুত করতে ব্যর্থ: ${e.message}"
+                } else {
+                    "Failed to prepare due reminder: ${e.message}"
+                }
             }
         }
     }
@@ -260,20 +440,168 @@ class ContactsViewModel @Inject constructor(
         _activeDueReminderData.value = null
     }
 
+    fun openCustomerLedger(customer: Customer) {
+        viewModelScope.launch {
+            try {
+                val entries = salesRepository.getCustomerLedger(customer.id)
+                _activeCustomerLedger.value = customer to entries
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: "Failed to load customer ledger"
+            }
+        }
+    }
+
+    fun dismissCustomerLedger() {
+        _activeCustomerLedger.value = null
+    }
+
+    fun shareCustomerStatementWhatsApp(customer: Customer) {
+        viewModelScope.launch {
+            try {
+                val isBn = uiState.value.language == AppLanguage.BANGLA
+                val ledger = salesRepository.getCustomerLedger(customer.id)
+                val profile = settingsRepository.getBusinessProfile().firstOrNull()
+                val report = CentralizedPdfReportRegistry.buildCustomerLedgerReport(
+                    customer = customer,
+                    entries = ledger,
+                    isBangla = isBn
+                )
+                val pdfFile = CentralizedPdfEngine.generatePdf(context, report, profile)
+                val data = DueReminderStatementData(
+                    customerId = customer.id,
+                    customerName = customer.name,
+                    customerPhone = customer.phone,
+                    customerCode = customer.customerCode,
+                    companyName = profile?.companyName ?: "ADVANCE ERP",
+                    companyPhone = profile?.phone ?: "",
+                    totalDueMinor = customer.outstandingBalanceMinor,
+                    invoiceCount = ledger.count { it.transactionType == "INVOICE" },
+                    asOfDate = System.currentTimeMillis(),
+                    paymentInstructions = if (isBn) "বিকাশ / নগদ / ব্যাংক অ্যাকাউন্টের মাধ্যমে পরিশোধ করা যাবে।" else "Payments accepted via Bank Transfer, bKash or Cash.",
+                    pdfFile = pdfFile
+                )
+                val caption = DueReminderHelper.generatePoliteReminderCaption(data, isBangla = isBn)
+                StatementShareHelper.shareToWhatsApp(context, pdfFile, caption, customer.phone)
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: "Failed to share statement"
+            }
+        }
+    }
+
+    fun openRecordCustomerPayment(customer: Customer) {
+        viewModelScope.launch {
+            val nextNum = runCatching { salesRepository.previewNextCustomerPaymentNumber() }.getOrNull()
+            _paymentModalState.value = CustomerPaymentModalState(
+                targetCustomer = customer,
+                nextPaymentNumber = nextNum
+            )
+        }
+    }
+
+    fun dismissRecordCustomerPayment() {
+        _paymentModalState.value = CustomerPaymentModalState()
+    }
+
+    fun submitCustomerPayment(draft: CustomerPaymentDraft) {
+        viewModelScope.launch {
+            _paymentModalState.value = _paymentModalState.value.copy(isSaving = true, saveError = null)
+            try {
+                salesRepository.recordCustomerPayment(draft)
+                _paymentModalState.value = CustomerPaymentModalState()
+                _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                    "গ্রাহকের পেমেন্ট সফলভাবে সংরক্ষিত হয়েছে"
+                } else {
+                    "Customer payment recorded successfully"
+                }
+            } catch (e: Exception) {
+                _paymentModalState.value = _paymentModalState.value.copy(
+                    isSaving = false,
+                    saveError = e.message ?: "Failed to record payment"
+                )
+            }
+        }
+    }
+
     fun deleteOrArchiveCustomer(customerId: String) {
         viewModelScope.launch {
             when (val result = contactsRepository.deleteOrArchiveCustomer(customerId)) {
-                is CustomerDeleteResult.Blocked -> {
-                    _userMessage.value = result.reason
-                }
-                is CustomerDeleteResult.Archived -> {
-                    _userMessage.value = result.message
-                }
+                is CustomerDeleteResult.Blocked -> _userMessage.value = result.reason
+                is CustomerDeleteResult.Archived -> _userMessage.value = result.message
                 is CustomerDeleteResult.HardDeleted -> {
                     _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
                         "গ্রাহক স্থায়ীভাবে মুছে ফেলা হয়েছে"
                     } else {
                         "Customer deleted permanently (no financial records found)"
+                    }
+                }
+            }
+        }
+    }
+
+    fun openSupplierLedger(supplier: Supplier) {
+        viewModelScope.launch {
+            try {
+                val stmt = businessControlCenterRepository.getSupplierLedgerStatement(
+                    supplierId = supplier.id,
+                    fromDate = 0L,
+                    toDate = System.currentTimeMillis()
+                )
+                if (stmt != null) {
+                    _activeSupplierLedger.value = supplier to stmt
+                } else {
+                    _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                        "সরবরাহকারীর লেজার পাওয়া যায়নি"
+                    } else {
+                        "Supplier ledger statement unavailable"
+                    }
+                }
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: "Failed to load supplier ledger"
+            }
+        }
+    }
+
+    fun dismissSupplierLedger() {
+        _activeSupplierLedger.value = null
+    }
+
+    fun shareSupplierLedgerWhatsApp(supplier: Supplier, statement: PartyLedgerStatement) {
+        viewModelScope.launch {
+            try {
+                val isBn = uiState.value.language == AppLanguage.BANGLA
+                val profile = settingsRepository.getBusinessProfile().firstOrNull()
+                val snapshot = LedgerReport(
+                    filter = ControlCenterFilterState(
+                        dateRangeOption = DateRangeOption.ALL_TIME,
+                        category = ReportCategory.SUPPLIER_LEDGER,
+                        selectedSupplierId = supplier.id
+                    ),
+                    transactions = statement.transactions,
+                    statement = statement
+                )
+                val pdfFile = LedgerStatementExporter.pdf(context, snapshot, profile, isBn)
+                val caption = if (isBn) {
+                    "${supplier.companyName} (${supplier.supplierCode}) - প্রদেয় হিসাব বিবরণী"
+                } else {
+                    "${supplier.companyName} (${supplier.supplierCode}) - Supplier Statement"
+                }
+                StatementShareHelper.shareToWhatsApp(context, pdfFile, caption, supplier.phone)
+            } catch (e: Exception) {
+                _userMessage.value = e.message ?: "Failed to share supplier statement"
+            }
+        }
+    }
+
+    fun deleteOrArchiveSupplier(supplierId: String) {
+        viewModelScope.launch {
+            when (val result = contactsRepository.deleteOrArchiveSupplier(supplierId)) {
+                is CustomerDeleteResult.Blocked -> _userMessage.value = result.reason
+                is CustomerDeleteResult.Archived -> _userMessage.value = result.message
+                is CustomerDeleteResult.HardDeleted -> {
+                    _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
+                        "সরবরাহকারী স্থায়ীভাবে মুছে ফেলা হয়েছে"
+                    } else {
+                        "Supplier deleted permanently (no financial records found)"
                     }
                 }
             }

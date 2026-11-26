@@ -370,95 +370,8 @@ class BackupRepositoryImpl @Inject constructor(
                 return@withContext Result.failure(IllegalArgumentException("Invalid or corrupted backup file"))
             }
 
-            checkpointDatabase()
-
-            val dbFile = context.getDatabasePath(AdvanceErpDatabase.DATABASE_NAME)
-
-            // Step 1: Create a safety rollback snapshot of current DB
-            if (dbFile.exists()) {
-                val safetyDir = File(context.filesDir, "safety_backups").apply { if (!exists()) mkdirs() }
-                val safetyFile = File(safetyDir, "safety_before_restore_${System.currentTimeMillis()}.db.bak")
-                FileInputStream(dbFile).use { input ->
-                    FileOutputStream(safetyFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-
-            // Extract from ZIP or restore DB directly
-            if (BackupArchiveFormat.isZip(restoreFile)) {
-                ZipFile(restoreFile).use { zip ->
-                    val dbEntry = zip.getEntry("database/advance_erp.db")
-                        ?: throw IllegalStateException("Backup ZIP does not contain database/advance_erp.db")
-
-                    zip.getInputStream(dbEntry).use { input ->
-                        FileOutputStream(dbFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-
-                    // Extract product images, PO attachments, Import Vault attachments & avatars
-                    val targetImagesDir = File(context.filesDir, "product_images").apply { if (!exists()) mkdirs() }
-                    val targetPoAttachmentsDir = File(context.filesDir, "po_attachments").apply { if (!exists()) mkdirs() }
-                    val targetVaultAttachmentsDir = File(context.filesDir, "vault_attachments").apply { if (!exists()) mkdirs() }
-                    extractVaultAttachmentsFromZip(zip, targetVaultAttachmentsDir)
-                    val entries = zip.entries()
-                    while (entries.hasMoreElements()) {
-                        val entry = entries.nextElement()
-                        if (entry.name.startsWith("product_images/") && !entry.isDirectory) {
-                            val imgFileName = safeBackupEntryFileName(entry.name, "product_images/")
-                                ?: throw IllegalArgumentException("Unsafe backup image path")
-                            val destImgFile = File(targetImagesDir, imgFileName)
-                            zip.getInputStream(entry).use { input ->
-                                FileOutputStream(destImgFile).use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        } else if (entry.name.startsWith("po_attachments/") && !entry.isDirectory) {
-                            val attFileName = safeBackupEntryFileName(entry.name, "po_attachments/")
-                                ?: throw IllegalArgumentException("Unsafe backup PO attachment path")
-                            val destAttFile = File(targetPoAttachmentsDir, attFileName)
-                            zip.getInputStream(entry).use { input ->
-                                FileOutputStream(destAttFile).use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        } else if (entry.name.startsWith("avatars/") && !entry.isDirectory) {
-                            val avFileName = safeBackupEntryFileName(entry.name, "avatars/")
-                                ?: throw IllegalArgumentException("Unsafe backup avatar path")
-                            val destAvFile = File(context.filesDir, avFileName)
-                            zip.getInputStream(entry).use { input ->
-                                FileOutputStream(destAvFile).use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                FileInputStream(restoreFile).use { input ->
-                    FileOutputStream(dbFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-
-            // Step 4: Remove stale WAL and SHM journal files
-            val walFile = File(dbFile.parentFile, "${dbFile.name}-wal")
-            val shmFile = File(dbFile.parentFile, "${dbFile.name}-shm")
-            if (walFile.exists()) walFile.delete()
-            if (shmFile.exists()) shmFile.delete()
-
-            auditLogDao.insertAuditLog(
-                AuditLog(
-                    id = "audit-${UUID.randomUUID()}",
-                    recordType = "RESTORE",
-                    recordId = restoreFile.name,
-                    action = "RESTORE",
-                    details = "Restored comprehensive database package from ${backupFile.name} successfully."
-                )
-            )
-
+            com.pocketdev.advance_erp.core.database.StagedRestore.stage(context, restoreFile, BackupArchiveFormat.isZip(restoreFile))
+            // Live Room instance stays untouched. Apply only in a new process before Room opens.
             Result.success(true)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -551,6 +464,8 @@ class BackupRepositoryImpl @Inject constructor(
             }
 
             database.withTransaction {
+                database.communicationDao().clearHistory()
+                database.communicationDao().clearSnapshots()
                 // 1. Sales, Layer Attributions & Customer Payments
                 backupDao.clearSalesReturnLayerAllocations()
                 backupDao.clearSaleLayerAllocations()

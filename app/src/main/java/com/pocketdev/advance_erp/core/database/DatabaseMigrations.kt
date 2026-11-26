@@ -4,6 +4,16 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 object DatabaseMigrations {
+    val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS communication_settings (id INTEGER NOT NULL PRIMARY KEY, autoGenerate INTEGER NOT NULL, includePdf INTEGER NOT NULL, includePreviousDue INTEGER NOT NULL, includeInvoiceAmount INTEGER NOT NULL, includePaymentDetails INTEGER NOT NULL, includeInvoiceDue INTEGER NOT NULL, includeOutstanding INTEGER NOT NULL, includeMethodReference INTEGER NOT NULL, includeInstructions INTEGER NOT NULL, includeReminder INTEGER NOT NULL, includeSignature INTEGER NOT NULL, previewBeforeSharing INTEGER NOT NULL, defaultLanguage TEXT NOT NULL, preferredApp TEXT NOT NULL, paymentInstructions TEXT NOT NULL, bankDetails TEXT NOT NULL)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS communication_templates (module TEXT NOT NULL, status TEXT NOT NULL, language TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(module, status, language))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS communication_party_preferences (partyKey TEXT NOT NULL PRIMARY KEY, language TEXT NOT NULL)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS communication_snapshots (module TEXT NOT NULL, documentId TEXT NOT NULL, number TEXT NOT NULL, partyId TEXT NOT NULL, createdAt INTEGER NOT NULL, originalAmountMinor INTEGER NOT NULL, previousBalanceMinor INTEGER NOT NULL, allocatedPaymentMinor INTEGER NOT NULL, invoiceDueMinor INTEGER NOT NULL, closingBalanceMinor INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(module, documentId))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS communication_history (id TEXT NOT NULL PRIMARY KEY, module TEXT NOT NULL, documentId TEXT NOT NULL, documentNumber TEXT NOT NULL, partyId TEXT NOT NULL, partyName TEXT NOT NULL, phone TEXT NOT NULL, createdAt INTEGER NOT NULL, message TEXT NOT NULL, attachmentReference TEXT, language TEXT NOT NULL, application TEXT NOT NULL, event TEXT NOT NULL, rangeFrom INTEGER, rangeTo INTEGER)")
+        }
+    }
+
 
     val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
