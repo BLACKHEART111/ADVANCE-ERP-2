@@ -136,18 +136,60 @@ fun SettingsScreen(
     val context = LocalContext.current
     val tokens = LocalSettingsTokens.current
     val isBn = state.language == AppLanguage.BANGLA
-    var restorePending by remember { mutableStateOf(java.io.File(context.filesDir, "restore_staging/ready").exists()) }
-    LaunchedEffect(Unit) {
-        while(true) { restorePending = java.io.File(context.filesDir, "restore_staging/ready").exists(); kotlinx.coroutines.delay(1000) }
+    var restorePending by remember {
+        mutableStateOf(com.pocketdev.advance_erp.core.database.StagedRestore.isRestorePending(context))
     }
-    if(restorePending) AlertDialog(onDismissRequest = {}, title = { Text(if(isBn) "রিস্টোর প্রস্তুত" else "Restore ready") },
-        text = { Text(if(isBn) "যাচাইকৃত ব্যাকআপ প্রয়োগ করতে অ্যাপ পুনরায় খুলতে হবে।" else "Restart to apply the validated backup safely.") },
-        confirmButton = { TextButton(onClick = {
-            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)!!
-            val pending = android.app.PendingIntent.getActivity(context, 991, launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK), android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
-            (context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager).set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 1500, pending)
-            android.os.Process.killProcess(android.os.Process.myPid())
-        }) { Text(if(isBn) "অ্যাপ পুনরায় খুলুন" else "Restart app") } })
+    LaunchedEffect(Unit) {
+        while (true) {
+            restorePending = com.pocketdev.advance_erp.core.database.StagedRestore.isRestorePending(context)
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    if (restorePending) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(if (isBn) "রিস্টোর প্রস্তুত" else "Restore ready") },
+            text = {
+                Text(
+                    if (isBn) "যাচাইকৃত ব্যাকআপ প্রয়োগ করতে অ্যাপ পুনরায় খুলতে হবে। অথবা চাইলে মুলতুবি রিস্টোর বাতিল করতে পারেন।"
+                    else "Restart the app to apply the validated backup safely, or cancel the pending restore."
+                )
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        com.pocketdev.advance_erp.core.database.StagedRestore.cancelPending(context)
+                        restorePending = false
+                    }
+                ) {
+                    Text(if (isBn) "রিস্টোর বাতিল" else "Cancel Restore")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                        val component = launch?.component
+                        if (component != null) {
+                            val restartIntent = android.content.Intent.makeRestartActivityTask(component)
+                            val pending = android.app.PendingIntent.getActivity(
+                                context,
+                                991,
+                                restartIntent,
+                                android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                            )
+                            (context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager)
+                                .set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 600, pending)
+                            runCatching { context.startActivity(restartIntent) }
+                        }
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                    }
+                ) {
+                    Text(if (isBn) "অ্যাপ পুনরায় খুলুন" else "Restart App")
+                }
+            }
+        )
+    }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -257,7 +299,6 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 28.dp)
             ) {
-                item(key = "smart_communication") { com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(isBangla = isBn, settings = true) }
                 // Premium Decorative Settings Header
                 item(key = "settings_header") {
                     PremiumSettingsHeader(
@@ -265,6 +306,7 @@ fun SettingsScreen(
                         tokens = tokens
                     )
                 }
+                item(key = "smart_communication") { com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(isBangla = isBn, settings = true) }
 
                 // Category 1: Appearance & Language
                 item(key = "cat_appearance") {

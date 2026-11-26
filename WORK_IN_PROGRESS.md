@@ -1,6 +1,29 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
-## Smart WhatsApp Communication — paused for developer handoff (2026-11-26)
+## Smart WhatsApp Communication — Verified Implementation, QA & Live In-Place Update (2026-11-27)
+
+Completed, hardened, device-tested (`com.pocketdev.advance_erp2.communicationqa`), rebuilt, and updated in-place on `com.pocketdev.advance_erp2`:
+- **Database Schema v15 & Accounting Corrections**:
+  - Verified Room `v14 -> v15` (`MIGRATION_14_15`, `identityHash = f2fae23d8e89b2567becffcf6879f53d`, 62/62 entities matching `15.json`) via KSP and SQLite `DatabaseMigrationVerificationTest`.
+  - Fixed return + payment allocation/void invoice due recalculation (`PaymentAllocationValidation.kt`, `SalesRepositoryImpl.kt`), opening/advance credit handling, and immutable posting-time snapshots (`CommunicationEngine.kt`).
+  - Wired single `CommunicationDialog` host and fixed named `onSuccess`/`onError` callback handling in `SalesScreen.kt` (`#15`, `#16`), plus Contacts/Imports/Control Center/Settings entrypoints while keeping accepted `ContactsHeroHeader`, `PremiumSettingsHeader`, and bottom navigation intact.
+- **Staged Backup/Restore Hardening (`StagedRestore.kt`, `BackupRepositoryImpl.kt`, `SettingsScreen.kt`, `MainAppScaffold.kt`)**:
+  - Cross-package backup staging/validation, corrupt ZIP rejection, rollback recovery on interrupted restore, and restart/outcome dialog integration tested in isolated QA instrumentation (`SmartCommunicationQaAndroidTest`).
+- **Real-Device Bugs Caught & Resolved During QA**:
+  - `DocumentNumberService.kt`: Fixed SQLite connection-pool deadlock by running `runDbQuery` directly when `database.inTransaction()` is active, replaced non-thread-safe `SimpleDateFormat` field with `Calendar`, and wrapped cursor in `.use`.
+  - `CommunicationEngine.kt`: Pre-fetched supplier ledger statements outside `db.withTransaction` and replaced `Long.MAX_VALUE` date bound with safe `allTimeUpper`.
+  - Android ICU regex brace escaping in `DynamicTemplateEngine.kt`, `CommunicationRepositoryImpl.kt`, and `CommunicationDialog.kt`.
+  - `CommunicationDialog.kt`: Added lazy loading of `viewModel.selectModule(state.module)` when switching to the `documents` tab from an `initialRequest != null` flow.
+  - `ContactsScreen.kt` & `SettingsScreen.kt`: Placed `CommunicationLauncher` below the purple gradient `ContactsHeroHeader` / `PremiumSettingsHeader` so top headers stay flush.
+- **Final Verification (All Run After Final Main-Source Edits)**:
+  - `git diff --check`: clean (`0` issues).
+  - JVM Build & Unit Suite (`:app:assembleDebug :app:testDebugUnitTest --max-workers=1`): **BUILD SUCCESSFUL in 7m 57s**, **`87` suites / `482` tests passed (`0` failures, `0` errors, `0` skipped)**, including `DatabaseMigrationVerificationTest`, `SettingsLogicTest`, and `SmartCommunicationUnitTest`.
+  - QA Android Instrumentation (`-PcommunicationQa=true :app:assembleCommunicationqa :app:assembleCommunicationqaAndroidTest --max-workers=1` on `com.pocketdev.advance_erp2.communicationqa`): **`OK (10 tests)` in 22.564s (`0` failures)** — `SmartCommunicationQaAndroidTest` (`4/4`), `LedgerRepositoryRegressionTest` (`5/5`), `SmartCommunicationVisualTest` (`1/1` pure `PixelCopy` window capture across Contacts, Communication Preview/Documents/Settings/Templates/History, and Sales + 4 rendered PDF PNGs visually inspected).
+  - Live In-Place Update (`com.pocketdev.advance_erp2`): `apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk` SHA-256 `70a28cffe1b6c502cd5847dc8c3afed59d931a4ecc975a747fd81d82fbfa8d43` matched live app; `adb install -r` preserved `firstInstallTime=2026-11-22 02:39:36` (`lastUpdateTime=2026-11-27 01:29:40`); read-only launch (`MainActivity`, PID `26968`) produced zero `AndroidRuntime`/`Room`/`SQLite` errors in `com.pocketdev.advance_erp2`.
+- **Environment Scope / Limitations**:
+  - Test device has WhatsApp Business (`com.whatsapp.w4b`) installed and does not have `com.whatsapp` (Messenger) installed; real customers were never messaged, and external WhatsApp caption stripping remains guarded by in-dialog copy/paste fallback instructions. No live production data restore rehearsal was executed against `com.pocketdev.advance_erp2`.
+
+## Smart WhatsApp Communication — previous handoff checkpoint (2026-11-26)
 
 **User requested implementation stop, checkpoint, commit and push so another developer can continue. This is unfinished source, not a verified release.**
 

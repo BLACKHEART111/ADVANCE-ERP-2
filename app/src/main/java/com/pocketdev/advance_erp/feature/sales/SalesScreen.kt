@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material3.AlertDialog
@@ -128,8 +129,18 @@ fun SalesScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var communicationRequest by remember { mutableStateOf<CommunicationRequest?>(null) }
-    communicationRequest?.let { request -> CommunicationDialog(initialRequest = request, onDismiss = { communicationRequest = null }) }
-    uiState.communicationInvoiceId?.let { id -> CommunicationDialog(initialRequest = CommunicationRequest(CommunicationModule.INVOICE, id), success = true, onDismiss = viewModel::dismissCommunicationSuccess) }
+    val activeCommunicationRequest = communicationRequest ?: uiState.communicationSuccessRequest
+    val isSuccessCommunication = communicationRequest == null && uiState.communicationSuccessRequest != null
+    activeCommunicationRequest?.let { request ->
+        CommunicationDialog(
+            initialRequest = request,
+            success = isSuccessCommunication,
+            onDismiss = {
+                communicationRequest = null
+                if (isSuccessCommunication) viewModel.dismissCommunicationSuccess()
+            }
+        )
+    }
 
 
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -305,7 +316,15 @@ fun SalesScreen(
                         isBangla = isBangla,
                         onSearchChange = { searchQuery = it },
                         onStatusFilterChange = { selectedStatusFilter = it },
-                        onSelectInvoice = { inv -> viewModel.selectInvoice(inv) }
+                        onSelectInvoice = { inv -> viewModel.selectInvoice(inv) },
+                        onQuickShare = { inv ->
+                            val mod = when (inv.status) {
+                                "QUOTATION" -> CommunicationModule.QUOTATION
+                                "SALES_ORDER" -> CommunicationModule.SALES_ORDER
+                                else -> CommunicationModule.INVOICE
+                            }
+                            communicationRequest = CommunicationRequest(mod, inv.id)
+                        }
                     )
                     1 -> CustomersTab(
                         customers = uiState.customers,
@@ -342,7 +361,10 @@ fun SalesScreen(
                     )
                     3 -> ReturnsTab(
                         returns = uiState.returns,
-                        isBangla = isBangla
+                        isBangla = isBangla,
+                        onShareReturn = { ret ->
+                            communicationRequest = CommunicationRequest(CommunicationModule.RETURN, ret.id)
+                        }
                     )
                     4 -> ReportsTab(
                         summary = uiState.salesReport,
@@ -407,6 +429,18 @@ fun SalesScreen(
             },
             onCancelOrDeleteInvoice = { reason ->
                 viewModel.cancelOrDeleteInvoice(uiState.selectedInvoice!!.id, reason)
+            },
+            challans = uiState.selectedInvoiceChallans,
+            onShareChallan = { deliveryNo ->
+                val inv = uiState.selectedInvoice
+                if (inv != null) {
+                    communicationRequest = CommunicationRequest(CommunicationModule.DELIVERY, "${inv.id}|$deliveryNo")
+                }
+            },
+            onSaveCommunicationMetadata = { validUntil, scheduledInfo ->
+                uiState.selectedInvoice?.let { inv ->
+                    viewModel.updateInvoiceCommunicationMetadata(inv.id, validUntil, scheduledInfo)
+                }
             }
         )
     }
@@ -439,9 +473,10 @@ fun SalesScreen(
                 }
             },
             onConfirmSale = { draft ->
-                viewModel.createAndConfirmInvoice(draft) {
-                    showCreateInvoiceDialog = false
-                }
+                viewModel.createAndConfirmInvoice(
+                    draft = draft,
+                    onSuccess = { showCreateInvoiceDialog = false }
+                )
             }
         )
     }
@@ -505,6 +540,10 @@ fun SalesScreen(
         DueCollectionStatementShareDialog(
             data = uiState.activeDueCollectionData!!,
             initialIsBangla = isBangla,
+            onOpenSmartWhatsApp = { paymentId ->
+                viewModel.dismissDueCollectionDialog()
+                communicationRequest = CommunicationRequest(CommunicationModule.PAYMENT, paymentId)
+            },
             onDismiss = {
                 viewModel.dismissDueCollectionDialog()
             }
@@ -576,7 +615,8 @@ private fun InvoicesTab(
     isBangla: Boolean,
     onSearchChange: (String) -> Unit,
     onStatusFilterChange: (String) -> Unit,
-    onSelectInvoice: (SalesInvoice) -> Unit
+    onSelectInvoice: (SalesInvoice) -> Unit,
+    onQuickShare: (SalesInvoice) -> Unit = {}
 ) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
 
@@ -692,12 +732,27 @@ private fun InvoicesTab(
                             "DRAFT" -> Pair(Color.Gray, if (isBangla) "খসড়া" else "Draft")
                             else -> Pair(Color.Gray, inv.status)
                         }
-                        Box(
-                            modifier = Modifier
-                                .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(statusLabel, color = badgeColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(statusLabel, color = badgeColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (inv.status != "CANCELLED" && (inv.isPosted || inv.status in setOf("QUOTATION", "SALES_ORDER"))) {
+                                IconButton(
+                                    onClick = { onQuickShare(inv) },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Share,
+                                        contentDescription = if (isBangla) "শেয়ার" else "Share",
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -1597,7 +1652,8 @@ private fun PaymentsTab(
 @Composable
 private fun ReturnsTab(
     returns: List<SalesReturn>,
-    isBangla: Boolean
+    isBangla: Boolean,
+    onShareReturn: (SalesReturn) -> Unit = {}
 ) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
 
@@ -1625,21 +1681,36 @@ private fun ReturnsTab(
                 shadowElevation = 1.dp
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    CommunicationLauncher(CommunicationModule.RETURN, ret.id, isBangla)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(ret.returnNumber, fontWeight = FontWeight.Bold, color = TextPrimary)
                             Text("Inv #${ret.invoiceNumber} • ${ret.customerName}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                         }
-                        Text(
-                            text = "৳" + Formatters.formatMinorUnit(ret.totalReturnAmountMinor),
-                            fontWeight = FontWeight.Bold,
-                            color = StatusError,
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "৳" + Formatters.formatMinorUnit(ret.totalReturnAmountMinor),
+                                fontWeight = FontWeight.Bold,
+                                color = StatusError,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            if (ret.isPosted) {
+                                IconButton(
+                                    onClick = { onShareReturn(ret) },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Share,
+                                        contentDescription = if (isBangla) "রিটার্ন শেয়ার" else "Share Return",
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(

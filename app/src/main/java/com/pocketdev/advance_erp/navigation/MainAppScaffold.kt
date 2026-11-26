@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -88,6 +89,12 @@ fun MainAppScaffold(
         ?: if (currentLanguage == AppLanguage.BANGLA) "ব্যবসায়ী প্রোফাইল" else "Business Owner"
 
     var showSyncLogoutDialog by remember { mutableStateOf(false) }
+    var restoreOutcomeDialog by remember {
+        mutableStateOf<com.pocketdev.advance_erp.core.database.StagedRestoreOutcome?>(null)
+    }
+    LaunchedEffect(Unit) {
+        restoreOutcomeDialog = com.pocketdev.advance_erp.core.database.StagedRestore.consumeRestoreResult(context)
+    }
 
     val topBarTitle = when (currentRoute) {
         Destinations.DASHBOARD -> if (currentLanguage == AppLanguage.BANGLA) "ড্যাশবোর্ড" else "Dashboard"
@@ -277,6 +284,30 @@ fun MainAppScaffold(
         BackHandler {
             coroutineScope.launch { drawerState.close() }
         }
+    }
+
+    restoreOutcomeDialog?.let { outcome ->
+        val isBn = currentLanguage == AppLanguage.BANGLA
+        AlertDialog(
+            onDismissRequest = { restoreOutcomeDialog = null },
+            title = {
+                Text(
+                    text = if (outcome.success) {
+                        if (isBn) "ব্যাকআপ রিস্টোর সম্পন্ন" else "Backup Restore Complete"
+                    } else {
+                        if (isBn) "রিস্টোর সতর্কবার্তা" else "Restore Notice"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = { Text(outcome.message) },
+            confirmButton = {
+                TextButton(onClick = { restoreOutcomeDialog = null }) {
+                    Text(if (isBn) "ঠিক আছে" else "OK")
+                }
+            }
+        )
     }
 
     if (showSyncLogoutDialog) {

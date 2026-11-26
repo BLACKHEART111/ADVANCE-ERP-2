@@ -3,10 +3,7 @@ package com.pocketdev.advance_erp.core.util
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -17,7 +14,6 @@ class DocumentNumberService @Inject constructor(
     private val database: AdvanceErpDatabase
 ) {
     private val counters = ConcurrentHashMap<String, AtomicLong>()
-    private val yearFormat = SimpleDateFormat("yyyy", Locale.US)
 
     suspend fun getNextInvoiceNumber(): String = getNextDocumentNumber("INV", "sales_invoices", "invoiceNumber")
     suspend fun getNextPurchaseNumber(): String = getNextDocumentNumber("PUR", "purchase_orders", "poNumber")
@@ -32,12 +28,15 @@ class DocumentNumberService @Inject constructor(
     suspend fun getNextQuotationNumber(): String = getNextDocumentNumber("QUO", "sales_invoices", "invoiceNumber")
     suspend fun getNextSalesOrderNumber(): String = getNextDocumentNumber("SO", "sales_invoices", "invoiceNumber")
 
+    private suspend inline fun <T> runDbQuery(crossinline block: () -> T): T =
+        if (database.inTransaction()) block() else withContext(Dispatchers.IO) { block() }
+
     private suspend fun getNextDocumentNumber(
         prefix: String,
         tableName: String,
         columnName: String
-    ): String = withContext(Dispatchers.IO) {
-        val currentYear = yearFormat.format(Date())
+    ): String = runDbQuery {
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR).toString()
         val key = "$prefix-$currentYear"
 
         val counter = counters.computeIfAbsent(key) {
@@ -53,8 +52,8 @@ class DocumentNumberService @Inject constructor(
         prefix: String,
         tableName: String,
         columnName: String
-    ): String = withContext(Dispatchers.IO) {
-        val currentYear = yearFormat.format(Date())
+    ): String = runDbQuery {
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR).toString()
         val key = "$prefix-$currentYear"
         val currentSeq = counters[key]?.get() ?: queryMaxSequenceFromDb(prefix, currentYear, tableName, columnName)
         val nextSeq = currentSeq + 1
@@ -69,17 +68,22 @@ class DocumentNumberService @Inject constructor(
     ): Long {
         return try {
             val query = "SELECT $columnName FROM $tableName WHERE $columnName LIKE '$prefix-$year-%'"
-            val cursor = database.openHelper.readableDatabase.query(query)
+            val dbHandle = if (database.inTransaction()) {
+                database.openHelper.writableDatabase
+            } else {
+                database.openHelper.readableDatabase
+            }
             var maxSeq = 0L
-            while (cursor.moveToNext()) {
-                val str = cursor.getString(0) ?: continue
-                val parts = str.split("-")
-                if (parts.size >= 3) {
-                    val seq = parts.last().toLongOrNull() ?: 0L
-                    if (seq > maxSeq) maxSeq = seq
+            dbHandle.query(query).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val str = cursor.getString(0) ?: continue
+                    val parts = str.split("-")
+                    if (parts.size >= 3) {
+                        val seq = parts.last().toLongOrNull() ?: 0L
+                        if (seq > maxSeq) maxSeq = seq
+                    }
                 }
             }
-            cursor.close()
             maxSeq
         } catch (e: Exception) {
             0L

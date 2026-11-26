@@ -24,7 +24,8 @@ data class DueCollectionStatementData(
     val isAdvancePayment: Boolean,
     val advanceAmountMinor: Long = 0L,
     val referenceNote: String? = null,
-    val statementPdfFile: File? = null
+    val statementPdfFile: File? = null,
+    val paymentId: String? = null
 )
 
 object DueCollectionCaptionHelper {

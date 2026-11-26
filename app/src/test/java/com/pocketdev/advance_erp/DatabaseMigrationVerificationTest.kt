@@ -72,6 +72,10 @@ class DatabaseMigrationVerificationTest {
         val m1314 = DatabaseMigrations.MIGRATION_13_14
         assertEquals(13, m1314.startVersion)
         assertEquals(14, m1314.endVersion)
+
+        val m1415 = DatabaseMigrations.MIGRATION_14_15
+        assertEquals(14, m1415.startVersion)
+        assertEquals(15, m1415.endVersion)
     }
 
     @Test
@@ -139,6 +143,7 @@ class DatabaseMigrationVerificationTest {
         DatabaseMigrations.MIGRATION_11_12.migrate(mockDb)
         DatabaseMigrations.MIGRATION_12_13.migrate(mockDb)
         DatabaseMigrations.MIGRATION_13_14.migrate(mockDb)
+        DatabaseMigrations.MIGRATION_14_15.migrate(mockDb)
 
         assertTrue("Expected multiple SQL statements to be executed across migrations", executedSqlList.size > 30)
         assertTrue(
@@ -148,6 +153,14 @@ class DatabaseMigrationVerificationTest {
         assertTrue(
             "MIGRATION_13_14 must create sale_layer_allocations table",
             executedSqlList.any { it.contains("CREATE TABLE IF NOT EXISTS `sale_layer_allocations`") }
+        )
+        assertTrue(
+            "MIGRATION_14_15 must create communication_settings table",
+            executedSqlList.any { it.contains("CREATE TABLE IF NOT EXISTS communication_settings") }
+        )
+        assertTrue(
+            "MIGRATION_14_15 must add validUntilDate column to sales_invoices",
+            executedSqlList.any { it.contains("ALTER TABLE sales_invoices ADD COLUMN validUntilDate INTEGER") }
         )
     }
 
@@ -269,5 +282,98 @@ class DatabaseMigrationVerificationTest {
         val exitCode = process.waitFor()
         assertEquals("SQLite v13->v14 migration verification failed:\n$output", 0, exitCode)
         assertEquals("MIGRATION_13_14_VERIFIED_EXACT", output.trim())
+    }
+
+    @Test
+    fun testRealSqliteMigration14To15MatchesRoomV15SchemaAndPreservesExistingData() {
+        val schema14 = File("schemas/com.pocketdev.advance_erp.core.database.AdvanceErpDatabase/14.json")
+        val schema15 = File("schemas/com.pocketdev.advance_erp.core.database.AdvanceErpDatabase/15.json")
+        assertTrue("Schema 14.json must exist", schema14.exists())
+        assertTrue("Schema 15.json must exist", schema15.exists())
+
+        val migrationSql = mutableListOf<String>()
+        val recordingDb = Proxy.newProxyInstance(
+            SupportSQLiteDatabase::class.java.classLoader,
+            arrayOf(SupportSQLiteDatabase::class.java)
+        ) { _, method, args ->
+            if (method.name == "execSQL" && args != null && args.isNotEmpty()) {
+                migrationSql.add(args[0] as String)
+            }
+            null
+        } as SupportSQLiteDatabase
+        DatabaseMigrations.MIGRATION_14_15.migrate(recordingDb)
+        assertTrue("MIGRATION_14_15 must emit SQL statements", migrationSql.size >= 8)
+
+        val sqlJson = migrationSql.joinToString(separator = ",\n") { s ->
+            "\"" + s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "") + "\""
+        }
+
+        val pyScript = """
+            import json, sqlite3, sys
+
+            s14 = json.load(open(r"${schema14.absolutePath}"))['database']
+            s15 = json.load(open(r"${schema15.absolutePath}"))['database']
+            mig_sqls = json.loads(sys.stdin.read())
+
+            conn = sqlite3.connect(':memory:')
+            cur = conn.cursor()
+            cur.execute('PRAGMA foreign_keys = ON')
+
+            for e in s14['entities']:
+                cur.execute(e['createSql'].replace('${'$'}{TABLE_NAME}', e['tableName']))
+                for idx in e.get('indices', []):
+                    cur.execute(idx['createSql'].replace('${'$'}{TABLE_NAME}', e['tableName']))
+
+            cur.execute("INSERT INTO warehouses VALUES ('wh-1','Main','WH-MAIN','',1,1)")
+            cur.execute("INSERT INTO customers VALUES ('cust-1','C-1','Rahim','01700','','',0,0,NULL,1,1)")
+            cur.execute("INSERT INTO sales_invoices VALUES ('inv-1','INV-1','cust-1','Rahim','01700','wh-1','Main','POSTED',15000,0,0,15000,0,15000,9000,1000,NULL,'legacy note',1,1000,NULL,NULL,1000,1000)")
+
+            for s in mig_sqls:
+                cur.execute(s)
+
+            cur.execute('PRAGMA foreign_key_check')
+            assert cur.fetchall() == [], 'FK check failed after 14->15 migration'
+
+            inv_row = cur.execute("SELECT invoiceNumber, totalAmountMinor, validUntilDate, scheduledDeliveryInfo FROM sales_invoices WHERE id='inv-1'").fetchone()
+            assert inv_row == ('INV-1', 15000, None, None), f"Unexpected invoice row: {inv_row}"
+
+            assert len(s15['entities']) == 62, f"Expected 62 entities in 15.json, got {len(s15['entities'])}"
+            for e in s15['entities']:
+                t = e['tableName']
+                pragma_cols = {c[1]: (c[2].upper(), int(c[3]), int(c[5])) for c in cur.execute(f'PRAGMA table_info(`{t}`)').fetchall()}
+                expected_cols = {f['columnName']: (f['affinity'].upper(), 1 if f['notNull'] else 0) for f in e['fields']}
+                assert set(pragma_cols.keys()) == set(expected_cols.keys()), f"Column mismatch on {t}: {set(pragma_cols.keys())} vs {set(expected_cols.keys())}"
+                for col_name, (aff, nn) in expected_cols.items():
+                    actual_aff, actual_nn, _ = pragma_cols[col_name]
+                    assert actual_aff == aff, f"{t}.{col_name} affinity {actual_aff} != {aff}"
+                    assert actual_nn == nn, f"{t}.{col_name} notNull {actual_nn} != {nn}"
+
+                actual_pk = [c[1] for c in sorted([r for r in cur.execute(f'PRAGMA table_info(`{t}`)').fetchall() if r[5] > 0], key=lambda x: x[5])]
+                assert actual_pk == e['primaryKey']['columnNames'], f"PK mismatch on {t}: {actual_pk} != {e['primaryKey']['columnNames']}"
+
+                actual_idxs = {r[1]: (int(r[2]), [ic[2] for ic in cur.execute(f'PRAGMA index_info(`{r[1]}`)').fetchall()])
+                               for r in cur.execute(f'PRAGMA index_list(`{t}`)').fetchall() if not r[1].startswith('sqlite_autoindex')}
+                for idx in e.get('indices', []):
+                    iname = idx['name'].replace('${'$'}{TABLE_NAME}', t)
+                    assert iname in actual_idxs, f"Missing index {iname} on {t}. Found: {list(actual_idxs.keys())}"
+                    assert actual_idxs[iname][0] == (1 if idx['unique'] else 0), f"Unique flag mismatch on {iname}"
+                    assert actual_idxs[iname][1] == idx['columnNames'], f"Index cols mismatch on {iname}"
+
+            print('MIGRATION_14_15_VERIFIED_EXACT')
+        """.trimIndent()
+
+        val process = ProcessBuilder("python3", "-c", pyScript)
+            .redirectErrorStream(true)
+            .start()
+        process.outputStream.bufferedWriter().use { w ->
+            w.write("[\n$sqlJson\n]")
+        }
+        val output = process.inputStream.bufferedReader().use(BufferedReader::readText)
+        val exitCode = process.waitFor()
+        assertEquals("SQLite v14->v15 migration verification failed:\n$output", 0, exitCode)
+        assertEquals("MIGRATION_14_15_VERIFIED_EXACT", output.trim())
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
@@ -79,6 +80,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.pocketdev.advance_erp.core.communication.CommunicationModule
+import com.pocketdev.advance_erp.core.communication.CommunicationRequest
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
@@ -166,6 +169,7 @@ fun PoShareDialog(
     variantsMap: Map<String, ProductVariant> = emptyMap(),
     cartons: List<ShipmentCarton> = emptyList(),
     onResolveItemImages: suspend (List<PurchaseOrderItem>) -> Map<String, String> = { emptyMap() },
+    onOpenSmartWhatsApp: ((CommunicationRequest) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -883,6 +887,35 @@ fun PoShareDialog(
                         Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(if (isBangla) "সেভ PDF+XLSX" else "Save PDF+XLSX", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (selectedPerspective != PoExportPerspective.COMPANY_INTERNAL_COPY &&
+                    order.status != "CANCELLED" &&
+                    onOpenSmartWhatsApp != null
+                ) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        enabled = canExportSupplier,
+                        onClick = {
+                            val mod = if (selectedPerspective == PoExportPerspective.FREIGHT_FORWARDER_PACKING_LIST) {
+                                CommunicationModule.PACKING
+                            } else {
+                                CommunicationModule.PURCHASE_ORDER
+                            }
+                            onOpenSmartWhatsApp(CommunicationRequest(mod, order.id))
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF128C7E)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("po_smart_whatsapp_btn")
+                    ) {
+                        Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isBangla) "স্মার্ট WhatsApp শেয়ার" else "Smart WhatsApp Share",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 

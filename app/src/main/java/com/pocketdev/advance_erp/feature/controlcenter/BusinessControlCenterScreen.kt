@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -126,6 +127,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pocketdev.advance_erp.core.communication.CommunicationModule
+import com.pocketdev.advance_erp.core.communication.CommunicationRequest
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import com.pocketdev.advance_erp.core.designsystem.ERPEmptyState
@@ -147,10 +150,12 @@ import com.pocketdev.advance_erp.core.security.SecurityManager
 import com.pocketdev.advance_erp.core.security.rememberBiometricCostVisibility
 import com.pocketdev.advance_erp.core.util.CustomReportPdfConfig
 import com.pocketdev.advance_erp.core.util.Formatters
+import com.pocketdev.advance_erp.domain.model.DateRangeOption
 import com.pocketdev.advance_erp.domain.model.FinancialMetricFilter
 import com.pocketdev.advance_erp.domain.model.ReportCategory
 import com.pocketdev.advance_erp.domain.model.SortOption
 import com.pocketdev.advance_erp.domain.model.UnifiedTransactionItem
+import com.pocketdev.advance_erp.feature.communication.CommunicationDialog
 import com.pocketdev.advance_erp.feature.controlcenter.components.ControlCenterFilterDrawer
 import com.pocketdev.advance_erp.feature.controlcenter.components.ControlCenterSummaryCards
 import com.pocketdev.advance_erp.feature.controlcenter.components.ControlCenterTransactionDetailDialog
@@ -259,6 +264,14 @@ fun BusinessControlCenterScreen(
     var showExpenseDialog by rememberSaveable { mutableStateOf(false) }
     var showJournalDialog by rememberSaveable { mutableStateOf(false) }
     var dueTabFilter by rememberSaveable { mutableStateOf(DueTabFilter.ALL) }
+    var communicationRequest by remember { mutableStateOf<CommunicationRequest?>(null) }
+
+    communicationRequest?.let { req ->
+        CommunicationDialog(
+            initialRequest = req,
+            onDismiss = { communicationRequest = null }
+        )
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -1658,6 +1671,34 @@ fun BusinessControlCenterScreen(
                             }
                         )
                     }
+                }
+
+                val activeCustomerId = filterState.selectedCustomerId
+                val activeSupplierId = filterState.selectedSupplierId?.takeIf { SecurityManager.canViewCost(userRole) }
+                if (activeCustomerId != null || activeSupplierId != null) {
+                    val rangeLabel = if (isBn) filterState.dateRangeOption.titleBn else filterState.dateRangeOption.titleEn
+                    val (fromMillis, toMillis) = if (filterState.dateRangeOption == DateRangeOption.ALL_TIME) {
+                        null to null
+                    } else {
+                        filterState.dateRangeOption.getBoundsMillis(
+                            filterState.customStartDate,
+                            filterState.customEndDate
+                        )
+                    }
+                    ExportActionItem(
+                        title = if (isBn) "স্মার্ট WhatsApp বিবরণী (Smart WhatsApp Statement)" else "Smart WhatsApp Statement",
+                        subtitle = if (isBn) "ফিল্টার ($rangeLabel) অনুযায়ী প্রিভিউ ও শেয়ার" else "Preview & share for active range ($rangeLabel)",
+                        icon = Icons.AutoMirrored.Outlined.Send,
+                        iconColor = Color(0xFF128C7E),
+                        onClick = {
+                            showExportSheet = false
+                            communicationRequest = if (activeCustomerId != null) {
+                                CommunicationRequest(CommunicationModule.STATEMENT, activeCustomerId, from = fromMillis, to = toMillis)
+                            } else {
+                                CommunicationRequest(CommunicationModule.SUPPLIER_STATEMENT, activeSupplierId!!, from = fromMillis, to = toMillis)
+                            }
+                        }
+                    )
                 }
 
                 ExportActionItem(

@@ -906,6 +906,7 @@ fun CustomerContactCard(
     onRecordPaymentClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    onShareStatementClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isBn = language == AppLanguage.BANGLA
@@ -1265,6 +1266,7 @@ fun SupplierContactCard(
     onDialPhone: (String) -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    onShareStatementClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isBn = language == AppLanguage.BANGLA
@@ -1441,6 +1443,13 @@ fun SupplierContactCard(
                                 leadingIcon = { Icon(Icons.AutoMirrored.Outlined.ReceiptLong, null) },
                                 onClick = { menuExpanded = false; onCardClick() }
                             )
+                            if (onShareStatementClick != null) {
+                                DropdownMenuItem(
+                                    text = { Text(if (isBn) "সরবরাহকারী বিবরণী (WhatsApp)" else "Supplier Statement (WhatsApp)") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Send, null, tint = Color(0xFF0A8F4D)) },
+                                    onClick = { menuExpanded = false; onShareStatementClick() }
+                                )
+                            }
                             if (cleanPhone.isNotBlank() && !cleanPhone.equals("N/A", ignoreCase = true)) {
                                 DropdownMenuItem(
                                     text = { Text(if (isBn) "কল করুন ($cleanPhone)" else "Call ($cleanPhone)") },

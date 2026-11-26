@@ -47,7 +47,9 @@ data class SalesInvoiceDraft(
     val paymentMethod: String = "CASH",
     val paymentAccountId: String = "coa-1010",
     val items: List<InvoiceItemDraft>,
-    val newCustomerDraft: NewCustomerDraft? = null
+    val newCustomerDraft: NewCustomerDraft? = null,
+    val validUntilDate: Long? = null,
+    val scheduledDeliveryInfo: String? = null
 )
 
 data class DeliveryDispatchDraft(
@@ -235,6 +237,11 @@ interface SalesRepository {
     suspend fun createQuotation(draft: SalesInvoiceDraft): String
     suspend fun convertQuotationToSalesOrder(quotationId: String): Result<String>
     suspend fun convertSalesOrderToInvoice(salesOrderId: String): Result<String>
+    suspend fun updateDocumentCommunicationMetadata(
+        invoiceId: String,
+        validUntilDate: Long?,
+        scheduledDeliveryInfo: String?
+    )
 
     // Deliveries & Partial Dispatch
     suspend fun dispatchDelivery(draft: DeliveryDispatchDraft): Result<String>

@@ -11,6 +11,10 @@ object DatabaseMigrations {
             db.execSQL("CREATE TABLE IF NOT EXISTS communication_party_preferences (partyKey TEXT NOT NULL PRIMARY KEY, language TEXT NOT NULL)")
             db.execSQL("CREATE TABLE IF NOT EXISTS communication_snapshots (module TEXT NOT NULL, documentId TEXT NOT NULL, number TEXT NOT NULL, partyId TEXT NOT NULL, createdAt INTEGER NOT NULL, originalAmountMinor INTEGER NOT NULL, previousBalanceMinor INTEGER NOT NULL, allocatedPaymentMinor INTEGER NOT NULL, invoiceDueMinor INTEGER NOT NULL, closingBalanceMinor INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(module, documentId))")
             db.execSQL("CREATE TABLE IF NOT EXISTS communication_history (id TEXT NOT NULL PRIMARY KEY, module TEXT NOT NULL, documentId TEXT NOT NULL, documentNumber TEXT NOT NULL, partyId TEXT NOT NULL, partyName TEXT NOT NULL, phone TEXT NOT NULL, createdAt INTEGER NOT NULL, message TEXT NOT NULL, attachmentReference TEXT, language TEXT NOT NULL, application TEXT NOT NULL, event TEXT NOT NULL, rangeFrom INTEGER, rangeTo INTEGER)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_communication_history_createdAt ON communication_history (createdAt)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_communication_history_module ON communication_history (module)")
+            db.execSQL("ALTER TABLE sales_invoices ADD COLUMN validUntilDate INTEGER")
+            db.execSQL("ALTER TABLE sales_invoices ADD COLUMN scheduledDeliveryInfo TEXT")
         }
     }
 

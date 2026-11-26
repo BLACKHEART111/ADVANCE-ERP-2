@@ -9,6 +9,8 @@ android {
     namespace = "com.pocketdev.advance_erp"
     compileSdk = 35
 
+    val isCommunicationQa = providers.gradleProperty("communicationQa").orNull == "true"
+
     defaultConfig {
         applicationId = "com.pocketdev.advance_erp2"
         minSdk = 28
@@ -17,7 +19,11 @@ android {
         versionName = "1.0"
 
         // Keep instrumentation installs isolated from stale test APKs on the development phone.
-        testApplicationId = "com.pocketdev.advance_erp2.premiumpoqa.test"
+        testApplicationId = if (isCommunicationQa) {
+            "com.pocketdev.advance_erp2.communicationqa.test"
+        } else {
+            "com.pocketdev.advance_erp2.premiumpoqa.test"
+        }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -31,7 +37,7 @@ android {
             matchingFallbacks += listOf("debug")
         }
     }
-    testBuildType = providers.gradleProperty("communicationQa").orNull?.let { "communicationqa" } ?: "debug"
+    testBuildType = if (isCommunicationQa) "communicationqa" else "debug"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -121,4 +127,6 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    "communicationqaImplementation"("androidx.compose.ui:ui-tooling")
+    "communicationqaImplementation"("androidx.compose.ui:ui-test-manifest")
 }

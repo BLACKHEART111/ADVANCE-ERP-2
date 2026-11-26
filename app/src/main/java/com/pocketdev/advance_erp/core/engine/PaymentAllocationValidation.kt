@@ -4,23 +4,59 @@ import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
 
 object PaymentAllocationValidation {
+    data class InvoiceSettlementState(
+        val paidAmountMinor: Long,
+        val creditReturnMinor: Long,
+        val dueAmountMinor: Long,
+        val status: String
+    )
+
+    fun computeInvoiceSettlement(
+        totalAmountMinor: Long,
+        activeAllocatedMinor: Long,
+        creditReturnMinor: Long,
+        isPosted: Boolean,
+        currentStatus: String
+    ): InvoiceSettlementState {
+        if (currentStatus == "CANCELLED") {
+            return InvoiceSettlementState(0L, creditReturnMinor.coerceAtLeast(0L), 0L, "CANCELLED")
+        }
+        val paid = activeAllocatedMinor.coerceAtLeast(0L)
+        val credRet = creditReturnMinor.coerceAtLeast(0L)
+        val due = (totalAmountMinor - paid - credRet).coerceAtLeast(0L)
+        val status = when {
+            !isPosted -> currentStatus
+            due == 0L && (totalAmountMinor > 0L || paid > 0L || credRet > 0L) -> "PAID"
+            paid > 0L -> "PARTIALLY_PAID"
+            else -> if (currentStatus in setOf("DELIVERED", "PARTIALLY_DELIVERED", "CONFIRMED")) currentStatus else "POSTED"
+        }
+        return InvoiceSettlementState(paid, credRet, due, status)
+    }
+
     fun outstandingAfterPayment(masterDue: Long, transactionNet: Long, payment: Long): Long {
         require(payment > 0) { "Payment amount must be positive" }
         val signedBefore = if (masterDue != 0L) masterDue else transactionNet
         return Math.subtractExact(signedBefore, payment).coerceAtLeast(0L)
     }
 
-    /** Preserves genuine opening balance while isolating current ledger transaction net. */
+    /** Preserves genuine opening balance (positive due or explicit negative credit) while isolating ledger net. */
     fun computePreservedOpeningBalance(masterDueBefore: Long, transactionNetBefore: Long): Long =
-        if (masterDueBefore > 0L) (masterDueBefore - transactionNetBefore).coerceAtLeast(0L) else 0L
+        when {
+            masterDueBefore > 0L -> (masterDueBefore - transactionNetBefore).coerceAtLeast(0L)
+            masterDueBefore < 0L -> masterDueBefore - transactionNetBefore
+            else -> 0L
+        }
 
     /** Recomputes customer master due after posting, returning, voiding, or cancelling. */
     fun outstandingAfterTransaction(
         masterDueBefore: Long,
         transactionNetBefore: Long,
         transactionNetAfter: Long
-    ): Long = (computePreservedOpeningBalance(masterDueBefore, transactionNetBefore) + transactionNetAfter)
-        .coerceAtLeast(0L)
+    ): Long {
+        val preservedOpening = computePreservedOpeningBalance(masterDueBefore, transactionNetBefore)
+        val raw = Math.addExact(preservedOpening, transactionNetAfter)
+        return if (masterDueBefore < 0L && raw < 0L) raw else raw.coerceAtLeast(0L)
+    }
 
     /**
      * Splits a customer receipt into Accounts Receivable (1040) settlement vs Customer Advance (2030).

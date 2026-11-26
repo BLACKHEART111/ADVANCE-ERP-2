@@ -71,6 +71,7 @@ import com.pocketdev.advance_erp.core.util.InvoicePdfGenerator
 import com.pocketdev.advance_erp.data.entity.PaymentAllocation
 import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.data.entity.SalesInvoiceItem
+import com.pocketdev.advance_erp.domain.repository.DeliveryChallanInfo
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -91,12 +92,23 @@ fun InvoiceDetailDialog(
     onConvertToSalesOrder: () -> Unit = {},
     onConvertToInvoice: () -> Unit = {},
     onPrintThermalReceipt: (Context) -> Unit = {},
-    onCancelOrDeleteInvoice: (reason: String) -> Unit = {}
+    onCancelOrDeleteInvoice: (reason: String) -> Unit = {},
+    challans: List<DeliveryChallanInfo> = emptyList(),
+    onShareChallan: (String) -> Unit = {},
+    onSaveCommunicationMetadata: (validUntilDate: Long?, scheduledDeliveryInfo: String?) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US)
+    val isoDateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false } }
     var showCancelConfirmDialog by rememberSaveable { mutableStateOf(false) }
     var cancelReason by rememberSaveable { mutableStateOf("") }
+    var validUntilText by remember(invoice.id, invoice.validUntilDate) {
+        mutableStateOf(invoice.validUntilDate?.let { isoDateFormat.format(Date(it)) }.orEmpty())
+    }
+    var scheduledDeliveryText by remember(invoice.id, invoice.scheduledDeliveryInfo) {
+        mutableStateOf(invoice.scheduledDeliveryInfo.orEmpty())
+    }
+    var metadataError by remember(invoice.id) { mutableStateOf<String?>(null) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -412,6 +424,141 @@ fun InvoiceDetailDialog(
                                 ) {
                                     Text("Payment #${alloc.paymentId.take(8)}", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
                                     Text("৳" + Formatters.formatMinorUnit(alloc.amountMinor), fontWeight = FontWeight.Bold, color = StatusSuccess)
+                                }
+                            }
+                        }
+                    }
+
+                    // Quotation Validity / Sales Order Delivery Info Editor
+                    if (invoice.status == "QUOTATION" || invoice.status == "SALES_ORDER") {
+                        item {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (invoice.status == "QUOTATION") {
+                                            if (isBangla) "কোটেশনের মেয়াদ (Valid Until)" else "Quotation Validity Date"
+                                        } else {
+                                            if (isBangla) "নির্ধারিত ডেলিভারি তথ্য" else "Scheduled Delivery Details"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                    if (invoice.status == "QUOTATION") {
+                                        OutlinedTextField(
+                                            value = validUntilText,
+                                            onValueChange = {
+                                                validUntilText = it
+                                                metadataError = null
+                                            },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            label = { Text(if (isBangla) "তারিখ (YYYY-MM-DD)" else "Valid until (YYYY-MM-DD)") },
+                                            placeholder = { Text("2026-12-31") }
+                                        )
+                                    } else {
+                                        OutlinedTextField(
+                                            value = scheduledDeliveryText,
+                                            onValueChange = {
+                                                scheduledDeliveryText = it
+                                                metadataError = null
+                                            },
+                                            maxLines = 2,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            label = { Text(if (isBangla) "ডেলিভারি সময়/নোট" else "Scheduled date & dispatch notes") },
+                                            placeholder = { Text(if (isBangla) "যেমন: ৩০ নভে ২০২৬, কুরিয়ার" else "e.g. 30 Nov 2026 · Sundarban") }
+                                        )
+                                    }
+                                    metadataError?.let { err ->
+                                        Text(err, style = MaterialTheme.typography.labelSmall, color = StatusError)
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                if (invoice.status == "QUOTATION") {
+                                                    val trimmed = validUntilText.trim()
+                                                    if (trimmed.isEmpty()) {
+                                                        onSaveCommunicationMetadata(null, invoice.scheduledDeliveryInfo)
+                                                    } else {
+                                                        val parsed = runCatching { isoDateFormat.parse(trimmed)?.time }.getOrNull()
+                                                        if (parsed == null) {
+                                                            metadataError = if (isBangla) "সঠিক YYYY-MM-DD তারিখ দিন" else "Enter valid YYYY-MM-DD date"
+                                                        } else {
+                                                            onSaveCommunicationMetadata(parsed, invoice.scheduledDeliveryInfo)
+                                                        }
+                                                    }
+                                                } else {
+                                                    onSaveCommunicationMetadata(
+                                                        invoice.validUntilDate,
+                                                        scheduledDeliveryText.trim().ifBlank { null }
+                                                    )
+                                                }
+                                            }
+                                        ) {
+                                            Text(if (isBangla) "তথ্য সংরক্ষণ" else "Save Info", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Delivery Challans
+                    if (challans.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = if (isBangla) "ডেলিভারি চালানসমূহ (${challans.size})" else "Delivery Challans (${challans.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                        itemsIndexed(challans) { _, ch ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = ch.deliveryNumber,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
+                                        )
+                                        val totalQty = ch.items.sumOf { it.dispatchedQuantity }
+                                        Text(
+                                            text = "${dateFormat.format(Date(ch.deliveryDate))} · Qty: $totalQty",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                    IconButton(onClick = { onShareChallan(ch.deliveryNumber) }) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Share,
+                                            contentDescription = if (isBangla) "চালান শেয়ার" else "Share challan",
+                                            tint = PrimaryPurple
+                                        )
+                                    }
                                 }
                             }
                         }

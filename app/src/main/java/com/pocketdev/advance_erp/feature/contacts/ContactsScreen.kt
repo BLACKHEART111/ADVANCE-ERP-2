@@ -81,6 +81,8 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.pocketdev.advance_erp.R
+import com.pocketdev.advance_erp.core.communication.CommunicationModule
+import com.pocketdev.advance_erp.core.communication.CommunicationRequest
 import com.pocketdev.advance_erp.core.designsystem.ERPActionButton
 import com.pocketdev.advance_erp.core.designsystem.ERPButtonVariant
 import com.pocketdev.advance_erp.core.designsystem.ERPDivider
@@ -103,6 +105,7 @@ import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.SuggestionType
 import com.pocketdev.advance_erp.data.entity.Supplier
+import com.pocketdev.advance_erp.feature.communication.CommunicationDialog
 import com.pocketdev.advance_erp.feature.sales.CustomerLedgerDialog
 import com.pocketdev.advance_erp.feature.sales.DueReminderDialog
 import com.pocketdev.advance_erp.feature.sales.RecordCustomerPaymentDialog
@@ -132,6 +135,14 @@ fun ContactsScreen(
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showDueAlertsSheet by remember { mutableStateOf(false) }
+    var communicationRequest by remember { mutableStateOf<CommunicationRequest?>(null) }
+
+    communicationRequest?.let { req ->
+        CommunicationDialog(
+            initialRequest = req,
+            onDismiss = { communicationRequest = null }
+        )
+    }
 
     val customerPhotoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -235,7 +246,6 @@ fun ContactsScreen(
                 .background(Brush.verticalGradient(listOf(pageBgTop, pageBgBottom)))
                 .padding(padding)
         ) {
-            com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(module = com.pocketdev.advance_erp.core.communication.CommunicationModule.LEDGER, isBangla = state.language == com.pocketdev.advance_erp.core.model.AppLanguage.BANGLA)
             // Integrated Purple Gradient Hero Header with curved light overlap cap
             Box(modifier = Modifier.fillMaxWidth()) {
                 ContactsHeroHeader(
@@ -346,6 +356,17 @@ fun ContactsScreen(
                     }
                 }
 
+                item(key = "smart_communication_launcher") {
+                    com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(
+                        module = if (state.selectedTab == ContactsTab.CUSTOMERS) {
+                            com.pocketdev.advance_erp.core.communication.CommunicationModule.LEDGER
+                        } else {
+                            com.pocketdev.advance_erp.core.communication.CommunicationModule.SUPPLIER_STATEMENT
+                        },
+                        isBangla = isBn
+                    )
+                }
+
                 if (state.selectedTab == ContactsTab.CUSTOMERS) {
                     if (state.customers.isEmpty()) {
                         item(key = "empty_customers") {
@@ -388,7 +409,9 @@ fun ContactsScreen(
                                     )
                                 },
                                 onDialPhone = dialPhone,
-                                onDueReminderClick = { viewModel.openDueReminder(c) },
+                                onDueReminderClick = {
+                                    communicationRequest = CommunicationRequest(CommunicationModule.REMINDER, c.id)
+                                },
                                 onRecordPaymentClick = { viewModel.openRecordCustomerPayment(c) },
                                 onEditClick = { viewModel.openEditCustomer(c) },
                                 onDeleteClick = { customerToDelete = c }
@@ -432,7 +455,10 @@ fun ContactsScreen(
                                 onCardClick = { viewModel.openSupplierLedger(s) },
                                 onDialPhone = dialPhone,
                                 onEditClick = { viewModel.openEditSupplier(s) },
-                                onDeleteClick = { supplierToDelete = s }
+                                onDeleteClick = { supplierToDelete = s },
+                                onShareStatementClick = {
+                                    communicationRequest = CommunicationRequest(CommunicationModule.SUPPLIER_STATEMENT, s.id)
+                                }
                             )
                         }
                     }
@@ -471,7 +497,9 @@ fun ContactsScreen(
             currency = state.currency,
             language = state.language,
             onDismiss = { showDueAlertsSheet = false },
-            onRemindCustomer = viewModel::openDueReminder,
+            onRemindCustomer = { cust ->
+                communicationRequest = CommunicationRequest(CommunicationModule.REMINDER, cust.id)
+            },
             onOpenSupplierLedger = viewModel::openSupplierLedger
         )
     }
@@ -557,11 +585,11 @@ fun ContactsScreen(
             onDismiss = viewModel::dismissCustomerLedger,
             onShareWhatsAppStatement = { c ->
                 viewModel.dismissCustomerLedger()
-                viewModel.shareCustomerStatementWhatsApp(c)
+                communicationRequest = CommunicationRequest(CommunicationModule.STATEMENT, c.id)
             },
             onSendDueReminder = { c ->
                 viewModel.dismissCustomerLedger()
-                viewModel.openDueReminder(c)
+                communicationRequest = CommunicationRequest(CommunicationModule.REMINDER, c.id)
             }
         )
     }
@@ -573,7 +601,10 @@ fun ContactsScreen(
             currency = state.currency,
             language = state.language,
             onDismiss = viewModel::dismissSupplierLedger,
-            onShareWhatsApp = { viewModel.shareSupplierLedgerWhatsApp(sup, stmt) }
+            onShareWhatsApp = {
+                viewModel.dismissSupplierLedger()
+                communicationRequest = CommunicationRequest(CommunicationModule.SUPPLIER_STATEMENT, sup.id)
+            }
         )
     }
 

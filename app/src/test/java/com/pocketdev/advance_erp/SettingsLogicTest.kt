@@ -66,23 +66,26 @@ class SettingsLogicTest {
     }
 
     @Test
-    fun databaseVersionConstant_matchesRoomSchemaV14() {
-        assertEquals(14, AdvanceErpDatabase.DATABASE_VERSION)
+    fun databaseVersionConstant_matchesRoomSchemaV15() {
+        assertEquals(15, AdvanceErpDatabase.DATABASE_VERSION)
     }
 
     @Test
     fun resetTestTransactionsKeepMasters_preservesProductsAndContactsAndClearsStockAndLedgersWithoutFkErrors() {
-        val schemaFile = File("schemas/com.pocketdev.advance_erp.core.database.AdvanceErpDatabase/14.json")
+        val schemaFile = File("schemas/com.pocketdev.advance_erp.core.database.AdvanceErpDatabase/15.json")
         val daoFile = File("src/main/java/com/pocketdev/advance_erp/data/dao/BackupDao.kt")
+        val commDaoFile = File("src/main/java/com/pocketdev/advance_erp/data/dao/CommunicationDao.kt")
         val repoFile = File("src/main/java/com/pocketdev/advance_erp/data/repository/BackupRepositoryImpl.kt")
-        assertTrue("Schema 14.json must exist at ${schemaFile.absolutePath}", schemaFile.exists())
+        assertTrue("Schema 15.json must exist at ${schemaFile.absolutePath}", schemaFile.exists())
         assertTrue("BackupDao.kt must exist at ${daoFile.absolutePath}", daoFile.exists())
+        assertTrue("CommunicationDao.kt must exist at ${commDaoFile.absolutePath}", commDaoFile.exists())
         assertTrue("BackupRepositoryImpl.kt must exist at ${repoFile.absolutePath}", repoFile.exists())
 
         val script = """
             import json, re, sqlite3
 
             s = json.load(open(r"${schemaFile.absolutePath}"))['database']
+            assert len(s['entities']) == 62, f"Expected 62 entities in 15.json, got {len(s['entities'])}"
             conn = sqlite3.connect(':memory:')
             cur = conn.cursor()
             cur.execute('PRAGMA foreign_keys = ON')
@@ -140,13 +143,22 @@ class SettingsLogicTest {
             for m in re.finditer(r'@Query\("([^"]+)"\)\s+suspend fun (\w+)\(', dao_src):
                 sql_by_method[m.group(2)] = m.group(1)
 
+            comm_dao_src = open(r"${commDaoFile.absolutePath}").read()
+            comm_sql_by_method = {}
+            for m in re.finditer(r'@Query\("([^"]+)"\)\s+suspend fun (\w+)\(', comm_dao_src):
+                comm_sql_by_method[m.group(2)] = m.group(1)
+
             repo_src = open(r"${repoFile.absolutePath}").read()
             reset_body = repo_src.split('override suspend fun resetTestTransactionsKeepMasters()')[1].split('auditLogDao.insertAuditLog')[0]
             calls = re.findall(r'backupDao\.(\w+)\(\)', reset_body)
+            comm_calls = re.findall(r'communicationDao\(\)\.(\w+)\(\)', reset_body)
             assert len(calls) == 47, f'Expected 47 reset DAO calls, got {len(calls)}'
+            assert len(comm_calls) == 2, f'Expected 2 communicationDao calls, got {len(comm_calls)}'
 
             for fn in calls:
                 cur.execute(sql_by_method[fn])
+            for fn in comm_calls:
+                cur.execute(comm_sql_by_method[fn])
 
             cur.execute('PRAGMA foreign_key_check')
             assert cur.fetchall() == [], 'Foreign key check must pass with zero violations'
@@ -154,7 +166,8 @@ class SettingsLogicTest {
             preserved = {
                 'business_profiles', 'product_categories', 'products', 'product_variants',
                 'product_images', 'warehouses', 'customers', 'suppliers', 'app_settings',
-                'chart_of_accounts', 'backup_records', 'saved_suggestions'
+                'chart_of_accounts', 'backup_records', 'saved_suggestions',
+                'communication_settings', 'communication_templates', 'communication_party_preferences'
             }
             for t in entities:
                 cnt = cur.execute(f'SELECT COUNT(*) FROM `{t}`').fetchone()[0]
@@ -167,7 +180,7 @@ class SettingsLogicTest {
 
             assert cur.execute('SELECT outstandingBalanceMinor, isActive FROM customers').fetchone() == (0, 1)
             assert cur.execute('SELECT outstandingPayableMinor, isActive FROM suppliers').fetchone() == (0, 1)
-            print('RESET_VERIFIED_57_TABLES')
+            print('RESET_VERIFIED_62_TABLES')
         """.trimIndent()
 
         val process = ProcessBuilder("python3", "-c", script)
@@ -176,6 +189,6 @@ class SettingsLogicTest {
         val output = process.inputStream.bufferedReader().use(BufferedReader::readText)
         val exitCode = process.waitFor()
         assertEquals("SQLite test-reset verification failed:\n$output", 0, exitCode)
-        assertEquals("RESET_VERIFIED_57_TABLES", output.trim())
+        assertEquals("RESET_VERIFIED_62_TABLES", output.trim())
     }
 }

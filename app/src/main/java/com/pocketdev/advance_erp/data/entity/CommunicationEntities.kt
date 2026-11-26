@@ -1,6 +1,7 @@
 package com.pocketdev.advance_erp.data.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "communication_settings")
@@ -22,7 +23,13 @@ data class CommunicationSnapshot(val module: String, val documentId: String, val
     val partyId: String, val createdAt: Long, val originalAmountMinor: Long,
     val previousBalanceMinor: Long, val allocatedPaymentMinor: Long, val invoiceDueMinor: Long,
     val closingBalanceMinor: Long, val payload: String = "")
-@Entity(tableName = "communication_history")
+@Entity(
+    tableName = "communication_history",
+    indices = [
+        Index(value = ["createdAt"]),
+        Index(value = ["module"])
+    ]
+)
 data class CommunicationHistory(@PrimaryKey val id: String, val module: String, val documentId: String,
     val documentNumber: String, val partyId: String, val partyName: String, val phone: String,
     val createdAt: Long, val message: String, val attachmentReference: String?,

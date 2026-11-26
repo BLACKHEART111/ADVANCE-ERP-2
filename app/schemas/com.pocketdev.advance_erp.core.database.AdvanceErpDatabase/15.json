@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 15,
-    "identityHash": "01ce7dc08f2b3aa1736918aeaba7e15b",
+    "identityHash": "f2fae23d8e89b2567becffcf6879f53d",
     "entities": [
       {
         "tableName": "communication_settings",
@@ -368,7 +368,26 @@
             "id"
           ]
         },
-        "indices": [],
+        "indices": [
+          {
+            "name": "index_communication_history_createdAt",
+            "unique": false,
+            "columnNames": [
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_communication_history_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
+          },
+          {
+            "name": "index_communication_history_module",
+            "unique": false,
+            "columnNames": [
+              "module"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_communication_history_module` ON `${TABLE_NAME}` (`module`)"
+          }
+        ],
         "foreignKeys": []
       },
       {
@@ -4007,7 +4026,7 @@
       },
       {
         "tableName": "sales_invoices",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `invoiceNumber` TEXT NOT NULL, `customerId` TEXT NOT NULL, `customerName` TEXT NOT NULL, `customerPhone` TEXT, `warehouseId` TEXT NOT NULL, `warehouseName` TEXT NOT NULL, `status` TEXT NOT NULL, `subtotalMinor` INTEGER NOT NULL, `discountMinor` INTEGER NOT NULL, `taxMinor` INTEGER NOT NULL, `totalAmountMinor` INTEGER NOT NULL, `paidAmountMinor` INTEGER NOT NULL, `dueAmountMinor` INTEGER NOT NULL, `totalCogsMinor` INTEGER NOT NULL, `invoiceDate` INTEGER NOT NULL, `dueDate` INTEGER, `notes` TEXT, `isPosted` INTEGER NOT NULL, `postedAt` INTEGER, `cancellationReason` TEXT, `cancelledAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`customerId`) REFERENCES `customers`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`warehouseId`) REFERENCES `warehouses`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `invoiceNumber` TEXT NOT NULL, `customerId` TEXT NOT NULL, `customerName` TEXT NOT NULL, `customerPhone` TEXT, `warehouseId` TEXT NOT NULL, `warehouseName` TEXT NOT NULL, `status` TEXT NOT NULL, `subtotalMinor` INTEGER NOT NULL, `discountMinor` INTEGER NOT NULL, `taxMinor` INTEGER NOT NULL, `totalAmountMinor` INTEGER NOT NULL, `paidAmountMinor` INTEGER NOT NULL, `dueAmountMinor` INTEGER NOT NULL, `totalCogsMinor` INTEGER NOT NULL, `invoiceDate` INTEGER NOT NULL, `dueDate` INTEGER, `notes` TEXT, `isPosted` INTEGER NOT NULL, `postedAt` INTEGER, `cancellationReason` TEXT, `cancelledAt` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `validUntilDate` INTEGER, `scheduledDeliveryInfo` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`customerId`) REFERENCES `customers`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`warehouseId`) REFERENCES `warehouses`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
         "fields": [
           {
             "fieldPath": "id",
@@ -4152,6 +4171,18 @@
             "columnName": "updatedAt",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "validUntilDate",
+            "columnName": "validUntilDate",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "scheduledDeliveryInfo",
+            "columnName": "scheduledDeliveryInfo",
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -9101,7 +9132,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '01ce7dc08f2b3aa1736918aeaba7e15b')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f2fae23d8e89b2567becffcf6879f53d')"
     ]
   }
 }

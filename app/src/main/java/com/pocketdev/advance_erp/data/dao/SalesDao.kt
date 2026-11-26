@@ -108,4 +108,12 @@ interface SalesDao {
 
     @Query("SELECT COUNT(*) FROM sales_invoices WHERE customerId = :customerId")
     suspend fun getInvoiceCountForCustomer(customerId: String): Int
+
+    @Query("UPDATE sales_invoices SET validUntilDate = :validUntilDate, scheduledDeliveryInfo = :scheduledDeliveryInfo, updatedAt = :updatedAt WHERE id = :invoiceId")
+    suspend fun updateDocumentCommunicationMetadata(
+        invoiceId: String,
+        validUntilDate: Long?,
+        scheduledDeliveryInfo: String?,
+        updatedAt: Long = System.currentTimeMillis()
+    )
 }

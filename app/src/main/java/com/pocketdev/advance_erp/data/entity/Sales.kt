@@ -69,7 +69,9 @@ data class SalesInvoice(
     val cancellationReason: String? = null,
     val cancelledAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val validUntilDate: Long? = null,
+    val scheduledDeliveryInfo: String? = null
 )
 
 @Entity(

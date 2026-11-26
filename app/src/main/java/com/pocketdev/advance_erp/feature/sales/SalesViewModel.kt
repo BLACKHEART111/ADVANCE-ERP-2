@@ -3,6 +3,8 @@ package com.pocketdev.advance_erp.feature.sales
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pocketdev.advance_erp.core.communication.CommunicationModule
+import com.pocketdev.advance_erp.core.communication.CommunicationRequest
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.pdf.CentralizedPdfEngine
@@ -13,6 +15,7 @@ import com.pocketdev.advance_erp.core.util.DueReminderStatementData
 import com.pocketdev.advance_erp.core.util.InvoicePdfGenerator
 import com.pocketdev.advance_erp.data.dao.BusinessProfileDao
 import com.pocketdev.advance_erp.data.dao.CustomerDao
+import com.pocketdev.advance_erp.data.dao.CustomerPaymentDao
 import com.pocketdev.advance_erp.data.dao.ProductImageDao
 import com.pocketdev.advance_erp.data.dao.ProductVariantDao
 import com.pocketdev.advance_erp.data.dao.StockBalanceDao
@@ -37,6 +40,7 @@ import com.pocketdev.advance_erp.domain.repository.CustomerLedgerEntry
 import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
 import com.pocketdev.advance_erp.domain.repository.CustomerSummary
 import com.pocketdev.advance_erp.domain.repository.CustomerWiseSalesItem
+import com.pocketdev.advance_erp.domain.repository.DeliveryChallanInfo
 import com.pocketdev.advance_erp.domain.repository.NewCustomerDraft
 import com.pocketdev.advance_erp.domain.repository.ProductRepository
 import com.pocketdev.advance_erp.domain.repository.ProductWiseSalesItem
@@ -56,7 +60,7 @@ import java.io.File
 import javax.inject.Inject
 
 data class SalesUiState(
-    val communicationInvoiceId: String? = null,
+    val communicationSuccessRequest: CommunicationRequest? = null,
     val invoices: List<SalesInvoice> = emptyList(),
     val customers: List<Customer> = emptyList(),
     val warehouses: List<Warehouse> = emptyList(),
@@ -71,6 +75,7 @@ data class SalesUiState(
     val selectedInvoice: SalesInvoice? = null,
     val selectedInvoiceItems: List<SalesInvoiceItem> = emptyList(),
     val selectedInvoiceAllocations: List<PaymentAllocation> = emptyList(),
+    val selectedInvoiceChallans: List<DeliveryChallanInfo> = emptyList(),
     val selectedCustomerLedger: List<CustomerLedgerEntry> = emptyList(),
     val selectedCustomerIdForLedger: String? = null,
     val salesReport: SalesReportSummary? = null,
@@ -96,6 +101,7 @@ class SalesViewModel @Inject constructor(
     private val productVariantDao: ProductVariantDao,
     private val productImageDao: ProductImageDao,
     private val customerDao: CustomerDao,
+    private val customerPaymentDao: CustomerPaymentDao,
     private val warehouseDao: WarehouseDao,
     private val stockBalanceDao: StockBalanceDao,
     private val inventoryCostLayerDao: InventoryCostLayerDao,
@@ -259,11 +265,13 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val items = salesRepository.getInvoiceItems(invoice.id)
             val allocations = salesRepository.getAllocationsForInvoiceSync(invoice.id)
+            val challans = runCatching { salesRepository.getDeliveryChallansForInvoice(invoice.id) }.getOrDefault(emptyList())
             _uiState.update {
                 it.copy(
                     selectedInvoice = invoice,
                     selectedInvoiceItems = items,
-                    selectedInvoiceAllocations = allocations
+                    selectedInvoiceAllocations = allocations,
+                    selectedInvoiceChallans = challans
                 )
             }
         }
@@ -274,7 +282,8 @@ class SalesViewModel @Inject constructor(
             it.copy(
                 selectedInvoice = null,
                 selectedInvoiceItems = emptyList(),
-                selectedInvoiceAllocations = emptyList()
+                selectedInvoiceAllocations = emptyList(),
+                selectedInvoiceChallans = emptyList()
             )
         }
     }
@@ -365,7 +374,12 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.createAndPostInvoice(draft)
             result.onSuccess { newInvoiceId ->
-                _uiState.update { it.copy(userMessage = "Sale confirmed and posted: $newInvoiceId", communicationInvoiceId = newInvoiceId) }
+                _uiState.update {
+                    it.copy(
+                        userMessage = "Sale confirmed and posted: $newInvoiceId",
+                        communicationSuccessRequest = CommunicationRequest(CommunicationModule.INVOICE, newInvoiceId)
+                    )
+                }
                 loadDefaultReport()
                 onSuccess()
             }.onFailure { err ->
@@ -380,7 +394,12 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.postInvoice(invoiceId)
             result.onSuccess {
-                _uiState.update { it.copy(userMessage = "Invoice posted! Stock and Accounting journals updated.", communicationInvoiceId = invoiceId) }
+                _uiState.update {
+                    it.copy(
+                        userMessage = "Invoice posted! Stock and Accounting journals updated.",
+                        communicationSuccessRequest = CommunicationRequest(CommunicationModule.INVOICE, invoiceId)
+                    )
+                }
                 val updated = salesRepository.getInvoiceById(invoiceId)
                 if (updated != null) {
                     selectInvoice(updated)
@@ -410,6 +429,7 @@ class SalesViewModel @Inject constructor(
                 val prevDue = customer?.outstandingBalanceMinor ?: 0L
 
                 val paymentNumber = salesRepository.recordCustomerPayment(draft)
+                val savedPaymentId = runCatching { customerPaymentDao.getPaymentByNumber(paymentNumber)?.id }.getOrNull()
                 val isBn = _uiState.value.language == AppLanguage.BANGLA
                 val nextNum = runCatching { salesRepository.previewNextCustomerPaymentNumber() }.getOrNull()
 
@@ -450,7 +470,8 @@ class SalesViewModel @Inject constructor(
                     isAdvancePayment = isAdv,
                     advanceAmountMinor = if (isAdv) kotlin.math.abs(currentDue) else 0L,
                     referenceNote = draft.referenceNote,
-                    statementPdfFile = pdfFile
+                    statementPdfFile = pdfFile,
+                    paymentId = savedPaymentId
                 )
 
                 _uiState.update {
@@ -508,7 +529,8 @@ class SalesViewModel @Inject constructor(
                     isAdvancePayment = isAdv,
                     advanceAmountMinor = if (isAdv) kotlin.math.abs(currentDue) else 0L,
                     referenceNote = recentPayment?.referenceNote,
-                    statementPdfFile = pdfFile
+                    statementPdfFile = pdfFile,
+                    paymentId = recentPayment?.id
                 )
                 _uiState.update { it.copy(activeDueCollectionData = stmtData) }
             } catch (e: Exception) {
@@ -589,7 +611,37 @@ class SalesViewModel @Inject constructor(
         }
     }
 
-    fun dismissCommunicationSuccess() { _uiState.update { it.copy(communicationInvoiceId = null) } }
+    fun dismissCommunicationSuccess() { _uiState.update { it.copy(communicationSuccessRequest = null) } }
+
+    fun updateInvoiceCommunicationMetadata(
+        invoiceId: String,
+        validUntilDate: Long?,
+        scheduledDeliveryInfo: String?
+    ) {
+        viewModelScope.launch {
+            val isBn = _uiState.value.language == AppLanguage.BANGLA
+            runCatching {
+                salesRepository.updateDocumentCommunicationMetadata(invoiceId, validUntilDate, scheduledDeliveryInfo)
+            }.onSuccess {
+                val updated = salesRepository.getInvoiceById(invoiceId)
+                if (updated != null && _uiState.value.selectedInvoice?.id == invoiceId) {
+                    selectInvoice(updated)
+                }
+                _uiState.update {
+                    it.copy(
+                        userMessage = if (isBn) "নথির মেয়াদ ও ডেলিভারি তথ্য সংরক্ষিত হয়েছে"
+                        else "Document validity & delivery details saved"
+                    )
+                }
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        userMessage = if (isBn) "সংরক্ষণ ব্যর্থ: ${err.message}" else "Save failed: ${err.message}"
+                    )
+                }
+            }
+        }
+    }
 
     fun clearUserMessage() {
         _uiState.update { it.copy(userMessage = null) }
@@ -599,7 +651,15 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.dispatchDelivery(draft)
             result.onSuccess { challanNo ->
-                _uiState.update { it.copy(userMessage = "Delivery challan dispatched: $challanNo") }
+                _uiState.update {
+                    it.copy(
+                        userMessage = "Delivery challan dispatched: $challanNo",
+                        communicationSuccessRequest = CommunicationRequest(
+                            CommunicationModule.DELIVERY,
+                            "${draft.invoiceId}|$challanNo"
+                        )
+                    )
+                }
                 if (_uiState.value.selectedInvoice != null) {
                     val updated = salesRepository.getInvoiceById(_uiState.value.selectedInvoice!!.id)
                     if (updated != null) selectInvoice(updated)
@@ -615,7 +675,16 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.processDirectExchange(draft)
             result.onSuccess { exchNo ->
-                _uiState.update { it.copy(userMessage = "Direct exchange completed successfully: $exchNo") }
+                _uiState.update {
+                    it.copy(
+                        userMessage = "Direct exchange completed successfully: $exchNo",
+                        communicationSuccessRequest = CommunicationRequest(CommunicationModule.EXCHANGE, exchNo)
+                    )
+                }
+                if (_uiState.value.selectedInvoice != null) {
+                    val updated = salesRepository.getInvoiceById(_uiState.value.selectedInvoice!!.id)
+                    if (updated != null) selectInvoice(updated)
+                }
                 loadDefaultReport()
                 onSuccess(exchNo)
             }.onFailure { err ->
@@ -642,7 +711,12 @@ class SalesViewModel @Inject constructor(
         viewModelScope.launch {
             val result = salesRepository.convertSalesOrderToInvoice(salesOrderId)
             result.onSuccess { invId ->
-                _uiState.update { it.copy(userMessage = "Sales Order converted to Commercial Invoice: $invId", communicationInvoiceId = invId) }
+                _uiState.update {
+                    it.copy(
+                        userMessage = "Sales Order converted to Commercial Invoice: $invId",
+                        communicationSuccessRequest = CommunicationRequest(CommunicationModule.INVOICE, invId)
+                    )
+                }
                 val updated = salesRepository.getInvoiceById(salesOrderId)
                 if (updated != null) selectInvoice(updated)
                 onSuccess(invId)

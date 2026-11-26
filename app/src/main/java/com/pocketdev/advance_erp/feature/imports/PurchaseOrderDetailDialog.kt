@@ -184,7 +184,8 @@ fun PurchaseOrderDetailDialog(
     categories: List<ProductCategory> = emptyList(),
     variants: List<ProductVariant> = emptyList(),
     snapshots: List<LandedCostSnapshot> = emptyList(),
-    businessProfile: BusinessProfile? = null
+    businessProfile: BusinessProfile? = null,
+    onShareSupplierPayment: ((SupplierPayment) -> Unit)? = null
 ) {
     var detailTab by rememberSaveable { mutableStateOf(0) }
     var showLifecycleActions by rememberSaveable { mutableStateOf(false) }
@@ -939,6 +940,19 @@ fun PurchaseOrderDetailDialog(
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = TextMuted
                                                 )
+                                            }
+                                            if (onShareSupplierPayment != null) {
+                                                IconButton(
+                                                    onClick = { onShareSupplierPayment(p) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Share,
+                                                        contentDescription = if (isBangla) "পেমেন্ট রসিদ শেয়ার" else "Share payment receipt",
+                                                        tint = PrimaryPurple,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
                                             }
                                             if (onReversePayment != null) {
                                                 TextButton(

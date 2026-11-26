@@ -79,6 +79,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pocketdev.advance_erp.R
+import com.pocketdev.advance_erp.core.communication.CommunicationModule
+import com.pocketdev.advance_erp.core.communication.CommunicationRequest
 import com.pocketdev.advance_erp.core.designsystem.DeepNavy
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
 import com.pocketdev.advance_erp.core.designsystem.ERPCard
@@ -93,6 +95,7 @@ import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import com.pocketdev.advance_erp.feature.communication.CommunicationDialog
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.util.Formatters
@@ -160,6 +163,13 @@ fun ImportManagementScreen(
         ?: uiState.shipments.firstOrNull()
 
     PoReferenceTheme {
+    var communicationRequest by remember { mutableStateOf<CommunicationRequest?>(null) }
+    communicationRequest?.let { req ->
+        CommunicationDialog(
+            initialRequest = req,
+            onDismiss = { communicationRequest = null }
+        )
+    }
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -518,12 +528,22 @@ fun ImportManagementScreen(
                         }
                     }
                     items(matches, key = { it.id }) { shipment ->
+                        val linkedPoId = shipment.purchaseOrderId
+                            ?: uiState.purchaseOrders.firstOrNull {
+                                it.shipmentId == shipment.id && it.status != PurchaseOrderStatus.CANCELLED.name
+                            }?.id
                         LiveShipmentCard(shipment, uiState.selectedShipmentId == shipment.id,
                             onSelect = {
                                 viewModel.selectPurchaseOrder(null)
                                 viewModel.selectShipment(shipment.id)
                                 showShipmentWorkspaceDialog = true
-                            }, onSharePdf = { viewModel.sharePackingListPdf(context, shipment) }, isBangla = isBangla)
+                            }, onSharePdf = {
+                                if (linkedPoId != null) {
+                                    communicationRequest = CommunicationRequest(CommunicationModule.PACKING, linkedPoId)
+                                } else {
+                                    viewModel.sharePackingListPdf(context, shipment)
+                                }
+                            }, isBangla = isBangla)
                     }
                 }
 
@@ -1103,6 +1123,9 @@ fun ImportManagementScreen(
                 }
             },
             onSharePdf = { po -> poToShare = po },
+            onShareSupplierPayment = { payment ->
+                communicationRequest = CommunicationRequest(CommunicationModule.SUPPLIER_PAYMENT, payment.id)
+            },
             onCancelPo = { orderId, reason ->
                 viewModel.cancelPurchaseOrder(orderId, reason)
             },
@@ -1170,6 +1193,10 @@ fun ImportManagementScreen(
             variantsMap = uiState.productVariants.associateBy { it.id },
             cartons = resolvedShareCartons,
             onResolveItemImages = viewModel::resolveShareImagesForItems,
+            onOpenSmartWhatsApp = { req ->
+                poToShare = null
+                communicationRequest = req
+            },
             onDismiss = { poToShare = null }
         )
     }

@@ -8,6 +8,7 @@ import com.pocketdev.advance_erp.data.dao.AuditLogDao
 import com.pocketdev.advance_erp.data.dao.BackupDao
 import com.pocketdev.advance_erp.data.dao.BusinessProfileDao
 import com.pocketdev.advance_erp.data.dao.CashBankDao
+import com.pocketdev.advance_erp.data.dao.CommunicationDao
 import com.pocketdev.advance_erp.data.dao.CustomerDao
 import com.pocketdev.advance_erp.data.dao.CustomerPaymentDao
 import com.pocketdev.advance_erp.data.dao.ExpenseDao
@@ -144,4 +145,7 @@ object DatabaseModule {
 
     @Provides
     fun provideImportVaultDao(db: AdvanceErpDatabase): com.pocketdev.advance_erp.data.dao.ImportVaultDao = db.importVaultDao()
+
+    @Provides
+    fun provideCommunicationDao(db: AdvanceErpDatabase): CommunicationDao = db.communicationDao()
 }

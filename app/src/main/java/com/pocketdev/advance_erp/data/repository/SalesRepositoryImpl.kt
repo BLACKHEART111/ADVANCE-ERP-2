@@ -282,7 +282,9 @@ class SalesRepositoryImpl @Inject constructor(
             invoiceDate = draft.invoiceDate,
             dueDate = draft.dueDate,
             notes = draft.notes,
-            isPosted = false
+            isPosted = false,
+            validUntilDate = draft.validUntilDate,
+            scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null }
         )
 
         salesDao.insertInvoice(invoice)
@@ -368,7 +370,9 @@ class SalesRepositoryImpl @Inject constructor(
             invoiceDate = draft.invoiceDate,
             dueDate = draft.dueDate,
             notes = draft.notes,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            validUntilDate = draft.validUntilDate ?: existing.validUntilDate,
+            scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null } ?: existing.scheduledDeliveryInfo
         )
 
         salesDao.updateInvoice(updated)
@@ -793,6 +797,7 @@ class SalesRepositoryImpl @Inject constructor(
             com.pocketdev.advance_erp.core.engine.PaymentAllocationValidation.validate(draft, allocationInvoices)
             val paymentId = UUID.randomUUID().toString()
             val allocations = mutableListOf<PaymentAllocation>()
+            val affectedInvoiceIds = linkedSetOf<String>()
 
             var totalAllocated = 0L
 
@@ -811,11 +816,8 @@ class SalesRepositoryImpl @Inject constructor(
                                 allocatedAt = draft.paymentDate
                             )
                         )
+                        affectedInvoiceIds.add(inv.id)
                         totalAllocated += maxAlloc
-                        val newPaid = inv.paidAmountMinor + maxAlloc
-                        val newDue = maxOf(0L, inv.totalAmountMinor - newPaid)
-                        val newStatus = if (newDue == 0L) InvoiceStatus.PAID.name else InvoiceStatus.PARTIALLY_PAID.name
-                        salesDao.updateInvoicePaymentStatus(inv.id, newStatus, newPaid, newDue)
                     }
                 }
             } else {
@@ -851,6 +853,9 @@ class SalesRepositoryImpl @Inject constructor(
             customerPaymentDao.insertPayment(payment)
             if (allocations.isNotEmpty()) {
                 customerPaymentDao.insertAllocations(allocations)
+            }
+            for (affectedId in affectedInvoiceIds) {
+                recalculateAndPersistInvoiceSettlement(affectedId, draft.paymentDate)
             }
 
             // Double-Entry Accounting
@@ -1342,15 +1347,9 @@ class SalesRepositoryImpl @Inject constructor(
                 db.importVaultDao().insertSalesReturnLayerAllocations(allReturnLayerAllocs)
             }
 
-            // Adjust Invoice Due Amount if Customer Credit was chosen
+            // Adjust Invoice Due Amount authoritatively when Customer Credit was chosen
             if (draft.refundOption == ReturnRefundOption.CUSTOMER_CREDIT) {
-                val adjustedDue = maxOf(0L, invoice.dueAmountMinor - totalReturnAmount)
-                salesDao.updateInvoicePaymentStatus(
-                    invoiceId = invoice.id,
-                    status = if (adjustedDue == 0L) InvoiceStatus.PAID.name else invoice.status,
-                    paidMinor = invoice.paidAmountMinor,
-                    dueMinor = adjustedDue
-                )
+                recalculateAndPersistInvoiceSettlement(invoice.id, draft.returnDate)
             }
 
             // Double-Entry Accounting
@@ -1545,7 +1544,11 @@ class SalesRepositoryImpl @Inject constructor(
             adjustments.sumOf { com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(it) }
         val openingBal = if ((customer?.outstandingBalanceMinor ?: 0L) == 0L) 0L else (customer?.outstandingBalanceMinor ?: 0L) - netTransactions
         if (openingBal != 0L) {
-            val initialDate = (customer?.createdAt ?: System.currentTimeMillis()) - (365L * 24 * 3600 * 1000)
+            val earliestEventDate = ledgerItems.minOfOrNull { it.date } ?: System.currentTimeMillis()
+            val initialDate = minOf(
+                (customer?.createdAt ?: System.currentTimeMillis()) - (365L * 24 * 3600 * 1000),
+                earliestEventDate - 1000L
+            )
             ledgerItems.add(
                 CustomerLedgerEntry(
                     id = "opening-$customerId",
@@ -1602,8 +1605,19 @@ class SalesRepositoryImpl @Inject constructor(
             }
         }
 
-        // Sort chronologically
-        ledgerItems.sortBy { it.date }
+        // Sort deterministically by date, transaction kind, and ID
+        fun txOrder(type: String): Int = when (type) {
+            "OPENING_BALANCE" -> 0
+            "INVOICE" -> 1
+            "ADJUSTMENT" -> 2
+            "PAYMENT" -> 3
+            "RETURN" -> 4
+            "REFUND" -> 5
+            "PAYMENT_VOID" -> 6
+            "INVOICE_CANCELLED" -> 7
+            else -> 8
+        }
+        ledgerItems.sortWith(compareBy<CustomerLedgerEntry> { it.date }.thenBy { txOrder(it.transactionType) }.thenBy { it.id })
 
         // Compute running balance: Previous Balance + Debit - Credit = Closing Balance
         var runningBal = 0L
@@ -1626,6 +1640,38 @@ class SalesRepositoryImpl @Inject constructor(
         val adjustments = db.accountingDao().getCustomerLedgerAdjustments(customerId)
             .sumOf { com.pocketdev.advance_erp.core.engine.CustomerLedgerAdjustment.delta(it) }
         return postedInvoices - activePayments - creditReturns + adjustments
+    }
+
+    private suspend fun recalculateAndPersistInvoiceSettlement(
+        invoiceId: String,
+        updatedAt: Long = System.currentTimeMillis()
+    ) {
+        val inv = salesDao.getInvoiceById(invoiceId) ?: return
+        val allocations = customerPaymentDao.getAllocationsForInvoiceSync(inv.id)
+        var activeAllocatedMinor = 0L
+        for (alloc in allocations) {
+            val pay = customerPaymentDao.getPaymentById(alloc.paymentId)
+            if (pay != null && pay.isPosted && !pay.isVoided) {
+                activeAllocatedMinor += alloc.amountMinor
+            }
+        }
+        val creditReturnMinor = salesReturnDao.getReturnsForCustomerSync(inv.customerId)
+            .filter { it.invoiceId == inv.id && it.isPosted && it.refundOption == ReturnRefundOption.CUSTOMER_CREDIT.name }
+            .sumOf { it.totalReturnAmountMinor }
+        val settlement = com.pocketdev.advance_erp.core.engine.PaymentAllocationValidation.computeInvoiceSettlement(
+            totalAmountMinor = inv.totalAmountMinor,
+            activeAllocatedMinor = activeAllocatedMinor,
+            creditReturnMinor = creditReturnMinor,
+            isPosted = inv.isPosted,
+            currentStatus = inv.status
+        )
+        salesDao.updateInvoicePaymentStatus(
+            invoiceId = inv.id,
+            status = settlement.status,
+            paidMinor = settlement.paidAmountMinor,
+            dueMinor = settlement.dueAmountMinor,
+            now = updatedAt
+        )
     }
 
     private suspend fun captureCustomerBalanceBaseline(customerId: String): Pair<Long, Long> {
@@ -1834,7 +1880,9 @@ class SalesRepositoryImpl @Inject constructor(
             dueDate = draft.dueDate,
             notes = draft.notes,
             isPosted = false,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            validUntilDate = draft.validUntilDate,
+            scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null }
         )
 
         db.withTransaction {
@@ -1842,6 +1890,19 @@ class SalesRepositoryImpl @Inject constructor(
             salesDao.insertInvoiceItems(items)
         }
         return quoId
+    }
+
+    override suspend fun updateDocumentCommunicationMetadata(
+        invoiceId: String,
+        validUntilDate: Long?,
+        scheduledDeliveryInfo: String?
+    ) {
+        salesDao.updateDocumentCommunicationMetadata(
+            invoiceId = invoiceId,
+            validUntilDate = validUntilDate,
+            scheduledDeliveryInfo = scheduledDeliveryInfo?.trim()?.ifBlank { null },
+            updatedAt = System.currentTimeMillis()
+        )
     }
 
     override suspend fun convertQuotationToSalesOrder(quotationId: String): Result<String> {
@@ -1891,6 +1952,8 @@ class SalesRepositoryImpl @Inject constructor(
             id = invId,
             invoiceNumber = invNumber,
             status = InvoiceStatus.CONFIRMED.name,
+            paidAmountMinor = 0L,
+            dueAmountMinor = so.totalAmountMinor,
             isPosted = true,
             postedAt = System.currentTimeMillis(),
             notes = "Converted from Sales Order #${so.invoiceNumber}. ${so.notes ?: ""}".trim(),
@@ -2643,22 +2706,25 @@ class SalesRepositoryImpl @Inject constructor(
                 val now = System.currentTimeMillis()
                 val customerBalanceBaseline = captureCustomerBalanceBaseline(payment.customerId)
 
-                // 1. Reverse payment allocations and recalculate invoices
+                // 1. Reverse payment allocations and authoritatively recalculate invoices (respecting credit returns)
                 val allocations = customerPaymentDao.getAllocationsForPayment(paymentId)
-                for (alloc in allocations) {
-                    val invoice = salesDao.getInvoiceById(alloc.invoiceId)
-                    if (invoice != null) {
-                        val newPaid = maxOf(0L, invoice.paidAmountMinor - alloc.amountMinor)
-                        val newDue = maxOf(0L, invoice.totalAmountMinor - newPaid)
-                        val newStatus = when {
-                            newPaid == 0L -> if (invoice.isPosted) InvoiceStatus.POSTED.name else InvoiceStatus.DRAFT.name
-                            newDue > 0L -> InvoiceStatus.PARTIALLY_PAID.name
-                            else -> InvoiceStatus.PAID.name
-                        }
-                        salesDao.updateInvoicePaymentStatus(invoice.id, newStatus, newPaid, newDue, now)
-                    }
-                }
+                val affectedInvoiceIds = allocations.map { it.invoiceId }.distinct()
                 customerPaymentDao.deleteAllocationsForPayment(paymentId)
+
+                // Mark payment record voided before recalculating so voided payment is excluded
+                val updatedPayment = payment.copy(
+                    isVoided = true,
+                    voidedAt = now,
+                    voidReason = reason.trim(),
+                    voidedBy = operator,
+                    allocatedAmountMinor = 0L,
+                    unallocatedCreditMinor = 0L
+                )
+                customerPaymentDao.updatePayment(updatedPayment)
+
+                for (invId in affectedInvoiceIds) {
+                    recalculateAndPersistInvoiceSettlement(invId, now)
+                }
 
                 // 2. Reverse accounting entries:
                 val activeJournals = db.accountingDao().getActiveEntriesForReference("CUSTOMER_PAYMENT", paymentId)
@@ -2707,16 +2773,7 @@ class SalesRepositoryImpl @Inject constructor(
                     )
                 }
 
-                // 3. Mark payment record as voided without deleting it
-                val updatedPayment = payment.copy(
-                    isVoided = true,
-                    voidedAt = now,
-                    voidReason = reason.trim(),
-                    voidedBy = operator,
-                    allocatedAmountMinor = 0L,
-                    unallocatedCreditMinor = 0L
-                )
-                customerPaymentDao.updatePayment(updatedPayment)
+                // 3. Payment record was already marked voided above before recalculating affected invoices
 
                 // 4. Restore customer balance in database preserving genuine opening balance
                 updateCustomerBalanceFromBaseline(payment.customerId, customerBalanceBaseline)

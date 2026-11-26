@@ -81,6 +81,7 @@ val WhatsAppDarkGreen = Color(0xFF128C7E)
 fun DueCollectionStatementShareDialog(
     data: DueCollectionStatementData,
     initialIsBangla: Boolean = true,
+    onOpenSmartWhatsApp: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -323,6 +324,23 @@ fun DueCollectionStatementShareDialog(
                             text = if (isBangla) "WhatsApp-এ পাঠান (PDF + ক্যাপশন)" else "Share to WhatsApp (PDF + Caption)",
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    if (data.paymentId != null && onOpenSmartWhatsApp != null) {
+                        OutlinedButton(
+                            onClick = { onOpenSmartWhatsApp(data.paymentId) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Outlined.Send, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryPurple)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isBangla) "স্মার্ট WhatsApp রসিদ ও প্রিভিউ" else "Open in Smart WhatsApp Communication",
+                                color = PrimaryPurple,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            )
+                        }
                     }
 
                     // Secondary Share Actions Row

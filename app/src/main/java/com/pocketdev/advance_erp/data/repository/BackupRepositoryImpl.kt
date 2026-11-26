@@ -113,22 +113,20 @@ class BackupRepositoryImpl @Inject constructor(
                 zos.closeEntry()
             }
 
-            // Entry M+1: Metadata JSON
-            val metadataContent = buildString {
-                append("{\n")
-                append("  \"application\": \"ADVANCE ERP\",\n")
-                append("  \"package\": \"com.pocketdev.advance_erp\",\n")
-                append("  \"timestamp\": ${System.currentTimeMillis()},\n")
-                append("  \"schemaVersion\": $schemaVersion,\n")
-                append("  \"dbChecksumSha256\": \"$dbChecksum\",\n")
-                append("  \"totalImages\": ${imageFiles.size + avatarFiles.size},\n")
-                append("  \"totalVaultAttachments\": ${vaultAttachmentFiles.size},\n")
-                append("  \"notes\": \"${notes?.replace("\"", "\\\"") ?: "Offline Comprehensive Backup"}\"\n")
-                append("}\n")
+            // Entry M+1: Metadata JSON (valid JSON escaping via org.json.JSONObject)
+            val metadataJson = org.json.JSONObject().apply {
+                put("application", "ADVANCE ERP")
+                put("package", context.packageName)
+                put("timestamp", System.currentTimeMillis())
+                put("schemaVersion", schemaVersion)
+                put("dbChecksumSha256", dbChecksum)
+                put("totalImages", imageFiles.size + avatarFiles.size)
+                put("totalVaultAttachments", vaultAttachmentFiles.size)
+                put("notes", notes ?: "Offline Comprehensive Backup")
             }
             val metaEntry = ZipEntry("metadata.json")
             zos.putNextEntry(metaEntry)
-            zos.write(metadataContent.toByteArray(Charsets.UTF_8))
+            zos.write(metadataJson.toString(2).toByteArray(Charsets.UTF_8))
             zos.closeEntry()
         }
 

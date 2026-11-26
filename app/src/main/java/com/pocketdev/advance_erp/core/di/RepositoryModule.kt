@@ -3,6 +3,7 @@ package com.pocketdev.advance_erp.core.di
 import com.pocketdev.advance_erp.data.repository.AccountingRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.BackupRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.BusinessControlCenterRepositoryImpl
+import com.pocketdev.advance_erp.data.repository.CommunicationRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.ContactsRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.CostHistoryRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.DashboardRepositoryImpl
@@ -16,6 +17,7 @@ import com.pocketdev.advance_erp.data.repository.SettingsRepositoryImpl
 import com.pocketdev.advance_erp.domain.repository.AccountingRepository
 import com.pocketdev.advance_erp.domain.repository.BackupRepository
 import com.pocketdev.advance_erp.domain.repository.BusinessControlCenterRepository
+import com.pocketdev.advance_erp.domain.repository.CommunicationRepository
 import com.pocketdev.advance_erp.domain.repository.ContactsRepository
 import com.pocketdev.advance_erp.domain.repository.CostHistoryRepository
 import com.pocketdev.advance_erp.domain.repository.DashboardRepository
@@ -87,4 +89,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindBusinessControlCenterRepository(impl: BusinessControlCenterRepositoryImpl): BusinessControlCenterRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCommunicationRepository(impl: CommunicationRepositoryImpl): CommunicationRepository
 }
