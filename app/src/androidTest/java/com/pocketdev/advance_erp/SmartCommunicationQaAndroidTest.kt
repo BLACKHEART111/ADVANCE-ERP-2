@@ -19,9 +19,13 @@ import com.pocketdev.advance_erp.core.communication.CommunicationStatus
 import com.pocketdev.advance_erp.core.communication.DocumentAttachmentProvider
 import com.pocketdev.advance_erp.core.communication.WhatsAppShareManager
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
+import com.pocketdev.advance_erp.core.database.BackupArchiveContract
 import com.pocketdev.advance_erp.core.database.DatabaseMigrations
+import com.pocketdev.advance_erp.core.database.PortableBackupPreferences
 import com.pocketdev.advance_erp.core.database.StagedRestore
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
+import com.pocketdev.advance_erp.core.model.AppLanguage
+import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.core.util.DocumentNumberService
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
@@ -32,6 +36,7 @@ import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.PaymentMethod
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
+import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ReturnRefundOption
 import com.pocketdev.advance_erp.data.entity.SalesInvoice
@@ -566,6 +571,11 @@ class SmartCommunicationQaAndroidTest {
     @Test
     fun stagedRestoreRehearsalCrossPackageRewriteRejectsCorruptAndRollsBackInterruptedRestore() {
         val envRoot = File(context.cacheDir, "staged_restore_qa_env_${UUID.randomUUID()}").apply { mkdirs() }
+        val ccPrefs = context.getSharedPreferences("control_center_presets", Context.MODE_PRIVATE)
+        val draftsPrefs = context.getSharedPreferences("editor_drafts_v1", Context.MODE_PRIVATE)
+        val origCcHasKey = ccPrefs.contains("presets_list")
+        val origCcValue = ccPrefs.getString("presets_list", null)
+        val origDrafts = draftsPrefs.all.mapValues { it.value?.toString() }
         try {
             val envFiles = File(envRoot, "files").apply { mkdirs() }
             val envDbs = File(envRoot, "databases").apply { mkdirs() }
@@ -587,12 +597,27 @@ class SmartCommunicationQaAndroidTest {
                 return md.digest().joinToString("") { "%02x".format(it) }
             }
 
-            fun createValidBackupZip(customerName: String, photoPathInDb: String, outZip: File, pkgName: String = "com.pocketdev.advance_erp2", schemaVer: Int = AdvanceErpDatabase.DATABASE_VERSION) {
+            fun createValidBackupZip(
+                customerName: String,
+                photoPathInDb: String,
+                outZip: File,
+                pkgName: String = "com.pocketdev.advance_erp2",
+                schemaVer: Int = AdvanceErpDatabase.DATABASE_VERSION
+            ) {
                 val srcDbFile = File(envRoot, "src_${UUID.randomUUID()}.db")
                 val backupDb = Room.databaseBuilder(context, AdvanceErpDatabase::class.java, srcDbFile.absolutePath)
                     .allowMainThreadQueries()
                     .build()
                 runBlocking {
+                    backupDb.businessProfileDao().insertOrUpdate(
+                        BusinessProfile(
+                            id = "default_profile",
+                            companyName = "Backup Biz QA",
+                            phone = "01700000000",
+                            address = "Dhaka",
+                            logoPath = "/data/user/0/$pkgName/files/company_logo/company_logo_qa.png"
+                        )
+                    )
                     backupDb.customerDao().insertCustomer(
                         Customer(
                             id = "c-bak-1",
@@ -603,18 +628,62 @@ class SmartCommunicationQaAndroidTest {
                             profileImagePath = photoPathInDb
                         )
                     )
+                    backupDb.customerDao().insertCustomer(
+                        Customer(
+                            id = "c-bak-cust-photo",
+                            customerCode = "BAK-2",
+                            name = "Customer Photo QA",
+                            phone = "01700000002",
+                            address = "Dhaka",
+                            profileImagePath = "/data/user/0/$pkgName/files/customer_photos/cust_qa.jpg"
+                        )
+                    )
+                    backupDb.supplierDao().insertSupplier(
+                        Supplier(
+                            id = "sup-bak-1",
+                            supplierCode = "SUP-BAK",
+                            companyName = "Backup Supplier",
+                            phone = "01700000001",
+                            address = "Shenzhen"
+                        )
+                    )
+                    backupDb.purchaseOrderDao().insertOrder(
+                        PurchaseOrder(
+                            id = "po-bak-1",
+                            poNumber = "PO-BAK-001",
+                            supplierId = "sup-bak-1",
+                            attachments = "/data/user/0/$pkgName/files/po_attachments/po_qa__inv.pdf,https://example.com/supplier_invoice"
+                        )
+                    )
                 }
                 backupDb.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").use { it.moveToFirst() }
                 backupDb.close()
 
                 val imgBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 1, 2, 3)
+                val pdfBytes = "%PDF-1.4\n%%EOF".toByteArray(Charsets.US_ASCII)
+                val prefsJson = BackupArchiveContract.encodePreferencesJson(
+                    PortableBackupPreferences(
+                        appTheme = "dark",
+                        appLanguage = "en",
+                        appCurrency = "USD",
+                        userName = "QA Restored Owner",
+                        userRole = "OWNER_ADMIN",
+                        profilePhotoRelativePath = "avatar_qa.jpg",
+                        companyLogoRelativePath = "company_logo/company_logo_qa.png",
+                        fridayAutoBackupEnabled = false
+                    )
+                )
+                val presetsJson = JSONObject().apply {
+                    put("presetsListJson", """[{"id":"p1","name":"QA Preset","createdAt":1000,"filterState":{}}]""")
+                }.toString()
                 val meta = JSONObject().apply {
                     put("packageName", pkgName)
+                    put("backupFormatVersion", BackupArchiveContract.BACKUP_FORMAT_VERSION)
                     put("schemaVersion", schemaVer)
                     put("dbChecksumSha256", sha256(srcDbFile))
                 }
                 ZipOutputStream(FileOutputStream(outZip)).use { zos ->
-                    zos.putNextEntry(ZipEntry("database/advance_erp.db"))
+                    zos.putNextEntry(ZipEntry(BackupArchiveContract.DB_ENTRY))
                     srcDbFile.inputStream().use { it.copyTo(zos) }
                     zos.closeEntry()
 
@@ -626,7 +695,31 @@ class SmartCommunicationQaAndroidTest {
                     zos.write(imgBytes)
                     zos.closeEntry()
 
-                    zos.putNextEntry(ZipEntry("metadata.json"))
+                    zos.putNextEntry(ZipEntry("customer_photos/cust_qa.jpg"))
+                    zos.write(imgBytes)
+                    zos.closeEntry()
+
+                    zos.putNextEntry(ZipEntry("company_logo/company_logo_qa.png"))
+                    zos.write(imgBytes)
+                    zos.closeEntry()
+
+                    zos.putNextEntry(ZipEntry("company_signature/authorized_signature.png"))
+                    zos.write(imgBytes)
+                    zos.closeEntry()
+
+                    zos.putNextEntry(ZipEntry("po_attachments/po_qa__inv.pdf"))
+                    zos.write(pdfBytes)
+                    zos.closeEntry()
+
+                    zos.putNextEntry(ZipEntry(BackupArchiveContract.PREFERENCES_ENTRY))
+                    zos.write(prefsJson.toByteArray(Charsets.UTF_8))
+                    zos.closeEntry()
+
+                    zos.putNextEntry(ZipEntry(BackupArchiveContract.CONTROL_CENTER_PRESETS_ENTRY))
+                    zos.write(presetsJson.toByteArray(Charsets.UTF_8))
+                    zos.closeEntry()
+
+                    zos.putNextEntry(ZipEntry(BackupArchiveContract.METADATA_ENTRY))
                     zos.write(meta.toString().toByteArray(Charsets.UTF_8))
                     zos.closeEntry()
                 }
@@ -635,17 +728,42 @@ class SmartCommunicationQaAndroidTest {
                 File(srcDbFile.path + "-shm").delete()
             }
 
+            // Seed pre-restore drafts & presets to confirm drafts are cleared and presets updated atomically
+            ccPrefs.edit().putString("presets_list", """[{"id":"old","name":"Old Preset"}]""").commit()
+            draftsPrefs.edit().putString("purchase:new", """{"draft":"stale"}""").commit()
+
             val crossPkgPhotoPath = "/data/user/0/com.pocketdev.advance_erp2/files/avatar_qa.jpg"
             val validZip = File(envRoot, "valid_backup.zip")
             createValidBackupZip("Restored Customer QA", crossPkgPhotoPath, validZip)
 
-            // 1. Successful stage + apply + cross-package path rewrite
+            // 1. Successful stage + apply + cross-package path rewrite across all modules + preferences + presets
             StagedRestore.stage(isolatedCtx, validZip, zip = true)
             assertTrue(StagedRestore.isRestorePending(isolatedCtx))
             StagedRestore.applyPending(isolatedCtx)
             assertFalse(StagedRestore.isRestorePending(isolatedCtx))
             val okOutcome = StagedRestore.consumeRestoreResult(isolatedCtx)
             assertTrue("Expected SUCCESS restore outcome, got $okOutcome", okOutcome?.success == true)
+            assertTrue(StagedRestore.hasPendingPreferences(isolatedCtx))
+
+            runBlocking {
+                prefs.setAppLock(enabled = true, pinHash = "qa-pin-hash", salt = "qa-pin-salt")
+                assertTrue(StagedRestore.applyPendingPreferences(isolatedCtx, prefs))
+                assertFalse(StagedRestore.hasPendingPreferences(isolatedCtx))
+                assertEquals("dark", prefs.selectedTheme.first())
+                assertEquals(AppLanguage.ENGLISH, prefs.selectedLanguage.first())
+                assertEquals(CurrencyCode.USD, prefs.selectedCurrency.first())
+                assertEquals("QA Restored Owner", prefs.userName.first())
+                assertEquals(false, prefs.isFridayAutoBackupEnabled.first())
+                assertEquals(File(envFiles, "avatar_qa.jpg").absolutePath, prefs.profilePhotoUri.first())
+                assertEquals(File(envFiles, "company_logo/company_logo_qa.png").absolutePath, prefs.companyLogoPath.first())
+                // Device-bound App Lock PIN must NEVER be overwritten by restored preferences
+                assertTrue(prefs.isAppLockEnabled.first())
+                assertEquals("qa-pin-hash", prefs.pinCodeHash.first())
+                assertEquals("qa-pin-salt", prefs.pinSalt.first())
+            }
+
+            assertTrue(ccPrefs.getString("presets_list", "").orEmpty().contains("QA Preset"))
+            assertTrue(draftsPrefs.all.isEmpty())
 
             val restoredDb = Room.databaseBuilder(
                 context,
@@ -653,12 +771,26 @@ class SmartCommunicationQaAndroidTest {
                 isolatedCtx.getDatabasePath(AdvanceErpDatabase.DATABASE_NAME).absolutePath
             ).allowMainThreadQueries().build()
             val restoredCust = runBlocking { restoredDb.customerDao().getCustomerById("c-bak-1") }
+            val restoredCustPhoto = runBlocking { restoredDb.customerDao().getCustomerById("c-bak-cust-photo") }
+            val restoredProfile = runBlocking { restoredDb.businessProfileDao().getProfileSync() }
+            val restoredPo = runBlocking { restoredDb.purchaseOrderDao().getOrderById("po-bak-1") }
             restoredDb.close()
+
             assertNotNull(restoredCust)
             assertEquals("Restored Customer QA", restoredCust!!.name)
             assertEquals(File(envFiles, "avatar_qa.jpg").absolutePath, restoredCust.profileImagePath)
+            assertEquals(File(envFiles, "customer_photos/cust_qa.jpg").absolutePath, restoredCustPhoto?.profileImagePath)
+            assertEquals(File(envFiles, "company_logo/company_logo_qa.png").absolutePath, restoredProfile?.logoPath)
+            assertEquals(
+                "${File(envFiles, "po_attachments/po_qa__inv.pdf").absolutePath},https://example.com/supplier_invoice",
+                restoredPo?.attachments
+            )
             assertTrue(File(envFiles, "avatar_qa.jpg").exists())
             assertTrue(File(envFiles, "product_images/qa_photo.jpg").exists())
+            assertTrue(File(envFiles, "customer_photos/cust_qa.jpg").exists())
+            assertTrue(File(envFiles, "company_logo/company_logo_qa.png").exists())
+            assertTrue(File(envFiles, "company_signature/authorized_signature.png").exists())
+            assertTrue(File(envFiles, "po_attachments/po_qa__inv.pdf").exists())
 
             // 2. Reject corrupt header, future schemaVersion, path traversal, duplicate entry before touching live DB
             val corruptZip = File(envRoot, "corrupt_sqlite.zip")
@@ -707,10 +839,12 @@ class SmartCommunicationQaAndroidTest {
             // 3. Interrupted restore rollback test: corrupt staged database.db after stage -> applyPending rolls back cleanly and records FAILED result
             val secondZip = File(envRoot, "second.zip")
             createValidBackupZip("Should Rollback", crossPkgPhotoPath, secondZip)
+            draftsPrefs.edit().putString("purchase:live", """{"keep":"me"}""").commit()
             StagedRestore.stage(isolatedCtx, secondZip, zip = true)
             File(File(envFiles, "restore_staging"), "database.db").writeText("CORRUPTED_MID_APPLY")
             StagedRestore.applyPending(isolatedCtx)
             assertFalse(StagedRestore.isRestorePending(isolatedCtx))
+            assertFalse(StagedRestore.hasPendingPreferences(isolatedCtx))
             val failOutcome = StagedRestore.consumeRestoreResult(isolatedCtx)
             assertEquals(false, failOutcome?.success)
 
@@ -726,7 +860,28 @@ class SmartCommunicationQaAndroidTest {
             rolledBackDb.close()
             assertEquals("ok", qc)
             assertEquals("Restored Customer QA", afterRollback?.name)
+            assertEquals("""{"keep":"me"}""", draftsPrefs.getString("purchase:live", null))
+            assertTrue(ccPrefs.getString("presets_list", "").orEmpty().contains("QA Preset"))
+            assertTrue(File(envFiles, "company_signature/authorized_signature.png").exists())
         } finally {
+            runBlocking {
+                prefs.setAppLock(enabled = false)
+                prefs.setTheme("system")
+                prefs.setLanguage(AppLanguage.BANGLA)
+                prefs.setCurrency(CurrencyCode.BDT)
+                prefs.setUserName(null)
+                prefs.setUserRole(UserRole.OWNER_ADMIN)
+                prefs.setProfilePhotoUri(null)
+                prefs.setCompanyLogoPath(null)
+                prefs.setFridayAutoBackupEnabled(true)
+            }
+            ccPrefs.edit().apply {
+                if (origCcHasKey && origCcValue != null) putString("presets_list", origCcValue)
+                else remove("presets_list")
+            }.commit()
+            draftsPrefs.edit().clear().apply {
+                origDrafts.forEach { (k, v) -> if (v != null) putString(k, v) }
+            }.commit()
             envRoot.deleteRecursively()
         }
     }

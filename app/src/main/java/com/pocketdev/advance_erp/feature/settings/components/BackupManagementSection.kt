@@ -138,8 +138,8 @@ fun BackupManagementSection(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = if (isBn) "সকল পণ্যের ছবি, প্রোফাইল ও ডাটাবেজ নিরাপদ জিপ ফাইলে সেভ হবে"
-                        else "Bundles all photos, profile & SQLite database into a verified ZIP archive",
+                        text = if (isBn) "ডাটাবেজ, পণ্য ও কাস্টমারের ছবি, পিও/ভল্ট ডকুমেন্ট, লোগো, সিগনেচার ও সেটিংস সম্পূর্ণ জিপ ফাইলে সেভ হবে"
+                        else "Bundles SQLite database, product & customer photos, PO/Vault documents, logo, signature & preferences into a verified ZIP",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextSecondary
                     )
@@ -560,7 +560,11 @@ fun BackupManagementSection(
                                                 if (file.exists()) {
                                                     onShareBackup(file)
                                                 } else {
-                                                    Toast.makeText(context, "File does not exist", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (isBn) "ব্যাকআপ ফাইলটি এই ডিভাইসে নেই" else "Backup file not found on this device",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
                                                 }
                                             },
                                             modifier = Modifier.size(34.dp)
@@ -575,7 +579,15 @@ fun BackupManagementSection(
 
                                         IconButton(
                                             onClick = {
-                                                backupToRestore = bak
+                                                if (file.exists()) {
+                                                    backupToRestore = bak
+                                                } else {
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (isBn) "ব্যাকআপ ফাইলটি এই ডিভাইসে নেই" else "Backup file not found on this device",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
                                             },
                                             modifier = Modifier.size(34.dp)
                                         ) {

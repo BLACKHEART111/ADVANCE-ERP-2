@@ -9,12 +9,15 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.pocketdev.advance_erp.core.database.BackupArchiveContract
+import com.pocketdev.advance_erp.core.database.PortableBackupPreferences
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -257,6 +260,88 @@ class UserPreferencesRepository @Inject constructor(
                 preferences[keyBackupPassphrase] = passphrase.trim()
             } else {
                 preferences.remove(keyBackupPassphrase)
+            }
+        }
+    }
+
+    /**
+     * Atomically restores portable UI/profile preferences from a validated backup while preserving
+     * device-bound security secrets (PIN lock, biometric flag, legacy passphrase) and SAF URIs.
+     */
+    suspend fun applyRestoredPortablePreferences(
+        prefs: PortableBackupPreferences,
+        targetFilesDirPath: String,
+        restoredDbLogoPath: String?,
+        fallbackAvatarPath: String?
+    ) {
+        fun existingFileOrNull(rawPath: String?): String? {
+            val cleaned = rawPath?.trim()?.let {
+                if (it.startsWith("file://", ignoreCase = true)) it.substring(7).trim() else it
+            }?.takeIf { it.isNotBlank() } ?: return null
+            return cleaned.takeIf { File(it).isFile }
+        }
+
+        context.dataStore.edit { mutablePrefs ->
+            if (!prefs.legacyMode) {
+                prefs.appTheme?.takeIf { it in setOf("system", "light", "dark") }?.let {
+                    mutablePrefs[keyTheme] = it
+                }
+                prefs.appLanguage?.takeIf { it.isNotBlank() }?.let {
+                    mutablePrefs[keyLanguage] = AppLanguage.fromCode(it).code
+                }
+                prefs.appCurrency?.takeIf { it.isNotBlank() }?.let {
+                    mutablePrefs[keyCurrency] = CurrencyCode.fromCode(it).code
+                }
+                val trimmedUserName = prefs.userName?.trim()?.takeIf { it.isNotBlank() }
+                if (trimmedUserName != null) {
+                    mutablePrefs[keyUserName] = trimmedUserName
+                } else {
+                    mutablePrefs.remove(keyUserName)
+                }
+                prefs.userRole?.takeIf { it.isNotBlank() }?.let {
+                    mutablePrefs[keyUserRole] = com.pocketdev.advance_erp.core.security.UserRole.fromCode(it).code
+                }
+                prefs.fridayAutoBackupEnabled?.let {
+                    mutablePrefs[keyFridayAutoBackup] = it
+                }
+
+                val resolvedProfilePhoto = existingFileOrNull(
+                    BackupArchiveContract.anchorManagedRelativePath(
+                        prefs.profilePhotoRelativePath,
+                        targetFilesDirPath
+                    )
+                ) ?: existingFileOrNull(fallbackAvatarPath)
+                if (resolvedProfilePhoto != null) {
+                    mutablePrefs[keyProfilePhotoUri] = resolvedProfilePhoto
+                } else {
+                    mutablePrefs.remove(keyProfilePhotoUri)
+                }
+
+                val resolvedCompanyLogo = existingFileOrNull(
+                    BackupArchiveContract.anchorManagedRelativePath(
+                        prefs.companyLogoRelativePath,
+                        targetFilesDirPath
+                    )
+                ) ?: existingFileOrNull(restoredDbLogoPath)
+                if (resolvedCompanyLogo != null) {
+                    mutablePrefs[keyCompanyLogoPath] = resolvedCompanyLogo
+                } else {
+                    mutablePrefs.remove(keyCompanyLogoPath)
+                }
+            } else {
+                val validDbLogo = existingFileOrNull(restoredDbLogoPath)
+                if (validDbLogo != null) {
+                    mutablePrefs[keyCompanyLogoPath] = validDbLogo
+                } else if (existingFileOrNull(mutablePrefs[keyCompanyLogoPath]) == null) {
+                    mutablePrefs.remove(keyCompanyLogoPath)
+                }
+
+                if (existingFileOrNull(mutablePrefs[keyProfilePhotoUri]) == null) {
+                    val validFallbackAvatar = existingFileOrNull(fallbackAvatarPath)
+                    if (validFallbackAvatar != null) {
+                        mutablePrefs[keyProfilePhotoUri] = validFallbackAvatar
+                    }
+                }
             }
         }
     }

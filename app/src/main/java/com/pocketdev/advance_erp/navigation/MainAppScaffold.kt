@@ -145,7 +145,11 @@ fun MainAppScaffold(
     val toggleLanguageAction: () -> Unit = {
         coroutineScope.launch {
             val newLang = if (currentLanguage == AppLanguage.BANGLA) AppLanguage.ENGLISH else AppLanguage.BANGLA
-            preferencesRepository.setLanguage(newLang)
+            if (settingsRepository != null) {
+                settingsRepository.updateLanguage(newLang)
+            } else {
+                preferencesRepository.setLanguage(newLang)
+            }
         }
     }
 

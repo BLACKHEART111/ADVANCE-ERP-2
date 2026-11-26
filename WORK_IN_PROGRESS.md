@@ -1,5 +1,21 @@
 # ADVANCE ERP — Premium UI implementation checkpoint
 
+## Comprehensive Backup & Restore Audit Fixes (v2 Archive Format) — Verified Build & Unit Suite (2026-11-27)
+
+Upgraded offline ZIP backup and staged startup restore to cover 100% of app modules, media directories, branding, portable preferences, and report filter presets while keeping Room Schema v15 (`15.json`, `62` entities) untouched:
+- **Pure-JVM Backup Contract & Atomic Snapshot (`BackupArchiveContract.kt`, `BackupRepositoryImpl.kt`)**:
+  - Added `BackupArchiveContract` (`BACKUP_FORMAT_VERSION = 2`) with pure-Kotlin RFC-8259 JSON encoding/decoding for `PortableBackupPreferences`, safe ZIP entry allowlisting, and path extraction/anchoring/rewriting (single, any-subdir, root prefix, and CSV attachment lists).
+  - Updated `BackupRepositoryImpl.createBackup` to capture a consistent SQLite snapshot via `VACUUM INTO` (with `PRAGMA wal_checkpoint(FULL)` + file copy fallback on older SQLite), bundle all 6 managed media directories (`product_images`, `po_attachments`, `vault_attachments`, `customer_photos`, `company_logo`, `company_signature`) + root `avatars/`, serialize portable DataStore settings (`preferences.json`) and Control Center saved presets (`control_center_presets.json`), and emit enriched v2 `metadata.json`.
+- **Staged Restore Hardening & Startup Preference Apply (`StagedRestore.kt`, `UserPreferencesRepository.kt`, `AdvanceErpApplication.kt`)**:
+  - Updated `StagedRestore` to validate and restore all v2 media directories (preserving v2-only dirs when restoring older v1 backups), rewrite cross-package `/files/...` paths across `product_images`, `import_vault_attachments`, `purchase_orders.attachments`, `customers.profileImagePath`, `business_profiles.logoPath`, `import_cost_items.attachmentPath`, and `expense_vouchers.attachmentPath`, restore `control_center_presets`, clear stale `editor_drafts_v1` (with full rollback on interrupted restore), and defer portable DataStore apply (`applyPendingPreferences`) safely to `AdvanceErpApplication.onCreate` without touching App Lock PIN/biometric secrets or device-bound SAF URIs.
+- **Supporting Resilience Fixes (`MainAppScaffold.kt`, `ProductImageStorage.kt`, `BackupManagementSection.kt`)**:
+  - Synced top-bar language toggle through `SettingsRepository.updateLanguage`, added same-dir fast-path + stream copy fallback in `ProductImageStorage.saveImageFromUri` to avoid storing raw `content://` URIs on codec errors, and updated backup UI copy + missing-file guard toast on historical Share/Restore actions.
+- **Verification (Run After Final Code Edits)**:
+  - `git diff --check`: clean (`0` issues).
+  - `adev` Debug Build & Unit Suite (`:app:assembleDebug :app:testDebugUnitTest --console=plain --max-workers=1`): **BUILD SUCCESSFUL in 10m 3s**, **`87` suites / `485` tests passed (`0` failures, `0` errors, `0` skipped)**, including `BackupAndRestoreValidationTest` (`7/7`), `PlainBackupExportTest` (`4/4`), `SecurityAndBackupTest` (`5/5`), `ImportVaultPhase4Test` (`6/6`), `SettingsLogicTest` (`6/6`), and `DatabaseMigrationVerificationTest` (`5/5`).
+  - `adev` QA AndroidTest Compilation (`-PcommunicationQa=true :app:compileCommunicationqaAndroidTestKotlin --console=plain --max-workers=1`): **BUILD SUCCESSFUL in 6m 11s** (updated `SmartCommunicationQaAndroidTest.stagedRestoreRehearsalCrossPackageRewriteRejectsCorruptAndRollsBackInterruptedRestore`).
+  - **Live In-Place Update & Scope (`com.pocketdev.advance_erp2`)**: Updated strictly in-place via `adb install -r app/build/outputs/apk/debug/app-debug.apk` (APK SHA-256 `103cf57856c188e4612ccbb09cbc658c90d224f7b32018a3896cdc3f8d84e422`) on `emulator-5554` (`CPH2745`); `dumpsys package` confirmed preserved `firstInstallTime=2026-11-22 02:39:36`, `lastUpdateTime=2026-11-27 02:37:32`, and matching signing key `[f7267c35]`. Read-only cold launch (`MainActivity`, PID `15679`, `TotalTime=695ms`) passed with zero `AndroidRuntime`/`Room`/`SQLite`/`StagedRestore` errors in logcat. Per user instruction, no on-device restore test was executed against live or QA packages.
+
 ## Smart WhatsApp Communication — Verified Implementation, QA & Live In-Place Update (2026-11-27)
 
 Completed, hardened, device-tested (`com.pocketdev.advance_erp2.communicationqa`), rebuilt, and updated in-place on `com.pocketdev.advance_erp2`:

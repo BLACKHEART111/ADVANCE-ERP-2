@@ -10,7 +10,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,6 +35,20 @@ class ProductImageStorage @Inject constructor(
      * Normalizes orientation, scales to max 1280px, and returns the persistent local file path.
      */
     suspend fun saveImageFromUri(sourceUri: Uri, isThumbnail: Boolean = false): String = withContext(Dispatchers.IO) {
+        if (sourceUri.scheme == null || sourceUri.scheme.equals("file", ignoreCase = true)) {
+            val existingPath = sourceUri.path.orEmpty()
+            if (existingPath.isNotBlank()) {
+                val canonicalExisting = runCatching { File(existingPath).canonicalFile }.getOrNull()
+                val canonicalDir = runCatching { imagesDir.canonicalFile }.getOrNull()
+                if (canonicalExisting != null && canonicalDir != null &&
+                    canonicalExisting.parentFile == canonicalDir &&
+                    canonicalExisting.exists() && canonicalExisting.isFile
+                ) {
+                    return@withContext canonicalExisting.absolutePath
+                }
+            }
+        }
+
         val maxDimension = if (isThumbnail) 256 else 1280
         val quality = if (isThumbnail) 80 else 85
         val prefix = if (isThumbnail) "thumb_" else "img_"
@@ -42,7 +58,7 @@ class ProductImageStorage @Inject constructor(
         // Read orientation from ExifInterface
         var rotationDegrees = 0
         try {
-            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            openStream(sourceUri)?.use { input ->
                 val exif = ExifInterface(input)
                 rotationDegrees = when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
                     ExifInterface.ORIENTATION_ROTATE_90 -> 90
@@ -59,7 +75,7 @@ class ProductImageStorage @Inject constructor(
         val options = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
-        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+        openStream(sourceUri)?.use { input ->
             BitmapFactory.decodeStream(input, null, options)
         }
 
@@ -81,12 +97,21 @@ class ProductImageStorage @Inject constructor(
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
 
-        var bitmap: Bitmap? = context.contentResolver.openInputStream(sourceUri)?.use { input ->
+        var bitmap: Bitmap? = openStream(sourceUri)?.use { input ->
             BitmapFactory.decodeStream(input, null, decodeOptions)
         }
 
         if (bitmap == null) {
-            throw IllegalArgumentException("Unable to decode image from uri: $sourceUri")
+            val copiedBytes = openStream(sourceUri)?.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: throw IllegalArgumentException("Unable to decode or open image from uri: $sourceUri")
+            if (copiedBytes <= 0L || !destFile.exists()) {
+                destFile.delete()
+                throw IllegalArgumentException("Unable to copy empty image from uri: $sourceUri")
+            }
+            return@withContext destFile.absolutePath
         }
 
         // Rotate if needed
@@ -120,6 +145,15 @@ class ProductImageStorage @Inject constructor(
         bitmap.recycle()
 
         destFile.absolutePath
+    }
+
+    private fun openStream(sourceUri: Uri): InputStream? {
+        runCatching { context.contentResolver.openInputStream(sourceUri) }.getOrNull()?.let { return it }
+        if (sourceUri.scheme == null || sourceUri.scheme.equals("file", ignoreCase = true)) {
+            val file = File(sourceUri.path.orEmpty())
+            if (file.exists() && file.isFile) return FileInputStream(file)
+        }
+        return null
     }
 
     /**

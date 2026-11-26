@@ -12,6 +12,8 @@ import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import androidx.room.withTransaction
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
+import com.pocketdev.advance_erp.core.database.BackupArchiveContract
+import com.pocketdev.advance_erp.core.database.PortableBackupPreferences
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.notification.BackupNotificationHelper
 import com.pocketdev.advance_erp.data.dao.AuditLogDao
@@ -51,137 +53,233 @@ class BackupRepositoryImpl @Inject constructor(
     override fun getAllBackupRecords(): Flow<List<BackupRecord>> = backupDao.getAllBackupRecords()
 
     override suspend fun createBackup(isAutomatic: Boolean, notes: String?): BackupRecord = withContext(Dispatchers.IO) {
-        checkpointDatabase()
+        val snapshotFile = createConsistentDatabaseSnapshot()
+        try {
+            val backupDir = File(context.filesDir, "backups").apply { if (!exists()) mkdirs() }
+            // Format file name based on date/mm/yy (dd_MM_yy_HHmmss)
+            val timeStamp = SimpleDateFormat("dd_MM_yy_HHmmss", Locale.US).format(Date())
+            val fileName = "AdvanceERP_Backup_${timeStamp}.zip"
+            val zipBackupFile = File(backupDir, fileName)
 
+            val mediaFilesByDir = BackupArchiveContract.MANAGED_MEDIA_DIRS.associateWith { dirName ->
+                val dir = File(context.filesDir, dirName)
+                if (dir.exists() && dir.isDirectory) {
+                    dir.listFiles()?.filter { it.isFile }?.sortedBy { it.name }.orEmpty()
+                } else {
+                    emptyList()
+                }
+            }
+            val avatarFiles = context.filesDir.listFiles()
+                ?.filter {
+                    it.isFile &&
+                        (it.name.startsWith("avatar_") || it.name.startsWith("company_logo") ||
+                            it.name.endsWith(".jpg") || it.name.endsWith(".png")) &&
+                        !it.name.endsWith(".zip")
+                }
+                ?.sortedBy { it.name }
+                ?: emptyList()
+
+            val schemaVersion = database.openHelper.readableDatabase.version
+            val dbChecksum = calculateSha256(snapshotFile)
+
+            val filesDirCanonical = runCatching { context.filesDir.canonicalFile }.getOrNull()
+            fun verifiedManagedRelativePath(rawPath: String?): String? {
+                val rel = BackupArchiveContract.extractManagedRelativePath(rawPath, context.filesDir.absolutePath)
+                    ?: return null
+                val anchored = BackupArchiveContract.anchorManagedRelativePath(rel, context.filesDir.absolutePath)
+                    ?: return null
+                val candidate = runCatching { File(anchored).canonicalFile }.getOrNull() ?: return null
+                if (!candidate.isFile) return null
+                if (filesDirCanonical != null) {
+                    val basePrefix = filesDirCanonical.path.trimEnd(File.separatorChar) + File.separator
+                    if (!candidate.path.startsWith(basePrefix)) return null
+                }
+                return rel
+            }
+
+            val businessProfile = runCatching { database.businessProfileDao().getProfileSync() }.getOrNull()
+            val rawPrefProfilePhoto = runCatching { preferencesRepository.profilePhotoUri.firstOrNull() }.getOrNull()
+            val rawPrefCompanyLogo = runCatching { preferencesRepository.companyLogoPath.firstOrNull() }.getOrNull()
+            val resolvedLogoRelativePath = verifiedManagedRelativePath(rawPrefCompanyLogo)
+                ?: verifiedManagedRelativePath(businessProfile?.logoPath)
+
+            val portablePrefs = PortableBackupPreferences(
+                appTheme = runCatching { preferencesRepository.selectedTheme.firstOrNull() }.getOrNull(),
+                appLanguage = runCatching { preferencesRepository.selectedLanguage.firstOrNull()?.code }.getOrNull(),
+                appCurrency = runCatching { preferencesRepository.selectedCurrency.firstOrNull()?.code }.getOrNull(),
+                userName = runCatching { preferencesRepository.userName.firstOrNull() }.getOrNull()
+                    ?.trim()?.ifBlank { null },
+                userRole = runCatching { preferencesRepository.selectedUserRole.firstOrNull()?.code }.getOrNull(),
+                profilePhotoRelativePath = verifiedManagedRelativePath(rawPrefProfilePhoto),
+                companyLogoRelativePath = resolvedLogoRelativePath,
+                fridayAutoBackupEnabled = runCatching { preferencesRepository.isFridayAutoBackupEnabled.firstOrNull() }
+                    .getOrNull(),
+                legacyMode = false
+            )
+            val preferencesJsonText = BackupArchiveContract.encodePreferencesJson(portablePrefs)
+
+            val rawPresets = context.getSharedPreferences("control_center_presets", Context.MODE_PRIVATE)
+                .getString("presets_list", null)
+            val validPresetsArrayJson = rawPresets?.let { raw ->
+                runCatching { org.json.JSONArray(raw).toString() }.getOrNull()
+            } ?: "[]"
+            val presetsPayloadText = org.json.JSONObject().apply {
+                put("presetsListJson", validPresetsArrayJson)
+            }.toString(2)
+
+            val productImagesCount = mediaFilesByDir["product_images"]?.size ?: 0
+            val poAttachmentsCount = mediaFilesByDir["po_attachments"]?.size ?: 0
+            val vaultAttachmentsCount = mediaFilesByDir["vault_attachments"]?.size ?: 0
+            val customerPhotosCount = mediaFilesByDir["customer_photos"]?.size ?: 0
+            val companyLogosCount = mediaFilesByDir["company_logo"]?.size ?: 0
+            val companySignaturesCount = mediaFilesByDir["company_signature"]?.size ?: 0
+            val totalMediaImagesCount = productImagesCount + avatarFiles.size + customerPhotosCount +
+                companyLogosCount + companySignaturesCount
+
+            // Write comprehensive ZIP archive bundling SQLite snapshot + all managed media + preferences + presets + metadata
+            ZipOutputStream(FileOutputStream(zipBackupFile)).use { zos ->
+                // Entry 1: Atomic Database Snapshot
+                zos.putNextEntry(ZipEntry(BackupArchiveContract.DB_ENTRY))
+                FileInputStream(snapshotFile).use { fis -> fis.copyTo(zos) }
+                zos.closeEntry()
+
+                // Entries 2..N: All managed media & attachment directories
+                for ((dirName, files) in mediaFilesByDir) {
+                    for (file in files) {
+                        zos.putNextEntry(ZipEntry("$dirName/${file.name}"))
+                        FileInputStream(file).use { fis -> fis.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+                }
+
+                // Avatar & root branding images
+                for (av in avatarFiles) {
+                    zos.putNextEntry(ZipEntry("avatars/${av.name}"))
+                    FileInputStream(av).use { fis -> fis.copyTo(zos) }
+                    zos.closeEntry()
+                }
+
+                // Portable DataStore Preferences
+                zos.putNextEntry(ZipEntry(BackupArchiveContract.PREFERENCES_ENTRY))
+                zos.write(preferencesJsonText.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+
+                // Control Center Saved Filter Presets
+                zos.putNextEntry(ZipEntry(BackupArchiveContract.CONTROL_CENTER_PRESETS_ENTRY))
+                zos.write(presetsPayloadText.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+
+                // Metadata JSON (valid JSON escaping via org.json.JSONObject)
+                val metadataJson = org.json.JSONObject().apply {
+                    put("application", "ADVANCE ERP")
+                    put("package", context.packageName)
+                    put("backupFormatVersion", BackupArchiveContract.BACKUP_FORMAT_VERSION)
+                    put("timestamp", System.currentTimeMillis())
+                    put("schemaVersion", schemaVersion)
+                    put("dbChecksumSha256", dbChecksum)
+                    put("totalImages", totalMediaImagesCount)
+                    put("totalProductImages", productImagesCount)
+                    put("totalAvatars", avatarFiles.size)
+                    put("totalPoAttachments", poAttachmentsCount)
+                    put("totalVaultAttachments", vaultAttachmentsCount)
+                    put("totalCustomerPhotos", customerPhotosCount)
+                    put("totalCompanyLogos", companyLogosCount)
+                    put("totalCompanySignatures", companySignaturesCount)
+                    put("hasPreferences", true)
+                    put("hasControlCenterPresets", true)
+                    put("notes", notes ?: "Offline Comprehensive Backup")
+                }
+                zos.putNextEntry(ZipEntry(BackupArchiveContract.METADATA_ENTRY))
+                zos.write(metadataJson.toString(2).toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+            }
+
+            // Manual and automatic backups always use a password-free ZIP.
+            val finalFileName = fileName
+            val finalBackupFile = zipBackupFile
+
+            // Calculate final SHA-256
+            val checksum = calculateSha256(finalBackupFile)
+
+            // Automatically save a copy to Phone File Manager (User-selected SAF folder OR Downloads/AdvanceERP_Backups)
+            val exportedLocationDesc = exportBackupToPhoneFileManager(
+                backupFile = finalBackupFile,
+                fileName = finalFileName,
+                mimeType = "application/zip"
+            )
+            val combinedNotes = buildString {
+                if (!notes.isNullOrBlank()) append(notes).append(" • ")
+                append("Saved to File Manager: $exportedLocationDesc")
+            }
+
+            val record = BackupRecord(
+                id = "bak-${UUID.randomUUID()}",
+                fileName = finalFileName,
+                filePath = finalBackupFile.absolutePath,
+                fileSizeBytes = finalBackupFile.length(),
+                checksumSha256 = checksum,
+                schemaVersion = schemaVersion,
+                isAutomatic = isAutomatic,
+                notes = combinedNotes,
+                createdAt = System.currentTimeMillis()
+            )
+
+            backupDao.insertBackupRecord(record)
+
+            auditLogDao.insertAuditLog(
+                AuditLog(
+                    id = "audit-${UUID.randomUUID()}",
+                    recordType = "BACKUP",
+                    recordId = record.id,
+                    action = "BACKUP",
+                    details = "Created comprehensive ZIP backup v${BackupArchiveContract.BACKUP_FORMAT_VERSION} $finalFileName (${record.fileSizeBytes / 1024} KB, $totalMediaImagesCount images, $poAttachmentsCount PO files, $vaultAttachmentsCount Vault files, schema v$schemaVersion, File Manager: $exportedLocationDesc, SHA-256: ${checksum.take(8)}...)"
+                )
+            )
+
+            // Post notification to phone status bar
+            BackupNotificationHelper.notifyBackupSuccess(
+                context = context,
+                fileName = finalFileName,
+                locationDesc = exportedLocationDesc,
+                isEncrypted = false,
+                isAutomatic = isAutomatic
+            )
+
+            record
+        } finally {
+            snapshotFile.delete()
+            File(snapshotFile.path + "-wal").delete()
+            File(snapshotFile.path + "-shm").delete()
+        }
+    }
+
+    private fun createConsistentDatabaseSnapshot(): File {
+        context.cacheDir.mkdirs()
+        val snapshotFile = File(context.cacheDir, "backup_snapshot_${UUID.randomUUID()}.db")
+        if (snapshotFile.exists()) snapshotFile.delete()
+
+        val vacuumSucceeded = runCatching {
+            val escapedPath = snapshotFile.absolutePath.replace("'", "''")
+            database.openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
+        }.isSuccess
+
+        if (vacuumSucceeded && snapshotFile.exists() && snapshotFile.length() > 100L && verifySqliteDbFile(snapshotFile)) {
+            return snapshotFile
+        }
+
+        snapshotFile.delete()
+        File(snapshotFile.path + "-wal").delete()
+        File(snapshotFile.path + "-shm").delete()
+
+        checkpointDatabase()
         val dbFile = context.getDatabasePath(AdvanceErpDatabase.DATABASE_NAME)
         require(dbFile.exists()) { "Database file does not exist at ${dbFile.absolutePath}" }
-
-        val backupDir = File(context.filesDir, "backups").apply { if (!exists()) mkdirs() }
-        // Format file name based on date/mm/yy (dd_MM_yy_HHmmss)
-        val timeStamp = SimpleDateFormat("dd_MM_yy_HHmmss", Locale.US).format(Date())
-        val fileName = "AdvanceERP_Backup_${timeStamp}.zip"
-        val zipBackupFile = File(backupDir, fileName)
-
-        val imagesDir = File(context.filesDir, "product_images")
-        val imageFiles = if (imagesDir.exists()) imagesDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
-        val poAttachmentsDir = File(context.filesDir, "po_attachments")
-        val poAttachmentFiles = if (poAttachmentsDir.exists()) poAttachmentsDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
-        val vaultAttachmentsDir = File(context.filesDir, "vault_attachments")
-        val vaultAttachmentFiles = if (vaultAttachmentsDir.exists()) vaultAttachmentsDir.listFiles()?.filter { it.isFile } ?: emptyList() else emptyList()
-        val avatarFiles = context.filesDir.listFiles()?.filter { it.isFile && (it.name.startsWith("avatar_") || it.name.endsWith(".jpg") || it.name.endsWith(".png")) && !it.name.endsWith(".zip") } ?: emptyList()
-
-        val schemaVersion = database.openHelper.readableDatabase.version
-        val dbChecksum = calculateSha256(dbFile)
-
-        // Write comprehensive ZIP archive bundling SQLite database + product_images/ + avatars/ + metadata.json
-        ZipOutputStream(FileOutputStream(zipBackupFile)).use { zos ->
-            // Entry 1: Database
-            val dbEntry = ZipEntry("database/advance_erp.db")
-            zos.putNextEntry(dbEntry)
-            FileInputStream(dbFile).use { fis -> fis.copyTo(zos) }
-            zos.closeEntry()
-
-            // Entry 2..N: Product Images
-            for (img in imageFiles) {
-                val imgEntry = ZipEntry("product_images/${img.name}")
-                zos.putNextEntry(imgEntry)
-                FileInputStream(img).use { fis -> fis.copyTo(zos) }
-                zos.closeEntry()
+        FileInputStream(dbFile).use { input ->
+            FileOutputStream(snapshotFile).use { output ->
+                input.copyTo(output)
             }
-
-            // Entry N..M: Avatar & Profile Images
-            for (av in avatarFiles) {
-                val avEntry = ZipEntry("avatars/${av.name}")
-                zos.putNextEntry(avEntry)
-                FileInputStream(av).use { fis -> fis.copyTo(zos) }
-                zos.closeEntry()
-            }
-
-            // Entry M..K: PO Attachments (Invoices, PDFs & Photos)
-            for (att in poAttachmentFiles) {
-                val attEntry = ZipEntry("po_attachments/${att.name}")
-                zos.putNextEntry(attEntry)
-                FileInputStream(att).use { fis -> fis.copyTo(zos) }
-                zos.closeEntry()
-            }
-
-            // Entry K..L: Import Vault Attachments & Immutable Snapshots
-            for (vAtt in vaultAttachmentFiles) {
-                val vEntry = ZipEntry("vault_attachments/${vAtt.name}")
-                zos.putNextEntry(vEntry)
-                FileInputStream(vAtt).use { fis -> fis.copyTo(zos) }
-                zos.closeEntry()
-            }
-
-            // Entry M+1: Metadata JSON (valid JSON escaping via org.json.JSONObject)
-            val metadataJson = org.json.JSONObject().apply {
-                put("application", "ADVANCE ERP")
-                put("package", context.packageName)
-                put("timestamp", System.currentTimeMillis())
-                put("schemaVersion", schemaVersion)
-                put("dbChecksumSha256", dbChecksum)
-                put("totalImages", imageFiles.size + avatarFiles.size)
-                put("totalVaultAttachments", vaultAttachmentFiles.size)
-                put("notes", notes ?: "Offline Comprehensive Backup")
-            }
-            val metaEntry = ZipEntry("metadata.json")
-            zos.putNextEntry(metaEntry)
-            zos.write(metadataJson.toString(2).toByteArray(Charsets.UTF_8))
-            zos.closeEntry()
         }
-
-        // Manual and automatic backups always use a password-free ZIP.
-        val finalFileName = fileName
-        val finalBackupFile = zipBackupFile
-
-        // Calculate final SHA-256
-        val checksum = calculateSha256(finalBackupFile)
-
-        // Automatically save a copy to Phone File Manager (User-selected SAF folder OR Downloads/AdvanceERP_Backups)
-        val exportedLocationDesc = exportBackupToPhoneFileManager(
-            backupFile = finalBackupFile,
-            fileName = finalFileName,
-            mimeType = "application/zip"
-        )
-        val combinedNotes = buildString {
-            if (!notes.isNullOrBlank()) append(notes).append(" • ")
-            append("Saved to File Manager: $exportedLocationDesc")
-        }
-
-        val record = BackupRecord(
-            id = "bak-${UUID.randomUUID()}",
-            fileName = finalFileName,
-            filePath = finalBackupFile.absolutePath,
-            fileSizeBytes = finalBackupFile.length(),
-            checksumSha256 = checksum,
-            schemaVersion = schemaVersion,
-            isAutomatic = isAutomatic,
-            notes = combinedNotes,
-            createdAt = System.currentTimeMillis()
-        )
-
-        backupDao.insertBackupRecord(record)
-
-        auditLogDao.insertAuditLog(
-            AuditLog(
-                id = "audit-${UUID.randomUUID()}",
-                recordType = "BACKUP",
-                recordId = record.id,
-                action = "BACKUP",
-                details = "Created comprehensive ZIP backup $finalFileName (${record.fileSizeBytes / 1024} KB, ${imageFiles.size} images, schema v$schemaVersion, File Manager: $exportedLocationDesc, SHA-256: ${checksum.take(8)}...)"
-            )
-        )
-
-        // Post notification to phone status bar
-        BackupNotificationHelper.notifyBackupSuccess(
-            context = context,
-            fileName = finalFileName,
-            locationDesc = exportedLocationDesc,
-            isEncrypted = false,
-            isAutomatic = isAutomatic
-        )
-
-        record
+        return snapshotFile
     }
 
     private suspend fun exportBackupToPhoneFileManager(
@@ -573,15 +671,8 @@ class BackupRepositoryImpl @Inject constructor(
     }
 }
 
-internal fun isSafeBackupZipEntry(name: String): Boolean {
-    if (name.isBlank() || name.startsWith('/') || '\\' in name) return false
-    val parts = name.split('/')
-    if (parts.any { it == "." || it == ".." }) return false
-    if (name == "metadata.json" || name == "database/advance_erp.db") return true
-    if (name == "product_images/" || name == "avatars/" || name == "po_attachments/" || name == "vault_attachments/") return true
-    return (parts.size == 2 && parts[1].isNotBlank() &&
-        (parts[0] == "product_images" || parts[0] == "avatars" || parts[0] == "po_attachments" || parts[0] == "vault_attachments"))
-}
+internal fun isSafeBackupZipEntry(name: String): Boolean =
+    BackupArchiveContract.isSafeBackupZipEntry(name)
 
 internal fun verifyBackupZipEntriesIntegrity(zipBackupFile: File): Boolean {
     return try {
