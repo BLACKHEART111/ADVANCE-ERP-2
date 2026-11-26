@@ -87,6 +87,7 @@ import com.pocketdev.advance_erp.feature.dashboard.components.PremiumDashboardHe
 import com.pocketdev.advance_erp.feature.dashboard.components.PremiumDashboardStatCard
 import com.pocketdev.advance_erp.feature.dashboard.components.StockAndTransactionStatsBar
 import com.pocketdev.advance_erp.feature.dashboard.components.rememberFormattedDashboardDate
+import com.pocketdev.advance_erp.feature.dashboard.components.sliceDashboardTransactions
 
 private data class DashboardFabAction(
     val label: String,
@@ -165,6 +166,8 @@ internal fun DashboardContent(
     var dailySummaryExpanded by rememberSaveable { mutableStateOf(true) }
     var dailyExtraExpanded by rememberSaveable { mutableStateOf(false) }
     var closingPositionExpanded by rememberSaveable { mutableStateOf(false) }
+    var transactionsExpanded by rememberSaveable { mutableStateOf(true) }
+    var showAllTransactions by rememberSaveable(state.selectedDateMillis, state.selectedEndDateMillis) { mutableStateOf(false) }
 
     val profitVisibility = rememberBiometricCostVisibility(
         key = listOf("dashboard-daily-profit", state.selectedDateMillis, state.canViewProfit),
@@ -567,32 +570,73 @@ internal fun DashboardContent(
                 }
             }
 
-            // Item 5: Recent Transactions Section (Visible)
+            // Item 5: Recent Transactions Section (Collapsible + Compact Preview)
             item {
+                val transactions = summary?.recentTransactions.orEmpty()
+                val visibleSlice = remember(transactions, showAllTransactions) {
+                    sliceDashboardTransactions(transactions = transactions, showAll = showAllTransactions)
+                }
+                val totalCountText = Formatters.formatNumber(visibleSlice.totalCount.toLong(), language)
+                val visibleCountText = Formatters.formatNumber(visibleSlice.visibleTransactions.size.toLong(), language)
+                val transactionsSubtitle = when {
+                    transactions.isEmpty() -> if (isBangla) "কোনো লেনদেন নেই" else "No transactions"
+                    !transactionsExpanded -> if (isBangla) {
+                        "মোট ${totalCountText}টি লেনদেন • মিনিমাইজড"
+                    } else {
+                        "$totalCountText transactions • Minimized"
+                    }
+                    visibleSlice.hiddenCount > 0 -> if (isBangla) {
+                        "মোট ${totalCountText}টি লেনদেন • প্রথম ${visibleCountText}টি দেখানো হচ্ছে"
+                    } else {
+                        "$totalCountText transactions • Showing first $visibleCountText"
+                    }
+                    else -> if (isBangla) {
+                        "মোট ${totalCountText}টি লেনদেন"
+                    } else {
+                        "$totalCountText transactions"
+                    }
+                }
+
                 Column(
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .testTag("dashboard_recent_transactions"),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     CollapsibleSectionHeader(
                         icon = Icons.Outlined.Layers,
                         title = if (isBangla) "$selectedDateText এর লেনদেন সমূহ" else "Transactions on $selectedDateText",
+                        subtitle = transactionsSubtitle,
                         tokens = tokens,
+                        expanded = transactionsExpanded,
+                        onToggleExpand = { transactionsExpanded = !transactionsExpanded },
+                        expandedHint = if (isBangla) "মিনিমাইজ" else "Minimize",
+                        collapsedHint = if (isBangla) "দেখুন" else "Expand",
                         actionText = if (isBangla) "সব দেখুন" else "View All",
-                        onActionClick = onNavigateToTransactions
+                        onActionClick = onNavigateToTransactions,
+                        headerTestTag = "dashboard_transactions_header",
+                        actionTestTag = "dashboard_transactions_view_all"
                     )
 
-                    val transactions = summary?.recentTransactions.orEmpty()
-                    if (transactions.isEmpty()) {
-                        DashboardEmptyTransactionsCard(
-                            isBangla = isBangla,
-                            tokens = tokens
-                        )
-                    } else {
-                        DashboardTransactionsCard(
-                            transactions = transactions,
-                            language = language,
-                            tokens = tokens
-                        )
+                    AnimatedVisibility(
+                        visible = transactionsExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        if (transactions.isEmpty()) {
+                            DashboardEmptyTransactionsCard(
+                                isBangla = isBangla,
+                                tokens = tokens
+                            )
+                        } else {
+                            DashboardTransactionsCard(
+                                transactions = transactions,
+                                language = language,
+                                tokens = tokens,
+                                showAll = showAllTransactions,
+                                onToggleShowAll = { showAllTransactions = !showAllTransactions }
+                            )
+                        }
                     }
                 }
             }

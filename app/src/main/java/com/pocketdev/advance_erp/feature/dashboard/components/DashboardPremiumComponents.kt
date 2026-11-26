@@ -100,14 +100,16 @@ enum class DashboardSection {
     OVERVIEW,
     DAILY_SUMMARY,
     DAILY_EXTRA_METRICS,
-    CLOSING_POSITION
+    CLOSING_POSITION,
+    RECENT_TRANSACTIONS
 }
 
 data class DashboardCollapseState(
     val overviewExpanded: Boolean = true,
     val dailySummaryExpanded: Boolean = true,
     val dailyExtraExpanded: Boolean = false,
-    val closingPositionExpanded: Boolean = false
+    val closingPositionExpanded: Boolean = false,
+    val recentTransactionsExpanded: Boolean = true
 )
 
 fun DashboardCollapseState.toggle(section: DashboardSection): DashboardCollapseState = when (section) {
@@ -115,6 +117,32 @@ fun DashboardCollapseState.toggle(section: DashboardSection): DashboardCollapseS
     DashboardSection.DAILY_SUMMARY -> copy(dailySummaryExpanded = !dailySummaryExpanded)
     DashboardSection.DAILY_EXTRA_METRICS -> copy(dailyExtraExpanded = !dailyExtraExpanded)
     DashboardSection.CLOSING_POSITION -> copy(closingPositionExpanded = !closingPositionExpanded)
+    DashboardSection.RECENT_TRANSACTIONS -> copy(recentTransactionsExpanded = !recentTransactionsExpanded)
+}
+
+const val DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT = 5
+
+data class DashboardTransactionsDisplaySlice(
+    val visibleTransactions: List<DashboardTransaction>,
+    val totalCount: Int,
+    val hiddenCount: Int,
+    val canToggleExpandAll: Boolean
+)
+
+fun sliceDashboardTransactions(
+    transactions: List<DashboardTransaction>,
+    showAll: Boolean,
+    previewLimit: Int = DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT
+): DashboardTransactionsDisplaySlice {
+    val safeLimit = previewLimit.coerceAtLeast(1)
+    val canToggle = transactions.size > safeLimit
+    val visible = if (showAll || !canToggle) transactions else transactions.take(safeLimit)
+    return DashboardTransactionsDisplaySlice(
+        visibleTransactions = visible,
+        totalCount = transactions.size,
+        hiddenCount = (transactions.size - visible.size).coerceAtLeast(0),
+        canToggleExpandAll = canToggle
+    )
 }
 
 private val BANGLA_MONTHS_FULL = listOf(
@@ -997,21 +1025,102 @@ fun CollapsibleSectionHeader(
     expanded: Boolean? = null,
     onToggleExpand: (() -> Unit)? = null,
     collapsedHint: String? = null,
+    expandedHint: String? = null,
     actionText: String? = null,
     onActionClick: (() -> Unit)? = null,
-    headerTestTag: String? = null
+    headerTestTag: String? = null,
+    actionTestTag: String? = null
 ) {
     val rotation by animateFloatAsState(
         targetValue = if (expanded == true) 180f else 0f,
         label = "section_chevron"
     )
+    val hasToggle = expanded != null && onToggleExpand != null
+    val hasAction = !actionText.isNullOrBlank() && onActionClick != null
+
+    if (hasToggle && hasAction) {
+        Column(modifier = modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (headerTestTag != null) Modifier.testTag(headerTestTag) else Modifier)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onToggleExpand!!)
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = tokens.sectionIconTint,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = title,
+                        color = tokens.sectionTitleText,
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+                SectionCollapsePill(
+                    expanded = expanded!!,
+                    rotation = rotation,
+                    tokens = tokens,
+                    collapsedHint = collapsedHint,
+                    expandedHint = expandedHint
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 28.dp, top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        color = tokens.sectionSubtitleText,
+                        fontSize = 11.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                SectionActionLink(
+                    actionText = actionText!!,
+                    tokens = tokens,
+                    onActionClick = onActionClick!!,
+                    actionTestTag = actionTestTag
+                )
+            }
+        }
+        return
+    }
+
     val clickableModifier = when {
-        onToggleExpand != null -> Modifier
+        hasToggle -> Modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onToggleExpand)
-        onActionClick != null -> Modifier
+            .clickable(onClick = onToggleExpand!!)
+        hasAction -> Modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onActionClick)
+            .clickable(onClick = onActionClick!!)
         else -> Modifier
     }
 
@@ -1057,66 +1166,100 @@ fun CollapsibleSectionHeader(
             }
         }
 
-        if (expanded != null && onToggleExpand != null) {
+        if (hasToggle) {
             Spacer(modifier = Modifier.width(8.dp))
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = if (tokens.isDark) Color(0xFF1D203D) else Color(0xFFF0E8F9),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (tokens.isDark) Color(0xFF3E4575) else Color(0xFFE0D1F2)
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    if (!expanded && !collapsedHint.isNullOrBlank()) {
-                        Text(
-                            text = collapsedHint,
-                            color = tokens.sectionIconTint,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = if (expanded) "Collapse" else "Expand",
-                        tint = tokens.sectionIconTint,
-                        modifier = Modifier
-                            .size(18.dp)
-                            .rotate(rotation)
-                    )
-                }
-            }
-        } else if (!actionText.isNullOrBlank() && onActionClick != null) {
+            SectionCollapsePill(
+                expanded = expanded!!,
+                rotation = rotation,
+                tokens = tokens,
+                collapsedHint = collapsedHint,
+                expandedHint = expandedHint
+            )
+        } else if (hasAction) {
             Spacer(modifier = Modifier.width(8.dp))
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable(onClick = onActionClick)
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            SectionActionLink(
+                actionText = actionText!!,
+                tokens = tokens,
+                onActionClick = onActionClick!!,
+                actionTestTag = actionTestTag
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionCollapsePill(
+    expanded: Boolean,
+    rotation: Float,
+    tokens: DashboardColorTokens,
+    collapsedHint: String?,
+    expandedHint: String?
+) {
+    val pillText = if (expanded) expandedHint else collapsedHint
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (tokens.isDark) Color(0xFF1D203D) else Color(0xFFF0E8F9),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (tokens.isDark) Color(0xFF3E4575) else Color(0xFFE0D1F2)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            if (!pillText.isNullOrBlank()) {
                 Text(
-                    text = actionText,
+                    text = pillText,
                     color = tokens.sectionIconTint,
-                    fontSize = 12.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     softWrap = false
                 )
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = tokens.sectionIconTint,
-                    modifier = Modifier.size(16.dp)
-                )
             }
+            Icon(
+                imageVector = Icons.Rounded.KeyboardArrowDown,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = tokens.sectionIconTint,
+                modifier = Modifier
+                    .size(18.dp)
+                    .rotate(rotation)
+            )
         }
+    }
+}
+
+@Composable
+private fun SectionActionLink(
+    actionText: String,
+    tokens: DashboardColorTokens,
+    onActionClick: () -> Unit,
+    actionTestTag: String? = null
+) {
+    Row(
+        modifier = Modifier
+            .then(if (actionTestTag != null) Modifier.testTag(actionTestTag) else Modifier)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onActionClick)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = actionText,
+            color = tokens.sectionIconTint,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false
+        )
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = tokens.sectionIconTint,
+            modifier = Modifier.size(16.dp)
+        )
     }
 }
 
@@ -1680,8 +1823,23 @@ fun DashboardTransactionsCard(
     transactions: List<DashboardTransaction>,
     language: AppLanguage,
     tokens: DashboardColorTokens,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showAll: Boolean = true,
+    onToggleShowAll: (() -> Unit)? = null,
+    previewLimit: Int = DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT
 ) {
+    val isBangla = language == AppLanguage.BANGLA
+    val slice = remember(transactions, showAll, previewLimit, onToggleShowAll) {
+        sliceDashboardTransactions(
+            transactions = transactions,
+            showAll = if (onToggleShowAll == null) true else showAll,
+            previewLimit = previewLimit
+        )
+    }
+    val toggleRotation by animateFloatAsState(
+        targetValue = if (showAll) 180f else 0f,
+        label = "transactions_show_more_chevron"
+    )
     val shape = RoundedCornerShape(20.dp)
     val borderBrush = Brush.horizontalGradient(
         listOf(tokens.cardBorderStart, tokens.cardBorderEnd)
@@ -1703,7 +1861,7 @@ fun DashboardTransactionsCard(
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Column {
-            transactions.forEachIndexed { index, tx ->
+            slice.visibleTransactions.forEachIndexed { index, tx ->
                 val itemColor = if (tx.isCredit) tokens.accentGreen else tokens.accentPurple
                 val amountText = Formatters.formatMoney(tx.amountMinor, tx.currency, language)
                 Row(
@@ -1777,8 +1935,70 @@ fun DashboardTransactionsCard(
                         }
                     }
                 }
-                if (index < transactions.lastIndex) {
+                if (index < slice.visibleTransactions.lastIndex) {
                     HorizontalDivider(color = tokens.dividerColor)
+                }
+            }
+
+            if (onToggleShowAll != null && slice.canToggleExpandAll) {
+                val hiddenCountText = Formatters.formatNumber(slice.hiddenCount.toLong(), language)
+                val totalCountText = Formatters.formatNumber(slice.totalCount.toLong(), language)
+                val previewLimitText = Formatters.formatNumber(previewLimit.coerceAtLeast(1).toLong(), language)
+
+                HorizontalDivider(color = tokens.dividerColor)
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    onClick = onToggleShowAll,
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (tokens.isDark) Color(0xFF1A1C38) else Color(0xFFF4ECFB),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        brush = Brush.horizontalGradient(
+                            listOf(tokens.cardBorderStart, tokens.accentPurple.copy(alpha = 0.55f))
+                        )
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 44.dp)
+                        .testTag("dashboard_transactions_show_more_toggle")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = if (showAll) {
+                                if (isBangla) {
+                                    "সংক্ষিপ্ত করুন (প্রথম ${previewLimitText}টি)"
+                                } else {
+                                    "Minimize list (first $previewLimitText)"
+                                }
+                            } else {
+                                if (isBangla) {
+                                    "আরও ${hiddenCountText}টি লেনদেন দেখুন (মোট ${totalCountText}টি)"
+                                } else {
+                                    "Show $hiddenCountText more ($totalCountText total)"
+                                }
+                            },
+                            color = tokens.sectionIconTint,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = tokens.sectionIconTint,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .rotate(toggleRotation)
+                        )
+                    }
                 }
             }
         }

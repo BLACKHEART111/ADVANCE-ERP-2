@@ -9,12 +9,15 @@ import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.model.Money
 import com.pocketdev.advance_erp.core.pdf.CentralizedPdfReportRegistry
 import com.pocketdev.advance_erp.domain.repository.DashboardSummary
+import com.pocketdev.advance_erp.domain.repository.DashboardTransaction
 import com.pocketdev.advance_erp.domain.repository.DateWiseMetrics
 import com.pocketdev.advance_erp.domain.repository.HistoricalClosingBalances
 import com.pocketdev.advance_erp.domain.repository.MonthlyPerformanceMetrics
+import com.pocketdev.advance_erp.feature.dashboard.components.DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT
 import com.pocketdev.advance_erp.feature.dashboard.components.DashboardCollapseState
 import com.pocketdev.advance_erp.feature.dashboard.components.DashboardSection
 import com.pocketdev.advance_erp.feature.dashboard.components.formatDashboardDate
+import com.pocketdev.advance_erp.feature.dashboard.components.sliceDashboardTransactions
 import com.pocketdev.advance_erp.feature.dashboard.components.toggle
 import com.pocketdev.advance_erp.feature.dashboard.maskDashboardSummaryForRole
 import org.junit.Assert.assertEquals
@@ -52,17 +55,20 @@ class DashboardLogicTest {
         assertTrue(initial.dailySummaryExpanded)
         assertFalse(initial.dailyExtraExpanded)
         assertFalse(initial.closingPositionExpanded)
+        assertTrue(initial.recentTransactionsExpanded)
 
         val step1 = initial.toggle(DashboardSection.CLOSING_POSITION)
         assertTrue(step1.overviewExpanded)
         assertTrue(step1.dailySummaryExpanded)
         assertFalse(step1.dailyExtraExpanded)
         assertTrue(step1.closingPositionExpanded)
+        assertTrue(step1.recentTransactionsExpanded)
 
         val step2 = step1.toggle(DashboardSection.OVERVIEW)
         assertFalse(step2.overviewExpanded)
         assertTrue(step2.dailySummaryExpanded)
         assertTrue(step2.closingPositionExpanded)
+        assertTrue(step2.recentTransactionsExpanded)
 
         val step3 = step2.toggle(DashboardSection.DAILY_EXTRA_METRICS)
         assertTrue(step3.dailyExtraExpanded)
@@ -71,6 +77,51 @@ class DashboardLogicTest {
         val step4 = step3.toggle(DashboardSection.DAILY_SUMMARY)
         assertFalse(step4.dailySummaryExpanded)
         assertTrue(step4.dailyExtraExpanded)
+
+        val step5 = step4.toggle(DashboardSection.RECENT_TRANSACTIONS)
+        assertFalse(step5.recentTransactionsExpanded)
+        assertTrue(step5.closingPositionExpanded)
+    }
+
+    @Test
+    fun sliceDashboardTransactions_capsLongListsByDefaultAndSupportsExpandAll() {
+        fun sampleTx(index: Int) = DashboardTransaction(
+            id = "tx-$index",
+            title = "PU STONE WHOLESALE #$index",
+            subtitle = "Main Warehouse • 40 units",
+            amountMinor = 3_237_880L,
+            currency = CurrencyCode.BDT,
+            isCredit = true,
+            timestamp = 1_795_680_000_000L + index,
+            statusText = "In Stock",
+            type = "PURCHASE_RECEIPT"
+        )
+
+        val emptySlice = sliceDashboardTransactions(emptyList(), showAll = false)
+        assertEquals(0, emptySlice.visibleTransactions.size)
+        assertEquals(0, emptySlice.totalCount)
+        assertEquals(0, emptySlice.hiddenCount)
+        assertFalse(emptySlice.canToggleExpandAll)
+
+        val shortList = (1..DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT).map(::sampleTx)
+        val shortSlice = sliceDashboardTransactions(shortList, showAll = false)
+        assertEquals(DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT, shortSlice.visibleTransactions.size)
+        assertEquals(DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT, shortSlice.totalCount)
+        assertEquals(0, shortSlice.hiddenCount)
+        assertFalse(shortSlice.canToggleExpandAll)
+
+        val longList = (1..32).map(::sampleTx)
+        val collapsedSlice = sliceDashboardTransactions(longList, showAll = false)
+        assertEquals(DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT, collapsedSlice.visibleTransactions.size)
+        assertEquals(32, collapsedSlice.totalCount)
+        assertEquals(32 - DASHBOARD_TRANSACTIONS_PREVIEW_LIMIT, collapsedSlice.hiddenCount)
+        assertTrue(collapsedSlice.canToggleExpandAll)
+
+        val expandedSlice = sliceDashboardTransactions(longList, showAll = true)
+        assertEquals(32, expandedSlice.visibleTransactions.size)
+        assertEquals(32, expandedSlice.totalCount)
+        assertEquals(0, expandedSlice.hiddenCount)
+        assertTrue(expandedSlice.canToggleExpandAll)
     }
 
     @Test
