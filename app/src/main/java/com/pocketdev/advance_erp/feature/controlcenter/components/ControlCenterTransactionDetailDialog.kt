@@ -1,8 +1,10 @@
 package com.pocketdev.advance_erp.feature.controlcenter.components
 
+import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
 import com.pocketdev.advance_erp.core.designsystem.StatusError
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Receipt
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,6 +32,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,6 +58,7 @@ fun ControlCenterTransactionDetailDialog(
     language: AppLanguage,
     currencyCode: CurrencyCode,
     onLinkedDocument: ((String, String) -> Unit)? = null,
+    onShareSmartDocument: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val isBn = language == AppLanguage.BANGLA
@@ -320,6 +325,23 @@ fun ControlCenterTransactionDetailDialog(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                onShareSmartDocument?.let { onShare ->
+                    OutlinedButton(
+                        onClick = onShare,
+                        border = BorderStroke(1.2.dp, PrimaryPurple),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Outlined.Share, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isBn) "স্মার্ট শেয়ার / WhatsApp" else "Smart Share / WhatsApp",
+                            color = PrimaryPurple,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
                 Button(
                     onClick = onDismiss,

@@ -409,7 +409,10 @@ fun CreateInvoiceDialog(
                     variantId = item.variantId,
                     quantity = calc.quantity,
                     unitPriceMinor = calc.unitPriceMinor,
-                    discountMinor = calc.discountMinor
+                    discountMinor = calc.discountMinor,
+                    discountPercentBps = if (item.isPercentageDiscount && calc.discountMinor > 0L) {
+                        SalesInvoiceCalculator.parsePercentBasisPoints(item.discountStr).takeIf { it > 0L }
+                    } else null
                 )
             } else null
         }
@@ -464,7 +467,10 @@ fun CreateInvoiceDialog(
             paymentAccountId = resolvedAccountId,
             notes = notes.trim().ifBlank { null },
             items = draftItems,
-            newCustomerDraft = pendingNewCustomerDraft
+            newCustomerDraft = pendingNewCustomerDraft,
+            discountPercentBps = if (isInvoiceDiscountPercentage && totals.invoiceDiscountMinor > 0L) {
+                SalesInvoiceCalculator.parsePercentBasisPoints(invoiceDiscountStr).takeIf { it > 0L }
+            } else null
         )
     }
 

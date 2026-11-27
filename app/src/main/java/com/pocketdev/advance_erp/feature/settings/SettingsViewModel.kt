@@ -9,9 +9,13 @@ import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.security.BiometricHelper
 import com.pocketdev.advance_erp.core.security.PinSecurityHelper
+import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.core.worker.FridayBackupScheduler
 import com.pocketdev.advance_erp.data.entity.BackupRecord
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
+import com.pocketdev.advance_erp.domain.model.DataClearImpactPreview
+import com.pocketdev.advance_erp.domain.model.DataClearModule
+import com.pocketdev.advance_erp.domain.model.SelectiveDataClearRequest
 import com.pocketdev.advance_erp.domain.repository.BackupRepository
 import com.pocketdev.advance_erp.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,7 +44,9 @@ data class SettingsUiState(
     val lastAutoBackupTime: Long? = null,
     val backupFolderUri: String? = null,
     val backupRecords: List<BackupRecord> = emptyList(),
-    val userMessage: String? = null
+    val userMessage: String? = null,
+    val userRole: UserRole = UserRole.OWNER_ADMIN,
+    val dataClearPreview: DataClearImpactPreview? = null
 )
 
 @HiltViewModel
@@ -52,6 +58,7 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _userMessage = MutableStateFlow<String?>(null)
+    private val _dataClearPreview = MutableStateFlow<DataClearImpactPreview?>(null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         preferencesRepository.selectedLanguage,
@@ -67,7 +74,9 @@ class SettingsViewModel @Inject constructor(
         preferencesRepository.backupFolderUri,
         backupRepository.getAllBackupRecords(),
         _userMessage,
-        preferencesRepository.selectedTheme
+        preferencesRepository.selectedTheme,
+        preferencesRepository.selectedUserRole,
+        _dataClearPreview
     ) { args: Array<Any?> ->
         val profile = args[2] as? BusinessProfile
         val prefLogoPath = args[3] as? String
@@ -87,7 +96,9 @@ class SettingsViewModel @Inject constructor(
             lastAutoBackupTime = args[9] as? Long,
             backupFolderUri = args[10] as? String,
             backupRecords = (args[11] as? List<*>)?.filterIsInstance<BackupRecord>() ?: emptyList(),
-            userMessage = args[12] as? String
+            userMessage = args[12] as? String,
+            userRole = (args[14] as? UserRole) ?: UserRole.OWNER_ADMIN,
+            dataClearPreview = args[15] as? DataClearImpactPreview
         )
     }.stateIn(
         scope = viewModelScope,
@@ -113,7 +124,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateProfile(name: String, taxNumber: String?, phone: String, email: String?, address: String) {
+    fun updateProfile(
+        name: String,
+        taxNumber: String?,
+        phone: String,
+        email: String?,
+        address: String,
+        website: String? = uiState.value.profile?.website,
+        tagline: String? = uiState.value.profile?.tagline
+    ) {
         viewModelScope.launch {
             val currentLogo = uiState.value.companyLogoPath ?: uiState.value.profile?.logoPath
             val updated = BusinessProfile(
@@ -123,6 +142,8 @@ class SettingsViewModel @Inject constructor(
                 phone = phone.trim(),
                 email = email?.trim()?.ifBlank { null },
                 address = address.trim(),
+                website = website?.trim()?.ifBlank { null },
+                tagline = tagline?.trim()?.ifBlank { null },
                 defaultCurrency = uiState.value.currency.code,
                 logoPath = currentLogo,
                 updatedAt = System.currentTimeMillis()
@@ -301,6 +322,58 @@ class SettingsViewModel @Inject constructor(
                 }
             } finally {
                 onFinished()
+            }
+        }
+    }
+
+    fun refreshDataClearPreview() {
+        viewModelScope.launch {
+            _dataClearPreview.value = runCatching { backupRepository.getDataClearImpactPreview() }.getOrNull()
+        }
+    }
+
+    fun executeSelectiveDataClear(
+        selectedModules: Set<DataClearModule>,
+        createSafetyBackup: Boolean,
+        onFinished: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val state = uiState.value
+            val isBn = state.language == AppLanguage.BANGLA
+            var success = false
+            try {
+                val res = backupRepository.executeSelectiveDataClear(
+                    SelectiveDataClearRequest(
+                        selectedModules = selectedModules,
+                        createSafetyBackup = createSafetyBackup,
+                        operatorRole = state.userRole
+                    )
+                )
+                if (res.isSuccess) {
+                    success = true
+                    val outcome = res.getOrThrow()
+                    val backupNote = outcome.safetyBackupFileName?.let { fileName ->
+                        if (isBn) "\nসেফটি ব্যাকআপ: $fileName" else "\nSafety backup: $fileName"
+                    }.orEmpty()
+                    _userMessage.value = (if (isBn) outcome.summaryBn else outcome.summaryEn) + backupNote
+                    _dataClearPreview.value = runCatching { backupRepository.getDataClearImpactPreview() }.getOrNull()
+                } else {
+                    _userMessage.value = if (isBn) {
+                        "মডিউল রিসেট ব্যর্থ: ${res.exceptionOrNull()?.message}"
+                    } else {
+                        "Selective reset failed: ${res.exceptionOrNull()?.message}"
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _userMessage.value = if (isBn) {
+                    "মডিউল রিসেট ব্যর্থ: ${e.localizedMessage}"
+                } else {
+                    "Selective reset failed: ${e.localizedMessage}"
+                }
+            } finally {
+                onFinished(success)
             }
         }
     }

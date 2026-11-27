@@ -339,6 +339,9 @@ fun SalesScreen(
                             ledgerCustomer = cust
                             viewModel.loadCustomerLedger(cust.id)
                             showCustomerLedgerDialog = true
+                        },
+                        onSendReminder = { cust ->
+                            communicationRequest = CommunicationRequest(CommunicationModule.REMINDER, cust.id)
                         }
                     )
                     2 -> PaymentsTab(
@@ -531,32 +534,6 @@ fun SalesScreen(
             },
             onSendDueReminder = { cust ->
                 communicationRequest = CommunicationRequest(CommunicationModule.REMINDER, cust.id)
-            }
-        )
-    }
-
-    // Due Collection Statement & WhatsApp Share Dialog
-    if (uiState.activeDueCollectionData != null) {
-        DueCollectionStatementShareDialog(
-            data = uiState.activeDueCollectionData!!,
-            initialIsBangla = isBangla,
-            onOpenSmartWhatsApp = { paymentId ->
-                viewModel.dismissDueCollectionDialog()
-                communicationRequest = CommunicationRequest(CommunicationModule.PAYMENT, paymentId)
-            },
-            onDismiss = {
-                viewModel.dismissDueCollectionDialog()
-            }
-        )
-    }
-
-    // Polite Due Reminder & WhatsApp Share Dialog
-    if (uiState.activeDueReminderData != null) {
-        DueReminderDialog(
-            data = uiState.activeDueReminderData!!,
-            initialIsBangla = isBangla,
-            onDismiss = {
-                viewModel.dismissDueReminderDialog()
             }
         )
     }
@@ -798,7 +775,8 @@ private fun CustomersTab(
     customers: List<Customer>,
     isBangla: Boolean,
     onCollectDue: (Customer) -> Unit,
-    onViewLedger: (Customer) -> Unit
+    onViewLedger: (Customer) -> Unit,
+    onSendReminder: (Customer) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -852,6 +830,18 @@ private fun CustomersTab(
                             ) {
                                 Text(
                                     text = if (isBangla) "বকেয়া আদায়" else "Collect Due",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                            TextButton(
+                                onClick = { onSendReminder(cust) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = if (isBangla) "বকেয়া তাগাদা" else "Remind",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,

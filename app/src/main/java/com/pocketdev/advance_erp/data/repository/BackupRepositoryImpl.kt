@@ -16,10 +16,18 @@ import com.pocketdev.advance_erp.core.database.BackupArchiveContract
 import com.pocketdev.advance_erp.core.database.PortableBackupPreferences
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.notification.BackupNotificationHelper
+import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.data.dao.AuditLogDao
 import com.pocketdev.advance_erp.data.dao.BackupDao
 import com.pocketdev.advance_erp.data.entity.AuditLog
 import com.pocketdev.advance_erp.data.entity.BackupRecord
+import com.pocketdev.advance_erp.data.entity.JournalEntry
+import com.pocketdev.advance_erp.data.entity.JournalLine
+import com.pocketdev.advance_erp.domain.model.DataClearImpactPreview
+import com.pocketdev.advance_erp.domain.model.DataClearModule
+import com.pocketdev.advance_erp.domain.model.ModuleImpactCount
+import com.pocketdev.advance_erp.domain.model.SelectiveDataClearRequest
+import com.pocketdev.advance_erp.domain.model.SelectiveDataClearResult
 import com.pocketdev.advance_erp.domain.repository.BackupRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -648,6 +656,407 @@ class BackupRepositoryImpl @Inject constructor(
             e.printStackTrace()
             Result.failure(e)
         }
+    }
+
+    override suspend fun getDataClearImpactPreview(): DataClearImpactPreview = withContext(Dispatchers.IO) {
+        val activeProducts = backupDao.countActiveProducts()
+        val activeVariants = backupDao.countActiveVariants()
+        val accountsCount = backupDao.countChartOfAccounts()
+        val customersCount = backupDao.countCustomers()
+        val suppliersCount = backupDao.countSuppliers()
+        val poCount = backupDao.countPurchaseOrders()
+        val receiptsCount = backupDao.countWarehouseReceipts()
+        val activeOrPaidPoCount = backupDao.countReceivedOrPaidPurchaseOrders()
+        val supplierPaymentsCount = backupDao.countSupplierPayments()
+        val stockUnits = backupDao.countTotalStockUnits()
+        val stockMovements = backupDao.countStockMovements()
+        val invoicesCount = backupDao.countSalesInvoices()
+        val returnsCount = backupDao.countSalesReturns()
+        val customerPaymentsCount = backupDao.countCustomerPayments()
+        val journalCount = backupDao.countJournalEntries()
+        val expenseCount = backupDao.countExpenseVouchers()
+        val transferCount = backupDao.countAccountTransfers()
+        val vaultEntriesCount = backupDao.countImportVaultEntries()
+        val vaultAttachCount = backupDao.countImportVaultAttachments()
+        val commHistoryCount = backupDao.countCommunicationHistory()
+        val commSnapshotsCount = backupDao.countCommunicationSnapshots()
+        val auditLogsCount = backupDao.countTransactionAuditLogs()
+        val suggestionsCount = backupDao.countSavedSuggestions()
+        val poReceiptLayerCount = backupDao.countPoReceiptCostLayers()
+
+        val counts = mapOf(
+            DataClearModule.INVENTORY_STOCK_RESET to ModuleImpactCount(
+                module = DataClearModule.INVENTORY_STOCK_RESET,
+                primaryCount = stockUnits,
+                secondaryCount = stockMovements,
+                badgeTextEn = "$stockUnits pcs stock -> 0 • $stockMovements movements",
+                badgeTextBn = "$stockUnits পিস স্টক -> ০ • $stockMovements মুভমেন্ট"
+            ),
+            DataClearModule.PO_RESET_KEEP_STRUCTURE to ModuleImpactCount(
+                module = DataClearModule.PO_RESET_KEEP_STRUCTURE,
+                primaryCount = receiptsCount + supplierPaymentsCount,
+                secondaryCount = poCount,
+                badgeTextEn = "$poCount PO kept intact • $receiptsCount receipts & $supplierPaymentsCount payments reset ($activeOrPaidPoCount active)",
+                badgeTextBn = "$poCount PO অক্ষত থাকবে • $receiptsCount রিসিপ্ট ও $supplierPaymentsCount পেমেন্ট রিসেট ($activeOrPaidPoCount সক্রিয়)"
+            ),
+            DataClearModule.SALES_FULL_CLEAR to ModuleImpactCount(
+                module = DataClearModule.SALES_FULL_CLEAR,
+                primaryCount = invoicesCount,
+                secondaryCount = customerPaymentsCount + returnsCount,
+                badgeTextEn = "$invoicesCount invoices • $customerPaymentsCount payments • $returnsCount returns",
+                badgeTextBn = "$invoicesCount ইনভয়েস • $customerPaymentsCount পেমেন্ট • $returnsCount রিটার্ন"
+            ),
+            DataClearModule.LEDGER_AMOUNTS_RESET to ModuleImpactCount(
+                module = DataClearModule.LEDGER_AMOUNTS_RESET,
+                primaryCount = journalCount,
+                secondaryCount = expenseCount + transferCount,
+                badgeTextEn = "$journalCount journals • $expenseCount expenses • $transferCount transfers -> ৳0.00",
+                badgeTextBn = "$journalCount জার্নাল • $expenseCount খরচ • $transferCount ট্রান্সফার -> ৳০.০০"
+            ),
+            DataClearModule.IMPORT_VAULT_CLEAR to ModuleImpactCount(
+                module = DataClearModule.IMPORT_VAULT_CLEAR,
+                primaryCount = vaultEntriesCount,
+                secondaryCount = vaultAttachCount,
+                badgeTextEn = "$vaultEntriesCount entries • $vaultAttachCount files",
+                badgeTextBn = "$vaultEntriesCount এন্ট্রি • $vaultAttachCount ফাইল"
+            ),
+            DataClearModule.COMMUNICATION_LOGS_CLEAR to ModuleImpactCount(
+                module = DataClearModule.COMMUNICATION_LOGS_CLEAR,
+                primaryCount = commHistoryCount,
+                secondaryCount = commSnapshotsCount,
+                badgeTextEn = "$commHistoryCount logs • $commSnapshotsCount snapshots",
+                badgeTextBn = "$commHistoryCount লগ • $commSnapshotsCount স্ন্যাপশট"
+            ),
+            DataClearModule.AUDIT_AND_DRAFTS_CLEAR to ModuleImpactCount(
+                module = DataClearModule.AUDIT_AND_DRAFTS_CLEAR,
+                primaryCount = auditLogsCount,
+                secondaryCount = suggestionsCount,
+                badgeTextEn = "$auditLogsCount audit logs • $suggestionsCount suggestions",
+                badgeTextBn = "$auditLogsCount অডিট লগ • $suggestionsCount সাজেশন"
+            )
+        )
+
+        DataClearImpactPreview(
+            moduleCounts = counts,
+            preservedProductCount = activeProducts,
+            preservedVariantCount = activeVariants,
+            preservedPoCount = poCount,
+            preservedAccountCount = accountsCount,
+            preservedCustomerCount = customersCount,
+            preservedSupplierCount = suppliersCount,
+            poReceiptLayerCount = poReceiptLayerCount
+        )
+    }
+
+    override suspend fun executeSelectiveDataClear(
+        request: SelectiveDataClearRequest
+    ): Result<SelectiveDataClearResult> = withContext(Dispatchers.IO) {
+        try {
+            val currentRole = preferencesRepository.selectedUserRole.firstOrNull() ?: UserRole.OWNER_ADMIN
+            require(request.operatorRole == UserRole.OWNER_ADMIN && currentRole == UserRole.OWNER_ADMIN) {
+                "Only Owner / Admin can clear module data"
+            }
+            require(request.selectedModules.isNotEmpty()) {
+                "Select at least one module to clear"
+            }
+
+            val safetyRecord = if (request.createSafetyBackup) {
+                val notes = "Pre-Reset Safety Backup: " + request.selectedModules.joinToString(", ") { it.name }
+                createBackup(isAutomatic = true, notes = notes)
+            } else {
+                null
+            }
+
+            val now = System.currentTimeMillis()
+            val selected = request.selectedModules
+
+            database.withTransaction {
+                // 1. Sales Invoices, Returns & Customer Payments (Full Clear)
+                if (DataClearModule.SALES_FULL_CLEAR in selected) {
+                    backupDao.clearSalesReturnLayerAllocations()
+                    backupDao.clearSaleLayerAllocations()
+                    backupDao.clearPaymentAllocations()
+                    backupDao.clearCustomerPayments()
+                    backupDao.clearSalesReturnItems()
+                    backupDao.clearSalesReturns()
+                    backupDao.clearSalesCostLayerUsages()
+                    backupDao.clearSalesInvoiceItems()
+                    backupDao.clearSalesInvoices()
+                    backupDao.deleteCommunicationSnapshotsByModules(
+                        listOf("INVOICE", "PAYMENT", "DELIVERY", "RETURN", "EXCHANGE", "QUOTATION", "SALES_ORDER")
+                    )
+                    if (DataClearModule.LEDGER_AMOUNTS_RESET !in selected) {
+                        backupDao.deleteReversalEntriesForReferenceTypes(SALES_JOURNAL_TYPES)
+                        backupDao.deleteJournalEntriesByReferenceTypes(SALES_JOURNAL_TYPES)
+                    }
+                }
+
+                // 2. Inventory Stock Quantities Reset (keep products, variants, photos & warehouses)
+                if (DataClearModule.INVENTORY_STOCK_RESET in selected) {
+                    backupDao.clearFifoConsumptions()
+                    backupDao.clearInventoryCostAdjustments()
+                    backupDao.clearStockTransferCostLayers()
+                    backupDao.clearStockTransfers()
+                    backupDao.clearInventoryReconciliationItems()
+                    backupDao.clearInventoryReconciliations()
+                    backupDao.clearInventoryCostLayers()
+                    backupDao.clearStockMovements()
+                    backupDao.clearStockBalances()
+                    if (DataClearModule.LEDGER_AMOUNTS_RESET !in selected) {
+                        backupDao.deleteReversalEntriesForReferenceTypes(INVENTORY_JOURNAL_TYPES)
+                        backupDao.deleteJournalEntriesByReferenceTypes(INVENTORY_JOURNAL_TYPES)
+                    }
+                }
+
+                // 3. PO Unreceive & Supplier Payment Reset (keep entire PO, ordered qty, price, cartons & packaging)
+                if (DataClearModule.PO_RESET_KEEP_STRUCTURE in selected) {
+                    // If inventory isn't being fully reset, strip PO-received FIFO layers safely first
+                    if (DataClearModule.INVENTORY_STOCK_RESET !in selected) {
+                        backupDao.deleteFifoConsumptionsForPoReceiptLayers()
+                        backupDao.deleteStockTransferLayersForPoReceiptLayers()
+                        backupDao.deleteCostAdjustmentsForPoReceiptLayers()
+                        backupDao.deletePoReceiptCostLayers()
+                        backupDao.deletePoStockMovements()
+                        backupDao.syncStockBalancesWithActiveCostLayers(now)
+                        backupDao.deleteEmptyStockBalances()
+                    }
+                    backupDao.clearDamageRecords()
+                    backupDao.clearShortageRecords()
+                    backupDao.clearWarehouseReceiptItems()
+                    backupDao.clearWarehouseReceipts()
+                    backupDao.clearLandedCostAllocations()
+                    backupDao.clearLandedCostSnapshots()
+                    backupDao.clearAdditionalProductCosts()
+                    backupDao.clearPurchaseCompletionRecords()
+                    backupDao.clearSupplierPayments()
+                    backupDao.uncapitalizeAllImportCostItems()
+                    backupDao.resetAllPurchaseOrderItemsReceivedQuantity()
+                    backupDao.resetAllPurchaseOrdersToUnreceivedConfirmed(now)
+                    backupDao.resetShipmentsToUnreceivedDraftKeepPacking(now)
+                    backupDao.deleteCommunicationSnapshotsByModules(
+                        listOf("SUPPLIER_PAYMENT", "SUPPLIER_STATEMENT")
+                    )
+                    if (DataClearModule.LEDGER_AMOUNTS_RESET !in selected) {
+                        backupDao.deleteReversalEntriesForReferenceTypes(PO_JOURNAL_TYPES)
+                        backupDao.deleteJournalEntriesByReferenceTypes(PO_JOURNAL_TYPES)
+                    }
+                }
+
+                // 4. Ledger, Expenses, Transfers & Party Balances Reset (keep Chart of Accounts & Contact names)
+                if (DataClearModule.LEDGER_AMOUNTS_RESET in selected) {
+                    backupDao.clearExpenseAllocations()
+                    backupDao.clearExpenseAllocationRules()
+                    backupDao.clearBankReconciliationItems()
+                    backupDao.clearBankReconciliations()
+                    backupDao.clearAccountTransfers()
+                    backupDao.clearExpenseVouchers()
+                    backupDao.clearJournalLines()
+                    backupDao.clearJournalEntries()
+                    backupDao.resetAllCustomerBalances()
+                    backupDao.resetAllSupplierPayables()
+                }
+
+                // 5. Import Vault Clear
+                if (DataClearModule.IMPORT_VAULT_CLEAR in selected) {
+                    backupDao.clearImportVaultAttachments()
+                    backupDao.clearImportVaultEntries()
+                }
+
+                // 6. Smart Communication History & Snapshots Clear (keep settings & custom templates)
+                if (DataClearModule.COMMUNICATION_LOGS_CLEAR in selected) {
+                    database.communicationDao().clearHistory()
+                    database.communicationDao().clearSnapshots()
+                }
+
+                // 7. Audit Logs (except BACKUP), Saved Suggestions & Unsaved Drafts Clear
+                if (DataClearModule.AUDIT_AND_DRAFTS_CLEAR in selected) {
+                    backupDao.clearTransactionAuditLogs()
+                    backupDao.clearSavedSuggestions()
+                }
+
+                // 8. Re-sync PO commitment journals & party balances whenever sales, POs, or ledgers changed
+                if (DataClearModule.PO_RESET_KEEP_STRUCTURE in selected ||
+                    DataClearModule.LEDGER_AMOUNTS_RESET in selected
+                ) {
+                    val accountingDao = database.accountingDao()
+                    val accTransit = accountingDao.getAccountById("coa-1220")
+                    val accPayable = accountingDao.getAccountById("coa-2010")
+                    if (accTransit != null && accPayable != null) {
+                        backupDao.deleteReversalEntriesForReferenceTypes(listOf("PO_COMMITMENT"))
+                        backupDao.deleteJournalEntriesByReferenceTypes(listOf("PO_COMMITMENT"))
+                        backupDao.getConfirmedPurchaseOrdersForCommitmentSync().forEachIndexed { idx, po ->
+                            val jeId = "je-pocom-${UUID.randomUUID()}"
+                            accountingDao.postJournalEntryWithLines(
+                                entry = JournalEntry(
+                                    id = jeId,
+                                    entryNumber = "JE-POC-${idx + 1}",
+                                    entryDate = po.orderDate,
+                                    descriptionEn = "PO Confirmed (Goods In-Transit): ${po.poNumber}",
+                                    descriptionBn = "ক্রয়াদেশ নিশ্চিতকরণ ও ট্রানজিট পণ্য: ${po.poNumber}",
+                                    referenceType = "PO_COMMITMENT",
+                                    referenceId = po.id,
+                                    totalDebitMinor = po.totalBdtAmountMinor,
+                                    totalCreditMinor = po.totalBdtAmountMinor,
+                                    isPosted = true
+                                ),
+                                lines = listOf(
+                                    JournalLine(
+                                        id = "jl-${UUID.randomUUID()}",
+                                        journalEntryId = jeId,
+                                        accountId = accTransit.id,
+                                        accountCode = accTransit.accountCode,
+                                        accountName = accTransit.nameEn,
+                                        isDebit = true,
+                                        amountMinor = po.totalBdtAmountMinor,
+                                        description = "Merchandise in transit for ${po.poNumber}"
+                                    ),
+                                    JournalLine(
+                                        id = "jl-${UUID.randomUUID()}",
+                                        journalEntryId = jeId,
+                                        accountId = accPayable.id,
+                                        accountCode = accPayable.accountCode,
+                                        accountName = accPayable.nameEn,
+                                        isDebit = false,
+                                        amountMinor = po.totalBdtAmountMinor,
+                                        description = "Supplier payable for ${po.poNumber}"
+                                    )
+                                )
+                            )
+                        }
+                    }
+                }
+
+                if (DataClearModule.SALES_FULL_CLEAR in selected ||
+                    DataClearModule.PO_RESET_KEEP_STRUCTURE in selected ||
+                    DataClearModule.LEDGER_AMOUNTS_RESET in selected
+                ) {
+                    backupDao.recalculateAllCustomerBalancesFromRemainingRecords()
+                    backupDao.recalculateAllSupplierPayablesFromRemainingRecords()
+                }
+
+                val moduleNames = selected.joinToString(", ") { it.name }
+                auditLogDao.insertAuditLog(
+                    AuditLog(
+                        id = "audit-${UUID.randomUUID()}",
+                        recordType = "SYSTEM_RESET",
+                        recordId = "SELECTIVE_DATA_CLEAR",
+                        action = "SELECTIVE_RESET",
+                        details = "Selective data clear completed for [$moduleNames]. SafetyBackup=${safetyRecord?.fileName ?: "Skipped"}."
+                    )
+                )
+            }
+
+            // Post-transaction disk cache / SharedPreferences cleanup matching selected modules
+            if (DataClearModule.IMPORT_VAULT_CLEAR in selected) {
+                val vaultDir = File(context.filesDir, "vault_attachments")
+                if (vaultDir.exists()) {
+                    vaultDir.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
+                }
+            }
+
+            if (DataClearModule.COMMUNICATION_LOGS_CLEAR in selected) {
+                listOf("communication_docs", "communication_exports", "communication_cards", "shared_pdfs").forEach { dirName ->
+                    val dir = File(context.cacheDir, dirName)
+                    if (dir.exists()) {
+                        dir.deleteRecursively()
+                    }
+                }
+            }
+
+            val draftPrefs = context.getSharedPreferences("editor_drafts_v1", Context.MODE_PRIVATE)
+            if (DataClearModule.AUDIT_AND_DRAFTS_CLEAR in selected) {
+                draftPrefs.edit().clear().commit()
+            } else {
+                val editor = draftPrefs.edit()
+                var changed = false
+                if (DataClearModule.SALES_FULL_CLEAR in selected) {
+                    draftPrefs.all.keys.filter { it.startsWith("sales") || it.startsWith("invoice") }.forEach {
+                        editor.remove(it)
+                        changed = true
+                    }
+                }
+                if (DataClearModule.PO_RESET_KEEP_STRUCTURE in selected) {
+                    draftPrefs.all.keys.filter { it.startsWith("purchase") || it.startsWith("po") }.forEach {
+                        editor.remove(it)
+                        changed = true
+                    }
+                }
+                if (changed) editor.commit()
+            }
+
+            val namesEn = selected.joinToString(", ") { it.titleEn }
+            val namesBn = selected.joinToString(", ") { it.titleBn }
+            Result.success(
+                SelectiveDataClearResult(
+                    clearedModules = selected,
+                    safetyBackupRecordId = safetyRecord?.id,
+                    safetyBackupFileName = safetyRecord?.fileName,
+                    summaryEn = "Successfully reset: $namesEn",
+                    summaryBn = "সফলভাবে রিসেট সম্পন্ন হয়েছে: $namesBn"
+                )
+            )
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    private companion object {
+        val SALES_JOURNAL_TYPES = listOf(
+            "SALE",
+            "SALES_INVOICE",
+            "SALES_COGS",
+            "CUSTOMER_PAYMENT",
+            "SALES_RETURN",
+            "RETURN_COGS",
+            "RETURN_DAMAGE",
+            "DELIVERY_CHALLAN",
+            "DIRECT_EXCHANGE",
+            "DIRECT_EXCHANGE_RETURN_COGS",
+            "DIRECT_EXCHANGE_DAMAGE",
+            "DIRECT_EXCHANGE_COGS",
+            "VOID_PAYMENT",
+            "SALES_INVOICE_CANCEL",
+            "PAYMENT_TO_ADVANCE",
+            "VOID_INVOICE_SALES",
+            "VOID_INVOICE_COGS",
+            "INVOICE"
+        )
+
+        val INVENTORY_JOURNAL_TYPES = listOf(
+            "OPENING_STOCK",
+            "INITIAL_STOCK",
+            "RESTOCK_ADD",
+            "STOCK_ADJUSTMENT",
+            "MANUAL_ADJUSTMENT",
+            "ADJUSTMENT",
+            "INVENTORY_COST_ADJUSTMENT",
+            "STOCK_TRANSFER",
+            "TRANSFER_CANCELLATION"
+        )
+
+        val PO_JOURNAL_TYPES = listOf(
+            "PO_COMMITMENT",
+            "PO_IMPORT_EXPENSE",
+            "PO_LANDED_CAPITALIZE",
+            "PO_FREIGHT_PAYMENT",
+            "SUPPLIER_PAYMENT",
+            "IMPORT_EXPENSE",
+            "LANDED_COST_ADJUSTMENT",
+            "LANDING_COST_FINALIZE",
+            "WAREHOUSE_RECEIPT",
+            "DAMAGE_WRITE_OFF",
+            "SHORTAGE_CLAIM",
+            "ADDITIONAL_COST",
+            "ADDITIONAL_PRODUCT_COST",
+            "PO_REOPEN_EDIT",
+            "POST_FINALIZE_IMPORT_EXPENSE",
+            "PURCHASE",
+            "FREIGHT_DUTY_PAYMENT",
+            "WAREHOUSE_RENT_EXPENSE",
+            "CUSTOMER_DELIVERY_EXPENSE"
+        )
     }
 
     private fun calculateSha256(file: File): String {

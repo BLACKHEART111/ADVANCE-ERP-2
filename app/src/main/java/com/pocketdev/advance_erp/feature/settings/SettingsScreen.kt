@@ -32,12 +32,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Lock
@@ -46,7 +51,9 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WarningAmber
+import com.pocketdev.advance_erp.feature.communication.CommunicationDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -103,8 +110,11 @@ import com.pocketdev.advance_erp.core.designsystem.ERPActionButton
 import com.pocketdev.advance_erp.core.designsystem.LocalSettingsTokens
 import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
+import com.pocketdev.advance_erp.core.designsystem.SettingsColorTokens
 import com.pocketdev.advance_erp.core.designsystem.StatusSuccess
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
+import com.pocketdev.advance_erp.core.security.UserRole
+import com.pocketdev.advance_erp.feature.settings.components.SelectiveDataClearDialog
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.model.AppLanguage
@@ -201,10 +211,11 @@ fun SettingsScreen(
     var expandBackup by rememberSaveable { mutableStateOf(false) }
     var expandSystemInfo by rememberSaveable { mutableStateOf(false) }
 
-    // Security dialogs
+    // Security & Data Clear dialogs
     var showSetPinDialog by rememberSaveable { mutableStateOf(false) }
     var showChangePinDialog by rememberSaveable { mutableStateOf(false) }
     var showDisablePinDialog by rememberSaveable { mutableStateOf(false) }
+    var showSelectiveDataClearDialog by rememberSaveable { mutableStateOf(false) }
 
     // Currency change confirmation dialog
     var pendingCurrencyConfirm by remember { mutableStateOf<CurrencyCode?>(null) }
@@ -212,9 +223,11 @@ fun SettingsScreen(
     // Business Profile state preserved across configuration changes & unsaved edits
     var profileInitialized by rememberSaveable { mutableStateOf(false) }
     var companyName by rememberSaveable { mutableStateOf("") }
+    var tagline by rememberSaveable { mutableStateOf("") }
     var taxNumber by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
+    var website by rememberSaveable { mutableStateOf("") }
     var address by rememberSaveable { mutableStateOf("") }
     var companyNameError by rememberSaveable { mutableStateOf(false) }
 
@@ -222,9 +235,11 @@ fun SettingsScreen(
         val loaded = state.profile
         if (loaded != null && !profileInitialized) {
             companyName = loaded.companyName
+            tagline = loaded.tagline.orEmpty()
             taxNumber = loaded.taxNumber.orEmpty()
             phone = loaded.phone
             email = loaded.email.orEmpty()
+            website = loaded.website.orEmpty()
             address = loaded.address
             profileInitialized = true
         }
@@ -306,7 +321,9 @@ fun SettingsScreen(
                         tokens = tokens
                     )
                 }
-                item(key = "smart_communication") { com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(isBangla = isBn, settings = true) }
+                item(key = "smart_communication") {
+                    SettingsCommunicationCard(isBn = isBn, tokens = tokens)
+                }
 
                 // Category 1: Appearance & Language
                 item(key = "cat_appearance") {
@@ -734,6 +751,27 @@ fun SettingsScreen(
                             minLines = 2,
                             maxLines = 3
                         )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = tagline,
+                            onValueChange = { tagline = it },
+                            label = { Text(if (isBn) "কোম্পানি ট্যাগলাইন / স্লোগান (ঐচ্ছিক)" else "Company Tagline / Slogan (Optional)") },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = website,
+                            onValueChange = { website = it },
+                            label = { Text(if (isBn) "ওয়েবসাইট (ঐচ্ছিক)" else "Website (Optional)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
                         Spacer(modifier = Modifier.height(14.dp))
 
                         ERPActionButton(
@@ -753,7 +791,9 @@ fun SettingsScreen(
                                         taxNumber = taxNumber,
                                         phone = phone,
                                         email = email,
-                                        address = address
+                                        address = address,
+                                        website = website,
+                                        tagline = tagline
                                     )
                                 }
                             },
@@ -967,6 +1007,11 @@ fun SettingsScreen(
                             onToggleFridayAutoBackup = { enabled -> viewModel.toggleFridayAutoBackup(enabled) },
                             onSelectBackupFolder = { uri -> viewModel.setBackupFolderUri(uri) },
                             onResetTestDataKeepMasters = { onFinished -> viewModel.resetTestDataKeepProductsAndContacts(onFinished) },
+                            isOwnerAdmin = state.userRole == UserRole.OWNER_ADMIN,
+                            onOpenSelectiveDataClear = {
+                                viewModel.refreshDataClearPreview()
+                                showSelectiveDataClearDialog = true
+                            },
                             embeddedInAccordion = true
                         )
                     }
@@ -1096,6 +1141,20 @@ fun SettingsScreen(
             language = state.language,
             onPinVerifiedAndDisabled = { viewModel.disableAppLock() },
             onDismiss = { showDisablePinDialog = false }
+        )
+    }
+
+    if (showSelectiveDataClearDialog) {
+        SelectiveDataClearDialog(
+            language = state.language,
+            preview = state.dataClearPreview,
+            isAppLockEnabled = state.isAppLockEnabled,
+            pinCodeHash = state.pinCodeHash,
+            pinSalt = state.pinSalt,
+            onExecuteClear = { selectedModules, createSafetyBackup, onFinished ->
+                viewModel.executeSelectiveDataClear(selectedModules, createSafetyBackup, onFinished)
+            },
+            onDismiss = { showSelectiveDataClearDialog = false }
         )
     }
 }
@@ -1284,4 +1343,105 @@ private fun AuthorizedSignaturePadDialog(
             }
         }
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SettingsCommunicationCard(
+    isBn: Boolean,
+    tokens: SettingsColorTokens
+) {
+    var openTab by rememberSaveable { mutableStateOf<String?>(null) }
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = tokens.cardBg,
+        border = BorderStroke(1.dp, tokens.cardBorderStart),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = PrimaryPurple.copy(alpha = 0.14f),
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Forum, null, tint = PrimaryPurple, modifier = Modifier.size(20.dp))
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = if (isBn) "স্মার্ট ডকুমেন্ট ও যোগাযোগ কেন্দ্র" else "Smart Document & Communication Hub",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = tokens.titleText
+                    )
+                    Text(
+                        text = if (isBn) "PDF, ইমেজ কার্ড, WhatsApp বার্তা, টেমপ্লেট ও ইতিহাস নিয়ন্ত্রণ করুন" else "Configure default PDF, Image Card, WhatsApp formats, templates & logs",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = tokens.subtitleText
+                    )
+                }
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { openTab = "settings" },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Outlined.Tune, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(if (isBn) "সেটিংস" else "Settings", style = MaterialTheme.typography.labelMedium)
+                }
+                OutlinedButton(
+                    onClick = { openTab = "templates" },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Outlined.Description, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(if (isBn) "টেমপ্লেট" else "Templates", style = MaterialTheme.typography.labelMedium)
+                }
+                OutlinedButton(
+                    onClick = { openTab = "history" },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Outlined.History, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(if (isBn) "ইতিহাস" else "History", style = MaterialTheme.typography.labelMedium)
+                }
+                OutlinedButton(
+                    onClick = { openTab = "documents" },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Outlined.Forum, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(if (isBn) "ডকুমেন্ট" else "Documents", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+
+    openTab?.let { targetTab ->
+        CommunicationDialog(
+            settingsMode = targetTab == "settings",
+            initialTab = targetTab,
+            dialogKey = "settings_comm_$targetTab",
+            onDismiss = { openTab = null }
+        )
+    }
 }

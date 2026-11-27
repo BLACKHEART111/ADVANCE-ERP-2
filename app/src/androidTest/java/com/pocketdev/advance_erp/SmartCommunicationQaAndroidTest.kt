@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.room.Room
@@ -17,6 +19,9 @@ import com.pocketdev.advance_erp.core.communication.CommunicationPhone
 import com.pocketdev.advance_erp.core.communication.CommunicationRequest
 import com.pocketdev.advance_erp.core.communication.CommunicationStatus
 import com.pocketdev.advance_erp.core.communication.DocumentAttachmentProvider
+import com.pocketdev.advance_erp.core.communication.ShareOutputFormat
+import com.pocketdev.advance_erp.core.communication.ShareStepKind
+import com.pocketdev.advance_erp.core.communication.ShareWorkflowPlanner
 import com.pocketdev.advance_erp.core.communication.WhatsAppShareManager
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import com.pocketdev.advance_erp.core.database.BackupArchiveContract
@@ -28,14 +33,18 @@ import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
 import com.pocketdev.advance_erp.core.security.UserRole
 import com.pocketdev.advance_erp.core.util.DocumentNumberService
+import com.pocketdev.advance_erp.core.util.ProductImageStorage
 import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.CommunicationHistory
 import com.pocketdev.advance_erp.data.entity.CommunicationSettings
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
+import com.pocketdev.advance_erp.data.entity.LiquidAccountKind
 import com.pocketdev.advance_erp.data.entity.PaymentMethod
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
+import com.pocketdev.advance_erp.data.entity.ProductImage
+import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.PurchaseOrder
 import com.pocketdev.advance_erp.data.entity.PurchaseOrderStatus
 import com.pocketdev.advance_erp.data.entity.ReturnRefundOption
@@ -44,17 +53,27 @@ import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.data.entity.Warehouse
 import com.pocketdev.advance_erp.data.repository.AccountingRepositoryImpl
+import com.pocketdev.advance_erp.data.repository.BackupRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.BusinessControlCenterRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.CommunicationRepositoryImpl
+import com.pocketdev.advance_erp.data.repository.ContactsRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.ImportRepositoryImpl
+import com.pocketdev.advance_erp.data.repository.ProductRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.SalesRepositoryImpl
+import com.pocketdev.advance_erp.domain.model.DataClearModule
+import com.pocketdev.advance_erp.domain.model.DataClearPreset
+import com.pocketdev.advance_erp.domain.model.SelectiveDataClearPlanner
+import com.pocketdev.advance_erp.domain.model.SelectiveDataClearRequest
 import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
 import com.pocketdev.advance_erp.domain.repository.DeliveryDispatchDraft
 import com.pocketdev.advance_erp.domain.repository.DeliveryDispatchItemDraft
 import com.pocketdev.advance_erp.domain.repository.DirectExchangeDraft
 import com.pocketdev.advance_erp.domain.repository.InvoiceAllocationDraft
 import com.pocketdev.advance_erp.domain.repository.InvoiceItemDraft
+import com.pocketdev.advance_erp.domain.repository.MixedCartonLineDraft
+import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
+import com.pocketdev.advance_erp.domain.repository.ReceiptItemDraft
 import com.pocketdev.advance_erp.domain.repository.ReturnItemDraft
 import com.pocketdev.advance_erp.domain.repository.SalesInvoiceDraft
 import com.pocketdev.advance_erp.domain.repository.SalesReturnDraft
@@ -95,6 +114,8 @@ class SmartCommunicationQaAndroidTest {
     private lateinit var prefs: UserPreferencesRepository
     private lateinit var engine: CommunicationEngine
     private lateinit var repo: CommunicationRepositoryImpl
+    private lateinit var contacts: ContactsRepositoryImpl
+    private lateinit var products: ProductRepositoryImpl
 
     private val context: Context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -135,6 +156,15 @@ class SmartCommunicationQaAndroidTest {
         prefs.setUserRole(UserRole.OWNER_ADMIN)
         engine = CommunicationEngine(db, sales, controlCenter, attachments, prefs)
         repo = CommunicationRepositoryImpl(engine, db.communicationDao())
+        contacts = ContactsRepositoryImpl(
+            db, db.customerDao(), db.supplierDao(), db.salesDao(), db.customerPaymentDao(),
+            db.salesReturnDao(), db.purchaseOrderDao(), db.supplierPaymentDao(), accounting
+        )
+        products = ProductRepositoryImpl(
+            db, db.productDao(), db.productCategoryDao(), db.productVariantDao(), db.productImageDao(),
+            db.stockBalanceDao(), db.stockMovementDao(), db.inventoryCostLayerDao(),
+            ProductImageStorage(context.applicationContext)
+        )
 
         db.businessProfileDao().insertOrUpdate(
             BusinessProfile(
@@ -172,6 +202,10 @@ class SmartCommunicationQaAndroidTest {
     }
 
     private fun renderFirstPdfPageToCache(pdf: File, pngName: String) {
+        renderPdfPageToCache(pdf, 0, pngName, scale = 2)
+    }
+
+    private fun renderPdfPageToCache(pdf: File, pageIndex: Int, pngName: String, scale: Int = 2) {
         assertTrue("PDF must exist: ${pdf.path}", pdf.exists() && pdf.length() > 100L)
         assertEquals("%PDF-", pdf.inputStream().bufferedReader().use { r ->
             val buf = CharArray(5)
@@ -180,9 +214,9 @@ class SmartCommunicationQaAndroidTest {
         })
         ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
             PdfRenderer(pfd).use { renderer ->
-                assertTrue("PDF must have at least 1 page", renderer.pageCount >= 1)
-                renderer.openPage(0).use { page ->
-                    val bmp = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                assertTrue("PDF must have page $pageIndex (count=${renderer.pageCount})", pageIndex in 0 until renderer.pageCount)
+                renderer.openPage(pageIndex).use { page ->
+                    val bmp = Bitmap.createBitmap(page.width * scale, page.height * scale, Bitmap.Config.ARGB_8888)
                     bmp.eraseColor(Color.WHITE)
                     page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     val outDir = File(context.cacheDir, "qa_previews").apply { mkdirs() }
@@ -193,6 +227,33 @@ class SmartCommunicationQaAndroidTest {
                 }
             }
         }
+    }
+
+    private fun copyFileToQaCache(src: File, outName: String) {
+        assertTrue("File must exist: ${src.path}", src.exists() && src.length() > 0L)
+        val outDir = File(context.cacheDir, "qa_previews").apply { mkdirs() }
+        src.copyTo(File(outDir, outName), overwrite = true)
+    }
+
+    private fun createSyntheticSamplePng(file: File, bgColor: Int, accentColor: Int, label: String): File {
+        file.parentFile?.mkdirs()
+        val bmp = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(bgColor)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accentColor
+            style = Paint.Style.FILL
+        }
+        canvas.drawRoundRect(24f, 18f, 72f, 142f, 22f, 22f, paint)
+        canvas.drawRoundRect(88f, 18f, 136f, 142f, 22f, 22f, paint)
+        paint.color = Color.WHITE
+        paint.textSize = 24f
+        canvas.drawText(label.take(4), 34f, 88f, paint)
+        FileOutputStream(file).use { out ->
+            bmp.compress(Bitmap.CompressFormat.PNG, 95, out)
+        }
+        bmp.recycle()
+        return file
     }
 
     @Test
@@ -332,7 +393,12 @@ class SmartCommunicationQaAndroidTest {
         val paymentEntity = db.customerPaymentDao().getPaymentByNumber(payNumber)!!
         val prepPayment = repo.prepare(CommunicationRequest(CommunicationModule.PAYMENT, paymentEntity.id), languageOverride = "bn")
         assertEquals(payNumber, prepPayment.document.number)
-        assertTrue(prepPayment.message.contains("5000") || prepPayment.message.contains("6000"))
+        assertTrue(
+            prepPayment.message.contains("6,000.00") ||
+                prepPayment.message.contains("5,000.00") ||
+                prepPayment.message.contains("5000") ||
+                prepPayment.message.contains("6000")
+        )
 
         sales.voidCustomerPayment(paymentEntity.id, "QA void verification").getOrThrow()
         val afterVoidInv = db.salesDao().getInvoiceById(newInvId)!!
@@ -950,5 +1016,670 @@ class SmartCommunicationQaAndroidTest {
             missingMessengerRejected = true
         }
         assertTrue(missingMessengerRejected)
+    }
+
+    @Test
+    fun referenceDatasetMultiVariantMultiPageAndThreeFormatReconciliation() = runBlocking {
+        val warehouseId = "wh-qa-ref-1"
+        val wh = Warehouse(
+            id = warehouseId,
+            name = "Dhaka Central Warehouse",
+            code = "DCW-QA",
+            location = "41, New Elephant Road, Dhaka-1205",
+            isDefault = true,
+            isActive = true
+        )
+        if (db.warehouseDao().getWarehouseById(warehouseId) == null) {
+            db.warehouseDao().insertWarehouse(wh)
+        }
+
+        val logoFile = createSyntheticSamplePng(
+            File(context.filesDir, "company_logo/tuktak_ref_logo.png"),
+            Color.rgb(91, 33, 182),
+            Color.rgb(56, 189, 248),
+            "TK"
+        )
+        val insoleFile = createSyntheticSamplePng(
+            File(context.filesDir, "product_images/qa_4d_insole.png"),
+            Color.rgb(224, 242, 254),
+            Color.rgb(2, 132, 199),
+            "4D"
+        )
+        db.businessProfileDao().insertOrUpdate(
+            BusinessProfile(
+                id = "default_profile",
+                companyName = "TUKTAK BD",
+                tagline = "Your Trusted Sourcing & Wholesale Partner",
+                taxNumber = "002891929-0101",
+                phone = "01639484547",
+                email = "sales@tuktakbd.com",
+                address = "41, New Elephant Road, Dhaka-1205",
+                defaultCurrency = "BDT",
+                logoPath = logoFile.absolutePath,
+                website = "www.tuktakbd.com"
+            )
+        )
+        repo.saveSettings(
+            CommunicationSettings(
+                includePdf = true,
+                includeImageCard = true,
+                includeTextMessage = true,
+                showProductPhoto = true,
+                showVariantSku = true,
+                showQrCode = true,
+                includeSignature = true,
+                defaultLanguage = "bn",
+                preferredApp = "ASK",
+                defaultPaymentTerms = "Net 7 Days"
+            )
+        )
+
+        val category = products.addCategory("Footwear Insoles QA", "ফুটওয়্যার ইনসোল")
+        val p1 = Product(
+            id = "prod-qa-4d-insole",
+            categoryId = category.id,
+            nameEn = "4D Cloud Insole Wholesale",
+            nameBn = "4D Cloud Insole Wholesale",
+            baseSku = "4DCI-WS",
+            unit = "Pair",
+            purchasePriceMinor = 85_000L,
+            sellingPriceMinor = 138_000L
+        )
+        val v1 = ProductVariant(
+            id = "var-qa-4d-gray-37",
+            productId = p1.id,
+            sku = "4DCI-WS-001",
+            color = "Gray",
+            size = "37-38",
+            variantPriceMinor = 138_000L,
+            variantCostMinor = 85_000L
+        )
+        products.addProductWithMedia(
+            product = p1,
+            variants = listOf(v1),
+            images = listOf(
+                ProductImage(
+                    productId = p1.id,
+                    variantId = v1.id,
+                    imageUri = insoleFile.absolutePath,
+                    isPrimary = true
+                )
+            ),
+            initialStock = 0,
+            warehouseId = warehouseId,
+            variantInitialStock = mapOf(v1.id to 200)
+        )
+
+        // 1. Reference accounting sequence: Previous 29,560 + New 1,380 = 30,940 -> Payment 5,000 -> 25,940
+        val now = System.currentTimeMillis()
+        val hasanId = "cust-qa-hasan"
+        contacts.addCustomerWithOptionalOpeningDue(
+            customer = Customer(
+                id = hasanId,
+                customerCode = "CUST-9668",
+                name = "Hasan Mojumdar",
+                phone = "01866482142",
+                address = "Dhaka, Bangladesh"
+            ),
+            openingDueMinor = 2_956_000L,
+            entryDate = now - 40L * 86_400_000L,
+            openingNote = "Opening Balance"
+        )
+        val inv1Id = sales.createAndPostInvoice(
+            SalesInvoiceDraft(
+                customerId = hasanId,
+                warehouseId = warehouseId,
+                invoiceDate = now,
+                dueDate = now + 7L * 86_400_000L,
+                paidAmountMinor = 0L,
+                salesType = "WHOLESALE",
+                paymentTerms = "Net 7 Days",
+                items = listOf(InvoiceItemDraft(productId = p1.id, variantId = v1.id, quantity = 1, unitPriceMinor = 138_000L))
+            )
+        ).getOrThrow()
+
+        val invUnpaidBn = engine.prepare(
+            request = CommunicationRequest(CommunicationModule.INVOICE, inv1Id),
+            languageOverride = "bn",
+            forcePdf = true,
+            forceImage = true
+        )
+        assertEquals(2_956_000L, invUnpaidBn.document.previousMinor)
+        assertEquals(138_000L, invUnpaidBn.document.invoiceBreakdown?.netInvoiceAmountMinor)
+        assertEquals(0L, invUnpaidBn.document.invoiceBreakdown?.allocatedPaymentMinor)
+        assertEquals(138_000L, invUnpaidBn.document.invoiceBreakdown?.invoiceDueMinor)
+        assertEquals(3_094_000L, invUnpaidBn.document.balanceMinor)
+        assertEquals(CommunicationStatus.UNPAID, invUnpaidBn.document.status)
+        assertTrue(invUnpaidBn.message.contains("1,380.00"))
+        assertTrue(invUnpaidBn.message.contains("29,560.00"))
+        assertTrue(invUnpaidBn.message.contains("30,940.00"))
+        assertFalse(invUnpaidBn.message.contains("850.00"))
+        assertFalse(invUnpaidBn.message.contains("profit", ignoreCase = true))
+        renderPdfPageToCache(invUnpaidBn.pdfFile!!, 0, "qa_ref01_invoice_pdf_p1.png")
+        copyFileToQaCache(invUnpaidBn.imageCardPages.first(), "qa_ref02_invoice_card.png")
+
+        // Record Payment 5,000.00 (1,380 allocated to inv1, 3,620 reduces opening balance -> closing due 25,940.00)
+        val pay1Id = sales.recordCustomerPayment(
+            CustomerPaymentDraft(
+                customerId = hasanId,
+                amountMinor = 500_000L,
+                paymentMethod = "CASH",
+                referenceNote = "Cash received against due",
+                allocations = listOf(InvoiceAllocationDraft(invoiceId = inv1Id, amountMinor = 138_000L))
+            )
+        )
+        assertEquals(2_594_000L, sales.recalculateCustomerBalance(hasanId))
+
+        val payBn = engine.prepare(
+            request = CommunicationRequest(CommunicationModule.PAYMENT, pay1Id),
+            languageOverride = "bn",
+            forcePdf = true,
+            forceImage = true
+        )
+        assertEquals(3_094_000L, payBn.document.paymentBreakdown?.previousBalanceMinor)
+        assertEquals(500_000L, payBn.document.paymentBreakdown?.paymentAmountMinor)
+        assertEquals(2_594_000L, payBn.document.balanceMinor)
+        assertTrue(payBn.message.contains("5,000.00"))
+        assertTrue(payBn.message.contains("25,940.00"))
+        renderPdfPageToCache(payBn.pdfFile!!, 0, "qa_payment_receipt_pdf.png")
+        copyFileToQaCache(payBn.imageCardPages.first(), "qa_ref03_payment_card.png")
+
+        val remBn = engine.prepare(
+            request = CommunicationRequest(CommunicationModule.REMINDER, hasanId),
+            languageOverride = "bn",
+            forcePdf = true,
+            forceImage = true
+        )
+        assertEquals(2_594_000L, remBn.document.balanceMinor)
+        copyFileToQaCache(remBn.imageCardPages.first(), "qa_ref04_reminder_card.png")
+        renderPdfPageToCache(remBn.pdfFile!!, 0, "qa_ref04_reminder_pdf_p1.png")
+
+        val stmtBn = engine.prepare(
+            request = CommunicationRequest(
+                module = CommunicationModule.STATEMENT,
+                documentId = hasanId,
+                from = now - 86_400_000L * 30,
+                to = System.currentTimeMillis() + 86_400_000L
+            ),
+            languageOverride = "bn",
+            forcePdf = true,
+            forceImage = true
+        )
+        assertEquals(2_594_000L, stmtBn.document.balanceMinor)
+        copyFileToQaCache(stmtBn.imageCardPages.first(), "qa_ref05_statement_card.png")
+        renderPdfPageToCache(stmtBn.pdfFile!!, 0, "qa_ref05_statement_pdf_p1.png")
+
+        // Old invoice re-share after later payment must preserve invoice total while reflecting current paid & balance
+        val invReshareEn = engine.prepare(
+            request = CommunicationRequest(CommunicationModule.INVOICE, inv1Id),
+            languageOverride = "en",
+            forcePdf = true,
+            forceImage = true
+        )
+        assertEquals(138_000L, invReshareEn.document.invoiceBreakdown?.netInvoiceAmountMinor)
+        assertEquals(138_000L, invReshareEn.document.invoiceBreakdown?.allocatedPaymentMinor)
+        assertEquals(0L, invReshareEn.document.invoiceBreakdown?.invoiceDueMinor)
+        assertEquals(2_594_000L, invReshareEn.document.balanceMinor)
+        assertEquals(CommunicationStatus.PAID, invReshareEn.document.status)
+        assertTrue(invReshareEn.message.contains("25,940.00"))
+
+        // 2. Multi-variant, multi-page (22 lines), percentage & fixed discounts, partial payment
+        val multiProd = Product(
+            id = "prod-qa-multi-22",
+            categoryId = category.id,
+            nameEn = "Premium Breathable Orthopedic Memory Foam Sports & Running Insole Export Series",
+            nameBn = "প্রিমিয়াম ব্রেথেবল অর্থোপেডিক মেমোরি ফোম স্পোর্টস ইনসোল এক্সপোর্ট সিরিজ",
+            baseSku = "ORTHO-EXP",
+            unit = "PCS",
+            purchasePriceMinor = 45_000L,
+            sellingPriceMinor = 80_000L
+        )
+        val colors = listOf("Black", "Navy Blue", "Crimson Red", "Olive Green", "Saddle Brown", "Sand Beige")
+        val sizes = listOf("38", "39", "40", "41")
+        val variants = (0 until 22).map { idx ->
+            ProductVariant(
+                id = "var-qa-multi-$idx",
+                productId = multiProd.id,
+                sku = "ORTHO-${idx + 1}",
+                color = colors[idx % colors.size],
+                size = sizes[idx / colors.size % sizes.size],
+                variantPriceMinor = 80_000L + (idx * 2_000L),
+                variantCostMinor = 45_000L
+            )
+        }
+        products.addProductWithMedia(
+            product = multiProd,
+            variants = variants,
+            images = listOf(ProductImage(productId = multiProd.id, variantId = null, imageUri = insoleFile.absolutePath, isPrimary = true)),
+            initialStock = 0,
+            warehouseId = warehouseId,
+            variantInitialStock = variants.associate { it.id to 50 }
+        )
+
+        val rahimId = "cust-qa-rahim"
+        contacts.addCustomerWithOptionalOpeningDue(
+            customer = Customer(id = rahimId, customerCode = "CUST-9701", name = "Rahim Traders", phone = "01711223344", address = "Chittagong"),
+            openingDueMinor = 0L
+        )
+        val multiInvId = sales.createAndPostInvoice(
+            SalesInvoiceDraft(
+                customerId = rahimId,
+                warehouseId = warehouseId,
+                invoiceDate = now,
+                dueDate = now + 15L * 86_400_000L,
+                discountMinor = 100_000L,
+                discountPercentBps = 500L,
+                additionalChargesMinor = 25_000L,
+                paidAmountMinor = 1_000_000L,
+                salesType = "RETAIL",
+                paymentTerms = "Partial Cash + Due",
+                items = variants.mapIndexed { idx, v ->
+                    InvoiceItemDraft(
+                        productId = multiProd.id,
+                        variantId = v.id,
+                        quantity = 2,
+                        unitPriceMinor = v.variantPriceMinor,
+                        discountMinor = if (idx == 0) 16_000L else 0L,
+                        discountPercentBps = if (idx == 0) 1000L else null
+                    )
+                }
+            )
+        ).getOrThrow()
+
+        val multiPrep = engine.prepare(
+            request = CommunicationRequest(CommunicationModule.INVOICE, multiInvId),
+            languageOverride = "bn",
+            forcePdf = true,
+            forceImage = true
+        )
+        assertEquals(CommunicationStatus.PARTIAL, multiPrep.document.status)
+        assertEquals(22, multiPrep.document.lineItems.size)
+        ParcelFileDescriptor.open(multiPrep.pdfFile!!, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+            PdfRenderer(pfd).use { r ->
+                assertTrue("Expected multi-page PDF >= 2 pages, got ${r.pageCount}", r.pageCount >= 2)
+            }
+        }
+        assertTrue("Expected multi-page image cards >= 2, got ${multiPrep.imageCardPages.size}", multiPrep.imageCardPages.size >= 2)
+        renderPdfPageToCache(multiPrep.pdfFile!!, 0, "qa_multipage_invoice_p1.png")
+        renderPdfPageToCache(multiPrep.pdfFile!!, 1, "qa_multipage_invoice_p2.png")
+        copyFileToQaCache(multiPrep.imageCardPages[0], "qa_multipage_card_p1.png")
+        copyFileToQaCache(multiPrep.imageCardPages[1], "qa_multipage_card_p2.png")
+
+        // 3. Overdue invoice, Sales Return, and Customer Advance Credit (-5,000.00)
+        val overdueInvId = sales.createAndPostInvoice(
+            SalesInvoiceDraft(
+                customerId = rahimId,
+                warehouseId = warehouseId,
+                invoiceDate = now - 20L * 86_400_000L,
+                dueDate = now - 5L * 86_400_000L,
+                paidAmountMinor = 0L,
+                items = listOf(InvoiceItemDraft(productId = p1.id, variantId = v1.id, quantity = 2, unitPriceMinor = 138_000L))
+            )
+        ).getOrThrow()
+        val overduePrep = engine.prepare(CommunicationRequest(CommunicationModule.INVOICE, overdueInvId), languageOverride = "en", forcePdf = false, forceImage = false)
+        assertEquals(CommunicationStatus.OVERDUE, overduePrep.document.status)
+
+        val multiItems = sales.getInvoiceItems(multiInvId)
+        val retId = sales.processSalesReturn(
+            SalesReturnDraft(
+                invoiceId = multiInvId,
+                warehouseId = warehouseId,
+                refundOption = ReturnRefundOption.CUSTOMER_CREDIT,
+                reason = "Size exchange",
+                items = listOf(
+                    ReturnItemDraft(
+                        invoiceItemId = multiItems.first().id,
+                        productId = multiProd.id,
+                        variantId = multiItems.first().variantId,
+                        returnQuantity = 1
+                    )
+                )
+            )
+        )
+        val retPrep = engine.prepare(CommunicationRequest(CommunicationModule.RETURN, retId), languageOverride = "bn", forcePdf = true, forceImage = true)
+        assertEquals(CommunicationModule.RETURN, retPrep.document.request.module)
+        assertTrue((retPrep.document.returnExchangeBreakdown?.returnAmountMinor ?: 0L) > 0L)
+        assertNotNull(retPrep.pdfFile)
+        assertTrue(retPrep.imageCardPages.isNotEmpty())
+
+        val karimId = "cust-qa-karim-credit"
+        contacts.addCustomerWithOptionalOpeningDue(
+            customer = Customer(id = karimId, customerCode = "CUST-ADV-1", name = "Karim Enterprise", phone = "01911002233", address = "Sylhet"),
+            openingDueMinor = 0L
+        )
+        sales.recordCustomerPayment(CustomerPaymentDraft(customerId = karimId, amountMinor = 500_000L, paymentMethod = "BANK", referenceNote = "Advance deposit"))
+        assertEquals(-500_000L, sales.recalculateCustomerBalance(karimId))
+        val creditRem = engine.prepare(CommunicationRequest(CommunicationModule.REMINDER, karimId), languageOverride = "bn", forcePdf = false, forceImage = true)
+        assertEquals(CommunicationStatus.CREDIT, creditRem.document.status)
+        assertEquals(-500_000L, creditRem.document.balanceMinor)
+        copyFileToQaCache(creditRem.imageCardPages.first(), "qa_credit_reminder_card.png")
+
+        // 4. Sequential share planner, mixed send intent, Downloads export & Cache/History management
+        val steps = ShareWorkflowPlanner.buildShareSteps(
+            selectedFormats = setOf(ShareOutputFormat.PDF, ShareOutputFormat.IMAGE_CARD, ShareOutputFormat.TEXT_MESSAGE),
+            imagePageCount = invUnpaidBn.imageCardPages.size,
+            documentExtension = "pdf"
+        )
+        assertEquals(3, steps.size)
+        assertEquals(ShareStepKind.SEND_TEXT, steps[0].kind)
+        assertEquals(ShareStepKind.SEND_DOCUMENT, steps[1].kind)
+        assertEquals(ShareStepKind.SEND_IMAGE_CARDS, steps[2].kind)
+        val multiIntent = WhatsAppShareManager.sendMultipleIntent(
+            context = context,
+            files = invUnpaidBn.imageCardPages,
+            mimeType = "image/png",
+            text = invUnpaidBn.message,
+            application = null
+        )
+        assertTrue((multiIntent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
+
+        val savedName = repo.saveAttachmentToDownloads(invUnpaidBn.pdfFile!!)
+        assertTrue(savedName.endsWith(".pdf"))
+        assertTrue(repo.getAttachmentCacheStats().fileCount > 0)
+        val deletedCount = repo.clearAttachmentCache()
+        assertTrue(deletedCount > 0)
+        assertEquals(0, repo.getAttachmentCacheStats().fileCount)
+        repo.clearHistory()
+        assertTrue(repo.observeAuthorizedHistory().first().isEmpty())
+    }
+
+    @Test
+    fun selectiveDataClearEndToEndPoUnreceivePaymentResetStockAndLedger() = runBlocking {
+        val backupRepo = BackupRepositoryImpl(
+            context.applicationContext,
+            db,
+            db.backupDao(),
+            db.auditLogDao(),
+            prefs
+        )
+        val createdBackupFiles = mutableListOf<File>()
+        try {
+            prefs.setUserRole(UserRole.OWNER_ADMIN)
+            val customBankId = accounting.createLiquidAccount(
+                kind = LiquidAccountKind.BANK,
+                nameEn = "Dutch-Bangla Bank QA",
+                nameBn = "ডাচ-বাংলা ব্যাংক QA",
+                institutionName = "DBBL",
+                branchName = "Dhaka",
+                accountNumber = "1234",
+                description = null,
+                openingBalanceMinor = 5_000_000L
+            )
+            val customBank = accounting.getAccountById(customBankId)!!
+            accounting.depositCapitalToLiquidAccount("coa-1010", 5_000_000L)
+
+            val cat = products.addCategory("Selective QA", "সিলেক্টিভ QA")
+            val prod = Product(
+                id = "prod-sel-qa",
+                categoryId = cat.id,
+                nameEn = "Smart Insole Selective QA",
+                nameBn = "স্মার্ট ইনসোল QA",
+                baseSku = "SEL-INSOLE",
+                unit = "PCS",
+                purchasePriceMinor = 17_000L,
+                sellingPriceMinor = 35_000L
+            )
+            val vGray = ProductVariant(
+                id = "var-sel-gray-38",
+                productId = prod.id,
+                sku = "SEL-G38",
+                color = "Gray",
+                size = "38",
+                variantPriceMinor = 35_000L,
+                variantCostMinor = 17_000L
+            )
+            val vBlack = ProductVariant(
+                id = "var-sel-black-40",
+                productId = prod.id,
+                sku = "SEL-B40",
+                color = "Black",
+                size = "40",
+                variantPriceMinor = 35_000L,
+                variantCostMinor = 17_000L
+            )
+            products.addProductWithMedia(
+                product = prod,
+                variants = listOf(vGray, vBlack),
+                images = emptyList(),
+                initialStock = 0,
+                warehouseId = "wh-1",
+                variantInitialStock = mapOf(vGray.id to 20, vBlack.id to 5)
+            )
+
+            val supId = "sup-sel-qa"
+            contacts.addSupplierWithOptionalOpeningPayable(
+                supplier = Supplier(
+                    id = supId,
+                    supplierCode = "SUP-SEL-1",
+                    companyName = "Shenzhen Selective Co",
+                    phone = "01755001122",
+                    address = "Shenzhen",
+                    currency = "CNY"
+                ),
+                openingPayableBdtMinor = 1_000_000L,
+                openingNote = "Opening Payable QA"
+            )
+
+            val poId = imports.savePurchaseOrderDraft(
+                orderId = null,
+                supplierId = supId,
+                currency = "CNY",
+                exchangeRate = BigDecimal("17.00"),
+                items = listOf(
+                    PurchaseOrderItemDraft(
+                        productId = prod.id,
+                        variantId = vGray.id,
+                        quantity = 100,
+                        unitPriceMinor = 1_000L,
+                        cartonQuantity = 5,
+                        pcsPerCarton = 20
+                    )
+                ),
+                notes = "Keep full PO intact on selective reset",
+                status = PurchaseOrderStatus.CONFIRMED,
+                cartons = listOf(
+                    PoMixedCartonDraft(
+                        cartonNumber = "CTN-QA-1",
+                        grossWeightKg = BigDecimal("25.0"),
+                        lines = listOf(
+                            MixedCartonLineDraft(
+                                productId = prod.id,
+                                variantId = vGray.id,
+                                productName = prod.nameEn,
+                                quantity = 100
+                            )
+                        )
+                    )
+                ),
+                chinaDeliveryChargeMinor = 0L,
+                categoryFreightRatesBdtMinor = emptyMap(),
+                handlingCostMinor = 0L,
+                sampleCostMinor = 0L,
+                attachments = null
+            )
+            val poItem = imports.getItemsForOrderSync(poId).single()
+            imports.recordSupplierPayment(
+                supplierId = supId,
+                orderId = poId,
+                amountMinor = 40_000L,
+                currency = "CNY",
+                exchangeRate = BigDecimal("17.00"),
+                method = PaymentMethod.BANK_TT,
+                paymentAccount = customBank.accountCode,
+                reference = "SP-QA-1",
+                notes = "Partial payment",
+                paymentAccountId = customBank.id
+            )
+            imports.finalizePurchaseActualCost(poId)
+            imports.createPurchaseReceiving(
+                orderId = poId,
+                warehouseId = "wh-1",
+                receivingMethod = "PHYSICAL_COUNT",
+                items = listOf(
+                    ReceiptItemDraft(
+                        productId = prod.id,
+                        variantId = vGray.id,
+                        expectedQuantity = 100,
+                        receivedQuantity = 100,
+                        goodQuantity = 100,
+                        purchaseOrderId = poId,
+                        purchaseOrderItemId = poItem.id
+                    )
+                ),
+                notes = "Full PO receipt",
+                postImmediately = true
+            )
+
+            val custId = "cust-sel-qa"
+            contacts.addCustomerWithOptionalOpeningDue(
+                customer = Customer(
+                    id = custId,
+                    customerCode = "CUST-SEL-1",
+                    name = "Dhaka Selective Store",
+                    phone = "01888112233",
+                    address = "Dhaka"
+                ),
+                openingDueMinor = 500_000L,
+                openingNote = "Opening Due QA"
+            )
+            val invId = sales.createAndPostInvoice(
+                SalesInvoiceDraft(
+                    customerId = custId,
+                    warehouseId = "wh-1",
+                    paidAmountMinor = 100_000L,
+                    items = listOf(InvoiceItemDraft(productId = prod.id, variantId = vGray.id, quantity = 10, unitPriceMinor = 35_000L))
+                )
+            ).getOrThrow()
+            assertNotNull(sales.getInvoiceById(invId))
+
+            val preview = backupRepo.getDataClearImpactPreview()
+            assertTrue(preview.preservedVariantCount >= 2)
+            assertTrue(preview.preservedPoCount >= 1)
+            assertTrue(preview.poReceiptLayerCount >= 1)
+            assertTrue((preview.moduleCounts[DataClearModule.SALES_FULL_CLEAR]?.primaryCount ?: 0) >= 1)
+            assertTrue((preview.moduleCounts[DataClearModule.INVENTORY_STOCK_RESET]?.primaryCount ?: 0) >= 1)
+
+            // Non-OWNER_ADMIN role must be rejected
+            prefs.setUserRole(UserRole.SALES_OPERATOR)
+            val rejected = backupRepo.executeSelectiveDataClear(
+                SelectiveDataClearRequest(
+                    selectedModules = setOf(DataClearModule.COMMUNICATION_LOGS_CLEAR),
+                    createSafetyBackup = false,
+                    operatorRole = UserRole.SALES_OPERATOR
+                )
+            )
+            assertTrue(rejected.isFailure)
+            prefs.setUserRole(UserRole.OWNER_ADMIN)
+
+            val poBeforeReset = db.purchaseOrderDao().getOrderById(poId)!!
+            val itemBeforeReset = db.purchaseOrderDao().getItemsForOrderSync(poId).single()
+            val cartonsBeforeReset = db.importShipmentDao().getCartonsForOrderSync(poId).size
+            assertTrue(cartonsBeforeReset > 0)
+
+            // Subtest A: PO_RESET_KEEP_STRUCTURE ONLY (keeps full PO/cartons/qty/price, resets receiving & payments)
+            val poOnlyOutcome = backupRepo.executeSelectiveDataClear(
+                SelectiveDataClearRequest(
+                    selectedModules = setOf(DataClearModule.PO_RESET_KEEP_STRUCTURE),
+                    createSafetyBackup = true,
+                    operatorRole = UserRole.OWNER_ADMIN
+                )
+            ).getOrThrow()
+            poOnlyOutcome.safetyBackupRecordId?.let { recId ->
+                backupRepo.getAllBackupRecords().first().firstOrNull { it.id == recId }?.let { rec ->
+                    val zip = File(rec.filePath)
+                    createdBackupFiles += zip
+                    assertTrue(zip.exists() && backupRepo.verifyBackupFile(zip))
+                }
+            }
+
+            val poAfterReset = db.purchaseOrderDao().getOrderById(poId)!!
+            assertEquals("CONFIRMED", poAfterReset.status)
+            assertEquals(poBeforeReset.totalAmountMinor, poAfterReset.totalAmountMinor)
+            assertEquals(poBeforeReset.totalBdtAmountMinor, poAfterReset.totalBdtAmountMinor)
+            assertEquals(poBeforeReset.totalCartons, poAfterReset.totalCartons)
+            assertEquals(0L, poAfterReset.paidAmountMinor)
+            assertEquals(0L, poAfterReset.paidBdtAmountMinor)
+            assertFalse(poAfterReset.isActualCostFinalized)
+
+            val itemAfterReset = db.purchaseOrderDao().getItemsForOrderSync(poId).single()
+            assertEquals(itemBeforeReset.quantity, itemAfterReset.quantity)
+            assertEquals(itemBeforeReset.unitPriceMinor, itemAfterReset.unitPriceMinor)
+            assertEquals(itemBeforeReset.cartonQuantity, itemAfterReset.cartonQuantity)
+            assertEquals(itemBeforeReset.pcsPerCarton, itemAfterReset.pcsPerCarton)
+            assertEquals(0, itemAfterReset.receivedQuantity)
+
+            assertEquals(cartonsBeforeReset, db.importShipmentDao().getCartonsForOrderSync(poId).size)
+            assertTrue(db.warehouseReceiptDao().getReceiptsByOrderSync(poId).isEmpty())
+            assertTrue(db.supplierPaymentDao().getPaymentsByOrderSync(poId).isEmpty())
+
+            // Re-pay and re-receive the preserved PO directly to prove full structure still works
+            imports.recordSupplierPayment(
+                supplierId = supId,
+                orderId = poId,
+                amountMinor = 20_000L,
+                currency = "CNY",
+                exchangeRate = BigDecimal("17.00"),
+                method = PaymentMethod.BANK_TT,
+                paymentAccount = customBank.accountCode,
+                reference = "SP-QA-REPAY",
+                notes = "Re-payment after reset",
+                paymentAccountId = customBank.id
+            )
+            imports.finalizePurchaseActualCost(poId)
+            imports.createPurchaseReceiving(
+                orderId = poId,
+                warehouseId = "wh-1",
+                receivingMethod = "PHYSICAL_COUNT",
+                items = listOf(
+                    ReceiptItemDraft(
+                        productId = prod.id,
+                        variantId = vGray.id,
+                        expectedQuantity = 100,
+                        receivedQuantity = 100,
+                        goodQuantity = 100,
+                        purchaseOrderId = poId,
+                        purchaseOrderItemId = poItem.id
+                    )
+                ),
+                notes = "Re-receipt after reset",
+                postImmediately = true
+            )
+            assertEquals(100, db.purchaseOrderDao().getItemsForOrderSync(poId).single().receivedQuantity)
+
+            // Subtest B: SMART_FULL_RESET
+            val fullOutcome = backupRepo.executeSelectiveDataClear(
+                SelectiveDataClearRequest(
+                    selectedModules = SelectiveDataClearPlanner.modulesForPreset(DataClearPreset.SMART_FULL_RESET),
+                    createSafetyBackup = true,
+                    operatorRole = UserRole.OWNER_ADMIN
+                )
+            ).getOrThrow()
+            fullOutcome.safetyBackupRecordId?.let { recId ->
+                backupRepo.getAllBackupRecords().first().firstOrNull { it.id == recId }?.let { rec ->
+                    val zip = File(rec.filePath)
+                    createdBackupFiles += zip
+                    assertTrue(zip.exists())
+                }
+            }
+
+            assertEquals(2, db.productVariantDao().getVariantsForProductSync(prod.id).size)
+            assertEquals(0, db.backupDao().countTotalStockUnits())
+            assertEquals(0, db.backupDao().countSalesInvoices())
+            assertEquals(0, db.backupDao().countCustomerPayments())
+            assertEquals(0L, db.customerDao().getCustomerById(custId)!!.outstandingBalanceMinor)
+
+            assertNotNull(db.accountingDao().getAccountById(customBank.id))
+            assertEquals(0L, db.accountingDao().getNetDebitBalanceForAccount(customBank.accountCode))
+            assertEquals(0L, db.accountingDao().getNetDebitBalanceForAccount("1010"))
+
+            val finalPo = db.purchaseOrderDao().getOrderById(poId)!!
+            assertEquals("CONFIRMED", finalPo.status)
+            assertEquals(0L, finalPo.paidAmountMinor)
+            assertEquals(0, db.purchaseOrderDao().getItemsForOrderSync(poId).single().receivedQuantity)
+            assertEquals(1_700_000L, db.supplierDao().getSupplierById(supId)!!.outstandingPayableMinor)
+        } finally {
+            prefs.setUserRole(UserRole.OWNER_ADMIN)
+            createdBackupFiles.forEach { if (it.exists()) it.delete() }
+        }
     }
 }

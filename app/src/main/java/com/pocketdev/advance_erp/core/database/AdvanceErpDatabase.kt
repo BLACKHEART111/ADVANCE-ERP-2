@@ -171,7 +171,7 @@ import com.pocketdev.advance_erp.data.entity.WarehouseReceiptItem
         ImportVaultEntry::class,
         ImportVaultAttachment::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 abstract class AdvanceErpDatabase : RoomDatabase() {
@@ -225,7 +225,7 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "advance_erp.db"
-        const val DATABASE_VERSION = 15
+        const val DATABASE_VERSION = 16
 
         fun buildDatabase(context: Context): AdvanceErpDatabase {
             return Room.databaseBuilder(
@@ -248,7 +248,8 @@ abstract class AdvanceErpDatabase : RoomDatabase() {
                     DatabaseMigrations.MIGRATION_11_12,
                     DatabaseMigrations.MIGRATION_12_13,
                     DatabaseMigrations.MIGRATION_13_14,
-                    DatabaseMigrations.MIGRATION_14_15
+                    DatabaseMigrations.MIGRATION_14_15,
+                    DatabaseMigrations.MIGRATION_15_16
                 )
                 .addCallback(object : Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {

@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.data.repository
 
+import com.pocketdev.advance_erp.core.communication.CommunicationCacheStats
 import com.pocketdev.advance_erp.core.communication.CommunicationChoice
 import com.pocketdev.advance_erp.core.communication.CommunicationEngine
 import com.pocketdev.advance_erp.core.communication.CommunicationModule
@@ -47,16 +48,27 @@ class CommunicationRepositoryImpl @Inject constructor(
         languageOverride: String?,
         statusOverride: CommunicationStatus?,
         forcePdf: Boolean,
-        useSystemDefaultTemplate: Boolean
+        useSystemDefaultTemplate: Boolean,
+        forceImage: Boolean
     ): PreparedCommunication = engine.prepare(
         request = request,
         languageOverride = languageOverride,
         statusOverride = statusOverride,
         forcePdf = forcePdf,
-        useSystemDefaultTemplate = useSystemDefaultTemplate
+        useSystemDefaultTemplate = useSystemDefaultTemplate,
+        forceImage = forceImage
     )
 
     override suspend fun generateXlsx(document: SafeDocument): File = engine.xlsx(document)
+
+    override suspend fun generatePdf(document: SafeDocument, language: String): File = engine.generatePdf(document, language)
+
+    override suspend fun generateImageCards(document: SafeDocument, language: String): List<File> =
+        engine.generateImageCards(document, language)
+
+    override suspend fun saveImagesToGallery(files: List<File>): List<String> = engine.saveImagesToGallery(files)
+
+    override suspend fun saveAttachmentToDownloads(file: File): String = engine.saveAttachmentToDownloads(file)
 
     override suspend fun savePartyLanguage(partyId: String, isSupplier: Boolean, language: String) {
         engine.requireReportAccess()
@@ -113,4 +125,10 @@ class CommunicationRepositoryImpl @Inject constructor(
         if (mod != null) engine.checkAccess(mod) else engine.requireReportAccess()
         dao.record(history)
     }
+
+    override suspend fun getAttachmentCacheStats(): CommunicationCacheStats = engine.getAttachmentCacheStats()
+
+    override suspend fun clearAttachmentCache(): Int = engine.clearAttachmentCache()
+
+    override suspend fun clearHistory() = engine.clearHistory()
 }

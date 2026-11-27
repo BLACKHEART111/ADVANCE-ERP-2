@@ -27,16 +27,18 @@ object WhatsAppShareManager {
         return canonical.path.startsWith(root.path + File.separator)
     }
 
+    fun mimeTypeForFile(file: File?): String = when (file?.extension?.lowercase()) {
+        null -> "text/plain"
+        "png" -> "image/png"
+        "jpg", "jpeg" -> "image/jpeg"
+        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else -> "application/pdf"
+    }
+
     fun sendIntent(context: Context, file: File?, text: String, application: String?): Intent {
         require(text.isNotBlank() || file != null) { "Message or attachment required / বার্তা অথবা সংযুক্তি প্রয়োজন" }
         return Intent(Intent.ACTION_SEND).apply {
-            type = if (file == null) {
-                "text/plain"
-            } else if (file.extension == "xlsx") {
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            } else {
-                "application/pdf"
-            }
+            type = mimeTypeForFile(file)
             if (file != null) {
                 require(isAttachmentReady(context, file)) { "Attachment unavailable; prepare again / সংযুক্তি অনুপলব্ধ; পুনরায় তৈরি করুন" }
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -44,7 +46,49 @@ object WhatsAppShareManager {
                 clipData = ClipData.newUri(context.contentResolver, "Business document", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            putExtra(Intent.EXTRA_TEXT, text)
+            if (text.isNotBlank()) {
+                putExtra(Intent.EXTRA_TEXT, text)
+            } else if (file == null) {
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            application?.let {
+                require(it in listOf(MESSENGER, BUSINESS))
+                setPackage(it)
+            }
+        }
+    }
+
+    fun sendMultipleIntent(
+        context: Context,
+        files: List<File>,
+        mimeType: String,
+        text: String,
+        application: String?
+    ): Intent {
+        require(files.isNotEmpty()) { "Attachment required / সংযুক্তি প্রয়োজন" }
+        if (files.size == 1) {
+            return sendIntent(context, files.first(), text, application)
+        }
+        val uris = ArrayList<Uri>(files.size)
+        var clip: ClipData? = null
+        files.forEach { file ->
+            require(isAttachmentReady(context, file)) { "Attachment unavailable; prepare again / সংযুক্তি অনুপলব্ধ; পুনরায় তৈরি করুন" }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            uris.add(uri)
+            if (clip == null) {
+                clip = ClipData.newUri(context.contentResolver, "Business documents", uri)
+            } else {
+                clip!!.addItem(ClipData.Item(uri))
+            }
+        }
+        return Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = mimeType
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            clip?.let { clipData = it }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (text.isNotBlank()) {
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
             application?.let {
                 require(it in listOf(MESSENGER, BUSINESS))
                 setPackage(it)
@@ -57,6 +101,23 @@ object WhatsAppShareManager {
             require(application in installed(context)) { "WhatsApp is not installed / WhatsApp ইনস্টল নেই" }
         }
         val intent = sendIntent(context, file, text, application)
+        context.startActivity(
+            if (application == null) Intent.createChooser(intent, "Share / শেয়ার") else intent
+        )
+        return "SHARE_INITIATED"
+    }
+
+    fun shareFiles(
+        context: Context,
+        files: List<File>,
+        mimeType: String,
+        text: String,
+        application: String?
+    ): String {
+        if (application != null) {
+            require(application in installed(context)) { "WhatsApp is not installed / WhatsApp ইনস্টল নেই" }
+        }
+        val intent = sendMultipleIntent(context, files, mimeType, text, application)
         context.startActivity(
             if (application == null) Intent.createChooser(intent, "Share / শেয়ার") else intent
         )

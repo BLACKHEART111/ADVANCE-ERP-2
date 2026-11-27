@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@Deprecated("Replaced by DynamicTemplateEngine & CommunicationDialog")
 data class DueCollectionStatementData(
     val customerId: String,
     val customerName: String,
@@ -28,6 +29,7 @@ data class DueCollectionStatementData(
     val paymentId: String? = null
 )
 
+@Deprecated("Replaced by DynamicTemplateEngine & CommunicationDialog")
 object DueCollectionCaptionHelper {
 
     private val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)

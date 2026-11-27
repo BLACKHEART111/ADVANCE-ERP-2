@@ -14,12 +14,16 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -285,19 +289,41 @@ class SmartCommunicationVisualTest {
             }
         }
 
-        // 3. Open Smart Communication Dialog via Contacts "বকেয়া তাগাদা" (REMINDER)
+        // 3. Open Smart Communication Dialog via Contacts "বকেয়া তাগাদা" (REMINDER) in Light mode
+        runBlocking { compose.activity.preferencesRepository.setTheme("light") }
         clickAny(substring = false, "বকেয়া তাগাদা", "Remind")
         compose.waitUntil(timeoutMillis = 8_000) { findTopDialogWindow() != null }
         compose.waitUntil(timeoutMillis = 15_000) {
             hasAnyText("WhatsApp-এ শেয়ার", "Share via WhatsApp", substring = true, inDialog = true)
         }
-        if (hasAnyText("পূর্ণ প্রিভিউ ও বার্তা সম্পাদনা খুলুন", "Open full preview & message editor", substring = true, inDialog = true)) {
-            clickInDialog(true, "পূর্ণ প্রিভিউ ও বার্তা সম্পাদনা খুলুন", "Open full preview & message editor")
-        }
+        SystemClock.sleep(900)
+        captureWindow(preferDialog = true, "qa_ui_share_send_light.png")
+
+        // 3b. Open Share Preview bottom sheet/dialog & capture PDF, Image Card, Text tabs
+        clickInDialog(true, "প্রিভিউ দেখুন", "Preview")
         compose.waitUntil(timeoutMillis = 15_000) {
-            hasAnyText("PDF সংযুক্তি", "PDF attachment", "WhatsApp-এ শেয়ার", "Share via WhatsApp", substring = true, inDialog = true)
+            hasAnyText("টেক্সট", "Text", substring = false, inDialog = true) &&
+                hasAnyText("ইমেজ", "Image", substring = false, inDialog = true)
         }
         SystemClock.sleep(600)
+        captureWindow(preferDialog = true, "qa_ui_preview_tab_pdf.png")
+
+        clickInDialog(false, "ইমেজ", "Image")
+        SystemClock.sleep(600)
+        captureWindow(preferDialog = true, "qa_ui_preview_tab_image.png")
+
+        clickInDialog(false, "টেক্সট", "Text")
+        SystemClock.sleep(500)
+        captureWindow(preferDialog = true, "qa_ui_preview_tab_text.png")
+
+        // Dismiss Share Preview sheet back to Share & Send dialog
+        val previewCloseMatcher = hasAnyAncestor(isDialog()) and
+            (hasContentDescription("প্রিভিউ বন্ধ") or hasContentDescription("Close preview"))
+        compose.onAllNodes(previewCloseMatcher).onLast().performClick()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            hasAnyText("ডকুমেন্ট", "Documents", substring = false, inDialog = true)
+        }
+        SystemClock.sleep(400)
         captureWindow(preferDialog = true, "qa_ui_comm_preview.png")
 
         // 4. Documents tab inside dialog
@@ -308,7 +334,7 @@ class SmartCommunicationVisualTest {
         SystemClock.sleep(400)
         captureWindow(preferDialog = true, "qa_ui_comm_documents.png")
 
-        // 5. Settings tab inside dialog
+        // 5. Settings tab inside dialog (Light & Dark)
         clickInDialog(false, "সেটিংস", "Settings")
         SystemClock.sleep(400)
         captureWindow(preferDialog = true, "qa_ui_comm_settings.png")
@@ -323,6 +349,16 @@ class SmartCommunicationVisualTest {
         SystemClock.sleep(400)
         captureWindow(preferDialog = true, "qa_ui_comm_history.png")
 
+        // 7b. Dark mode capture of Settings & Share & Send
+        runBlocking { compose.activity.preferencesRepository.setTheme("dark") }
+        clickInDialog(false, "সেটিংস", "Settings")
+        SystemClock.sleep(600)
+        captureWindow(preferDialog = true, "qa_ui_comm_settings_dark.png")
+        clickInDialog(false, "শেয়ার", "Share")
+        SystemClock.sleep(600)
+        captureWindow(preferDialog = true, "qa_ui_share_send_dark.png")
+        runBlocking { compose.activity.preferencesRepository.setTheme("system") }
+
         // 8. Close dialog & capture Sales screen (pure activity window)
         val closeMatcher = hasAnyAncestor(isDialog()) and
             (hasContentDescription("বন্ধ") or hasContentDescription("Close"))
@@ -335,5 +371,86 @@ class SmartCommunicationVisualTest {
         clickAny(substring = false, "বিক্রয়", "বিক্রয়", "Sales", "Sell")
         SystemClock.sleep(600)
         captureWindow(preferDialog = false, "qa_ui_sales_screen.png")
+
+        // 9. Navigate to Settings -> Backup & Restore -> Selective Module Data Clear Dialog (Light & Dark)
+        runBlocking { compose.activity.preferencesRepository.setTheme("light") }
+        val drawerDesc = compose.activity.getString(R.string.menu_drawer_open)
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithContentDescription(drawerDesc).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onAllNodesWithContentDescription(drawerDesc).onFirst().performClick()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            hasAnyText("সেটিংস", "Settings", substring = false) ||
+                compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isNotEmpty()
+        }
+        if (!hasAnyText("সেটিংস", "Settings", substring = false)) {
+            runCatching {
+                compose.onAllNodes(hasScrollAction()).onFirst()
+                    .performScrollToNode(hasText("সেটিংস", substring = false))
+            }.onFailure {
+                compose.onAllNodes(hasScrollAction()).onFirst()
+                    .performScrollToNode(hasText("Settings", substring = false))
+            }
+            compose.waitForIdle()
+        }
+        clickAny(substring = false, "সেটিংস", "Settings")
+
+        compose.waitUntil(timeoutMillis = 8_000) {
+            compose.onAllNodesWithTag("settings_cat_appearance").fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().isNotEmpty()
+        }
+        SystemClock.sleep(500)
+        val scrollNodes = compose.onAllNodes(hasScrollAction())
+        val scrollCount = scrollNodes.fetchSemanticsNodes().size
+        for (i in 0 until scrollCount) {
+            if (runCatching { scrollNodes[i].performScrollToNode(hasTestTag("settings_cat_backup")) }.isSuccess) {
+                break
+            }
+        }
+        compose.onNodeWithTag("settings_cat_backup").performClick()
+        compose.waitForIdle()
+        val afterExpandScrolls = compose.onAllNodes(hasScrollAction())
+        val afterCount = afterExpandScrolls.fetchSemanticsNodes().size
+        for (i in 0 until afterCount) {
+            if (runCatching {
+                    afterExpandScrolls[i].performScrollToNode(hasText("মডিউল সিলেক্ট করে ডাটা ক্লিয়ার করুন", substring = true))
+                }.isSuccess ||
+                runCatching {
+                    afterExpandScrolls[i].performScrollToNode(hasText("Select Modules & Clear Data", substring = true))
+                }.isSuccess
+            ) {
+                break
+            }
+        }
+        compose.waitUntil(timeoutMillis = 8_000) {
+            hasAnyText("মডিউল সিলেক্ট করে ডাটা ক্লিয়ার করুন", "Select Modules & Clear Data", substring = true)
+        }
+        clickAny(true, "মডিউল সিলেক্ট করে ডাটা ক্লিয়ার করুন", "Select Modules & Clear Data")
+
+        compose.waitUntil(timeoutMillis = 8_000) {
+            findTopDialogWindow() != null &&
+                hasAnyText("স্মার্ট ফুল রিসেট", "Smart Full Reset", substring = true, inDialog = true)
+        }
+        SystemClock.sleep(800)
+        captureWindow(preferDialog = true, "qa_ui_selective_clear_step1_light.png")
+
+        runBlocking { compose.activity.preferencesRepository.setTheme("dark") }
+        SystemClock.sleep(600)
+        captureWindow(preferDialog = true, "qa_ui_selective_clear_step1_dark.png")
+
+        clickInDialog(true, "পরবর্তী: যাচাই", "Next: Verify")
+        compose.waitUntil(timeoutMillis = 5_000) {
+            hasAnyText("CLEAR", "পিন", "PIN", substring = true, inDialog = true)
+        }
+        SystemClock.sleep(500)
+        captureWindow(preferDialog = true, "qa_ui_selective_clear_step2_dark.png")
+
+        runBlocking { compose.activity.preferencesRepository.setTheme("light") }
+        SystemClock.sleep(500)
+        captureWindow(preferDialog = true, "qa_ui_selective_clear_step2_light.png")
+
+        runBlocking { compose.activity.preferencesRepository.setTheme("system") }
+        compose.onAllNodes(closeMatcher).onFirst().performClick()
+        compose.waitUntil(timeoutMillis = 5_000) { findTopDialogWindow() == null }
     }
 }

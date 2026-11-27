@@ -18,6 +18,32 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE business_profiles ADD COLUMN website TEXT")
+            db.execSQL("ALTER TABLE business_profiles ADD COLUMN tagline TEXT")
+
+            db.execSQL("ALTER TABLE sales_invoices ADD COLUMN salesType TEXT NOT NULL DEFAULT 'WHOLESALE'")
+            db.execSQL("ALTER TABLE sales_invoices ADD COLUMN discountPercentBps INTEGER")
+            db.execSQL("ALTER TABLE sales_invoices ADD COLUMN paymentTerms TEXT")
+            db.execSQL("UPDATE sales_invoices SET salesType = 'RETAIL' WHERE LOWER(customerName) = 'walk-in customer' OR notes LIKE '%Retail%'")
+
+            db.execSQL("ALTER TABLE sales_invoice_items ADD COLUMN discountPercentBps INTEGER")
+
+            db.execSQL("ALTER TABLE communication_settings ADD COLUMN includeImageCard INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE communication_settings ADD COLUMN includeTextMessage INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE communication_settings ADD COLUMN showProductPhoto INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE communication_settings ADD COLUMN showVariantSku INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE communication_settings ADD COLUMN showQrCode INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE communication_settings ADD COLUMN defaultPaymentTerms TEXT NOT NULL DEFAULT ''")
+
+            db.execSQL("ALTER TABLE communication_history ADD COLUMN sharedFormats TEXT NOT NULL DEFAULT 'TEXT'")
+            db.execSQL("ALTER TABLE communication_history ADD COLUMN imageReference TEXT")
+            db.execSQL("ALTER TABLE communication_history ADD COLUMN localSavedPath TEXT")
+            db.execSQL("UPDATE communication_history SET sharedFormats = CASE WHEN attachmentReference IS NOT NULL AND TRIM(message) != '' THEN 'PDF,TEXT' WHEN attachmentReference IS NOT NULL THEN 'PDF' ELSE 'TEXT' END")
+        }
+    }
+
 
     val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {

@@ -1,5 +1,6 @@
 package com.pocketdev.advance_erp.domain.repository
 
+import com.pocketdev.advance_erp.core.communication.CommunicationCacheStats
 import com.pocketdev.advance_erp.core.communication.CommunicationChoice
 import com.pocketdev.advance_erp.core.communication.CommunicationModule
 import com.pocketdev.advance_erp.core.communication.CommunicationRequest
@@ -23,13 +24,21 @@ interface CommunicationRepository {
         languageOverride: String? = null,
         statusOverride: CommunicationStatus? = null,
         forcePdf: Boolean = false,
-        useSystemDefaultTemplate: Boolean = false
+        useSystemDefaultTemplate: Boolean = false,
+        forceImage: Boolean = false
     ): PreparedCommunication
     suspend fun generateXlsx(document: SafeDocument): File
+    suspend fun generatePdf(document: SafeDocument, language: String): File
+    suspend fun generateImageCards(document: SafeDocument, language: String): List<File>
+    suspend fun saveImagesToGallery(files: List<File>): List<String>
+    suspend fun saveAttachmentToDownloads(file: File): String
     suspend fun savePartyLanguage(partyId: String, isSupplier: Boolean, language: String)
     suspend fun loadTemplate(module: CommunicationModule, status: CommunicationStatus, language: String): String
     suspend fun hasCustomTemplate(module: CommunicationModule, status: CommunicationStatus, language: String): Boolean
     suspend fun saveCustomTemplate(module: CommunicationModule, status: CommunicationStatus, language: String, body: String)
     suspend fun resetCustomTemplate(module: CommunicationModule, status: CommunicationStatus, language: String): String
     suspend fun recordHandoffEvent(history: CommunicationHistory)
+    suspend fun getAttachmentCacheStats(): CommunicationCacheStats
+    suspend fun clearAttachmentCache(): Int
+    suspend fun clearHistory()
 }

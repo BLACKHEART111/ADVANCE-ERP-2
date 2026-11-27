@@ -92,6 +92,8 @@ fun BackupManagementSection(
     onToggleFridayAutoBackup: (enabled: Boolean) -> Unit,
     onSelectBackupFolder: ((uri: Uri?) -> Unit)? = null,
     onResetTestDataKeepMasters: ((onFinished: () -> Unit) -> Unit)? = null,
+    isOwnerAdmin: Boolean = true,
+    onOpenSelectiveDataClear: (() -> Unit)? = null,
     embeddedInAccordion: Boolean = false
 ) {
     val context = LocalContext.current
@@ -347,7 +349,67 @@ fun BackupManagementSection(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = ERPDivider)
 
-                if (onResetTestDataKeepMasters != null) {
+                if (isOwnerAdmin && onOpenSelectiveDataClear != null) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.WarningAmber,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = if (isBn) {
+                                    "মডিউল ভিত্তিক ডাটা রিসেট (অ্যাডভান্সড)"
+                                } else {
+                                    "Module-Based Data Reset (Advanced)"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (isBn) {
+                                "প্রোডাক্ট ভ্যারিয়েন্ট, হিসাব খাতের নাম ও পুরো PO অক্ষত রেখে ইচ্ছামতো মডিউল নির্বাচন করে ইনভেন্টরি স্টক (০), PO রিসিভ/পেমেন্ট, সেলস ইনভয়েস ও লেজার ব্যালেন্স ক্লিয়ার করুন।"
+                            } else {
+                                "Select specific modules to reset stock quantities to 0, unreceive & clear PO payments while keeping full POs intact, clear sales invoices, or reset ledger balances."
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = onOpenSelectiveDataClear,
+                            enabled = !isResettingTestData && !isCreatingBackup,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.55f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isBn) {
+                                    "মডিউল সিলেক্ট করে ডাটা ক্লিয়ার করুন"
+                                } else {
+                                    "Select Modules & Clear Data"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.5.sp
+                            )
+                        }
+                    }
+                } else if (onResetTestDataKeepMasters != null) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

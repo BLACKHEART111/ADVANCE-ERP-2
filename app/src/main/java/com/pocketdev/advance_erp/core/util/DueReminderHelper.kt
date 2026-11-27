@@ -7,6 +7,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@Deprecated("Replaced by DynamicTemplateEngine & CommunicationDialog")
 data class DueReminderStatementData(
     val customerId: String,
     val customerName: String,
@@ -21,6 +22,7 @@ data class DueReminderStatementData(
     val pdfFile: File? = null
 )
 
+@Deprecated("Replaced by DynamicTemplateEngine & CommunicationDialog")
 object DueReminderHelper {
 
     fun generatePoliteReminderCaption(data: DueReminderStatementData, isBangla: Boolean): String {

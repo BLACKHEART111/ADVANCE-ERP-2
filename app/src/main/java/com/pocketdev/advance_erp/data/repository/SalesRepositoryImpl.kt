@@ -255,7 +255,8 @@ class SalesRepositoryImpl @Inject constructor(
                 discountMinor = itemDraft.discountMinor,
                 lineTotalMinor = lineTotal,
                 unitCostMinor = 0L,
-                totalCogsMinor = 0L
+                totalCogsMinor = 0L,
+                discountPercentBps = itemDraft.discountPercentBps
             )
         }
 
@@ -284,7 +285,10 @@ class SalesRepositoryImpl @Inject constructor(
             notes = draft.notes,
             isPosted = false,
             validUntilDate = draft.validUntilDate,
-            scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null }
+            scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null },
+            salesType = draft.salesType,
+            discountPercentBps = draft.discountPercentBps,
+            paymentTerms = draft.paymentTerms?.trim()?.ifBlank { null }
         )
 
         salesDao.insertInvoice(invoice)
@@ -347,7 +351,8 @@ class SalesRepositoryImpl @Inject constructor(
                 discountMinor = itemDraft.discountMinor,
                 lineTotalMinor = lineTotal,
                 unitCostMinor = 0L,
-                totalCogsMinor = 0L
+                totalCogsMinor = 0L,
+                discountPercentBps = itemDraft.discountPercentBps
             )
         }
 
@@ -372,7 +377,10 @@ class SalesRepositoryImpl @Inject constructor(
             notes = draft.notes,
             updatedAt = System.currentTimeMillis(),
             validUntilDate = draft.validUntilDate ?: existing.validUntilDate,
-            scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null } ?: existing.scheduledDeliveryInfo
+            scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null } ?: existing.scheduledDeliveryInfo,
+            salesType = draft.salesType,
+            discountPercentBps = draft.discountPercentBps,
+            paymentTerms = draft.paymentTerms?.trim()?.ifBlank { null } ?: existing.paymentTerms
         )
 
         salesDao.updateInvoice(updated)
@@ -907,6 +915,21 @@ class SalesRepositoryImpl @Inject constructor(
 
             customerDao.updateOutstandingBalance(draft.customerId,
                 com.pocketdev.advance_erp.core.engine.PaymentAllocationValidation.outstandingAfterPayment(customer.outstandingBalanceMinor, netBefore, draft.amountMinor))
+            val closing = getCustomerLedger(draft.customerId).lastOrNull()?.runningBalanceMinor ?: 0L
+            db.communicationDao().snapshot(
+                com.pocketdev.advance_erp.data.entity.CommunicationSnapshot(
+                    module = "PAYMENT",
+                    documentId = paymentId,
+                    number = paymentNumber,
+                    partyId = customer.id,
+                    createdAt = draft.paymentDate,
+                    originalAmountMinor = draft.amountMinor,
+                    previousBalanceMinor = closing + draft.amountMinor,
+                    allocatedPaymentMinor = arSettledMinor,
+                    invoiceDueMinor = 0L,
+                    closingBalanceMinor = closing
+                )
+            )
             paymentNumber
         }
     }
@@ -2665,17 +2688,60 @@ class SalesRepositoryImpl @Inject constructor(
                 }
 
                 val safeRows = org.json.JSONArray()
+                val safeItems = org.json.JSONArray()
                 for (item in draft.returnedItems) {
                     val product = productDao.getProductById(item.productId)
+                    val variant = item.variantId?.let { db.productVariantDao().getVariantById(it) }
+                    val invItem = origItemsById[item.invoiceItemId]
+                    val unitPriceMinor = invItem?.unitPriceMinor ?: variant?.variantPriceMinor ?: product?.sellingPriceMinor ?: 0L
+                    val lineTotalMinor = item.returnQuantity.toLong() * unitPriceMinor
                     safeRows.put(org.json.JSONArray(listOf("Return / ফেরত", product?.nameEn ?: item.productId, item.returnQuantity.toString())))
+                    safeItems.put(org.json.JSONObject().apply {
+                        put("direction", "RETURN")
+                        put("productId", item.productId)
+                        item.variantId?.let { put("variantId", it) }
+                        put("nameEn", product?.nameEn ?: item.productId)
+                        put("nameBn", product?.nameBn?.ifBlank { product.nameEn } ?: item.productId)
+                        put("sku", variant?.sku ?: product?.baseSku ?: "")
+                        variant?.color?.takeIf { it.isNotBlank() }?.let { put("color", it) }
+                        variant?.size?.takeIf { it.isNotBlank() }?.let { put("size", it) }
+                        put("unit", product?.unit ?: "PCS")
+                        put("qty", item.returnQuantity)
+                        put("unitPriceMinor", unitPriceMinor)
+                        put("lineTotalMinor", lineTotalMinor)
+                    })
                 }
                 for (item in draft.replacementItems) {
                     val product = productDao.getProductById(item.productId)
+                    val variant = item.variantId?.let { db.productVariantDao().getVariantById(it) }
+                    val lineTotalMinor = maxOf(0L, item.quantity.toLong() * item.unitPriceMinor - item.discountMinor)
                     safeRows.put(org.json.JSONArray(listOf("Replacement / প্রতিস্থাপন", product?.nameEn ?: item.productId, item.quantity.toString())))
+                    safeItems.put(org.json.JSONObject().apply {
+                        put("direction", "REPLACEMENT")
+                        put("productId", item.productId)
+                        item.variantId?.let { put("variantId", it) }
+                        put("nameEn", product?.nameEn ?: item.productId)
+                        put("nameBn", product?.nameBn?.ifBlank { product.nameEn } ?: item.productId)
+                        put("sku", variant?.sku ?: product?.baseSku ?: "")
+                        variant?.color?.takeIf { it.isNotBlank() }?.let { put("color", it) }
+                        variant?.size?.takeIf { it.isNotBlank() }?.let { put("size", it) }
+                        put("unit", product?.unit ?: "PCS")
+                        put("qty", item.quantity)
+                        put("unitPriceMinor", item.unitPriceMinor)
+                        put("lineTotalMinor", lineTotalMinor)
+                    })
+                }
+                val closingBalance = getCustomerLedger(draft.customerId).lastOrNull()?.runningBalanceMinor ?: 0L
+                val payloadJson = org.json.JSONObject().apply {
+                    put("rows", safeRows)
+                    put("method", draft.paymentMethod)
+                    verifiedOrigInvoice?.invoiceNumber?.let { put("originalInvoiceNumber", it) }
+                    verifiedOrigInvoice?.id?.let { put("originalInvoiceId", it) }
+                    put("items", safeItems)
                 }
                 db.communicationDao().snapshot(com.pocketdev.advance_erp.data.entity.CommunicationSnapshot(
                     "EXCHANGE", exNum, exNum, draft.customerId, now, draft.netDifferenceMinor,
-                    0L, 0L, 0L, 0L, org.json.JSONObject().put("rows", safeRows).put("method", draft.paymentMethod).toString()
+                    0L, 0L, 0L, closingBalance, payloadJson.toString()
                 ))
                 exNum
             }

@@ -67,7 +67,6 @@ import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.util.Formatters
-import com.pocketdev.advance_erp.core.util.InvoicePdfGenerator
 import com.pocketdev.advance_erp.data.entity.PaymentAllocation
 import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.data.entity.SalesInvoiceItem

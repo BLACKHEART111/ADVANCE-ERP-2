@@ -1376,7 +1376,32 @@ fun BusinessControlCenterScreen(
                                         showReceivePaymentDialog = true
                                     }
                                 },
-                                onShare = { viewModel.shareReminder(context, isOwnerAdmin && profitVisibility.isVisible) }
+                                onShare = {
+                                    val stmt = report.statement
+                                    val (fromMillis, toMillis) = if (filterState.dateRangeOption == DateRangeOption.ALL_TIME) {
+                                        null to null
+                                    } else {
+                                        filterState.dateRangeOption.getBoundsMillis(
+                                            filterState.customStartDate,
+                                            filterState.customEndDate
+                                        )
+                                    }
+                                    if (stmt?.partyType == "SUPPLIER" && SecurityManager.canViewCost(userRole)) {
+                                        communicationRequest = CommunicationRequest(
+                                            CommunicationModule.SUPPLIER_STATEMENT,
+                                            stmt.partyId,
+                                            from = fromMillis,
+                                            to = toMillis
+                                        )
+                                    } else if (stmt?.partyType == "CUSTOMER") {
+                                        communicationRequest = CommunicationRequest(
+                                            CommunicationModule.STATEMENT,
+                                            stmt.partyId,
+                                            from = fromMillis,
+                                            to = toMillis
+                                        )
+                                    }
+                                }
                             )
                         }
 
@@ -1607,11 +1632,38 @@ fun BusinessControlCenterScreen(
 
     // 7. Transaction Detail Dialog
     selectedDetail?.let { detail ->
+        val canViewSupplierDocs = SecurityManager.canViewCost(userRole)
+        val smartShareReq = remember(detail.transaction, canViewSupplierDocs) {
+            val tx = detail.transaction
+            when (tx.rawType) {
+                "INVOICE" -> when (tx.status) {
+                    "CANCELLED" -> null
+                    "QUOTATION" -> CommunicationRequest(CommunicationModule.QUOTATION, tx.id)
+                    "SALES_ORDER" -> CommunicationRequest(CommunicationModule.SALES_ORDER, tx.id)
+                    else -> CommunicationRequest(CommunicationModule.INVOICE, tx.id)
+                }
+                "PAYMENT" -> if (tx.status == "VOIDED") null else CommunicationRequest(CommunicationModule.PAYMENT, tx.id)
+                "RETURN" -> CommunicationRequest(CommunicationModule.RETURN, tx.id)
+                "PURCHASE" -> if (canViewSupplierDocs && tx.status != "CANCELLED") {
+                    CommunicationRequest(CommunicationModule.PURCHASE_ORDER, tx.id)
+                } else null
+                "SUPPLIER_PAYMENT" -> if (canViewSupplierDocs && tx.status != "REVERSED") {
+                    CommunicationRequest(CommunicationModule.SUPPLIER_PAYMENT, tx.id)
+                } else null
+                else -> null
+            }
+        }
         ControlCenterTransactionDetailDialog(
             record = detail,
             language = language,
             currencyCode = currencyCode,
             onLinkedDocument = { type, id -> viewModel.openTransactionDetail(type, id) },
+            onShareSmartDocument = smartShareReq?.let { req ->
+                {
+                    viewModel.dismissTransactionDetail()
+                    communicationRequest = req
+                }
+            },
             onDismiss = { viewModel.dismissTransactionDetail() }
         )
     }

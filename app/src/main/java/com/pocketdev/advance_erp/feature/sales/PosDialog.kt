@@ -45,7 +45,6 @@ import com.pocketdev.advance_erp.core.designsystem.PrimaryPurple
 import com.pocketdev.advance_erp.core.designsystem.SecondaryTeal
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.util.Formatters
-import com.pocketdev.advance_erp.core.util.InvoicePdfGenerator
 import com.pocketdev.advance_erp.core.util.firstInStockVariant
 import com.pocketdev.advance_erp.core.util.resolveUnitCostMinorForSale
 import com.pocketdev.advance_erp.core.util.sellableStockForProduct
@@ -647,7 +646,8 @@ fun PosDialog(
                             items = itemDrafts,
                             newCustomerDraft = if (selectedCustomer == null) {
                                 NewCustomerDraft(name = "Walk-in Customer", phone = "0000000000", address = "Counter")
-                            } else null
+                            } else null,
+                            salesType = if (isWholesale) "WHOLESALE" else "RETAIL"
                         )
                         val changeNow = changeDueMinor
                         val dueNow = dueMinor

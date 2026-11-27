@@ -107,7 +107,6 @@ import com.pocketdev.advance_erp.data.entity.SuggestionType
 import com.pocketdev.advance_erp.data.entity.Supplier
 import com.pocketdev.advance_erp.feature.communication.CommunicationDialog
 import com.pocketdev.advance_erp.feature.sales.CustomerLedgerDialog
-import com.pocketdev.advance_erp.feature.sales.DueReminderDialog
 import com.pocketdev.advance_erp.feature.sales.RecordCustomerPaymentDialog
 import kotlinx.coroutines.launch
 import java.io.File
@@ -136,11 +135,17 @@ fun ContactsScreen(
     var showSortSheet by remember { mutableStateOf(false) }
     var showDueAlertsSheet by remember { mutableStateOf(false) }
     var communicationRequest by remember { mutableStateOf<CommunicationRequest?>(null) }
+    val activeCommunicationRequest = communicationRequest ?: state.communicationSuccessRequest
+    val isSuccessCommunication = communicationRequest == null && state.communicationSuccessRequest != null
 
-    communicationRequest?.let { req ->
+    activeCommunicationRequest?.let { req ->
         CommunicationDialog(
             initialRequest = req,
-            onDismiss = { communicationRequest = null }
+            success = isSuccessCommunication,
+            onDismiss = {
+                communicationRequest = null
+                if (isSuccessCommunication) viewModel.dismissCommunicationSuccess()
+            }
         )
     }
 
@@ -620,14 +625,6 @@ fun ContactsScreen(
             saveError = state.paymentSaveError,
             onDismiss = viewModel::dismissRecordCustomerPayment,
             onSubmit = viewModel::submitCustomerPayment
-        )
-    }
-
-    if (state.activeDueReminderData != null) {
-        DueReminderDialog(
-            data = state.activeDueReminderData!!,
-            initialIsBangla = isBn,
-            onDismiss = { viewModel.dismissDueReminderDialog() }
         )
     }
 

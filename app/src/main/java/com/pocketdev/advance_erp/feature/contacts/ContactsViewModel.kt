@@ -3,24 +3,16 @@ package com.pocketdev.advance_erp.feature.contacts
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pocketdev.advance_erp.core.communication.CommunicationModule
+import com.pocketdev.advance_erp.core.communication.CommunicationRequest
 import com.pocketdev.advance_erp.core.datastore.UserPreferencesRepository
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
-import com.pocketdev.advance_erp.core.pdf.CentralizedPdfEngine
-import com.pocketdev.advance_erp.core.pdf.CentralizedPdfReportRegistry
-import com.pocketdev.advance_erp.core.util.DueReminderHelper
-import com.pocketdev.advance_erp.core.util.DueReminderStatementData
-import com.pocketdev.advance_erp.core.util.LedgerStatementExporter
-import com.pocketdev.advance_erp.core.util.StatementShareHelper
 import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.SalesInvoice
 import com.pocketdev.advance_erp.data.entity.Supplier
-import com.pocketdev.advance_erp.domain.model.ControlCenterFilterState
-import com.pocketdev.advance_erp.domain.model.DateRangeOption
-import com.pocketdev.advance_erp.domain.model.LedgerReport
 import com.pocketdev.advance_erp.domain.model.PartyLedgerStatement
-import com.pocketdev.advance_erp.domain.model.ReportCategory
 import com.pocketdev.advance_erp.domain.repository.AccountingRepository
 import com.pocketdev.advance_erp.domain.repository.BusinessControlCenterRepository
 import com.pocketdev.advance_erp.domain.repository.ContactsRepository
@@ -35,7 +27,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -90,7 +81,7 @@ private data class ContactsSalesAuxBundle(
 
 private data class ContactsOverlaysBundle(
     val userMessage: String?,
-    val activeDueReminderData: DueReminderStatementData?,
+    val communicationSuccessRequest: CommunicationRequest?,
     val activeCustomerLedger: Pair<Customer, List<CustomerLedgerEntry>>?,
     val activeSupplierLedger: Pair<Supplier, PartyLedgerStatement>?
 )
@@ -112,7 +103,7 @@ data class ContactsUiState(
     val editingSupplier: Supplier? = null,
     val canEditSupplierCurrency: Boolean = true,
     val userMessage: String? = null,
-    val activeDueReminderData: DueReminderStatementData? = null,
+    val communicationSuccessRequest: CommunicationRequest? = null,
     val activeCustomerLedger: Pair<Customer, List<CustomerLedgerEntry>>? = null,
     val activeSupplierLedger: Pair<Supplier, PartyLedgerStatement>? = null,
     val paymentTargetCustomer: Customer? = null,
@@ -140,7 +131,7 @@ class ContactsViewModel @Inject constructor(
     private val _sortOption = MutableStateFlow(ContactSortOption.NAME_ASC)
     private val _dialogState = MutableStateFlow(ContactDialogState())
     private val _userMessage = MutableStateFlow<String?>(null)
-    private val _activeDueReminderData = MutableStateFlow<DueReminderStatementData?>(null)
+    private val _communicationSuccessRequest = MutableStateFlow<CommunicationRequest?>(null)
     private val _activeCustomerLedger = MutableStateFlow<Pair<Customer, List<CustomerLedgerEntry>>?>(null)
     private val _activeSupplierLedger = MutableStateFlow<Pair<Supplier, PartyLedgerStatement>?>(null)
     private val _paymentModalState = MutableStateFlow(CustomerPaymentModalState())
@@ -201,13 +192,13 @@ class ContactsViewModel @Inject constructor(
 
     private val _overlaysFlow = combine(
         _userMessage,
-        _activeDueReminderData,
+        _communicationSuccessRequest,
         _activeCustomerLedger,
         _activeSupplierLedger
-    ) { msg, dueReminder, custLedger, suppLedger ->
+    ) { msg, commReq, custLedger, suppLedger ->
         ContactsOverlaysBundle(
             userMessage = msg,
-            activeDueReminderData = dueReminder,
+            communicationSuccessRequest = commReq,
             activeCustomerLedger = custLedger,
             activeSupplierLedger = suppLedger
         )
@@ -237,7 +228,7 @@ class ContactsViewModel @Inject constructor(
             editingSupplier = controls.dialogState.editingSupplier,
             canEditSupplierCurrency = controls.dialogState.canEditSupplierCurrency,
             userMessage = overlays.userMessage,
-            activeDueReminderData = overlays.activeDueReminderData,
+            communicationSuccessRequest = overlays.communicationSuccessRequest,
             activeCustomerLedger = overlays.activeCustomerLedger,
             activeSupplierLedger = overlays.activeSupplierLedger,
             paymentTargetCustomer = salesAux.paymentModal.targetCustomer,
@@ -397,47 +388,8 @@ class ContactsViewModel @Inject constructor(
         }
     }
 
-    fun openDueReminder(customer: Customer) {
-        viewModelScope.launch {
-            try {
-                val ledger = salesRepository.getCustomerLedger(customer.id)
-                val isBn = uiState.value.language == AppLanguage.BANGLA
-                val profile = settingsRepository.getBusinessProfile().firstOrNull()
-                val pdfReport = CentralizedPdfReportRegistry.buildCustomerLedgerReport(
-                    customer = customer,
-                    entries = ledger,
-                    isBangla = isBn
-                )
-                val pdfFile = CentralizedPdfEngine.generatePdf(context, pdfReport, profile)
-                val currentDue = customer.outstandingBalanceMinor
-                val invoiceCount = ledger.count { it.transactionType == "INVOICE" }
-
-                val reminderData = DueReminderStatementData(
-                    customerId = customer.id,
-                    customerName = customer.name,
-                    customerPhone = customer.phone,
-                    customerCode = customer.customerCode,
-                    companyName = profile?.companyName ?: "ADVANCE ERP",
-                    companyPhone = profile?.phone ?: "",
-                    totalDueMinor = currentDue,
-                    invoiceCount = invoiceCount,
-                    asOfDate = System.currentTimeMillis(),
-                    paymentInstructions = if (isBn) "বিকাশ / নগদ / ব্যাংক অ্যাকাউন্টের মাধ্যমে পরিশোধ করা যাবে।" else "Payments accepted via Bank Transfer, bKash or Cash.",
-                    pdfFile = pdfFile
-                )
-                _activeDueReminderData.value = reminderData
-            } catch (e: Exception) {
-                _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
-                    "বকেয়া তাগাদা প্রস্তুত করতে ব্যর্থ: ${e.message}"
-                } else {
-                    "Failed to prepare due reminder: ${e.message}"
-                }
-            }
-        }
-    }
-
-    fun dismissDueReminderDialog() {
-        _activeDueReminderData.value = null
+    fun dismissCommunicationSuccess() {
+        _communicationSuccessRequest.value = null
     }
 
     fun openCustomerLedger(customer: Customer) {
@@ -453,39 +405,6 @@ class ContactsViewModel @Inject constructor(
 
     fun dismissCustomerLedger() {
         _activeCustomerLedger.value = null
-    }
-
-    fun shareCustomerStatementWhatsApp(customer: Customer) {
-        viewModelScope.launch {
-            try {
-                val isBn = uiState.value.language == AppLanguage.BANGLA
-                val ledger = salesRepository.getCustomerLedger(customer.id)
-                val profile = settingsRepository.getBusinessProfile().firstOrNull()
-                val report = CentralizedPdfReportRegistry.buildCustomerLedgerReport(
-                    customer = customer,
-                    entries = ledger,
-                    isBangla = isBn
-                )
-                val pdfFile = CentralizedPdfEngine.generatePdf(context, report, profile)
-                val data = DueReminderStatementData(
-                    customerId = customer.id,
-                    customerName = customer.name,
-                    customerPhone = customer.phone,
-                    customerCode = customer.customerCode,
-                    companyName = profile?.companyName ?: "ADVANCE ERP",
-                    companyPhone = profile?.phone ?: "",
-                    totalDueMinor = customer.outstandingBalanceMinor,
-                    invoiceCount = ledger.count { it.transactionType == "INVOICE" },
-                    asOfDate = System.currentTimeMillis(),
-                    paymentInstructions = if (isBn) "বিকাশ / নগদ / ব্যাংক অ্যাকাউন্টের মাধ্যমে পরিশোধ করা যাবে।" else "Payments accepted via Bank Transfer, bKash or Cash.",
-                    pdfFile = pdfFile
-                )
-                val caption = DueReminderHelper.generatePoliteReminderCaption(data, isBangla = isBn)
-                StatementShareHelper.shareToWhatsApp(context, pdfFile, caption, customer.phone)
-            } catch (e: Exception) {
-                _userMessage.value = e.message ?: "Failed to share statement"
-            }
-        }
     }
 
     fun openRecordCustomerPayment(customer: Customer) {
@@ -506,8 +425,9 @@ class ContactsViewModel @Inject constructor(
         viewModelScope.launch {
             _paymentModalState.value = _paymentModalState.value.copy(isSaving = true, saveError = null)
             try {
-                salesRepository.recordCustomerPayment(draft)
+                val paymentNumber = salesRepository.recordCustomerPayment(draft)
                 _paymentModalState.value = CustomerPaymentModalState()
+                _communicationSuccessRequest.value = CommunicationRequest(CommunicationModule.PAYMENT, paymentNumber)
                 _userMessage.value = if (uiState.value.language == AppLanguage.BANGLA) {
                     "গ্রাহকের পেমেন্ট সফলভাবে সংরক্ষিত হয়েছে"
                 } else {
@@ -563,33 +483,6 @@ class ContactsViewModel @Inject constructor(
 
     fun dismissSupplierLedger() {
         _activeSupplierLedger.value = null
-    }
-
-    fun shareSupplierLedgerWhatsApp(supplier: Supplier, statement: PartyLedgerStatement) {
-        viewModelScope.launch {
-            try {
-                val isBn = uiState.value.language == AppLanguage.BANGLA
-                val profile = settingsRepository.getBusinessProfile().firstOrNull()
-                val snapshot = LedgerReport(
-                    filter = ControlCenterFilterState(
-                        dateRangeOption = DateRangeOption.ALL_TIME,
-                        category = ReportCategory.SUPPLIER_LEDGER,
-                        selectedSupplierId = supplier.id
-                    ),
-                    transactions = statement.transactions,
-                    statement = statement
-                )
-                val pdfFile = LedgerStatementExporter.pdf(context, snapshot, profile, isBn)
-                val caption = if (isBn) {
-                    "${supplier.companyName} (${supplier.supplierCode}) - প্রদেয় হিসাব বিবরণী"
-                } else {
-                    "${supplier.companyName} (${supplier.supplierCode}) - Supplier Statement"
-                }
-                StatementShareHelper.shareToWhatsApp(context, pdfFile, caption, supplier.phone)
-            } catch (e: Exception) {
-                _userMessage.value = e.message ?: "Failed to share supplier statement"
-            }
-        }
     }
 
     fun deleteOrArchiveSupplier(supplierId: String) {

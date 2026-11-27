@@ -17,6 +17,8 @@ object QrCodeGenerator {
      */
     const val QR_PREFIX_PRODUCT = "ADV-ERP|PRODUCT"
     const val QR_PREFIX_VARIANT = "ADV-ERP|VARIANT"
+    const val QR_PREFIX_INVOICE = "ADV-ERP|INV"
+    const val QR_PREFIX_DOCUMENT = "ADV-ERP|DOC"
 
     data class QrPayload(
         val type: QrType,
@@ -28,6 +30,7 @@ object QrCodeGenerator {
     enum class QrType {
         PRODUCT,
         VARIANT,
+        DOCUMENT,
         PLAIN_TEXT
     }
 
@@ -96,6 +99,15 @@ object QrCodeGenerator {
             return QrPayload(QrType.VARIANT, targetId = varId, secondaryId = prodId, code = sku)
         }
 
+        // 6. Document/Invoice verification QR: ADV-ERP|INV|<docNumber>|... or ADV-ERP|DOC|<docNumber>|...
+        if (trimmed.startsWith("$QR_PREFIX_INVOICE|") || trimmed.startsWith("$QR_PREFIX_DOCUMENT|")) {
+            val parts = trimmed.split("|")
+            val docNo = parts.getOrNull(2) ?: ""
+            val docKind = parts.getOrNull(1)
+            val meta = parts.drop(3).joinToString("|").takeIf { it.isNotEmpty() }
+            return QrPayload(QrType.DOCUMENT, targetId = docNo, secondaryId = docKind, code = meta)
+        }
+
         return QrPayload(QrType.PLAIN_TEXT, targetId = trimmed, code = trimmed)
     }
 
@@ -153,47 +165,79 @@ object QrCodeGenerator {
         return remainder
     }
 
-    // Standard QR Version 3 (29x29) and Version 4 (33x33) specs (Error Correction Level M)
-    // Version 3: 70 total codewords (44 data codewords, 26 EC codewords) - holds up to 42 ASCII chars
-    // Version 4: 100 total codewords (64 data codewords, 36 EC codewords) - holds up to 62 ASCII chars
-    // Version 5: 134 total codewords (86 data codewords, 48 EC codewords) - holds up to 84 ASCII chars
-    private data class QrSpec(val version: Int, val size: Int, val dataCapacityBytes: Int, val ecCodewords: Int, val alignPos: Int)
+    // Standard ISO/IEC 18004 Versions 1..10 Table 9 specs (Error Correction Level M)
+    private class QrSpec(
+        val version: Int,
+        val size: Int,
+        val alignCoords: IntArray,
+        val ecPerBlock: Int,
+        val g1Blocks: Int,
+        val g1DataCw: Int,
+        val g2Blocks: Int,
+        val g2DataCw: Int,
+        val maxBytes: Int,
+        val versionInfo: Int? = null
+    ) {
+        val totalDataCodewords: Int get() = g1Blocks * g1DataCw + g2Blocks * g2DataCw
+    }
+
+    private val LEVEL_M_SPECS = listOf(
+        QrSpec(1, 21, intArrayOf(), 10, 1, 16, 0, 0, 14),
+        QrSpec(2, 25, intArrayOf(6, 18), 16, 1, 28, 0, 0, 26),
+        QrSpec(3, 29, intArrayOf(6, 22), 26, 1, 44, 0, 0, 42),
+        QrSpec(4, 33, intArrayOf(6, 26), 18, 2, 32, 0, 0, 62),
+        QrSpec(5, 37, intArrayOf(6, 30), 24, 2, 43, 0, 0, 84),
+        QrSpec(6, 41, intArrayOf(6, 34), 16, 4, 27, 0, 0, 106),
+        QrSpec(7, 45, intArrayOf(6, 22, 38), 18, 4, 31, 0, 0, 122, versionInfo = 0x07C94),
+        QrSpec(8, 49, intArrayOf(6, 24, 42), 22, 2, 38, 2, 39, 152, versionInfo = 0x085BC),
+        QrSpec(9, 53, intArrayOf(6, 26, 46), 22, 3, 36, 2, 37, 180, versionInfo = 0x09A99),
+        QrSpec(10, 57, intArrayOf(6, 28, 50), 26, 4, 43, 1, 44, 213, versionInfo = 0x0A4D3)
+    )
 
     private fun selectSpec(contentLength: Int): QrSpec {
-        return when {
-            contentLength <= 24 -> QrSpec(version = 2, size = 25, dataCapacityBytes = 28, ecCodewords = 16, alignPos = 18)
-            contentLength <= 42 -> QrSpec(version = 3, size = 29, dataCapacityBytes = 44, ecCodewords = 26, alignPos = 22)
-            contentLength <= 62 -> QrSpec(version = 4, size = 33, dataCapacityBytes = 64, ecCodewords = 36, alignPos = 26)
-            else -> QrSpec(version = 5, size = 37, dataCapacityBytes = 86, ecCodewords = 48, alignPos = 30)
+        return LEVEL_M_SPECS.firstOrNull { contentLength <= it.maxBytes } ?: LEVEL_M_SPECS.last()
+    }
+
+    private fun truncateUtf8(text: String, maxBytes: Int): ByteArray {
+        val raw = text.toByteArray(Charsets.UTF_8)
+        if (raw.size <= maxBytes) return raw
+        val out = ArrayList<Byte>(maxBytes)
+        for (ch in text) {
+            val charBytes = ch.toString().toByteArray(Charsets.UTF_8)
+            if (out.size + charBytes.size > maxBytes) break
+            for (b in charBytes) out.add(b)
         }
+        return out.toByteArray()
     }
 
     /**
      * Generates a 2D boolean matrix for the QR Code (true = dark module, false = light module).
      */
     fun generateQrMatrix(text: String): Array<BooleanArray> {
-        val bytes = text.toByteArray(Charsets.ISO_8859_1)
+        val maxSupported = LEVEL_M_SPECS.last().maxBytes
+        val bytes = truncateUtf8(text, maxSupported)
         val spec = selectSpec(bytes.size)
         val size = spec.size
 
         // 1. Encode Data in Byte Mode (0100)
         val bitBuffer = mutableListOf<Boolean>()
-        // Mode: Byte (0100)
         bitBuffer.addAll(listOf(false, true, false, false))
-        // Character count indicator (8 bits for versions 1..9)
+        // Character count indicator: 8 bits for versions 1..9, 16 bits for versions 10..26
+        val countBits = if (spec.version <= 9) 8 else 16
         val len = bytes.size
-        for (i in 7 downTo 0) {
-            bitBuffer.add((len shr i and 1) == 1)
+        for (i in (countBits - 1) downTo 0) {
+            bitBuffer.add(((len shr i) and 1) == 1)
         }
         // Data bits
         for (b in bytes) {
             val byteVal = b.toInt() and 0xFF
             for (i in 7 downTo 0) {
-                bitBuffer.add((byteVal shr i and 1) == 1)
+                bitBuffer.add(((byteVal shr i) and 1) == 1)
             }
         }
         // Terminator (up to 4 zeroes)
-        val maxDataBits = spec.dataCapacityBytes * 8
+        val totalDataCw = spec.totalDataCodewords
+        val maxDataBits = totalDataCw * 8
         val termLen = minOf(4, maxDataBits - bitBuffer.size)
         repeat(termLen) { bitBuffer.add(false) }
         // Pad to byte boundary
@@ -206,14 +250,14 @@ object QrCodeGenerator {
         while (bitBuffer.size < maxDataBits) {
             val pad = padBytes[padIdx % 2]
             for (i in 7 downTo 0) {
-                bitBuffer.add((pad shr i and 1) == 1)
+                bitBuffer.add(((pad shr i) and 1) == 1)
             }
             padIdx++
         }
 
         // Convert data bits to data codewords
-        val dataCodewords = IntArray(spec.dataCapacityBytes)
-        for (i in 0 until spec.dataCapacityBytes) {
+        val dataCodewords = IntArray(totalDataCw)
+        for (i in 0 until totalDataCw) {
             var byteVal = 0
             for (j in 0 until 8) {
                 if (bitBuffer[i * 8 + j]) {
@@ -223,15 +267,38 @@ object QrCodeGenerator {
             dataCodewords[i] = byteVal
         }
 
-        // Compute Error Correction Codewords
-        val ecCodewords = computeRsErrorCorrection(dataCodewords, spec.ecCodewords)
-        val allCodewords = dataCodewords + ecCodewords
+        // Partition into Group 1 & Group 2 blocks and compute per-block EC codewords
+        val blocks = mutableListOf<IntArray>()
+        var offset = 0
+        repeat(spec.g1Blocks) {
+            blocks.add(dataCodewords.copyOfRange(offset, offset + spec.g1DataCw))
+            offset += spec.g1DataCw
+        }
+        repeat(spec.g2Blocks) {
+            blocks.add(dataCodewords.copyOfRange(offset, offset + spec.g2DataCw))
+            offset += spec.g2DataCw
+        }
+        val ecBlocks = blocks.map { computeRsErrorCorrection(it, spec.ecPerBlock) }
 
-        // Convert all codewords to bit stream
-        val finalBits = mutableListOf<Boolean>()
-        for (cw in allCodewords) {
+        // Interleave data codewords column-wise, then EC codewords column-wise
+        val interleaved = ArrayList<Int>(totalDataCw + blocks.size * spec.ecPerBlock)
+        val maxDataCw = maxOf(spec.g1DataCw, spec.g2DataCw)
+        for (colIdx in 0 until maxDataCw) {
+            for (block in blocks) {
+                if (colIdx < block.size) interleaved.add(block[colIdx])
+            }
+        }
+        for (colIdx in 0 until spec.ecPerBlock) {
+            for (ecBlock in ecBlocks) {
+                interleaved.add(ecBlock[colIdx])
+            }
+        }
+
+        // Convert interleaved codewords to bit stream
+        val finalBits = ArrayList<Boolean>(interleaved.size * 8)
+        for (cw in interleaved) {
             for (j in 7 downTo 0) {
-                finalBits.add((cw shr j and 1) == 1)
+                finalBits.add(((cw shr j) and 1) == 1)
             }
         }
 
@@ -239,7 +306,7 @@ object QrCodeGenerator {
         val matrix = Array(size) { BooleanArray(size) }
         val reserved = Array(size) { BooleanArray(size) }
 
-        // Function: Draw Finder Pattern (7x7)
+        // Function: Draw Finder Pattern (7x7) + 1px separator
         fun drawFinder(r0: Int, c0: Int) {
             for (r in 0 until 7) {
                 for (c in 0 until 7) {
@@ -249,7 +316,6 @@ object QrCodeGenerator {
                     reserved[r0 + r][c0 + c] = true
                 }
             }
-            // Separator quiet zone around finder
             for (r in -1..7) {
                 for (c in -1..7) {
                     val row = r0 + r
@@ -261,26 +327,35 @@ object QrCodeGenerator {
             }
         }
 
-        // Draw 3 Finders: Top-Left, Top-Right, Bottom-Left
         drawFinder(0, 0)
         drawFinder(0, size - 7)
         drawFinder(size - 7, 0)
 
-        // Draw Alignment Pattern (5x5) if Version >= 2
-        if (spec.alignPos > 0) {
-            val ar = spec.alignPos
-            val ac = spec.alignPos
-            for (r in -2..2) {
-                for (c in -2..2) {
-                    val isOuter = r == -2 || r == 2 || c == -2 || c == 2
-                    val isCenter = r == 0 && c == 0
-                    matrix[ar + r][ac + c] = isOuter || isCenter
-                    reserved[ar + r][ac + c] = true
+        // Draw Alignment Patterns (5x5), skipping the 3 finder corners
+        val coords = spec.alignCoords
+        if (coords.size >= 2) {
+            val firstCoord = coords.first()
+            val lastCoord = coords.last()
+            for (ar in coords) {
+                for (ac in coords) {
+                    val hitsFinderCorner =
+                        (ar == firstCoord && ac == firstCoord) ||
+                            (ar == firstCoord && ac == lastCoord) ||
+                            (ar == lastCoord && ac == firstCoord)
+                    if (hitsFinderCorner) continue
+                    for (r in -2..2) {
+                        for (c in -2..2) {
+                            val isOuter = r == -2 || r == 2 || c == -2 || c == 2
+                            val isCenter = r == 0 && c == 0
+                            matrix[ar + r][ac + c] = isOuter || isCenter
+                            reserved[ar + r][ac + c] = true
+                        }
+                    }
                 }
             }
         }
 
-        // Draw Timing Patterns (alternating black/white at row 6 and col 6)
+        // Draw Timing Patterns (alternating dark/light at row 6 and col 6)
         for (i in 0 until size) {
             if (!reserved[6][i]) {
                 matrix[6][i] = (i % 2 == 0)
@@ -292,7 +367,7 @@ object QrCodeGenerator {
             }
         }
 
-        // Dark Module at (4 * V + 9, 8)
+        // Dark Module at (4 * V + 9, 8) = (size - 8, 8)
         val darkR = 4 * spec.version + 9
         matrix[darkR][8] = true
         reserved[darkR][8] = true
@@ -305,13 +380,29 @@ object QrCodeGenerator {
             reserved[size - 1 - i][8] = true
         }
 
+        // Version Information (Versions 7..10): 18 bits in both 6x3 bottom-left and 3x6 top-right blocks
+        spec.versionInfo?.let { vInfo ->
+            for (i in 0..17) {
+                val bit = ((vInfo shr i) and 1) == 1
+                val rBl = size - 11 + (i % 3)
+                val cBl = i / 3
+                matrix[rBl][cBl] = bit
+                reserved[rBl][cBl] = true
+
+                val rTr = i / 3
+                val cTr = size - 11 + (i % 3)
+                matrix[rTr][cTr] = bit
+                reserved[rTr][cTr] = true
+            }
+        }
+
         // Place Data Bits Zig-Zag from right to left
         var bitIdx = 0
         var goingUp = true
         var col = size - 1
 
         while (col > 0) {
-            if (col == 6) col-- // Skip vertical timing pattern column
+            if (col == 6) col--
 
             val rows = if (goingUp) (size - 1 downTo 0) else (0 until size)
             for (row in rows) {
@@ -319,7 +410,7 @@ object QrCodeGenerator {
                     val currCol = col - c
                     if (!reserved[row][currCol]) {
                         val bit = if (bitIdx < finalBits.size) finalBits[bitIdx++] else false
-                        // Apply Mask Pattern 0: (row + col) % 2 == 0
+                        // Mask Pattern 0: (row + col) % 2 == 0
                         val mask = (row + currCol) % 2 == 0
                         matrix[row][currCol] = bit xor mask
                     }
@@ -329,26 +420,24 @@ object QrCodeGenerator {
             col -= 2
         }
 
-        // Format Info for Error Correction Level M (00) and Mask 0 (000):
-        // Standard format data: 0b00000 -> with 10-bit BCH and 0x5412 mask = 0b101010000010010
+        // Format Info for Error Correction Level M (00) and Mask 0 (000)
         val formatBits = intArrayOf(1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0)
-        // Draw format bits around Top-Left
         val tlCoords = listOf(
             Pair(8, 0), Pair(8, 1), Pair(8, 2), Pair(8, 3), Pair(8, 4), Pair(8, 5),
             Pair(8, 7), Pair(8, 8), Pair(7, 8), Pair(5, 8), Pair(4, 8), Pair(3, 8),
             Pair(2, 8), Pair(1, 8), Pair(0, 8)
         )
         for (i in 0 until 15) {
-            val bit = formatBits[i] == 1
-            matrix[tlCoords[i].first][tlCoords[i].second] = bit
+            matrix[tlCoords[i].first][tlCoords[i].second] = (formatBits[i] == 1)
         }
 
-        // Draw format bits around Top-Right and Bottom-Left
-        for (i in 0..7) {
+        // Bottom-left: formatBits[0..6] along (size-1, 8) .. (size-7, 8), preserving dark module at (size-8, 8)
+        for (i in 0..6) {
             matrix[size - 1 - i][8] = (formatBits[i] == 1)
         }
-        for (i in 0..6) {
-            matrix[8][size - 7 + i] = (formatBits[8 + i] == 1)
+        // Top-right: formatBits[7..14] along (8, size-8) .. (8, size-1)
+        for (i in 0..7) {
+            matrix[8][size - 8 + i] = (formatBits[7 + i] == 1)
         }
 
         return matrix
@@ -357,7 +446,12 @@ object QrCodeGenerator {
     /**
      * Renders a QR code matrix into an Android Bitmap with quiet zones.
      */
-    fun generateQrBitmap(content: String, targetSize: Int = 300): Bitmap {
+    fun generateQrBitmap(
+        content: String,
+        targetSize: Int = 300,
+        darkColor: Int = Color.BLACK,
+        lightColor: Int = Color.WHITE
+    ): Bitmap {
         val sanitized = content.trim().ifBlank { "ADV-ERP" }
         val matrix = generateQrMatrix(sanitized)
         val matrixSize = matrix.size
@@ -366,10 +460,10 @@ object QrCodeGenerator {
 
         val bitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.WHITE)
+        canvas.drawColor(lightColor)
 
         val modulePaint = Paint().apply {
-            color = Color.BLACK
+            color = darkColor
             isAntiAlias = false
         }
 

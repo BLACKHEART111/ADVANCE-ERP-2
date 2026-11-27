@@ -15,7 +15,8 @@ data class InvoiceItemDraft(
     val variantId: String? = null,
     val quantity: Int,
     val unitPriceMinor: Long,
-    val discountMinor: Long = 0L
+    val discountMinor: Long = 0L,
+    val discountPercentBps: Long? = null
 )
 
 data class NewCustomerDraft(
@@ -49,7 +50,10 @@ data class SalesInvoiceDraft(
     val items: List<InvoiceItemDraft>,
     val newCustomerDraft: NewCustomerDraft? = null,
     val validUntilDate: Long? = null,
-    val scheduledDeliveryInfo: String? = null
+    val scheduledDeliveryInfo: String? = null,
+    val salesType: String = "WHOLESALE",
+    val discountPercentBps: Long? = null,
+    val paymentTerms: String? = null
 )
 
 data class DeliveryDispatchDraft(

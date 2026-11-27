@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.pocketdev.advance_erp
 
 import com.pocketdev.advance_erp.core.ai.StockForecastEngine

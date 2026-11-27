@@ -454,21 +454,6 @@ class BusinessControlCenterViewModel @Inject constructor(
             particulars = row.particulars + " [cost hidden]") else row.copy(profitMinor = null, cogsMinor = 0)
         }
     }
-    fun shareReminder(context: Context, includeSensitive: Boolean = false) {
-        val snapshot = runCatching { readyReport(includeSensitive) }.getOrElse { _actionError.value=it.message; return }
-        val statement = snapshot.statement ?: return
-        val language = appLanguage.value
-        val amount = com.pocketdev.advance_erp.core.util.Formatters.formatMoney(statement.closingBalanceMinor, CurrencyCode.BDT, language)
-        val text = if (language == AppLanguage.BANGLA) "${statement.partyName}, নির্বাচিত সময়ের হিসাব অনুযায়ী ব্যালেন্স: $amount। বিস্তারিত স্টেটমেন্ট মিলিয়ে দেখার অনুরোধ রইল।"
-            else "${statement.partyName}, the balance for the selected statement period is $amount. Please review the attached statement."
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val file = com.pocketdev.advance_erp.core.util.LedgerStatementExporter.pdf(context, snapshot, businessProfile.value, language == AppLanguage.BANGLA)
-                launch(Dispatchers.Main) { com.pocketdev.advance_erp.core.util.StatementShareHelper.shareToWhatsApp(context, file, text, statement.phone) }
-            } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { launch(Dispatchers.Main) { Toast.makeText(context, error.message, Toast.LENGTH_LONG).show() } }
-        }
-    }
 
     fun exportAndSharePdf(context: Context, includeSensitive: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {

@@ -66,17 +66,17 @@ class SettingsLogicTest {
     }
 
     @Test
-    fun databaseVersionConstant_matchesRoomSchemaV15() {
-        assertEquals(15, AdvanceErpDatabase.DATABASE_VERSION)
+    fun databaseVersionConstant_matchesRoomSchemaV16() {
+        assertEquals(16, AdvanceErpDatabase.DATABASE_VERSION)
     }
 
     @Test
     fun resetTestTransactionsKeepMasters_preservesProductsAndContactsAndClearsStockAndLedgersWithoutFkErrors() {
-        val schemaFile = File("schemas/com.pocketdev.advance_erp.core.database.AdvanceErpDatabase/15.json")
+        val schemaFile = File("schemas/com.pocketdev.advance_erp.core.database.AdvanceErpDatabase/16.json")
         val daoFile = File("src/main/java/com/pocketdev/advance_erp/data/dao/BackupDao.kt")
         val commDaoFile = File("src/main/java/com/pocketdev/advance_erp/data/dao/CommunicationDao.kt")
         val repoFile = File("src/main/java/com/pocketdev/advance_erp/data/repository/BackupRepositoryImpl.kt")
-        assertTrue("Schema 15.json must exist at ${schemaFile.absolutePath}", schemaFile.exists())
+        assertTrue("Schema 16.json must exist at ${schemaFile.absolutePath}", schemaFile.exists())
         assertTrue("BackupDao.kt must exist at ${daoFile.absolutePath}", daoFile.exists())
         assertTrue("CommunicationDao.kt must exist at ${commDaoFile.absolutePath}", commDaoFile.exists())
         assertTrue("BackupRepositoryImpl.kt must exist at ${repoFile.absolutePath}", repoFile.exists())
@@ -85,7 +85,7 @@ class SettingsLogicTest {
             import json, re, sqlite3
 
             s = json.load(open(r"${schemaFile.absolutePath}"))['database']
-            assert len(s['entities']) == 62, f"Expected 62 entities in 15.json, got {len(s['entities'])}"
+            assert len(s['entities']) == 62, f"Expected 62 entities in 16.json, got {len(s['entities'])}"
             conn = sqlite3.connect(':memory:')
             cur = conn.cursor()
             cur.execute('PRAGMA foreign_keys = ON')

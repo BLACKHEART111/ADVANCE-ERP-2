@@ -13,7 +13,13 @@ data class CommunicationSettings(@PrimaryKey val id: Int = 1,
     val includeInstructions: Boolean = false, val includeReminder: Boolean = false,
     val includeSignature: Boolean = true, val previewBeforeSharing: Boolean = true,
     val defaultLanguage: String = "bn", val preferredApp: String = "ASK",
-    val paymentInstructions: String = "", val bankDetails: String = "")
+    val paymentInstructions: String = "", val bankDetails: String = "",
+    val includeImageCard: Boolean = true,
+    val includeTextMessage: Boolean = true,
+    val showProductPhoto: Boolean = true,
+    val showVariantSku: Boolean = true,
+    val showQrCode: Boolean = true,
+    val defaultPaymentTerms: String = "")
 @Entity(tableName = "communication_templates", primaryKeys = ["module", "status", "language"])
 data class CommunicationTemplate(val module: String, val status: String, val language: String, val body: String)
 @Entity(tableName = "communication_party_preferences")
@@ -34,4 +40,7 @@ data class CommunicationHistory(@PrimaryKey val id: String, val module: String, 
     val documentNumber: String, val partyId: String, val partyName: String, val phone: String,
     val createdAt: Long, val message: String, val attachmentReference: String?,
     val language: String, val application: String, val event: String,
-    val rangeFrom: Long?, val rangeTo: Long?)
+    val rangeFrom: Long?, val rangeTo: Long?,
+    val sharedFormats: String = "TEXT",
+    val imageReference: String? = null,
+    val localSavedPath: String? = null)

@@ -71,7 +71,10 @@ data class SalesInvoice(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val validUntilDate: Long? = null,
-    val scheduledDeliveryInfo: String? = null
+    val scheduledDeliveryInfo: String? = null,
+    val salesType: String = "WHOLESALE",
+    val discountPercentBps: Long? = null,
+    val paymentTerms: String? = null
 )
 
 @Entity(
@@ -117,7 +120,8 @@ data class SalesInvoiceItem(
     val discountMinor: Long = 0L,
     val lineTotalMinor: Long,
     val unitCostMinor: Long = 0L,
-    val totalCogsMinor: Long = 0L
+    val totalCogsMinor: Long = 0L,
+    val discountPercentBps: Long? = null
 )
 
 @Entity(
