@@ -185,28 +185,28 @@ internal fun DashboardContent(
 
     val fabActions = listOf(
         DashboardFabAction(
-            label = "PO",
+            label = if (isBangla) "ক্রয় আদেশ" else "PO",
             icon = Icons.Outlined.Inventory,
             iconTint = tokens.accentPurple,
             testTag = "dashboard_fab_action_po",
             onClick = onNavigateToImports
         ),
         DashboardFabAction(
-            label = "Sales",
+            label = if (isBangla) "বিক্রয়" else "Sales",
             icon = Icons.Outlined.ShoppingCart,
             iconTint = tokens.accentGreen,
             testTag = "dashboard_fab_action_sales",
             onClick = onNavigateToSales
         ),
         DashboardFabAction(
-            label = "Add Product",
+            label = if (isBangla) "নতুন পণ্য" else "Add Product",
             icon = Icons.Outlined.Inventory2,
             iconTint = tokens.accentBlue,
             testTag = "dashboard_fab_action_add_product",
             onClick = onNavigateToAddProduct
         ),
         DashboardFabAction(
-            label = "Ledger",
+            label = if (isBangla) "লেজার" else "Ledger",
             icon = Icons.Outlined.ReceiptLong,
             iconTint = tokens.accentAmber,
             testTag = "dashboard_fab_action_ledger",
@@ -228,7 +228,7 @@ internal fun DashboardContent(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("dashboard_scroll_list"),
-            contentPadding = PaddingValues(bottom = 96.dp),
+            contentPadding = PaddingValues(bottom = 128.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Item 0: Premium Shipping-Port Gradient Hero + Compact Date Selector

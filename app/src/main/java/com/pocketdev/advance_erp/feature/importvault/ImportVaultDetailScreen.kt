@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
+import com.pocketdev.advance_erp.core.designsystem.AutoShrinkSingleLineText
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -486,15 +487,20 @@ private fun ImportVaultFolderScaffold(
                     item(key = "overview_pnl_hero") {
                         VaultHeroCard {
                             Text(
-                                text = profitLabel,
+                                text = if (isBn && profitLabel.equals("Attributed Net Profit", ignoreCase = true)) {
+                                    "অবদানকৃত নিট মুনাফা"
+                                } else {
+                                    profitLabel
+                                },
                                 style = MaterialTheme.typography.labelLarge,
                                 color = Color.White.copy(alpha = 0.85f)
                             )
-                            Text(
-                                text = ImportVaultUiLogic.formatBdt(attributedNetProfitMinor, language),
+                            AutoShrinkSingleLineText(
+                                text = ImportVaultUiLogic.formatBdtNoBreak(attributedNetProfitMinor, language),
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (attributedNetProfitMinor >= 0L) Color(0xFF42F5AA) else Color(0xFFFF9DB0)
+                                color = if (attributedNetProfitMinor >= 0L) Color(0xFF42F5AA) else Color(0xFFFF9DB0),
+                                minFontSizeSp = 18f
                             )
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),

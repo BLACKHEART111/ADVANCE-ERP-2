@@ -25,8 +25,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -148,31 +147,29 @@ fun CommunicationPdfPageViewer(
 
 @Composable
 fun CommunicationPdfPreview(file: File, bn: Boolean, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Outlined.Close, contentDescription = if (bn) "বন্ধ" else "Close")
-                    }
-                    Text(
-                        text = if (bn) "PDF প্রিভিউ · ${file.name}" else "PDF Preview · ${file.name}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
-                    )
+    ERPFullScreenEditor(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxSize().padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Outlined.Close, contentDescription = if (bn) "বন্ধ" else "Close")
                 }
-                Spacer(Modifier.height(4.dp))
-                CommunicationPdfPageViewer(
-                    file = file,
-                    bn = bn,
-                    modifier = Modifier.fillMaxWidth().weight(1f)
+                Text(
+                    text = if (bn) "PDF প্রিভিউ · ${file.name}" else "PDF Preview · ${file.name}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
                 )
             }
+            Spacer(Modifier.height(4.dp))
+            CommunicationPdfPageViewer(
+                file = file,
+                bn = bn,
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
         }
     }
 }

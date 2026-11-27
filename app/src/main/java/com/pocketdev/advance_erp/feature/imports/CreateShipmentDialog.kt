@@ -393,7 +393,7 @@ fun CreateShipmentDialog(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
-                                                .background(Color.White, RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                                                 .clickable { showPoMenu = true }
                                                 .padding(horizontal = 12.dp, vertical = 12.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -475,7 +475,7 @@ fun CreateShipmentDialog(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
-                                                    .background(Color.White, RoundedCornerShape(8.dp))
+                                                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                                                     .clickable { showSupplierMenu = true }
                                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -535,7 +535,7 @@ fun CreateShipmentDialog(
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .background(Color.White, RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                                                 .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
                                                 .padding(10.dp),
                                             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -841,7 +841,7 @@ fun CreateShipmentDialog(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
-                                            .background(Color.White, RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                                             .clickable { showProductMenu = true }
                                             .padding(horizontal = 10.dp, vertical = 8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,

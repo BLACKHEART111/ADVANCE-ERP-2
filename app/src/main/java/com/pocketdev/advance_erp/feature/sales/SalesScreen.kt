@@ -226,7 +226,7 @@ fun SalesScreen(
                                     color = Color.White
                                 )
                                 Text(
-                                    text = "POS COUNTER",
+                                    text = if (isBangla) "ক্যাশ কাউন্টার" else "POS COUNTER",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 9.sp,
                                     letterSpacing = 0.8.sp,
@@ -611,7 +611,7 @@ private fun InvoicesTab(
             .fillMaxSize()
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
+        contentPadding = PaddingValues(bottom = 128.dp)
     ) {
         // Search Bar
         item {
@@ -783,7 +783,7 @@ private fun CustomersTab(
             .fillMaxSize()
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
+        contentPadding = PaddingValues(bottom = 128.dp)
     ) {
         items(customers) { cust ->
             Surface(
@@ -1083,7 +1083,7 @@ private fun PaymentsTab(
             .fillMaxSize()
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
+        contentPadding = PaddingValues(bottom = 128.dp)
     ) {
         // Search Bar for Payments with Date Filter Icon
         item {
@@ -1652,7 +1652,7 @@ private fun ReturnsTab(
             .fillMaxSize()
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
+        contentPadding = PaddingValues(bottom = 128.dp)
     ) {
         if (returns.isEmpty()) {
             item {
@@ -1741,7 +1741,7 @@ private fun ReportsTab(
             .fillMaxSize()
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 80.dp)
+        contentPadding = PaddingValues(bottom = 128.dp)
     ) {
         // Summary KPI Banner
         if (summary != null) {

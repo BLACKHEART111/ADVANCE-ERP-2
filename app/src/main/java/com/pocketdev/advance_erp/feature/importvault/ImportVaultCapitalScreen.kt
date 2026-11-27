@@ -28,6 +28,8 @@ import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.unit.sp
+import com.pocketdev.advance_erp.core.designsystem.AutoShrinkSingleLineText
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -187,11 +189,12 @@ fun LazyListScope.capitalIntelligenceItems(
                 style = MaterialTheme.typography.labelLarge,
                 color = Color.White.copy(alpha = 0.85f)
             )
-            Text(
-                text = ImportVaultUiLogic.formatBdt(cashRecovery.totalInvestedCapitalMinor, language),
+            AutoShrinkSingleLineText(
+                text = ImportVaultUiLogic.formatBdtNoBreak(cashRecovery.totalInvestedCapitalMinor, language),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White
+                color = Color.White,
+                minFontSizeSp = 16f
             )
             Text(
                 text = if (isBn) {

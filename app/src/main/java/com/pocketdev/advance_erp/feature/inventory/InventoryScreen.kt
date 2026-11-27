@@ -52,6 +52,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,6 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -455,7 +457,7 @@ fun InventoryScreen(
                         // High-density Compact Product Cards List
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
-                            contentPadding = PaddingValues(bottom = 80.dp)
+                            contentPadding = PaddingValues(bottom = 128.dp)
                         ) {
                             items(state.stockItems, key = { it.productId }) { item ->
                                 CompactStockProductCard(
@@ -485,7 +487,7 @@ fun InventoryScreen(
                     } else {
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
-                            contentPadding = PaddingValues(bottom = 80.dp)
+                            contentPadding = PaddingValues(bottom = 128.dp)
                         ) {
                             items(state.lowStockItems, key = { it.productId }) { item ->
                                 CompactStockProductCard(
@@ -537,7 +539,7 @@ fun InventoryScreen(
                         } else {
                             LazyColumn(
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
-                                contentPadding = PaddingValues(bottom = 80.dp)
+                                contentPadding = PaddingValues(bottom = 128.dp)
                             ) {
                                 items(state.movements, key = { it.id }) { mov ->
                                     val movType = StockMovementType.fromCode(mov.movementType)
@@ -688,7 +690,7 @@ fun InventoryScreen(
                     } else {
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
-                            contentPadding = PaddingValues(bottom = 80.dp)
+                            contentPadding = PaddingValues(bottom = 128.dp)
                         ) {
                             items(state.transfers, key = { it.id }) { transfer ->
                                 val status = try {
@@ -977,11 +979,22 @@ private fun CompactInventorySummary(
     onToggleExpand: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    ERPCard(
-        contentPadding = 8.dp,
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
         modifier = modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFF7B1FA2), Color(0xFF4A148C), Color(0xFF00796B))
+                    )
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
             // Horizontal collapsed summary row
             Row(
                 modifier = Modifier
@@ -995,13 +1008,13 @@ private fun CompactInventorySummary(
                     Text(
                         text = stringResource(R.string.stock_physical_short),
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = Color.White.copy(alpha = 0.80f)
                     )
                     Text(
                         text = Formatters.formatNumber(state.totalInventoryQuantity.toLong(), state.language),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = Color.White
                     )
                 }
 
@@ -1010,13 +1023,13 @@ private fun CompactInventorySummary(
                     Text(
                         text = stringResource(R.string.stock_sellable_short),
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = Color.White.copy(alpha = 0.80f)
                     )
                     Text(
                         text = Formatters.formatNumber(state.totalSellableStock.toLong(), state.language),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = StatusSuccess
+                        color = Color(0xFF69F0AE)
                     )
                 }
 
@@ -1025,13 +1038,13 @@ private fun CompactInventorySummary(
                     Text(
                         text = stringResource(R.string.stock_damaged_short),
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = Color.White.copy(alpha = 0.80f)
                     )
                     Text(
                         text = Formatters.formatNumber(state.totalDamagedStock.toLong(), state.language),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (state.totalDamagedStock > 0) StatusError else TextMuted
+                        color = if (state.totalDamagedStock > 0) Color(0xFFFF8A80) else Color.White.copy(alpha = 0.78f)
                     )
                 }
 
@@ -1041,7 +1054,7 @@ private fun CompactInventorySummary(
                         Text(
                             text = stringResource(R.string.stock_valuation_short),
                             style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted
+                            color = Color.White.copy(alpha = 0.80f)
                         )
                         Text(
                             text = Formatters.formatMoney(
@@ -1051,7 +1064,7 @@ private fun CompactInventorySummary(
                             ),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = PrimaryPurple
+                            color = Color(0xFF80DEEA)
                         )
                     }
                 }
@@ -1064,7 +1077,7 @@ private fun CompactInventorySummary(
                     Icon(
                         imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                         contentDescription = if (isExpanded) "Collapse summary" else "Expand summary",
-                        tint = TextSecondary,
+                        tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1074,7 +1087,7 @@ private fun CompactInventorySummary(
             AnimatedVisibility(visible = isExpanded) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    Divider(color = ERPDivider)
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.22f))
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Row(
@@ -1087,13 +1100,13 @@ private fun CompactInventorySummary(
                             Text(
                                 text = if (state.language == AppLanguage.BANGLA) "সংরক্ষিত মজুদ:" else "Reserved Stock:",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = TextMuted
+                                color = Color.White.copy(alpha = 0.80f)
                             )
                             Text(
                                 text = Formatters.formatNumber(reservedStock.toLong(), state.language),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
+                                color = Color.White
                             )
                         }
 
@@ -1101,13 +1114,13 @@ private fun CompactInventorySummary(
                             Text(
                                 text = if (state.language == AppLanguage.BANGLA) "স্বল্প মজুদ সতর্কতা:" else "Low Stock Alerts:",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = TextMuted
+                                color = Color.White.copy(alpha = 0.80f)
                             )
                             Text(
                                 text = "${state.lowStockItems.size} ${if (state.language == AppLanguage.BANGLA) "আইটেম" else "items"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (state.lowStockItems.isNotEmpty()) StatusError else TextMuted
+                                color = if (state.lowStockItems.isNotEmpty()) Color(0xFFFFCC80) else Color.White.copy(alpha = 0.85f)
                             )
                         }
 
@@ -1116,13 +1129,13 @@ private fun CompactInventorySummary(
                             Text(
                                 text = if (state.language == AppLanguage.BANGLA) "ওয়্যারহাউস:" else "Warehouse Scope:",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = TextMuted
+                                color = Color.White.copy(alpha = 0.80f)
                             )
                             Text(
                                 text = selectedWh?.name ?: stringResource(R.string.all_warehouses),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = SecondaryTeal
+                                color = Color(0xFF80DEEA)
                             )
                         }
                     }

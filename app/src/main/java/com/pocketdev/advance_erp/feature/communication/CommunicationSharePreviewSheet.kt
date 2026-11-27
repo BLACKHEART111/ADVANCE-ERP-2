@@ -37,6 +37,7 @@ import com.pocketdev.advance_erp.core.communication.PreparedCommunication
 import com.pocketdev.advance_erp.core.communication.ShareOutputFormat
 import com.pocketdev.advance_erp.core.communication.SharePreviewTab
 import com.pocketdev.advance_erp.core.designsystem.ERPBackground
+import com.pocketdev.advance_erp.core.designsystem.ERPFullScreenEditor
 import com.pocketdev.advance_erp.core.designsystem.ERPSurface
 import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import com.pocketdev.advance_erp.core.designsystem.LocalIsDarkTheme
@@ -77,10 +78,7 @@ internal fun CommunicationSharePreviewSheet(
     fun label(en: String, bangla: String) = if (bn) bangla else en
     val isDark = LocalIsDarkTheme.current
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    ERPFullScreenEditor(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = ERPBackground
@@ -88,7 +86,6 @@ internal fun CommunicationSharePreviewSheet(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .safeDrawingPadding()
                     .imePadding()
             ) {
                 // Top header matching Reference #2

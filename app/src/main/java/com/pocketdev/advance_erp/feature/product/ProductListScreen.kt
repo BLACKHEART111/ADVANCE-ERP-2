@@ -2,6 +2,8 @@ package com.pocketdev.advance_erp.feature.product
 
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
+import com.pocketdev.advance_erp.core.designsystem.AutoShrinkSingleLineText
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -59,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -143,6 +146,84 @@ fun ProductListScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            // Premium Purple–Teal Catalog Summary Banner
+            val isBangla = state.language == AppLanguage.BANGLA
+            val lowStockCount = remember(state.products) {
+                state.products.count { it.totalStock <= it.minStockAlert }
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFF8E24AA), Color(0xFF4A148C), Color(0xFF00796B))
+                            )
+                        )
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isBangla) "মোট পণ্য" else "Products",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.82f),
+                            maxLines = 1
+                        )
+                        AutoShrinkSingleLineText(
+                            text = Formatters.formatNumber(state.products.size.toLong(), state.language),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isBangla) "ক্যাটাগরি" else "Categories",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.82f),
+                            maxLines = 1
+                        )
+                        AutoShrinkSingleLineText(
+                            text = Formatters.formatNumber(state.categories.size.toLong(), state.language),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF80DEEA),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = if (isBangla) "স্বল্প মজুদ" else "Low Stock",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.82f),
+                            maxLines = 1
+                        )
+                        AutoShrinkSingleLineText(
+                            text = Formatters.formatNumber(lowStockCount.toLong(), state.language),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (lowStockCount > 0) Color(0xFFFFCC80) else Color(0xFF69F0AE),
+                            textAlign = TextAlign.End
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             // Search Bar
             OutlinedTextField(
                 value = state.searchQuery,
@@ -181,8 +262,8 @@ fun ProductListScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryPurple,
                     unfocusedBorderColor = ERPDivider,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
                 ),
                 singleLine = true
             )
@@ -208,7 +289,7 @@ fun ProductListScreen(
                             text = stringResource(R.string.all_categories),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isAllSelected) Color.White else TextSecondary
+                            color = if (isAllSelected) MaterialTheme.colorScheme.onPrimary else TextSecondary
                         )
                     }
                 }
@@ -227,7 +308,7 @@ fun ProductListScreen(
                             text = if (state.language == AppLanguage.BANGLA) cat.nameBn else cat.nameEn,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.White else TextSecondary
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else TextSecondary
                         )
                     }
                 }
@@ -280,7 +361,7 @@ fun ProductListScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp)
+                    contentPadding = PaddingValues(bottom = 128.dp)
                 ) {
                     items(state.products, key = { it.id }) { product ->
                         val isLowStock = product.totalStock <= product.minStockAlert

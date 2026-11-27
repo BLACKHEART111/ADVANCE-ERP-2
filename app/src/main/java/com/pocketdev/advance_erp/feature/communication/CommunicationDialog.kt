@@ -466,9 +466,9 @@ fun CommunicationDialog(
         executeShareStep(singleSteps.first(), singleSteps, other = true)
     }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    ERPFullScreenEditor(onDismissRequest = onDismiss) {
         Surface(Modifier.fillMaxSize(), color = ERPBackground) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+            Column(Modifier.fillMaxSize().imePadding()) {
                 // Header
                 Surface(color = ERPSurface, tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth()) {

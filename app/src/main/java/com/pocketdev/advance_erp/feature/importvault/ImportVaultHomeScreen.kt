@@ -59,6 +59,8 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LocalTextStyle
+import com.pocketdev.advance_erp.core.designsystem.AutoShrinkSingleLineText
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -786,19 +788,27 @@ private fun VaultHomeHeroSection(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = if (isBn) {
-                        val base = "মোট অবদানকৃত নিট মুনাফা (${overview.profitLabel})"
-                        if (overview.isPeriodActivityFiltered) "$base · সময়সীমা অ্যাক্টিভিটি" else base
+                        val localizedLabel = when {
+                            overview.profitLabel.equals("Attributed Net Profit", ignoreCase = true) ->
+                                "মোট অবদানকৃত নিট মুনাফা"
+                            overview.profitLabel.contains("Overhead", ignoreCase = true) ||
+                                overview.profitLabel.contains("Allocated", ignoreCase = true) ->
+                                "ওভারহেড সমন্বিত নিট মুনাফা"
+                            else -> "মোট অবদানকৃত নিট মুনাফা"
+                        }
+                        if (overview.isPeriodActivityFiltered) "$localizedLabel · সময়সীমা অ্যাক্টিভিটি" else localizedLabel
                     } else {
                         if (overview.isPeriodActivityFiltered) "${overview.profitLabel} (Period Activity)" else overview.profitLabel
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = Color.White.copy(alpha = 0.85f)
                 )
-                Text(
-                    text = ImportVaultUiLogic.formatBdt(overview.totalAttributedNetProfitMinor, language),
+                AutoShrinkSingleLineText(
+                    text = ImportVaultUiLogic.formatBdtNoBreak(overview.totalAttributedNetProfitMinor, language),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.ExtraBold,
-                    color = netProfitColor
+                    color = netProfitColor,
+                    minFontSizeSp = 18f
                 )
                 Text(
                     text = if (isBn) {
@@ -868,8 +878,8 @@ private fun VaultHomeHeroSection(
                     .fillMaxHeight()
             )
             HeroMiniMetric(
-                label = if (isBn) "বকেয়া (Attributable)" else "Attributable Due",
-                value = ImportVaultUiLogic.formatBdt(overview.cashRecovery.attributableReceivableMinor, language),
+                label = if (isBn) "বিক্রয় বকেয়া" else "Attributable Due",
+                value = ImportVaultUiLogic.formatBdtNoBreak(overview.cashRecovery.attributableReceivableMinor, language),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
@@ -967,15 +977,15 @@ private fun VaultHomeHeroSection(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         HeroMiniMetric(
-                            label = if (isBn) "প্রারম্ভিক স্টক (Opening)" else "Opening Stock",
-                            value = ImportVaultUiLogic.formatBdt(overview.openingStockCostMinor, language),
+                            label = if (isBn) "প্রারম্ভিক স্টক" else "Opening Stock",
+                            value = ImportVaultUiLogic.formatBdtNoBreak(overview.openingStockCostMinor, language),
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                         )
                         HeroMiniMetric(
-                            label = if (isBn) "সমাপনী স্টক (Closing)" else "Closing Stock",
-                            value = ImportVaultUiLogic.formatBdt(overview.closingStockCostMinor, language),
+                            label = if (isBn) "সমাপনী স্টক" else "Closing Stock",
+                            value = ImportVaultUiLogic.formatBdtNoBreak(overview.closingStockCostMinor, language),
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
@@ -1007,15 +1017,15 @@ private fun HeroMiniMetric(label: String, value: String, modifier: Modifier = Mo
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
+            AutoShrinkSingleLineText(
                 text = value,
-                fontSize = 14.5.sp,
-                lineHeight = 19.sp,
+                style = LocalTextStyle.current.copy(
+                    fontSize = 14.5.sp,
+                    lineHeight = 19.sp
+                ),
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis
+                minFontSizeSp = 11f
             )
         }
     }

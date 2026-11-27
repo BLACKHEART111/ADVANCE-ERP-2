@@ -333,6 +333,9 @@ object ImportVaultUiLogic {
     fun formatBdt(minor: Long, language: AppLanguage): String =
         Formatters.formatMoney(minor, CurrencyCode.BDT, language)
 
+    fun formatBdtNoBreak(minor: Long, language: AppLanguage): String =
+        formatBdt(minor, language).replace(' ', '\u00A0')
+
     fun formatCurrency(minor: Long, currencyCode: String, language: AppLanguage): String =
         Formatters.formatMoney(minor, CurrencyCode.fromCode(currencyCode), language)
 

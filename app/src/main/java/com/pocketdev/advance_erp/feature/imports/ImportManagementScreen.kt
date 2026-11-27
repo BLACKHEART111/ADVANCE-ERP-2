@@ -4,6 +4,7 @@ import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -95,6 +97,7 @@ import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.TextMuted
 import com.pocketdev.advance_erp.core.designsystem.TextPrimary
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
+import androidx.compose.material3.Surface
 import com.pocketdev.advance_erp.feature.communication.CommunicationDialog
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.CurrencyCode
@@ -180,46 +183,61 @@ fun ImportManagementScreen(
             com.pocketdev.advance_erp.feature.communication.CommunicationLauncher(module = com.pocketdev.advance_erp.core.communication.CommunicationModule.PURCHASE_ORDER, isBangla = isBangla)
             var showModuleNavigation by rememberSaveable {mutableStateOf(false)}
             if(selectedTab!=ImportModuleTab.PURCHASE_ORDERS || showModuleNavigation) {
-            // Module Header Banner
-            ERPCard(
-                backgroundColor = DeepNavy,
-                contentPadding = 16.dp
+            // Module Header Banner (Premium Purple–Teal Gradient)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    Color(0xFF8E24AA),
+                                    Color(0xFF4A148C),
+                                    Color(0xFF00796B)
+                                )
+                            )
+                        )
+                        .padding(16.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .background(PrimaryPurple, RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Public,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Public,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.import_management),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = stringResource(R.string.import_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.85f)
+                            )
+                        }
                     }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.import_management),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = stringResource(R.string.import_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
-                    }
-
-
                 }
             }
 
@@ -236,6 +254,11 @@ fun ImportManagementScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
                             .background(if (isSelected) PrimaryPurple else MaterialTheme.colorScheme.surface)
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) PrimaryPurple else ERPDivider,
+                                shape = RoundedCornerShape(20.dp)
+                            )
                             .clickable { selectedTab = tab }
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -244,7 +267,7 @@ fun ImportManagementScreen(
                             Icon(
                                 imageVector = tab.icon,
                                 contentDescription = null,
-                                tint = if (isSelected) Color.White else PrimaryPurple,
+                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else PrimaryPurple,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -286,7 +309,7 @@ fun ImportManagementScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 88.dp)
+                contentPadding = PaddingValues(bottom = 128.dp)
             ) {
                 // ==========================================
                 // TAB 0: OVERVIEW DASHBOARD
@@ -305,7 +328,7 @@ fun ImportManagementScreen(
                         ERPCard(contentPadding = 12.dp) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
-                                    text = if (isBangla) "দ্রুত কার্যক্রম (Quick Actions)" else "Quick Actions",
+                                    text = if (isBangla) "দ্রুত কার্যক্রম" else "Quick Actions",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
@@ -342,7 +365,10 @@ fun ImportManagementScreen(
                                             selectedTab = ImportModuleTab.COST_LAYERS
                                         },
                                         modifier = Modifier.weight(1f),
-                                        colors = ButtonDefaults.buttonColors(containerColor = DeepNavy),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF3949AB),
+                                            contentColor = Color.White
+                                        ),
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(vertical = 8.dp)
                                     ) {

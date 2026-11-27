@@ -6,6 +6,7 @@ import com.pocketdev.advance_erp.core.designsystem.StatusWarningContainer
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import com.pocketdev.advance_erp.core.designsystem.StatusError
+import com.pocketdev.advance_erp.core.designsystem.ERPDivider
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -215,10 +216,10 @@ fun StockForecastDialog(
                     shape = RoundedCornerShape(10.dp),
                     textStyle = MaterialTheme.typography.bodySmall,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                         focusedBorderColor = PrimaryPurple,
-                        unfocusedBorderColor = DeepNavy.copy(alpha = 0.2f)
+                        unfocusedBorderColor = ERPDivider
                     )
                 )
 

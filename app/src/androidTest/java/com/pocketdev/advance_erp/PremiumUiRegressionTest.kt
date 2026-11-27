@@ -303,10 +303,10 @@ class PremiumUiRegressionTest {
         assertTrue("FAB must sit above Bottom Navigation", fabBounds.bottom <= bottomNavBounds.top)
 
         val fabItemSpecs = listOf(
-            Triple("dashboard_fab_action_po", "PO", { poClicks }),
-            Triple("dashboard_fab_action_sales", "Sales", { salesClicks }),
-            Triple("dashboard_fab_action_add_product", "Add Product", { addProductClicks }),
-            Triple("dashboard_fab_action_ledger", "Ledger", { ledgerClicks })
+            Triple("dashboard_fab_action_po", "ক্রয় আদেশ", { poClicks }),
+            Triple("dashboard_fab_action_sales", "বিক্রয়", { salesClicks }),
+            Triple("dashboard_fab_action_add_product", "নতুন পণ্য", { addProductClicks }),
+            Triple("dashboard_fab_action_ledger", "লেজার", { ledgerClicks })
         )
 
         // Collapsed initially — capture unobstructed screenshot

@@ -6,6 +6,7 @@ import com.pocketdev.advance_erp.core.designsystem.StatusErrorContainer
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.pocketdev.advance_erp.core.designsystem.ERPSurfaceVariant
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,7 +31,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import com.pocketdev.advance_erp.core.designsystem.AutoShrinkSingleLineText
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -134,6 +140,7 @@ import com.pocketdev.advance_erp.domain.repository.PoFreightPaymentRecord
 import java.math.BigDecimal
 import java.math.RoundingMode
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PurchaseOrderDetailDialog(
     order: PurchaseOrder,
@@ -368,10 +375,16 @@ fun PurchaseOrderDetailDialog(
                     })
                 }
                 // Scrollable Content
+                val tabListState = rememberLazyListState()
+                LaunchedEffect(detailTab) {
+                    tabListState.animateScrollToItem(detailTab)
+                }
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     item {
@@ -394,26 +407,37 @@ fun PurchaseOrderDetailDialog(
                             }
                         }
                     }
-                    item {
-                        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val hasUnpaidDues = (remainingBalanceMinor > 0L || freightPayableSummary.remainingFreightBillMinor > 0L) &&
-                                order.status != PurchaseOrderStatus.CANCELLED.name
-                            val payLabel = if (isBangla) {
-                                if (hasUnpaidDues) "পেমেন্ট •" else "পেমেন্ট"
-                            } else {
-                                if (hasUnpaidDues) "Payments •" else "Payments"
-                            }
-                            val tabs = if (isBangla) {
-                                listOf("সাধারণ", "পণ্য (${items.size})", "প্যাকিং ($displayCartons)", "খরচ", payLabel)
-                            } else {
-                                listOf("General", "Products (${items.size})", "Packing ($displayCartons)", "Costs", payLabel)
-                            }
-                            items(tabs.size) { index ->
-                                androidx.compose.material3.FilterChip(
-                                    selected = detailTab == index,
-                                    onClick = { detailTab = index },
-                                    label = { Text(tabs[index], maxLines = 1, style = MaterialTheme.typography.labelMedium) }
-                                )
+                    stickyHeader(key = "po_detail_tabs") {
+                        Surface(
+                            color = MaterialTheme.colorScheme.background,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LazyRow(
+                                state = tabListState,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val hasUnpaidDues = (remainingBalanceMinor > 0L || freightPayableSummary.remainingFreightBillMinor > 0L) &&
+                                    order.status != PurchaseOrderStatus.CANCELLED.name
+                                val payLabel = if (isBangla) {
+                                    if (hasUnpaidDues) "পেমেন্ট •" else "পেমেন্ট"
+                                } else {
+                                    if (hasUnpaidDues) "Payments •" else "Payments"
+                                }
+                                val tabs = if (isBangla) {
+                                    listOf("সাধারণ", "পণ্য (${items.size})", "প্যাকিং ($displayCartons)", "খরচ", payLabel)
+                                } else {
+                                    listOf("General", "Products (${items.size})", "Packing ($displayCartons)", "Costs", payLabel)
+                                }
+                                items(tabs.size) { index ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = detailTab == index,
+                                        onClick = { detailTab = index },
+                                        label = { Text(tabs[index], maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelMedium) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -735,18 +759,28 @@ fun PurchaseOrderDetailDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val supplierBadgeColor = if (paymentProgress >= 1f) StatusSuccess else PrimaryPurple
                                     Text(
                                         text = if (isBangla) "সরবরাহকারী পেমেন্ট (পণ্য মূল্য • ২০১০)" else "Supplier Payment (Goods • 2010)",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        color = TextPrimary,
+                                        modifier = Modifier.weight(1f).padding(end = 8.dp)
                                     )
-                                    Text(
-                                        text = "${(paymentProgress * 100).toInt()}% ${if (isBangla) "পরিশোধিত" else "Paid"}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (paymentProgress >= 1f) StatusSuccess else PrimaryPurple
-                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = supplierBadgeColor.copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = "${(paymentProgress * 100).toInt()}% ${if (isBangla) "পরিশোধিত" else "Paid"}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = supplierBadgeColor,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -774,20 +808,20 @@ fun PurchaseOrderDetailDialog(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
+                                        AutoShrinkSingleLineText(
                                             text = "${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}",
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = TextPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            textAlign = TextAlign.Start,
+                                            minFontSizeSp = 10f
                                         )
-                                        Text(
+                                        AutoShrinkSingleLineText(
                                             text = Formatters.formatMoney(order.totalBdtAmountMinor, CurrencyCode.BDT, language),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = TextSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            textAlign = TextAlign.Start,
+                                            minFontSizeSp = 9.5f
                                         )
                                     }
 
@@ -803,20 +837,20 @@ fun PurchaseOrderDetailDialog(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
+                                        AutoShrinkSingleLineText(
                                             text = "${order.currency} ${Formatters.formatMinorUnit(order.paidAmountMinor)}",
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = StatusSuccess,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            textAlign = TextAlign.Center,
+                                            minFontSizeSp = 10f
                                         )
-                                        Text(
+                                        AutoShrinkSingleLineText(
                                             text = Formatters.formatMoney(order.paidBdtAmountMinor, CurrencyCode.BDT, language),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = StatusSuccess,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            textAlign = TextAlign.Center,
+                                            minFontSizeSp = 9.5f
                                         )
                                     }
 
@@ -832,20 +866,20 @@ fun PurchaseOrderDetailDialog(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
+                                        AutoShrinkSingleLineText(
                                             text = "${order.currency} ${Formatters.formatMinorUnit(remainingBalanceMinor)}",
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = if (remainingBalanceMinor > 0) StatusError else StatusSuccess,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            textAlign = TextAlign.End,
+                                            minFontSizeSp = 10f
                                         )
-                                        Text(
+                                        AutoShrinkSingleLineText(
                                             text = Formatters.formatMoney(remainingBalanceBdtMinor, CurrencyCode.BDT, language),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = if (remainingBalanceBdtMinor > 0) StatusError else StatusSuccess,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            textAlign = TextAlign.End,
+                                            minFontSizeSp = 9.5f
                                         )
                                     }
                                 }
@@ -879,20 +913,33 @@ fun PurchaseOrderDetailDialog(
                                 )
                                 scheduledInstallments.forEach { inst ->
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = if (isBangla) inst.titleBn else inst.titleEn,
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondary
+                                            color = TextSecondary,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        Text(
-                                            text = "${order.currency} ${Formatters.formatMinorUnit(inst.amountMinor)} (${Formatters.formatMoney(inst.bdtAmountMinor, CurrencyCode.BDT, language)})",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = TextPrimary
-                                        )
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            AutoShrinkSingleLineText(
+                                                text = "${order.currency} ${Formatters.formatMinorUnit(inst.amountMinor)}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextPrimary,
+                                                textAlign = TextAlign.End
+                                            )
+                                            if (!order.currency.equals("BDT", ignoreCase = true)) {
+                                                AutoShrinkSingleLineText(
+                                                    text = Formatters.formatMoney(inst.bdtAmountMinor, CurrencyCode.BDT, language),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = TextMuted,
+                                                    textAlign = TextAlign.End
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -983,6 +1030,7 @@ fun PurchaseOrderDetailDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        val freightBadgeColor = if (freightPayableSummary.progress >= 1f) StatusSuccess else SecondaryTeal
                                         Text(
                                             text = if (isBangla) "ফ্রেইট ফরোয়ার্ডার ও শিপিং পেমেন্ট (২০২০)" else "Freight Forwarder & Shipping Payment (2020)",
                                             style = MaterialTheme.typography.titleSmall,
@@ -990,12 +1038,20 @@ fun PurchaseOrderDetailDialog(
                                             color = TextPrimary,
                                             modifier = Modifier.weight(1f).padding(end = 8.dp)
                                         )
-                                        Text(
-                                            text = "${(freightPayableSummary.progress * 100).toInt()}% ${if (isBangla) "পরিশোধিত" else "Paid"}",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (freightPayableSummary.progress >= 1f) StatusSuccess else SecondaryTeal
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = freightBadgeColor.copy(alpha = 0.12f)
+                                        ) {
+                                            Text(
+                                                text = "${(freightPayableSummary.progress * 100).toInt()}% ${if (isBangla) "পরিশোধিত" else "Paid"}",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = freightBadgeColor,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -1022,13 +1078,13 @@ fun PurchaseOrderDetailDialog(
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Text(
+                                            AutoShrinkSingleLineText(
                                                 text = Formatters.formatMoney(freightPayableSummary.totalFreightBillMinor, CurrencyCode.BDT, language),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = TextPrimary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                textAlign = TextAlign.Start,
+                                                minFontSizeSp = 10f
                                             )
                                         }
                                         Column(
@@ -1042,13 +1098,13 @@ fun PurchaseOrderDetailDialog(
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Text(
+                                            AutoShrinkSingleLineText(
                                                 text = Formatters.formatMoney(freightPayableSummary.paidFreightBillMinor, CurrencyCode.BDT, language),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = StatusSuccess,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                textAlign = TextAlign.Center,
+                                                minFontSizeSp = 10f
                                             )
                                         }
                                         Column(
@@ -1062,13 +1118,13 @@ fun PurchaseOrderDetailDialog(
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Text(
+                                            AutoShrinkSingleLineText(
                                                 text = Formatters.formatMoney(freightPayableSummary.remainingFreightBillMinor, CurrencyCode.BDT, language),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (freightPayableSummary.remainingFreightBillMinor > 0L) StatusError else StatusSuccess,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                textAlign = TextAlign.End,
+                                                minFontSizeSp = 10f
                                             )
                                         }
                                     }
@@ -1242,6 +1298,14 @@ fun PurchaseOrderDetailDialog(
                                                         fontWeight = FontWeight.Bold,
                                                         color = TextPrimary
                                                     )
+                                                    val matchedProduct = productMap[prod.productId]
+                                                    if (isBangla && !matchedProduct?.nameEn.isNullOrBlank() && matchedProduct?.nameEn != prod.productTitle) {
+                                                        Text(
+                                                            text = matchedProduct!!.nameEn,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextSecondary
+                                                        )
+                                                    }
                                                     val wtStr = prod.grossWeightKg.setScale(2, RoundingMode.HALF_UP).toPlainString()
                                                     Text(
                                                         text = buildString {
@@ -3118,7 +3182,7 @@ private fun PackingMetricBox(
 ) {
     Box(
         modifier = modifier
-            .background(Color.White, RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
             .border(1.dp, ERPDivider, RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {

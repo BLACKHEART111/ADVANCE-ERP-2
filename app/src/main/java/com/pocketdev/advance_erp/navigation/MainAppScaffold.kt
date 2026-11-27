@@ -103,7 +103,7 @@ fun MainAppScaffold(
         Destinations.SALES -> stringResource(R.string.nav_sales)
         Destinations.ACCOUNTS -> stringResource(R.string.nav_accounts)
         Destinations.MORE -> stringResource(R.string.nav_more)
-        Destinations.PURCHASES -> "ADVANCE ERP"
+        Destinations.PURCHASES -> if (currentLanguage == AppLanguage.BANGLA) "ক্রয় ব্যবস্থাপনা" else "Purchases"
         Destinations.IMPORT_MANAGEMENT -> stringResource(R.string.nav_import_management)
         Destinations.SHIPMENTS -> stringResource(R.string.nav_shipments)
         Destinations.IMPORT_VAULT -> if (currentLanguage == AppLanguage.BANGLA) "আমদানি আর্কাইভ" else "Import Vault"
@@ -244,7 +244,8 @@ fun MainAppScaffold(
                 if (!hasIntegratedHeroTopBar) {
                     ERPTopBar(
                         title = topBarTitle,
-                        subtitle = businessProfile?.companyName?.ifBlank { null } ?: "Advance Import Ltd.",
+                        subtitle = businessProfile?.companyName?.ifBlank { null }
+                            ?: if (currentLanguage == AppLanguage.BANGLA) "অ্যাডভান্স ইমপোর্ট লিমিটেড" else "Advance Import Ltd.",
                         currentLanguage = currentLanguage,
                         onOpenDrawer = openDrawerAction,
                         onToggleLanguage = toggleLanguageAction
