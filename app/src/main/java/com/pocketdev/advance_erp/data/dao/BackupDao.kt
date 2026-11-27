@@ -253,8 +253,11 @@ interface BackupDao {
     @Query("UPDATE import_shipments SET status = 'DRAFT', actualArrivalDate = NULL, updatedAt = :updatedAt")
     suspend fun resetShipmentsToUnreceivedDraftKeepPacking(updatedAt: Long)
 
-    @Query("UPDATE import_cost_items SET isCapitalized = 0, costAdjustmentReference = NULL")
-    suspend fun uncapitalizeAllImportCostItems()
+    @Query("DELETE FROM import_cost_items WHERE isPostFinalization = 1")
+    suspend fun deletePostFinalizationImportCostItems()
+
+    @Query("UPDATE import_cost_items SET isCapitalized = 0, isPosted = 0, isPaid = 0, costAdjustmentReference = NULL")
+    suspend fun resetImportCostItemsPaymentAndCapitalization()
 
     @Query("SELECT * FROM purchase_orders WHERE status = 'CONFIRMED' AND totalBdtAmountMinor > 0 ORDER BY createdAt ASC")
     suspend fun getConfirmedPurchaseOrdersForCommitmentSync(): List<com.pocketdev.advance_erp.data.entity.PurchaseOrder>

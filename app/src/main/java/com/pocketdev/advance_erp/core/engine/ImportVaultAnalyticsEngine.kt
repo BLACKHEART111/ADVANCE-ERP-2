@@ -169,22 +169,25 @@ object ImportVaultAnalyticsEngine {
 
         val targets: List<Pair<String, BigDecimal>> = if (rule.targetScopeType == VaultScopeType.PURCHASE_ORDER.name) {
             poSummaries.filter { it.operationalStatus != OperationalStatus.CANCELLED }.map { po ->
+                val landedFallback = (po.lockedInventoryCapitalMinor + po.cogsMinor).takeIf { it > 0L } ?: po.purchaseCostBdtMinor
                 val weight = when (rule.allocationBasis) {
                     "NET_REVENUE" -> BigDecimal(maxOf(0L, po.netSalesRevenueMinor))
-                    "LANDED_VALUE" -> BigDecimal(maxOf(0L, po.totalInvestedCapitalMinor))
+                    "LANDED_VALUE" -> BigDecimal(maxOf(0L, po.totalInvestedCapitalMinor.takeIf { it > 0L } ?: landedFallback))
                     "QUANTITY" -> BigDecimal(maxOf(0, ctx.receivedGoodQtyForPo(po.purchaseOrderId)))
-                    else -> BigDecimal(maxOf(0L, po.totalInvestedCapitalMinor))
+                    else -> BigDecimal(maxOf(0L, po.totalInvestedCapitalMinor.takeIf { it > 0L } ?: landedFallback))
                 }
                 po.purchaseOrderId to weight
             }
         } else {
             shipSummaries.filter { it.operationalStatus != OperationalStatus.CANCELLED }.map { shp ->
+                val landedFallback = (shp.lockedInventoryCapitalMinor + shp.cogsMinor).takeIf { it > 0L }
+                    ?: (shp.purchaseCostBdtMinor + shp.chinaDeliveryBdtMinor + shp.internationalFreightBdtMinor + shp.bdTransportAndOtherImportMinor)
                 val weight = when (rule.allocationBasis) {
                     "NET_REVENUE" -> BigDecimal(maxOf(0L, shp.netSalesRevenueMinor))
-                    "LANDED_VALUE" -> BigDecimal(maxOf(0L, shp.totalInvestedCapitalMinor))
+                    "LANDED_VALUE" -> BigDecimal(maxOf(0L, shp.totalInvestedCapitalMinor.takeIf { it > 0L } ?: landedFallback))
                     "QUANTITY" -> BigDecimal(maxOf(0, ctx.receivedGoodQtyForShipment(shp.shipmentId)))
                     "WEIGHT" -> shp.verifiedBillableWeightKg.toBigDecimalOrNull() ?: BigDecimal.ZERO
-                    else -> BigDecimal(maxOf(0L, shp.totalInvestedCapitalMinor))
+                    else -> BigDecimal(maxOf(0L, shp.totalInvestedCapitalMinor.takeIf { it > 0L } ?: landedFallback))
                 }
                 shp.shipmentId to weight
             }
@@ -799,6 +802,74 @@ object ImportVaultAnalyticsEngine {
         val damageRecords = dataset.damageRecords
         val shortageRecords = dataset.shortageRecords
 
+        fun supplierCashPaidForPo(poId: String): Long {
+            val po = poMap[poId] ?: return 0L
+            val allRowsForPo = dataset.supplierPayments.filter { it.purchaseOrderId == poId }
+            return if (allRowsForPo.isNotEmpty()) {
+                allRowsForPo.filter { it.paymentDate <= asOfMillis }.sumOf { it.bdtAmountMinor }
+            } else {
+                if (po.orderDate <= asOfMillis) po.paidBdtAmountMinor else 0L
+            }
+        }
+
+        fun freightCashPaidForReference(referenceId: String): Long =
+            dataset.activeImportCashJournals
+                .filter {
+                    it.isPosted && !it.isReversed &&
+                        it.referenceType in setOf("PO_FREIGHT_PAYMENT", "FREIGHT_DUTY_PAYMENT") &&
+                        it.referenceId == referenceId &&
+                        it.entryDate <= asOfMillis
+                }
+                .sumOf { it.totalDebitMinor }
+
+        fun isCashPaidImportCost(cost: com.pocketdev.advance_erp.data.entity.ImportCostItem): Boolean {
+            if (cost.isEstimated || cost.costDate > asOfMillis) return false
+            return if (dataset.hasImportCashJournalTracking) {
+                dataset.activeImportCashJournals.any {
+                    it.isPosted && !it.isReversed &&
+                        it.referenceType in setOf("IMPORT_EXPENSE", "POST_FINALIZE_IMPORT_EXPENSE") &&
+                        it.referenceId == cost.id &&
+                        it.entryDate <= asOfMillis
+                }
+            } else {
+                cost.isPosted || cost.isPaid
+            }
+        }
+
+        fun isCashPaidCapitalizableAdditionalCost(cost: com.pocketdev.advance_erp.data.entity.AdditionalProductCost): Boolean {
+            if (!cost.isCapitalizable || cost.expenseDate > asOfMillis) return false
+            return if (dataset.hasImportCashJournalTracking) {
+                dataset.activeImportCashJournals.any {
+                    it.isPosted && !it.isReversed &&
+                        it.referenceType in setOf("ADDITIONAL_COST", "ADDITIONAL_PRODUCT_COST") &&
+                        (it.referenceId == cost.costNumber || it.referenceId == cost.id) &&
+                        it.entryDate <= asOfMillis
+                }
+            } else {
+                true
+            }
+        }
+
+        fun paidAdditionalCapForPo(poId: String): Long =
+            additionalProductCosts
+                .filter { it.purchaseOrderId == poId && isCashPaidCapitalizableAdditionalCost(it) }
+                .sumOf { it.bdtAmountMinor }
+
+        fun poOwnCashInvested(poId: String): Long {
+            if (poMap[poId] == null) return 0L
+            val supplierPaid = supplierCashPaidForPo(poId)
+            val freightPaid = freightCashPaidForReference(poId)
+            val directPaidImportCosts = dataset.importCosts
+                .filter { it.purchaseOrderId == poId && isCashPaidImportCost(it) }
+                .sumOf { it.bdtAmountMinor }
+            return supplierPaid + freightPaid + directPaidImportCosts + paidAdditionalCapForPo(poId)
+        }
+
+        fun shipmentUnlinkedCashPaidCosts(shipmentId: String): Long =
+            dataset.importCosts
+                .filter { it.shipmentId == shipmentId && it.purchaseOrderId.isNullOrBlank() && isCashPaidImportCost(it) }
+                .sumOf { it.bdtAmountMinor } + freightCashPaidForReference(shipmentId)
+
         private val receiptDateCache: Map<String, Long> = dataset.costLayers.associate { layer ->
             val arrival = when (layer.layerSourceType) {
                 "SALES_RETURN_RESTORE" -> returnMap[layer.warehouseReceiptId]?.returnDate ?: layer.receiptDate
@@ -1093,9 +1164,7 @@ object ImportVaultAnalyticsEngine {
                     (f.supplierId == null || shp.supplierId == f.supplierId) &&
                     (f.dateFilterTarget != VaultDateFilterTarget.IMPORT_COHORT_DATES || inCohortWindow(shp.shippingDate))
             }.sumOf { shp ->
-                val snapCost = dataset.landedSnapshots.filter { it.shipmentId == shp.id }.sumOf { it.totalLandedCostBdtMinor }
-                val costItems = dataset.importCosts.filter { it.shipmentId == shp.id && it.costDate <= asOfMillis }.sumOf { it.bdtAmountMinor }
-                maxOf(snapCost, costItems)
+                shipmentUnlinkedCashPaidCosts(shp.id)
             }
         }
 
@@ -1387,33 +1456,21 @@ object ImportVaultAnalyticsEngine {
     }
 
     private fun computePoInvestedCapital(ctx: Context, poId: String): Long {
-        val po = ctx.poMap[poId] ?: return 0L
-        val rawPoLayers = ctx.costLayers.filter {
-            it.purchaseOrderId == poId && it.layerSourceType !in setOf("TRANSFER_REPLICA", "SALES_RETURN_RESTORE")
+        if (ctx.poMap[poId] == null) return 0L
+        val ownCash = ctx.poOwnCashInvested(poId)
+        val linkedShipIds = ctx.shipmentIdsForPo(poId).filter { !ctx.isBatchShipmentShadowedByDispatchedShipment(it) }
+        val sharedShipmentPaidCosts = linkedShipIds.sumOf { shpId ->
+            val poIdsOnShip = ctx.poIdsForShipment(shpId)
+            val share = if (poIdsOnShip.size <= 1) BigDecimal.ONE else {
+                val myOrderBdt = BigDecimal(maxOf(1L, ctx.poMap[poId]?.totalBdtAmountMinor ?: 1L))
+                val allOrderBdt = poIdsOnShip.fold(BigDecimal.ZERO) { acc, id ->
+                    acc.add(BigDecimal(maxOf(1L, ctx.poMap[id]?.totalBdtAmountMinor ?: 1L)))
+                }
+                if (allOrderBdt > BigDecimal.ZERO) myOrderBdt.divide(allOrderBdt, 8, RoundingMode.HALF_UP) else BigDecimal.ZERO
+            }
+            BigDecimal(ctx.shipmentUnlinkedCashPaidCosts(shpId)).multiply(share).setScale(0, RoundingMode.HALF_UP).longValueExact()
         }
-        val extraCaps = ctx.additionalProductCosts.filter { it.purchaseOrderId == poId && it.isCapitalizable && it.expenseDate <= ctx.asOfMillis }
-        val preReceiveAddCap = if (rawPoLayers.isEmpty()) extraCaps.sumOf { it.bdtAmountMinor } else 0L
-
-        if (rawPoLayers.isNotEmpty()) {
-            val poAttrLayers = ctx.attributedLayers.filter { it.effectivePoId == poId }
-            val lockedGood = poAttrLayers.sumOf { it.asOfRemainingQty.toLong() * it.layer.unitLandedCostBdtMinor }
-            val lockedTransit = ctx.attributedTransit.filter { it.purchaseOrderId == poId }.sumOf { it.quantity.toLong() * it.unitCostMinor }
-            val poSales = ctx.attributedSales.filter { it.effectivePoId == poId }
-            val netSaleCogs = poSales.sumOf { it.netCogsMinor }
-            val extraCogs = ctx.capitalizableAdditionalCogsForPo(poId) + ctx.postFinalizeCogsForPo(poId)
-            val dmgRec = ctx.damageRecords.filter { it.purchaseOrderId == poId && it.createdAt <= ctx.asOfMillis }.sumOf { it.totalLossMinor }
-            val shtAll = ctx.shortageRecords.filter { it.purchaseOrderId == poId && it.createdAt <= ctx.asOfMillis }.sumOf { it.totalAmountMinor }
-            val retDmg = poSales.sumOf { it.damageLossMinor }
-            val manWriteOff = ctx.manualWriteOffsForScope(shipmentId = null, poId = poId).sumOf { it.totalCogsBdtMinor }
-            return lockedGood + lockedTransit + netSaleCogs + extraCogs + dmgRec + shtAll + retDmg + manWriteOff
-        }
-
-        val directImportCosts = ctx.dataset.importCosts.filter { it.purchaseOrderId == poId && it.costDate <= ctx.asOfMillis }.sumOf { it.bdtAmountMinor }
-        val linkedShipIds = ctx.shipmentIdsForPo(poId)
-        val snapTotal = ctx.dataset.landedSnapshots.filter {
-            it.shipmentId in linkedShipIds && (it.purchaseOrderId == null || it.purchaseOrderId == poId)
-        }.sumOf { it.totalLandedCostBdtMinor }
-        return maxOf(snapTotal, po.totalBdtAmountMinor + directImportCosts) + preReceiveAddCap
+        return ownCash + sharedShipmentPaidCosts
     }
 
     private fun computePoDirectOperatingExpense(
@@ -1508,10 +1565,6 @@ object ImportVaultAnalyticsEngine {
         val directExpenses = directVouchers + poDirectShared
 
         val dmgRecLoss = ctx.damageRecordsForShipment(shp.id).sumOf { it.totalLossMinor }
-        val shipmentReceiptIds = ctx.dataset.warehouseReceipts.filter { it.shipmentId == shp.id }.map { it.id }.toSet()
-        val allShipmentShortagesLifetime = ctx.shortageRecords
-            .filter { it.warehouseReceiptId in shipmentReceiptIds && it.createdAt <= ctx.asOfMillis }
-            .sumOf { it.totalAmountMinor }
         val shortageWriteOffLoss = ctx.shortageRecordsForShipment(shp.id).sumOf { it.totalAmountMinor }
         val returnDmgLoss = sales.sumOf { it.damageLossMinor }
         val manualWriteOffs = ctx.manualWriteOffsForScope(shipmentId = shp.id, poId = null).sumOf { it.totalCogsBdtMinor }
@@ -1527,11 +1580,11 @@ object ImportVaultAnalyticsEngine {
             .sumOf { it.totalCogsBdtMinor }
         val lifetimeInvLosses = lifetimeDmgLoss + lifetimeShortageWo + lifetimeReturnDmg + lifetimeManWo
 
-        val totalInvested = if (originalReceiptLayers.isNotEmpty()) {
-            totalLocked + lifetimeCogs + lifetimeDmgLoss + allShipmentShortagesLifetime + lifetimeReturnDmg + lifetimeManWo
-        } else {
-            purchaseBdt + chinaBdt + freightBdt + bdAndOtherBdt + addCapTotal
+        val poInvestedShare = linkedPoIds.sumOf { poId ->
+            val share = ctx.shipmentShareOfPo(poId, shp.id)
+            BigDecimal(ctx.poOwnCashInvested(poId)).multiply(share).setScale(0, RoundingMode.HALF_UP).longValueExact()
         }
+        val totalInvested = poInvestedShare + ctx.shipmentUnlinkedCashPaidCosts(shp.id)
 
         val netProfit = gp - directExpenses - allocatedSharedOverheadMinor - totalInvLosses
         val lifetimeDirectExp = ctx.dataset.expenseVouchers.filter {
@@ -1716,16 +1769,10 @@ object ImportVaultAnalyticsEngine {
                 transit.map { (ctx.productMap[it.productId]?.unit ?: "PCS") to it.quantity }
         )
 
-        val capAddTotal = ctx.additionalProductCosts
-            .filter { it.purchaseOrderId == po.id && it.isCapitalizable && it.expenseDate <= ctx.asOfMillis }
-            .sumOf { it.bdtAmountMinor }
+        val capAddTotal = ctx.paidAdditionalCapForPo(po.id)
+        val supplierPaid = ctx.supplierCashPaidForPo(po.id)
         val totalInvested = computePoInvestedCapital(ctx, po.id)
-        val capitalizedImport = maxOf(0L, totalInvested - po.totalBdtAmountMinor - capAddTotal)
-
-        val supplierPaid = ctx.dataset.supplierPayments
-            .filter { it.purchaseOrderId == po.id && it.paymentDate <= ctx.asOfMillis }
-            .sumOf { it.bdtAmountMinor }
-            .takeIf { it > 0L } ?: po.paidBdtAmountMinor
+        val capitalizedImport = maxOf(0L, totalInvested - supplierPaid - capAddTotal)
         val supplierPayable = maxOf(0L, po.totalBdtAmountMinor - supplierPaid)
 
         val lockedGood = layers.sumOf { it.asOfRemainingQty.toLong() * it.layer.unitLandedCostBdtMinor }
@@ -2435,9 +2482,6 @@ object ImportVaultAnalyticsEngine {
             transit.sumOf { it.quantity.toLong() * it.unitCostMinor }
         val dmgRec = ctx.damageRecordsForShipment(shipmentId).filter { it.purchaseOrderId == poId }.sumOf { it.totalLossMinor }
         val shipmentReceiptIds = ctx.dataset.warehouseReceipts.filter { it.shipmentId == shipmentId }.map { it.id }.toSet()
-        val allShort = ctx.shortageRecords
-            .filter { it.purchaseOrderId == poId && it.warehouseReceiptId in shipmentReceiptIds && it.createdAt <= ctx.asOfMillis }
-            .sumOf { it.totalAmountMinor }
         val shortWriteOff = ctx.shortageRecords
             .filter { it.purchaseOrderId == poId && it.warehouseReceiptId in shipmentReceiptIds && it.disposition == "APPROVED_WRITE_OFF" && it.createdAt <= ctx.asOfMillis }
             .sumOf { it.totalAmountMinor }
@@ -2451,12 +2495,8 @@ object ImportVaultAnalyticsEngine {
             .sumOf { it.cogsAdjustmentAmountMinor }
         val cogs = sales.sumOf { it.netCogsMinor } + capAddCogs + postFinCogs
 
-        val allocatedInvestment = if (origLayers.isNotEmpty()) {
-            locked + cogs + dmgRec + allShort + retDmg + manWo
-        } else {
-            BigDecimal(computePoInvestedCapital(ctx, poId))
-                .multiply(shareFraction).setScale(0, RoundingMode.HALF_UP).longValueExact()
-        }
+        val allocatedInvestment = BigDecimal(ctx.poOwnCashInvested(poId))
+            .multiply(shareFraction).setScale(0, RoundingMode.HALF_UP).longValueExact()
 
         val netRev = sales.sumOf { it.netRevenueMinor }
         val gp = netRev - cogs

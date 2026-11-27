@@ -58,6 +58,7 @@ import com.pocketdev.advance_erp.data.repository.BusinessControlCenterRepository
 import com.pocketdev.advance_erp.data.repository.CommunicationRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.ContactsRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.ImportRepositoryImpl
+import com.pocketdev.advance_erp.data.repository.ImportVaultRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.ProductRepositoryImpl
 import com.pocketdev.advance_erp.data.repository.SalesRepositoryImpl
 import com.pocketdev.advance_erp.domain.model.DataClearModule
@@ -1392,6 +1393,7 @@ class SmartCommunicationQaAndroidTest {
             db.auditLogDao(),
             prefs
         )
+        val vaultRepo = ImportVaultRepositoryImpl(db, context.applicationContext)
         val createdBackupFiles = mutableListOf<File>()
         try {
             prefs.setUserRole(UserRole.OWNER_ADMIN)
@@ -1510,6 +1512,22 @@ class SmartCommunicationQaAndroidTest {
                 notes = "Partial payment",
                 paymentAccountId = customBank.id
             )
+            imports.addPurchaseCostItem(
+                orderId = poId,
+                category = com.pocketdev.advance_erp.data.entity.CostCategory.INTERNATIONAL_FREIGHT,
+                description = "QA Air Freight",
+                amountMinor = 50_000L,
+                currency = "BDT",
+                exchangeRate = BigDecimal.ONE,
+                method = com.pocketdev.advance_erp.core.engine.AllocationMethod.QUANTITY,
+                isEstimated = false
+            )
+            imports.recordPoFreightPayment(
+                orderId = poId,
+                paymentAccountId = customBank.id,
+                amountBdtMinor = 50_000L,
+                notes = "QA Freight Payment"
+            )
             imports.finalizePurchaseActualCost(poId)
             imports.createPurchaseReceiving(
                 orderId = poId,
@@ -1575,6 +1593,8 @@ class SmartCommunicationQaAndroidTest {
             val itemBeforeReset = db.purchaseOrderDao().getItemsForOrderSync(poId).single()
             val cartonsBeforeReset = db.importShipmentDao().getCartonsForOrderSync(poId).size
             assertTrue(cartonsBeforeReset > 0)
+            val vaultBeforeReset = vaultRepo.getOverview(UserRole.OWNER_ADMIN)
+            assertEquals(730_000L, vaultBeforeReset.totalInvestedCapitalMinor)
 
             // Subtest A: PO_RESET_KEEP_STRUCTURE ONLY (keeps full PO/cartons/qty/price, resets receiving & payments)
             val poOnlyOutcome = backupRepo.executeSelectiveDataClear(
@@ -1611,6 +1631,10 @@ class SmartCommunicationQaAndroidTest {
             assertEquals(cartonsBeforeReset, db.importShipmentDao().getCartonsForOrderSync(poId).size)
             assertTrue(db.warehouseReceiptDao().getReceiptsByOrderSync(poId).isEmpty())
             assertTrue(db.supplierPaymentDao().getPaymentsByOrderSync(poId).isEmpty())
+            val vaultAfterPoReset = vaultRepo.getOverview(UserRole.OWNER_ADMIN)
+            assertEquals(0L, vaultAfterPoReset.totalInvestedCapitalMinor)
+            assertTrue(vaultAfterPoReset.shipments.all { it.totalInvestedCapitalMinor == 0L })
+            assertTrue(vaultAfterPoReset.purchaseOrders.all { it.totalInvestedCapitalMinor == 0L })
 
             // Re-pay and re-receive the preserved PO directly to prove full structure still works
             imports.recordSupplierPayment(
@@ -1645,6 +1669,9 @@ class SmartCommunicationQaAndroidTest {
                 postImmediately = true
             )
             assertEquals(100, db.purchaseOrderDao().getItemsForOrderSync(poId).single().receivedQuantity)
+            val vaultAfterRepay = vaultRepo.getOverview(UserRole.OWNER_ADMIN)
+            assertEquals(340_000L, vaultAfterRepay.totalInvestedCapitalMinor)
+            assertTrue(vaultAfterRepay.totalLockedInventoryCapitalMinor > 340_000L)
 
             // Subtest B: SMART_FULL_RESET
             val fullOutcome = backupRepo.executeSelectiveDataClear(
@@ -1677,6 +1704,10 @@ class SmartCommunicationQaAndroidTest {
             assertEquals(0L, finalPo.paidAmountMinor)
             assertEquals(0, db.purchaseOrderDao().getItemsForOrderSync(poId).single().receivedQuantity)
             assertEquals(1_700_000L, db.supplierDao().getSupplierById(supId)!!.outstandingPayableMinor)
+            val vaultAfterFullReset = vaultRepo.getOverview(UserRole.OWNER_ADMIN)
+            assertEquals(0L, vaultAfterFullReset.totalInvestedCapitalMinor)
+            assertTrue(vaultAfterFullReset.shipments.all { it.totalInvestedCapitalMinor == 0L })
+            assertTrue(vaultAfterFullReset.purchaseOrders.all { it.totalInvestedCapitalMinor == 0L })
         } finally {
             prefs.setUserRole(UserRole.OWNER_ADMIN)
             createdBackupFiles.forEach { if (it.exists()) it.delete() }

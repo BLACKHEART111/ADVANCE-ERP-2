@@ -14,6 +14,7 @@ import com.pocketdev.advance_erp.data.entity.ImportVaultAttachment
 import com.pocketdev.advance_erp.data.entity.ImportVaultEntry
 import com.pocketdev.advance_erp.data.entity.InventoryCostAdjustment
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
+import com.pocketdev.advance_erp.data.entity.JournalEntry
 import com.pocketdev.advance_erp.data.entity.LandedCostAllocation
 import com.pocketdev.advance_erp.data.entity.LandedCostSnapshot
 import com.pocketdev.advance_erp.data.entity.PaymentAllocation
@@ -651,5 +652,7 @@ data class ImportVaultDataset(
     val vaultEntries: List<ImportVaultEntry>,
     val vaultAttachments: List<ImportVaultAttachment>,
     val customerOpeningDueTotalMinor: Long = 0L,
-    val productImages: List<ProductImage> = emptyList()
+    val productImages: List<ProductImage> = emptyList(),
+    val activeImportCashJournals: List<JournalEntry> = emptyList(),
+    val hasImportCashJournalTracking: Boolean = false
 )

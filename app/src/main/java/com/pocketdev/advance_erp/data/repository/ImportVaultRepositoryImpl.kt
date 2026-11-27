@@ -409,7 +409,9 @@ class ImportVaultRepositoryImpl @Inject constructor(
             vaultEntries = db.importVaultDao().getAllVaultEntriesSync(),
             vaultAttachments = db.importVaultDao().getAllVaultAttachmentsSync(),
             customerOpeningDueTotalMinor = openingDueTotal,
-            productImages = db.productImageDao().getAllImagesSync()
+            productImages = db.productImageDao().getAllImagesSync(),
+            activeImportCashJournals = accountingDao.getActiveImportCashJournalEntriesSync(),
+            hasImportCashJournalTracking = true
         )
     }
 }

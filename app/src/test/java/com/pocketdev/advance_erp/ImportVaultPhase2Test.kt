@@ -137,11 +137,20 @@ class ImportVaultPhase2Test {
         customerOpeningDueTotalMinor = customerOpeningDueTotalMinor
     )
 
-    private fun po(id: String, num: String, supId: String = "sup-1", totalBdt: Long, date: Long = 1000L, finalized: Boolean = true, status: String = PurchaseOrderStatus.RECEIVED.name) =
+    private fun po(
+        id: String,
+        num: String,
+        supId: String = "sup-1",
+        totalBdt: Long,
+        date: Long = 1000L,
+        finalized: Boolean = true,
+        status: String = PurchaseOrderStatus.RECEIVED.name,
+        paidBdt: Long = totalBdt
+    ) =
         PurchaseOrder(
             id = id, poNumber = num, supplierId = supId, status = status,
             currency = "BDT", exchangeRateToBdt = "1.0", totalAmountMinor = totalBdt,
-            totalBdtAmountMinor = totalBdt, orderDate = date, isActualCostFinalized = finalized,
+            totalBdtAmountMinor = totalBdt, paidBdtAmountMinor = paidBdt, orderDate = date, isActualCostFinalized = finalized,
             createdAt = date, updatedAt = date
         )
 

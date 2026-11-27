@@ -154,4 +154,12 @@ interface AccountingDao {
         ORDER BY entryDate, createdAt, id
     """)
     suspend fun getSupplierLedgerAdjustments(supplierId: String?): List<JournalEntry>
+
+    @Query("""
+        SELECT * FROM journal_entries
+        WHERE isPosted = 1 AND isReversed = 0
+          AND referenceType IN ('PO_FREIGHT_PAYMENT', 'FREIGHT_DUTY_PAYMENT', 'IMPORT_EXPENSE', 'POST_FINALIZE_IMPORT_EXPENSE', 'ADDITIONAL_COST', 'ADDITIONAL_PRODUCT_COST')
+        ORDER BY entryDate ASC, createdAt ASC
+    """)
+    suspend fun getActiveImportCashJournalEntriesSync(): List<JournalEntry>
 }

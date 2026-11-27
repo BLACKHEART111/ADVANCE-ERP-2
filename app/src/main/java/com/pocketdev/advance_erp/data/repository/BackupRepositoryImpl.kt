@@ -829,7 +829,8 @@ class BackupRepositoryImpl @Inject constructor(
                     backupDao.clearAdditionalProductCosts()
                     backupDao.clearPurchaseCompletionRecords()
                     backupDao.clearSupplierPayments()
-                    backupDao.uncapitalizeAllImportCostItems()
+                    backupDao.deletePostFinalizationImportCostItems()
+                    backupDao.resetImportCostItemsPaymentAndCapitalization()
                     backupDao.resetAllPurchaseOrderItemsReceivedQuantity()
                     backupDao.resetAllPurchaseOrdersToUnreceivedConfirmed(now)
                     backupDao.resetShipmentsToUnreceivedDraftKeepPacking(now)
@@ -854,6 +855,9 @@ class BackupRepositoryImpl @Inject constructor(
                     backupDao.clearJournalEntries()
                     backupDao.resetAllCustomerBalances()
                     backupDao.resetAllSupplierPayables()
+                    if (DataClearModule.PO_RESET_KEEP_STRUCTURE !in selected) {
+                        backupDao.resetImportCostItemsPaymentAndCapitalization()
+                    }
                 }
 
                 // 5. Import Vault Clear

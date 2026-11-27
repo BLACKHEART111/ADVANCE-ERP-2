@@ -12,6 +12,7 @@ import com.pocketdev.advance_erp.data.entity.ImportShipment
 import com.pocketdev.advance_erp.data.entity.ImportVaultAttachment
 import com.pocketdev.advance_erp.data.entity.InventoryCostLayer
 import com.pocketdev.advance_erp.data.entity.InvoiceStatus
+import com.pocketdev.advance_erp.data.entity.JournalEntry
 import com.pocketdev.advance_erp.data.entity.LandedCostSnapshot
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductCategory
@@ -266,12 +267,12 @@ class ImportVaultAuditFixesTest {
         assertTrue(actOverview.isPeriodActivityFiltered)
         assertEquals(1, actOverview.shipmentCount)
         assertEquals(1, actOverview.purchaseOrderCount)
-        assertEquals(2_000_00L, actOverview.totalInvestedCapitalMinor)
+        assertEquals(1_200_00L, actOverview.totalInvestedCapitalMinor)
         assertEquals(1_350_00L, actOverview.totalAttributedNetRevenueMinor)
         assertEquals(600_00L, actOverview.totalAttributedCogsMinor)
         assertEquals(750_00L, actOverview.totalAttributedNetProfitMinor)
         assertEquals(1_550_00L, actOverview.lifetimeNetProfitMinor)
-        assertEquals(77.5, actOverview.lifetimePortfolioRoiPercent!!, 0.01)
+        assertEquals(129.17, actOverview.lifetimePortfolioRoiPercent!!, 0.02)
         assertEquals(1_200_00L, actOverview.openingStockCostMinor)
         assertEquals(600_00L, actOverview.closingStockCostMinor)
 
@@ -279,7 +280,7 @@ class ImportVaultAuditFixesTest {
         assertEquals(1_350_00L, shpSummary.netSalesRevenueMinor)
         assertEquals(750_00L, shpSummary.attributedNetProfitMinor)
         assertEquals(1_550_00L, shpSummary.lifetimeNetProfitMinor)
-        assertEquals(77.5, shpSummary.lifetimeRoiPercent!!, 0.01)
+        assertEquals(129.17, shpSummary.lifetimeRoiPercent!!, 0.02)
 
         val recentCohortOverview = ImportVaultAnalyticsEngine.computeOverview(
             ds,
@@ -513,5 +514,102 @@ class ImportVaultAuditFixesTest {
         assertTrue(overview.portfolioAttachments.single().isImmutableSnapshot)
         assertNull(overview.openingStockCostMinor)
         assertNotNull(overview.closingStockCostMinor)
+    }
+
+    @Test
+    fun cashPaidInvestment_resetsToZeroOnUnpaidPosAndTracksSupplierFreightAndDirectCostsExact() {
+        val now = 1_700_000_000_000L
+        val prod = mkProduct("p-1", "4D Insole", "৪ডি ইনসোল", "SKU-4D", "PCS", 100_00L, 250_00L)
+        val po1 = PurchaseOrder(
+            id = "po-1", poNumber = "PO-2026-001", supplierId = "sup-1",
+            status = PurchaseOrderStatus.CONFIRMED.name, currency = "CNY", exchangeRateToBdt = "20.00",
+            totalAmountMinor = 252_500L, totalBdtAmountMinor = 50_500_00L,
+            paidAmountMinor = 0L, paidBdtAmountMinor = 0L,
+            orderDate = now - 5L * dayMs, shipmentId = "shp-1",
+            createdAt = now - 5L * dayMs, updatedAt = now - 5L * dayMs
+        )
+        val po2 = PurchaseOrder(
+            id = "po-2", poNumber = "PO-2026-002", supplierId = "sup-1",
+            status = PurchaseOrderStatus.CONFIRMED.name, currency = "CNY", exchangeRateToBdt = "20.00",
+            totalAmountMinor = 1_538_000L, totalBdtAmountMinor = 307_600_00L,
+            paidAmountMinor = 0L, paidBdtAmountMinor = 0L,
+            orderDate = now - 4L * dayMs, shipmentId = "shp-2",
+            createdAt = now - 4L * dayMs, updatedAt = now - 4L * dayMs
+        )
+        val shp1 = ImportShipment("shp-1", "BATCH-PO-1", "sup-1", "po-1", shippingDate = now - 5L * dayMs, status = ShipmentStatus.DRAFT.name)
+        val shp2 = ImportShipment("shp-2", "BATCH-PO-2", "sup-1", "po-2", shippingDate = now - 4L * dayMs, status = ShipmentStatus.DRAFT.name)
+        val unpaidFreight1 = ImportCostItem(
+            id = "ic-1", shipmentId = "shp-1", purchaseOrderId = "po-1",
+            costCategory = "INTERNATIONAL_FREIGHT", description = "Freight Bill 1",
+            amountMinor = 34_873_00L, bdtAmountMinor = 34_873_00L,
+            costDate = now - 5L * dayMs, isPosted = false, isPaid = false
+        )
+        val staleFlaggedCost2 = ImportCostItem(
+            id = "ic-2", shipmentId = "shp-2", purchaseOrderId = "po-2",
+            costCategory = "INTERNATIONAL_FREIGHT", description = "Freight Bill 2",
+            amountMinor = 196_345_60L, bdtAmountMinor = 196_345_60L,
+            costDate = now - 4L * dayMs, isPosted = true, isPaid = true
+        )
+
+        // 1. Both POs have 0% payment (stale isPosted flag has no active journal) -> Portfolio, Shipment & PO investment == 0
+        val unpaidDs = baseEmptyDataset(
+            products = listOf(prod),
+            purchaseOrders = listOf(po1, po2),
+            shipments = listOf(shp1, shp2),
+            importCosts = listOf(unpaidFreight1, staleFlaggedCost2)
+        ).copy(activeImportCashJournals = emptyList(), hasImportCashJournalTracking = true)
+
+        val unpaidOverview = ImportVaultAnalyticsEngine.computeOverview(unpaidDs, ImportVaultFilter(nowMillis = now))
+        assertEquals(0L, unpaidOverview.totalInvestedCapitalMinor)
+        assertTrue(unpaidOverview.shipments.all { it.totalInvestedCapitalMinor == 0L })
+        assertTrue(unpaidOverview.purchaseOrders.all { it.totalInvestedCapitalMinor == 0L })
+        assertNull(unpaidOverview.portfolioRoiPercent)
+
+        // 2. Pay 30% supplier advance on PO #2 (92,280 BDT) -> investment == 92,280 BDT
+        val spAdvance = SupplierPayment(
+            id = "sp-adv", paymentNumber = "SP-001", supplierId = "sup-1", purchaseOrderId = "po-2",
+            amountMinor = 461_400L, currency = "CNY", exchangeRateToBdt = "20.00",
+            bdtAmountMinor = 92_280_00L, paymentDate = now - 3L * dayMs
+        )
+        val advanceDs = unpaidDs.copy(
+            purchaseOrders = listOf(
+                po1,
+                po2.copy(status = PurchaseOrderStatus.PARTIALLY_PAID.name, paidAmountMinor = 461_400L, paidBdtAmountMinor = 92_280_00L)
+            ),
+            supplierPayments = listOf(spAdvance)
+        )
+        val advanceOverview = ImportVaultAnalyticsEngine.computeOverview(advanceDs, ImportVaultFilter(nowMillis = now))
+        assertEquals(92_280_00L, advanceOverview.totalInvestedCapitalMinor)
+        assertEquals(0L, advanceOverview.purchaseOrders.first { it.purchaseOrderId == "po-1" }.totalInvestedCapitalMinor)
+        assertEquals(92_280_00L, advanceOverview.purchaseOrders.first { it.purchaseOrderId == "po-2" }.totalInvestedCapitalMinor)
+
+        // 3. Pay PO #2 freight payment (50,000 BDT) -> investment == 142,280 BDT
+        val freightJournal = JournalEntry(
+            id = "je-fr-1", entryNumber = "JE-FR-1", entryDate = now - 2L * dayMs,
+            descriptionEn = "Freight Payment PO-2", descriptionBn = "ফ্রেইট পেমেন্ট",
+            referenceType = "PO_FREIGHT_PAYMENT", referenceId = "po-2",
+            totalDebitMinor = 50_000_00L, totalCreditMinor = 50_000_00L, isPosted = true, isReversed = false
+        )
+        val freightPaidDs = advanceDs.copy(activeImportCashJournals = listOf(freightJournal))
+        val freightPaidOverview = ImportVaultAnalyticsEngine.computeOverview(freightPaidDs, ImportVaultFilter(nowMillis = now))
+        assertEquals(142_280_00L, freightPaidOverview.totalInvestedCapitalMinor)
+        assertEquals(142_280_00L, freightPaidOverview.shipments.first { it.shipmentId == "shp-2" }.totalInvestedCapitalMinor)
+
+        // 4. Receive stock on credit (remaining supplier & freight bills unpaid) -> locked stock reflects full landed value, investment stays cash paid (142,280 BDT)
+        val receivedOnCreditDs = freightPaidDs.copy(
+            costLayers = listOf(
+                mkLayer("l-po2", productId = "p-1", shipmentId = "shp-2", shipmentNumber = "BATCH-PO-2", poId = "po-2", initialQty = 100, remainingQty = 100, unitLandedCostMinor = 5_000_00L, receiptDate = now - dayMs)
+            )
+        )
+        val receivedOverview = ImportVaultAnalyticsEngine.computeOverview(receivedOnCreditDs, ImportVaultFilter(nowMillis = now))
+        assertEquals(500_000_00L, receivedOverview.totalLockedInventoryCapitalMinor)
+        assertEquals(142_280_00L, receivedOverview.totalInvestedCapitalMinor)
+
+        // 5. After PO payment reset -> investment returns to 0 BDT
+        val postResetDs = unpaidDs
+        val postResetOverview = ImportVaultAnalyticsEngine.computeOverview(postResetDs, ImportVaultFilter(nowMillis = now))
+        assertEquals(0L, postResetOverview.totalInvestedCapitalMinor)
+        assertTrue(postResetOverview.shipments.all { it.totalInvestedCapitalMinor == 0L })
+        assertTrue(postResetOverview.purchaseOrders.all { it.totalInvestedCapitalMinor == 0L })
     }
 }

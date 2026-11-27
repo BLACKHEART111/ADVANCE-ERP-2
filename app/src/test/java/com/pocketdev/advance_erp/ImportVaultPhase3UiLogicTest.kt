@@ -322,6 +322,8 @@ class ImportVaultPhase3UiLogicTest {
             supplierId = "sup-1",
             totalAmountMinor = 100_00L,
             totalBdtAmountMinor = 40_000_00L,
+            paidAmountMinor = 100_00L,
+            paidBdtAmountMinor = 40_000_00L,
             orderDate = now - 20_000L,
             isActualCostFinalized = true
         )
