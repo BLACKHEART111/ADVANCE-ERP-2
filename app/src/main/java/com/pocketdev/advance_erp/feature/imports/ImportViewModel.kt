@@ -557,6 +557,7 @@ class ImportViewModel @Inject constructor(
         orderDateMillis: Long = System.currentTimeMillis(),
         expectedArrivalDateMillis: Long? = null,
         shippingMethod: String = ShippingMethod.SEA.name,
+        chinaDeliveryPayee: com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee = com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER,
         onSaved: () -> Unit = {}
     ) {
         if (_uiState.value.isSavingPurchaseOrder) return
@@ -566,7 +567,7 @@ class ImportViewModel @Inject constructor(
                 val orderId = importRepository.savePurchaseOrderDraft(
                     null, supplierId, currency, exchangeRate, items, notes, status, cartons,
                     chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments,
-                    orderDateMillis, expectedArrivalDateMillis, shippingMethod
+                    orderDateMillis, expectedArrivalDateMillis, shippingMethod, chinaDeliveryPayee
                 )
                 importRepository.getShipmentsForOrderSync(orderId).firstOrNull()?.let { selectShipment(it.id) }
                 onSaved()
@@ -602,6 +603,7 @@ class ImportViewModel @Inject constructor(
         expectedArrivalDateMillis: Long? = null,
         updateSchedule: Boolean = false,
         shippingMethod: String? = null,
+        chinaDeliveryPayee: com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee = com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER,
         onSaved: () -> Unit = {}
     ) {
         if (_uiState.value.isSavingPurchaseOrder) return
@@ -625,7 +627,8 @@ class ImportViewModel @Inject constructor(
                     orderDateMillis = orderDateMillis,
                     expectedArrivalDateMillis = expectedArrivalDateMillis,
                     updateSchedule = updateSchedule,
-                    shippingMethod = shippingMethod
+                    shippingMethod = shippingMethod,
+                    chinaDeliveryPayee = chinaDeliveryPayee
                 ).getOrThrow()
 
                 val updatedPo = importRepository.getPurchaseOrderById(orderId)

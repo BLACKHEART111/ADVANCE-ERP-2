@@ -1,6 +1,8 @@
 package com.pocketdev.advance_erp
 
 import com.pocketdev.advance_erp.core.engine.AllocationMethod
+import com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee
+import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
 import com.pocketdev.advance_erp.data.entity.AdditionalCostCategory
 import com.pocketdev.advance_erp.data.entity.AdditionalProductCost
 import com.pocketdev.advance_erp.data.entity.CostCategory
@@ -499,5 +501,94 @@ class PoProductLandedCostTest {
         assertEquals(18_933_760L, summary.totalFreightBdtMinor)
         assertEquals(0L, summary.totalOtherOverheadBdtMinor)
         assertEquals(49_693_760L, summary.totalLandedBdtMinor)
+    }
+
+    @Test
+    fun supplierChinaDeliveryNotDoubleCountedInLandedCostAndExcludedFromForwarderBill() {
+        val supplierNotes = PoNotesMetadataParser.serialize(
+            paymentTermLabel = "30% Advance + 70% Balance",
+            forwarderAddress = "Guangzhou Terminal",
+            userNotes = "",
+            chinaDeliveryPayee = ChinaDeliveryPayee.SUPPLIER,
+            supplierChinaDeliveryMinor = 30_000L,       // CNY 300.00
+            supplierChinaDeliveryBdtMinor = 600_000L    // ৳ 6,000.00
+        )
+        // Merchandise = CNY 4,782.00 (৳ 95,640.00) + China delivery CNY 300.00 (৳ 6,000.00) = CNY 5,082.00 (৳ 101,640.00)
+        val supplierPo = PurchaseOrder(
+            id = "po-sup-china",
+            poNumber = "PO-2026-003",
+            supplierId = "sup-1",
+            status = PurchaseOrderStatus.CONFIRMED.name,
+            currency = "CNY",
+            exchangeRateToBdt = "20.0000",
+            totalAmountMinor = 508_200L,
+            totalBdtAmountMinor = 10_164_000L
+        ).copy(notes = supplierNotes)
+        val items = listOf(
+            PurchaseOrderItem("i-1", supplierPo.id, "prod-tsg", null, 1742, 274_512L / 1000 /* placeholder overridden by totals */, 478_200L, 9_564_000L, grossWeightKg = "182.350")
+        )
+        val chinaCostSupplier = ImportCostItem(
+            id = "c-china", shipmentId = "shp-1", purchaseOrderId = supplierPo.id,
+            costCategory = CostCategory.CHINA_DOMESTIC_TRANSPORT.name,
+            description = "China Local Delivery", amountMinor = 30_000L, currency = "CNY",
+            exchangeRateToBdt = "20.0000", bdtAmountMinor = 600_000L, isPosted = false,
+            notes = "[Payee:SUPPLIER]"
+        )
+        val otherCost = ImportCostItem(
+            id = "c-other", shipmentId = "shp-1", purchaseOrderId = supplierPo.id,
+            costCategory = CostCategory.OTHER_EXPENSES.name,
+            description = "Handling", amountMinor = 300_000L, currency = "BDT",
+            exchangeRateToBdt = "1.0", bdtAmountMinor = 300_000L, isPosted = false
+        )
+        val freightRate = ShipmentFreightRate(
+            id = "r-1", shipmentId = "shp-1", categoryId = catInsole.id,
+            categoryNameEn = catInsole.nameEn, categoryNameBn = catInsole.nameBn,
+            defaultRatePerKgBdtMinor = 32_000L, appliedRatePerKgBdtMinor = 32_000L
+        )
+
+        val landedSupplier = calculatePoLandedCostSummary(
+            order = supplierPo, items = items, cartons = emptyList(),
+            costItems = listOf(chinaCostSupplier, otherCost), additionalCosts = emptyList(),
+            freightRates = listOf(freightRate), categories = listOf(catInsole),
+            products = listOf(prodTsg), variants = emptyList(), snapshots = emptyList()
+        )
+        // Pure merchandise 9,564,000 + freight 5,835,200 + (china 600,000 + handling 300,000) = 16,299,200 (never double-counted!)
+        assertEquals(9_564_000L, landedSupplier.totalPurchaseBdtMinor)
+        assertEquals(5_835_200L, landedSupplier.totalFreightBdtMinor)
+        assertEquals(900_000L, landedSupplier.totalOtherOverheadBdtMinor)
+        assertEquals(16_299_200L, landedSupplier.totalLandedBdtMinor)
+
+        // Freight forwarder bill excludes Supplier-billed China delivery (only Freight 58,352 + Handling 3,000 = ৳ 61,352)
+        val payableWhenSupplier = calculatePoFreightPayableSummary(
+            landedSummary = landedSupplier,
+            costItems = listOf(chinaCostSupplier, otherCost),
+            additionalCosts = emptyList(),
+            paidFreightBillMinor = 0L,
+            orderNotes = supplierPo.notes
+        )
+        assertEquals(6_135_200L, payableWhenSupplier.totalFreightBillMinor)
+
+        // Same costs when Payee = FREIGHT_FORWARDER -> PO total excludes China delivery, Forwarder bill includes all ৳ 67,352
+        val forwarderPo = supplierPo.copy(
+            totalAmountMinor = 478_200L,
+            totalBdtAmountMinor = 9_564_000L,
+            notes = PoNotesMetadataParser.serialize("30% Advance + 70% Balance", "Guangzhou", "", chinaDeliveryPayee = ChinaDeliveryPayee.FREIGHT_FORWARDER)
+        )
+        val chinaCostForwarder = chinaCostSupplier.copy(notes = "[Payee:FREIGHT_FORWARDER]")
+        val landedForwarder = calculatePoLandedCostSummary(
+            order = forwarderPo, items = items, cartons = emptyList(),
+            costItems = listOf(chinaCostForwarder, otherCost), additionalCosts = emptyList(),
+            freightRates = listOf(freightRate), categories = listOf(catInsole),
+            products = listOf(prodTsg), variants = emptyList(), snapshots = emptyList()
+        )
+        assertEquals(16_299_200L, landedForwarder.totalLandedBdtMinor)
+        val payableWhenForwarder = calculatePoFreightPayableSummary(
+            landedSummary = landedForwarder,
+            costItems = listOf(chinaCostForwarder, otherCost),
+            additionalCosts = emptyList(),
+            paidFreightBillMinor = 0L,
+            orderNotes = forwarderPo.notes
+        )
+        assertEquals(6_735_200L, payableWhenForwarder.totalFreightBillMinor)
     }
 }

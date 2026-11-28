@@ -780,11 +780,15 @@ $drawingOverrideXml</Types>"""
         val lastDataRow = (row - 1).coerceAtLeast(firstDataRow)
 
         // Totals Row using live Excel SUM formulas
+        val hasSupplierChinaDel = exportData.supplierChinaDeliveryMinor > 0L
+        val itemsSubtotalMinor = if (hasSupplierChinaDel && exportData.items.isNotEmpty()) exportData.poItemsSubtotalMinor else exportData.poGrandTotalMinor
+        val itemsSubtotalPlain = BigDecimal(itemsSubtotalMinor).movePointLeft(2).toPlainString()
         val grandTotalPlain = BigDecimal(exportData.poGrandTotalMinor).movePointLeft(2).toPlainString()
+        val subtotalRow = row
         emitRow(
             listOf(
-                inlineStrCell(0, row, "TOTAL", 13),
-                inlineStrCell(1, row, if (exportData.isPartialCartonExport) "Complete PO Line Totals (Selected Cartons: ${exportData.exportedCartonCount})" else "Grand Total", 13),
+                inlineStrCell(0, row, if (hasSupplierChinaDel) "SUBTOTAL" else "TOTAL", 13),
+                inlineStrCell(1, row, if (exportData.isPartialCartonExport) "Complete PO Line Totals (Selected Cartons: ${exportData.exportedCartonCount})" else if (hasSupplierChinaDel) "Products Subtotal" else "Grand Total", 13),
                 blankCell(2, row, 13),
                 blankCell(3, row, 13),
                 blankCell(4, row, 13),
@@ -792,11 +796,47 @@ $drawingOverrideXml</Types>"""
                 inlineStrCell(6, row, totalCtnText, 13),
                 numberCell(7, row, exportData.poTotalQuantity.toString(), 14, formula = if (exportData.items.isNotEmpty()) "SUM(H$firstDataRow:H$lastDataRow)" else null),
                 blankCell(8, row, 13),
-                numberCell(9, row, grandTotalPlain, 15, formula = if (exportData.items.isNotEmpty()) "SUM(J$firstDataRow:J$lastDataRow)" else null)
+                numberCell(9, row, itemsSubtotalPlain, 15, formula = if (exportData.items.isNotEmpty()) "SUM(J$firstDataRow:J$lastDataRow)" else null)
             ),
             heightPt = 24
         )
         merges += "B${row - 1}:F${row - 1}"
+        if (hasSupplierChinaDel) {
+            val chinaDelPlain = BigDecimal(exportData.supplierChinaDeliveryMinor).movePointLeft(2).toPlainString()
+            val chinaRow = row
+            emitRow(
+                listOf(
+                    inlineStrCell(0, row, "CHARGES", 19),
+                    inlineStrCell(1, row, "China Local Delivery (Payable to Supplier)", 6),
+                    blankCell(2, row, 6),
+                    blankCell(3, row, 6),
+                    blankCell(4, row, 6),
+                    blankCell(5, row, 6),
+                    blankCell(6, row, 6),
+                    blankCell(7, row, 6),
+                    blankCell(8, row, 6),
+                    numberCell(9, row, chinaDelPlain, 10)
+                ),
+                heightPt = 22
+            )
+            merges += "B${row - 1}:I${row - 1}"
+            emitRow(
+                listOf(
+                    inlineStrCell(0, row, "TOTAL", 13),
+                    inlineStrCell(1, row, "Grand Total (${exportData.currency})", 13),
+                    blankCell(2, row, 13),
+                    blankCell(3, row, 13),
+                    blankCell(4, row, 13),
+                    blankCell(5, row, 13),
+                    inlineStrCell(6, row, totalCtnText, 13),
+                    numberCell(7, row, exportData.poTotalQuantity.toString(), 14, formula = "H$subtotalRow"),
+                    blankCell(8, row, 13),
+                    numberCell(9, row, grandTotalPlain, 15, formula = "J$subtotalRow+J$chinaRow")
+                ),
+                heightPt = 24
+            )
+            merges += "B${row - 1}:F${row - 1}"
+        }
 
         // Delivery, Payment & Notes summary section below
         emitRow(listOf(blankCell(0, row)), heightPt = 8)

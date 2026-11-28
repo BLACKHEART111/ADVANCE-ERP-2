@@ -137,8 +137,8 @@ fun AddCartonDialog(
     var lengthStr by rememberSaveable { mutableStateOf("50") }
     var widthStr by rememberSaveable { mutableStateOf("40") }
     var heightStr by rememberSaveable { mutableStateOf("30") }
-    var grossWeightStr by rememberSaveable { mutableStateOf("15.0") }
-    var netWeightStr by rememberSaveable { mutableStateOf("14.0") }
+    var grossWeightStr by rememberSaveable { mutableStateOf("0") }
+    var netWeightStr by rememberSaveable { mutableStateOf("") }
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -434,18 +434,24 @@ fun AddCartonDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    val cartonGwInvalid = (grossWeightStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) <= BigDecimal.ZERO
                                     OutlinedTextField(
                                         value = grossWeightStr,
-                                        onValueChange = { grossWeightStr = it },
-                                        label = { Text("Gross Wt (KG)", fontSize = 11.sp) },
+                                        onValueChange = { grossWeightStr = PoPackingEngine.normalizeWeightInput(grossWeightStr, it) },
+                                        label = { Text("Gross Wt * (KG)", fontSize = 11.sp) },
+                                        isError = cartonGwInvalid,
+                                        supportingText = if (cartonGwInvalid) {
+                                            { Text(if (isBangla) "০-এর বেশি ওজন দিন" else "Must be > 0 kg", color = StatusError, fontSize = 10.sp) }
+                                        } else null,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1f),
                                         singleLine = true
                                     )
                                     OutlinedTextField(
                                         value = netWeightStr,
-                                        onValueChange = { netWeightStr = it },
+                                        onValueChange = { netWeightStr = PoPackingEngine.normalizeWeightInput(netWeightStr, it) },
                                         label = { Text("Net Wt (KG)", fontSize = 11.sp) },
+                                        placeholder = { Text(grossWeightStr) },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1f),
                                         singleLine = true
@@ -663,11 +669,22 @@ fun AddCartonDialog(
                                     val l = BigDecimal(lengthStr.trim().ifEmpty { "50" })
                                     val w = BigDecimal(widthStr.trim().ifEmpty { "40" })
                                     val h = BigDecimal(heightStr.trim().ifEmpty { "30" })
-                                    val gw = BigDecimal(grossWeightStr.trim().ifEmpty { "15" })
-                                    val nw = BigDecimal(netWeightStr.trim().ifEmpty { "14" })
+                                    val gw = grossWeightStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
 
-                                    require(cartonNumber.isNotBlank()) { "Carton number is required" }
-                                    require(gw > BigDecimal.ZERO) { "Gross weight must be greater than zero" }
+                                    require(cartonNumber.isNotBlank()) {
+                                        if (isBangla) "কার্টন নম্বর দিন" else "Carton number is required"
+                                    }
+                                    require(gw > BigDecimal.ZERO) {
+                                        if (isBangla) "গ্রস ওজন শূন্যের বেশি (KG) হতে হবে" else "Gross weight must be greater than zero"
+                                    }
+                                    val nw = netWeightStr.trim().takeIf { it.isNotEmpty() }?.let {
+                                        it.toBigDecimalOrNull() ?: throw IllegalArgumentException(
+                                            if (isBangla) "বৈধ নেট ওজন দিন" else "Enter valid net weight"
+                                        )
+                                    } ?: gw
+                                    require(nw >= BigDecimal.ZERO && nw <= gw) {
+                                        if (isBangla) "নেট ওজন ০ থেকে গ্রস ওজনের মধ্যে হতে হবে" else "Net weight must be between 0 and gross weight"
+                                    }
 
                                     if (!isMixedTab) {
                                         val qty = singleQuantityStr.trim().toIntOrNull() ?: 0

@@ -93,6 +93,8 @@ data class ValidatedSupplierPoExport(
     val poTotalGrossWeightKg: BigDecimal,
     val poTotalNetWeightKg: BigDecimal,
     val poTotalCbm: BigDecimal,
+    val poItemsSubtotalMinor: Long = 0L,
+    val supplierChinaDeliveryMinor: Long = 0L,
     val poGrandTotalMinor: Long,
     val exportedCartonCount: Int,
     val exportedPackedQuantity: Int,
@@ -370,9 +372,11 @@ object PoExportDataBuilder {
             )
         }
 
-        val resolvedGrandTotalMinor = if (order.totalAmountMinor > 0L) order.totalAmountMinor else computedItemsTotalMinor
-        if (items.isNotEmpty() && order.totalAmountMinor > 0L && order.totalAmountMinor != computedItemsTotalMinor) {
-            blockingErrors += "PO Grand Total mismatch: sum of items is $computedItemsTotalMinor but PO stores ${order.totalAmountMinor}."
+        val supplierChinaMinor = if (!isLocalOrder) parsedNotes.supplierChinaDeliveryMinor.coerceAtLeast(0L) else 0L
+        val expectedPoTotalMinor = Math.addExact(computedItemsTotalMinor, supplierChinaMinor)
+        val resolvedGrandTotalMinor = if (order.totalAmountMinor > 0L) order.totalAmountMinor else expectedPoTotalMinor
+        if (items.isNotEmpty() && order.totalAmountMinor > 0L && order.totalAmountMinor != expectedPoTotalMinor) {
+            blockingErrors += "PO Grand Total mismatch: sum of items ($computedItemsTotalMinor) + supplier China delivery ($supplierChinaMinor) is $expectedPoTotalMinor but PO stores ${order.totalAmountMinor}."
         }
 
         val poTotalQty = validatedItems.sumOf { it.quantity }
@@ -433,6 +437,8 @@ object PoExportDataBuilder {
             poTotalGrossWeightKg = poTotalGross,
             poTotalNetWeightKg = poTotalNet,
             poTotalCbm = poTotalCbm,
+            poItemsSubtotalMinor = computedItemsTotalMinor,
+            supplierChinaDeliveryMinor = supplierChinaMinor,
             poGrandTotalMinor = resolvedGrandTotalMinor,
             exportedCartonCount = expCartonCount,
             exportedPackedQuantity = expPackedQty,

@@ -71,8 +71,8 @@ class PurchaseOrderVisualTest {
                         onCreateFullProduct={_,_,_,_,_,_,_,_,_,_,_,_,created -> created(product,variants)},
                         onUpdateMetadata={ _,_ -> metadataSaved=true },editingOrder=PurchaseOrder("po","PO-UI-TEST","s",currency=currency,exchangeRateToBdt=if(currency=="BDT") "1" else "17",paidAmountMinor=if(metadataOnly) 100L else 0L),
                         initialEditingItems=items,initialEditingCartons=cartons,
-                        onUpdatePo={ _,_,_,_,lines,_,_,boxes,_,rates,_,_,_,_,_,_ -> savedItems=lines; savedCartons=boxes; savedRates=rates },
-                        onSavePo={ _,_,_,_,_,_,_,_,_,_,_,_,_,_,_ -> })
+                        onUpdatePo={ _,_,_,_,lines,_,_,boxes,_,rates,_,_,_,_,_,_,_ -> savedItems=lines; savedCartons=boxes; savedRates=rates },
+                        onSavePo={ _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_ -> })
                     }
                 }
             }

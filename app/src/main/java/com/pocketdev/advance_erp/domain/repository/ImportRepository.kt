@@ -156,7 +156,8 @@ interface ImportRepository {
         categoryFreightRatesBdtMinor: Map<String, Long>, handlingCostMinor: Long,
         sampleCostMinor: Long, attachments: String?,
         orderDateMillis: Long = System.currentTimeMillis(), expectedArrivalDateMillis: Long? = null,
-        shippingMethod: String = ShippingMethod.SEA.name
+        shippingMethod: String = ShippingMethod.SEA.name,
+        chinaDeliveryPayee: com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee = com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER
     ): String
 
 
@@ -298,7 +299,8 @@ interface ImportRepository {
         orderDateMillis: Long? = null,
         expectedArrivalDateMillis: Long? = null,
         updateSchedule: Boolean = false,
-        shippingMethod: String? = null
+        shippingMethod: String? = null,
+        chinaDeliveryPayee: com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee = com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER
     ): Result<Unit>
 
     suspend fun updatePurchaseOrderPacking(orderId: String, totalCartons: Int, grossWeightKg: String, netWeightKg: String, cbm: String)

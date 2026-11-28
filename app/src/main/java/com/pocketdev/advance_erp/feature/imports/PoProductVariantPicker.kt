@@ -1212,7 +1212,7 @@ fun BulkCreateCartonsDialog(
         }
     }
     var cartonCountStr by remember { mutableStateOf("1") }
-    var grossWeightStr by remember { mutableStateOf("15.0") }
+    var grossWeightStr by remember { mutableStateOf("0") }
     var netWeightStr by remember { mutableStateOf("") }
     var measurementStr by remember { mutableStateOf("") }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -1304,10 +1304,15 @@ fun BulkCreateCartonsDialog(
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
+                            val bulkGwInvalid = (grossWeightStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) <= BigDecimal.ZERO
                             OutlinedTextField(
                                 value = grossWeightStr,
-                                onValueChange = { grossWeightStr = it },
-                                label = { Text(if (isBangla) "গ্রস ওজন/কার্টন (KG)" else "Gross/CTN (KG)") },
+                                onValueChange = { grossWeightStr = PoPackingEngine.normalizeWeightInput(grossWeightStr, it) },
+                                label = { Text(if (isBangla) "গ্রস ওজন/কার্টন * (KG)" else "Gross/CTN * (KG)") },
+                                isError = bulkGwInvalid,
+                                supportingText = if (bulkGwInvalid) {
+                                    { Text(if (isBangla) "শূন্যের বেশি (KG) দিন" else "Must be > 0 kg", color = StatusError) }
+                                } else null,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
@@ -1317,7 +1322,7 @@ fun BulkCreateCartonsDialog(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = netWeightStr,
-                                onValueChange = { netWeightStr = it },
+                                onValueChange = { netWeightStr = PoPackingEngine.normalizeWeightInput(netWeightStr, it) },
                                 label = { Text(if (isBangla) "নেট ওজন (KG)" else "Net/CTN (KG)") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
@@ -1420,8 +1425,10 @@ fun BulkCreateCartonsDialog(
                                         "$count টি কার্টন তৈরি করলে অর্ডারের পরিমাণ ছাড়িয়ে যাবে। সর্বোচ্চ $maxAllowedCartons টি তৈরি করা যাবে।"
                                     else
                                         "Creating $count cartons exceeds remaining PO quantities (max $maxAllowedCartons allowed)."
-                                gw <= BigDecimal.ZERO || nw < BigDecimal.ZERO || nw > gw ->
-                                    localError = if (isBangla) "বৈধ গ্রস ও নেট ওজন দিন।" else "Enter valid gross and net weights (0 <= Net <= Gross)."
+                                gw <= BigDecimal.ZERO ->
+                                    localError = if (isBangla) "প্রতি কার্টনের গ্রস ওজন শূন্যের বেশি (KG) হতে হবে।" else "Carton gross weight must be greater than 0 KG."
+                                nw < BigDecimal.ZERO || nw > gw ->
+                                    localError = if (isBangla) "নেট ওজন ০ থেকে গ্রস ওজনের মধ্যে হতে হবে।" else "Enter valid net weight (0 <= Net <= Gross)."
                                 else -> {
                                     localError = null
                                     val picks = perCartonMap.entries.map { (k, q) ->

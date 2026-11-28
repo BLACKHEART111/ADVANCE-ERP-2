@@ -132,6 +132,7 @@ import com.pocketdev.advance_erp.domain.model.PaymentTermsCalculator
 import com.pocketdev.advance_erp.domain.repository.MixedCartonLineDraft
 import com.pocketdev.advance_erp.domain.repository.PoMixedCartonDraft
 import com.pocketdev.advance_erp.domain.repository.PurchaseOrderItemDraft
+import com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee
 import com.pocketdev.advance_erp.core.util.Formatters
 import com.pocketdev.advance_erp.core.util.PoAttachmentStorage
 import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
@@ -151,7 +152,8 @@ private class ItemDraftState(
     grossWeightKgStr: String = "",
     netWeightKgStr: String = "",
     manualQuantityOverride: Boolean = false,
-    manualPriceOverride: Boolean = false
+    manualPriceOverride: Boolean = false,
+    optionalTotalWeightKgStr: String = ""
 ) {
     var productId by mutableStateOf(productId)
     var variantId by mutableStateOf(variantId)
@@ -163,24 +165,27 @@ private class ItemDraftState(
     var netWeightKgStr by mutableStateOf(netWeightKgStr)
     var manualQuantityOverride by mutableStateOf(manualQuantityOverride)
     var manualPriceOverride by mutableStateOf(manualPriceOverride)
+    var optionalTotalWeightKgStr by mutableStateOf(optionalTotalWeightKgStr)
 }
 
 private class CartonLineState(
     productId: String = "",
     variantId: String? = null,
     quantityStr: String = "20",
-    manualWeightKgStr: String = ""
+    manualWeightKgStr: String = "",
+    isWeightManuallyEdited: Boolean = false
 ) {
     var productId by mutableStateOf(productId)
     var variantId by mutableStateOf(variantId)
     var quantityStr by mutableStateOf(quantityStr)
     var manualWeightKgStr by mutableStateOf(manualWeightKgStr)
+    var isWeightManuallyEdited by mutableStateOf(isWeightManuallyEdited)
 }
 
 private class CartonBoxState(
     val uid: String = java.util.UUID.randomUUID().toString(),
     cartonNumber: String = "CTN-001",
-    grossWeightKgStr: String = "15.0",
+    grossWeightKgStr: String = "0",
     initialLines: List<CartonLineState> = emptyList(),
     netWeightKgStr: String = "",
     lengthCm: BigDecimal = BigDecimal.ZERO,
@@ -222,8 +227,9 @@ private class CartonBoxState(
     var grossWeightKgStr by mutableStateOf(grossWeightKgStr)
     var netWeightKgStr by mutableStateOf(netWeightKgStr)
     var customShippingMark by mutableStateOf(customShippingMark)
-    fun netWeightKg(): BigDecimal = netWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal()
-        ?: grossWeightKgStr.toBigDecimal()
+    fun netWeightKg(): BigDecimal = netWeightKgStr.trim().toBigDecimalOrNull()
+        ?: grossWeightKgStr.trim().toBigDecimalOrNull()
+        ?: BigDecimal.ZERO
     val lines = mutableStateListOf<CartonLineState>().apply {
         addAll(initialLines)
     }
@@ -234,6 +240,7 @@ private fun ItemDraftState.toJson() = JSONObject().apply {
     put("price", unitPriceStr); put("cartons", cartonQuantityStr); put("pcs", pcsPerCartonStr)
     put("gross", grossWeightKgStr); put("net", netWeightKgStr)
     put("manualQty", manualQuantityOverride); put("manualPrice", manualPriceOverride)
+    put("optWeight", optionalTotalWeightKgStr)
 }
 private fun itemFromJson(j: JSONObject) = ItemDraftState(
     j.optString("product"),
@@ -245,13 +252,15 @@ private fun itemFromJson(j: JSONObject) = ItemDraftState(
     j.optString("gross"),
     j.optString("net"),
     j.optBoolean("manualQty", false),
-    j.optBoolean("manualPrice", false)
+    j.optBoolean("manualPrice", false),
+    j.optString("optWeight", "")
 )
 private fun CartonBoxState.toJson() = JSONObject().apply {
     put("uid", uid); put("number", cartonNumber); put("gross", grossWeightKgStr); put("net", netWeightKgStr)
     put("measurement", measurementStr); put("customMark", customShippingMark)
     put("lines", JSONArray().apply { lines.forEach { line -> put(JSONObject().apply {
-        put("product", line.productId); put("variant", line.variantId ?: ""); put("qty", line.quantityStr); put("weight", line.manualWeightKgStr)
+        put("product", line.productId); put("variant", line.variantId ?: ""); put("qty", line.quantityStr)
+        put("weight", line.manualWeightKgStr); put("manualWeightEdited", line.isWeightManuallyEdited)
     }) } })
 }
 private fun cartonFromJson(j: JSONObject): CartonBoxState {
@@ -263,7 +272,13 @@ private fun cartonFromJson(j: JSONObject): CartonBoxState {
         netWeightKgStr = j.optString("net"),
         customShippingMark = j.optString("customMark", ""),
         initialLines = (0 until a.length()).map { i -> a.getJSONObject(i).let {
-            CartonLineState(it.optString("product"), it.optString("variant").ifBlank { null }, it.optString("qty"), it.optString("weight"))
+            CartonLineState(
+                it.optString("product"),
+                it.optString("variant").ifBlank { null },
+                it.optString("qty"),
+                it.optString("weight"),
+                it.optBoolean("manualWeightEdited", false)
+            )
         } }).also { it.updateMeasurement(j.optString("measurement")) }
 }
 private val ItemListSaver = Saver<SnapshotStateList<ItemDraftState>, String>(
@@ -333,7 +348,8 @@ fun CreatePurchaseOrderDialog(
         attachments: String?,
         orderDateMillis: Long,
         expectedArrivalDateMillis: Long?,
-        shippingMethod: String
+        shippingMethod: String,
+        chinaDeliveryPayee: ChinaDeliveryPayee
     ) -> Unit)? = null,
     onSavePo: (
         supplierId: String,
@@ -350,7 +366,8 @@ fun CreatePurchaseOrderDialog(
         attachments: String?,
         orderDateMillis: Long,
         expectedArrivalDateMillis: Long?,
-        shippingMethod: String
+        shippingMethod: String,
+        chinaDeliveryPayee: ChinaDeliveryPayee
     ) -> Unit
 ) {
     var currentStep by rememberSaveable(editingOrder?.id, metadataOnly) { mutableStateOf(if (metadataOnly) 3 else 0) }
@@ -375,6 +392,19 @@ fun CreatePurchaseOrderDialog(
         )
     }
     var chinaLocalDeliveryStr by rememberSaveable(editingOrder?.id) { mutableStateOf("0") }
+    var chinaDeliveryPayee by rememberSaveable(editingOrder?.id) {
+        val costPayee = initialEditingCosts
+            .firstOrNull { it.costCategory == CostCategory.CHINA_DOMESTIC_TRANSPORT.name }
+            ?.notes
+            ?.let { n ->
+                when {
+                    n.contains("[Payee:FREIGHT_FORWARDER]", ignoreCase = true) -> ChinaDeliveryPayee.FREIGHT_FORWARDER
+                    n.contains("[Payee:SUPPLIER]", ignoreCase = true) -> ChinaDeliveryPayee.SUPPLIER
+                    else -> null
+                }
+            }
+        mutableStateOf(parsedNotes.chinaDeliveryPayee ?: costPayee ?: ChinaDeliveryPayee.SUPPLIER)
+    }
     var handlingCostStr by rememberSaveable(editingOrder?.id) { mutableStateOf("0") }
     var sampleCostStr by rememberSaveable(editingOrder?.id) { mutableStateOf("0") }
     var forwarderAddressStr by rememberSaveable(editingOrder?.id) { mutableStateOf(parsedNotes.forwarderAddress) }
@@ -406,11 +436,21 @@ fun CreatePurchaseOrderDialog(
     var hasHydratedCosts by rememberSaveable(editingOrder?.id) { mutableStateOf(false) }
     LaunchedEffect(editingOrder?.id, initialEditingCosts) {
         if (isEditing && initialEditingCosts.isNotEmpty() && !hasHydratedCosts) {
-            val chinaDel = initialEditingCosts
+            val chinaDelCost = initialEditingCosts
                 .filter { it.costCategory == CostCategory.CHINA_DOMESTIC_TRANSPORT.name }
-                .sumOf { it.amountMinor }
+            val chinaDel = chinaDelCost.sumOf { it.amountMinor }
             if (chinaDel > 0L) {
                 chinaLocalDeliveryStr = String.format(java.util.Locale.ROOT, "%.2f", chinaDel / 100.0)
+            }
+            if (parsedNotes.chinaDeliveryPayee == null) {
+                chinaDelCost.firstOrNull()?.notes?.let { n ->
+                    when {
+                        n.contains("[Payee:FREIGHT_FORWARDER]", ignoreCase = true) ->
+                            chinaDeliveryPayee = ChinaDeliveryPayee.FREIGHT_FORWARDER
+                        n.contains("[Payee:SUPPLIER]", ignoreCase = true) ->
+                            chinaDeliveryPayee = ChinaDeliveryPayee.SUPPLIER
+                    }
+                }
             }
             val handling = initialEditingCosts
                 .filter { it.description.contains("Handling", ignoreCase = true) }
@@ -461,6 +501,9 @@ fun CreatePurchaseOrderDialog(
     var newCatNameEn by rememberSaveable { mutableStateOf("") }
     var newCatNameBn by rememberSaveable { mutableStateOf("") }
 
+    fun variantWeightKey(productId: String, variantId: String?): String =
+        if (variantId.isNullOrBlank()) productId else "$productId:$variantId"
+
     fun List<PurchaseOrderItem>.toItemDraftStates(): List<ItemDraftState> {
         val firstByProduct = LinkedHashMap<String, PurchaseOrderItem>()
         return map { item ->
@@ -477,7 +520,8 @@ fun CreatePurchaseOrderDialog(
                 grossWeightKgStr = item.grossWeightKg,
                 netWeightKgStr = item.netWeightKg,
                 manualQuantityOverride = !isFirst && item.quantity != first!!.quantity,
-                manualPriceOverride = !isFirst && item.unitPriceMinor != first!!.unitPriceMinor
+                manualPriceOverride = !isFirst && item.unitPriceMinor != first!!.unitPriceMinor,
+                optionalTotalWeightKgStr = parsedNotes.variantOptionalTotalWeightsKg[variantWeightKey(item.productId, item.variantId)].orEmpty()
             )
         }
     }
@@ -504,11 +548,20 @@ fun CreatePurchaseOrderDialog(
                     cbm = firstCtn?.cbm?.toBigDecimalOrNull() ?: BigDecimal.ZERO,
                     customShippingMark = customMark,
                     initialLines = cLines.map { line ->
+                        val wKey = variantWeightKey(line.productId, line.variantId)
+                        val optWtBd = parsedNotes.variantOptionalTotalWeightsKg[wKey]?.trim()?.toBigDecimalOrNull()
+                        val orderedItem = initialEditingItems.firstOrNull { it.productId == line.productId && it.variantId == line.variantId }
+                        val autoProp = if (orderedItem != null && optWtBd != null && optWtBd > BigDecimal.ZERO) {
+                            PoPackingEngine.calculateProportionalVariantWeightKg(orderedItem.quantity, optWtBd, line.quantity)
+                        } else null
+                        val lineWtBd = line.grossWeightKg.trim().toBigDecimalOrNull()
+                        val isAutoMatch = autoProp != null && lineWtBd != null && lineWtBd.compareTo(autoProp) == 0
                         CartonLineState(
                             productId = line.productId,
                             variantId = line.variantId,
                             quantityStr = line.quantity.toString(),
-                            manualWeightKgStr = line.grossWeightKg
+                            manualWeightKgStr = line.grossWeightKg,
+                            isWeightManuallyEdited = !isAutoMatch && (lineWtBd != null && lineWtBd > BigDecimal.ZERO)
                         )
                     }
                 )
@@ -601,7 +654,8 @@ fun CreatePurchaseOrderDialog(
 
     fun snapshotEditor(includeStep: Boolean = true) = JSONObject().apply {
         put("supplier", selectedSupplierId); put("currency", selectedCurrency); put("local", isLocalPurchase)
-        put("rate", exchangeRateStr); put("delivery", chinaLocalDeliveryStr); put("handling", handlingCostStr)
+        put("rate", exchangeRateStr); put("delivery", chinaLocalDeliveryStr); put("chinaPayee", chinaDeliveryPayee.name)
+        put("handling", handlingCostStr)
         put("sample", sampleCostStr); put("forwarder", forwarderAddressStr); put("notes", notes)
         put("defaultShippingMark", defaultShippingMarkStr)
         put("poOrderDate", orderDateMillis); put("expectedArrivalDate", expectedArrivalDateMillis ?: JSONObject.NULL)
@@ -620,6 +674,9 @@ fun CreatePurchaseOrderDialog(
                 selectedSupplierId = draft.optString("supplier"); selectedCurrency = draft.optString("currency")
                 isLocalPurchase = draft.optBoolean("local"); exchangeRateStr = draft.optString("rate")
                 chinaLocalDeliveryStr = draft.optString("delivery"); handlingCostStr = draft.optString("handling")
+                ChinaDeliveryPayee.entries.firstOrNull { it.name == draft.optString("chinaPayee") }?.let {
+                    chinaDeliveryPayee = it
+                }
                 sampleCostStr = draft.optString("sample"); forwarderAddressStr = draft.optString("forwarder")
                 defaultShippingMarkStr = draft.optString("defaultShippingMark", defaultShippingMarkStr)
                 orderDateMillis = draft.optLong("poOrderDate", orderDateMillis)
@@ -700,9 +757,46 @@ fun CreatePurchaseOrderDialog(
         }
     }
 
+    fun initialProportionalWeightStr(productId: String, variantId: String?, cartonPcs: Int): String {
+        val itemDraft = itemsList.firstOrNull { it.productId == productId && it.variantId == variantId } ?: return ""
+        val orderedPcs = itemDraft.quantityStr.trim().toIntOrNull() ?: 0
+        val optWeightBd = itemDraft.optionalTotalWeightKgStr.trim().toBigDecimalOrNull()
+        val proportional = PoPackingEngine.calculateProportionalVariantWeightKg(
+            orderedPcs = orderedPcs,
+            variantTotalWeightKg = optWeightBd,
+            cartonPcs = cartonPcs
+        )
+        return PoPackingEngine.formatWeightForInput(proportional)
+    }
+
+    fun syncCartonLineProportionalWeightsForVariant(productId: String, variantId: String?) {
+        val itemDraft = itemsList.firstOrNull { it.productId == productId && it.variantId == variantId } ?: return
+        val orderedPcs = itemDraft.quantityStr.trim().toIntOrNull() ?: 0
+        val optWeightBd = itemDraft.optionalTotalWeightKgStr.trim().toBigDecimalOrNull()
+        cartonBoxes.forEach { box ->
+            box.lines.forEach { line ->
+                if (line.productId == productId && line.variantId == variantId && !line.isWeightManuallyEdited) {
+                    val pcs = line.quantityStr.trim().toIntOrNull() ?: 0
+                    val proportional = PoPackingEngine.calculateProportionalVariantWeightKg(
+                        orderedPcs = orderedPcs,
+                        variantTotalWeightKg = optWeightBd,
+                        cartonPcs = pcs
+                    )
+                    line.manualWeightKgStr = PoPackingEngine.formatWeightForInput(proportional)
+                }
+            }
+        }
+    }
+
     fun updateItemQuantity(globalIndex: Int, newQtyStr: String) {
         val filtered = newQtyStr.filter { it.isDigit() }
+        val targetProdId = itemsList.getOrNull(globalIndex)?.productId
         applyGroupLines(PoPackingEngine.updateProductVariantQuantity(toGroupLines(), globalIndex, filtered))
+        itemsList.forEach { st ->
+            if (st.productId == targetProdId) {
+                syncCartonLineProportionalWeightsForVariant(st.productId, st.variantId)
+            }
+        }
     }
 
     fun updateItemUnitPrice(globalIndex: Int, newPriceStr: String) {
@@ -722,6 +816,22 @@ fun CreatePurchaseOrderDialog(
         q.toLong() * p
     }
 
+    fun computeSupplierChinaDeliveryMinor(): Long {
+        if (isLocalPurchase || chinaDeliveryPayee != ChinaDeliveryPayee.SUPPLIER) return 0L
+        return try {
+            (chinaLocalDeliveryStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                .multiply(BigDecimal("100"))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact()
+                .coerceAtLeast(0L)
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    fun computeSupplierPayableTotalMinor(): Long =
+        Math.addExact(computeItemsTotalMinor(), computeSupplierChinaDeliveryMinor())
+
     fun customAdvanceMinorOrZero(): Long = try {
         (customAdvanceAmountStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
             .multiply(BigDecimal("100"))
@@ -740,14 +850,27 @@ fun CreatePurchaseOrderDialog(
                 customMarks[PoPackingEngine.formatCartonNumber(idx + 1)] = mark
             }
         }
-        val itemsTotalMinor = computeItemsTotalMinor()
+        val variantWeights = LinkedHashMap<String, String>()
+        itemsList.forEach { st ->
+            val wStr = st.optionalTotalWeightKgStr.trim()
+            val wBd = wStr.toBigDecimalOrNull()
+            if (st.productId.isNotBlank() && wBd != null && wBd > BigDecimal.ZERO) {
+                variantWeights[variantWeightKey(st.productId, st.variantId)] = PoPackingEngine.formatWeightForInput(wBd)
+            }
+        }
+        val supplierPayableMinor = computeSupplierPayableTotalMinor()
+        val supplierChinaMinor = computeSupplierChinaDeliveryMinor()
+        val rateBd = exchangeRateStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+        val supplierChinaBdtMinor = if (supplierChinaMinor > 0L && rateBd > BigDecimal.ZERO) {
+            BigDecimal(supplierChinaMinor).multiply(rateBd).setScale(0, RoundingMode.HALF_UP).longValueExact()
+        } else 0L
         val advMinor = if (selectedPaymentTerm == PaymentTermType.CUSTOM_PARTIAL) {
             customAdvanceMinorOrZero().takeIf { it > 0L }
         } else {
             null
         }
         val termsLabel = if (advMinor != null) {
-            PoNotesMetadataParser.formatCustomPaymentTermsLabel(selectedCurrency, itemsTotalMinor, advMinor)
+            PoNotesMetadataParser.formatCustomPaymentTermsLabel(selectedCurrency, supplierPayableMinor, advMinor)
         } else {
             selectedPaymentTerm.labelEn
         }
@@ -757,8 +880,42 @@ fun CreatePurchaseOrderDialog(
             userNotes = notes,
             defaultShippingMark = defaultShippingMarkStr,
             cartonShippingMarks = customMarks,
-            customAdvanceMinor = advMinor
+            customAdvanceMinor = advMinor,
+            chinaDeliveryPayee = if (isLocalPurchase) ChinaDeliveryPayee.FREIGHT_FORWARDER else chinaDeliveryPayee,
+            supplierChinaDeliveryMinor = supplierChinaMinor,
+            supplierChinaDeliveryBdtMinor = supplierChinaBdtMinor,
+            variantOptionalTotalWeightsKg = variantWeights
         )
+    }
+
+    fun validatePackingStepBeforeLeaving(): Boolean {
+        if (cartonBoxes.isNotEmpty()) {
+            cartonBoxes.forEachIndexed { idx, box ->
+                val ctnName = box.cartonNumber.ifBlank { PoPackingEngine.formatCartonNumber(idx + 1) }
+                val gw = box.grossWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                if (gw <= BigDecimal.ZERO) {
+                    errorMessage = if (isBangla) {
+                        "$ctnName: গ্রস ওজন (KG) শূন্যের বেশি দিতে হবে।"
+                    } else {
+                        "$ctnName: Carton gross weight must be greater than 0 KG."
+                    }
+                    return false
+                }
+                val manualSum = box.lines.fold(BigDecimal.ZERO) { sum, line ->
+                    sum + (line.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                }
+                if (manualSum > gw) {
+                    errorMessage = if (isBangla) {
+                        "$ctnName: ভ্যারিয়েন্টগুলোর মোট ওজন ($manualSum KG) কার্টনের গ্রস ওজনের ($gw KG) চেয়ে বেশি হতে পারবে না।"
+                    } else {
+                        "$ctnName: Variant weights total ($manualSum KG) exceeds carton gross weight ($gw KG)."
+                    }
+                    return false
+                }
+            }
+        }
+        errorMessage = null
+        return true
     }
 
     fun submitPo(targetStatus: PurchaseOrderStatus) {
@@ -1002,6 +1159,7 @@ fun CreatePurchaseOrderDialog(
 
             val combinedNotes = serializedNotes()
 
+            val effectivePayee = if (isLocalPurchase) ChinaDeliveryPayee.FREIGHT_FORWARDER else chinaDeliveryPayee
             val serializedAttachments = PoAttachmentStorage.serializeAttachments(attachmentsList)
             if (isEditing && onUpdatePo != null && editingOrder != null) {
                 onUpdatePo(
@@ -1020,7 +1178,8 @@ fun CreatePurchaseOrderDialog(
                     serializedAttachments,
                     orderDateMillis,
                     expectedArrivalDateMillis,
-                    selectedShippingMethod
+                    selectedShippingMethod,
+                    effectivePayee
                 )
             } else {
                 onSavePo(
@@ -1038,7 +1197,8 @@ fun CreatePurchaseOrderDialog(
                     serializedAttachments,
                     orderDateMillis,
                     expectedArrivalDateMillis,
-                    selectedShippingMethod
+                    selectedShippingMethod,
+                    effectivePayee
                 )
             }
             errorMessage = null
@@ -1078,7 +1238,13 @@ fun CreatePurchaseOrderDialog(
                         labels = if (isBangla) listOf("তথ্য", "পণ্য", "প্যাকিং", "হিসাব") else listOf("Info", "Items", "Pack", "Cost"),
                         currentStep = currentStep,
                         enabled = !isSaving,
-                        onStepSelected = { currentStep = it },
+                        onStepSelected = { targetStep ->
+                            if (currentStep == 2 && targetStep > 2 && !validatePackingStepBeforeLeaving()) {
+                                return@PremiumPoStepper
+                            }
+                            errorMessage = null
+                            currentStep = targetStep
+                        },
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
@@ -1121,7 +1287,7 @@ fun CreatePurchaseOrderDialog(
                                     }
                                 }
                                 if (selectedPaymentTerm == PaymentTermType.CUSTOM_PARTIAL) {
-                                    val step0TotalMinor = computeItemsTotalMinor()
+                                    val step0TotalMinor = computeSupplierPayableTotalMinor()
                                     val step0AdvMinor = customAdvanceMinorOrZero().let {
                                         if (step0TotalMinor > 0L) it.coerceAtMost(step0TotalMinor) else it
                                     }
@@ -1173,6 +1339,37 @@ fun CreatePurchaseOrderDialog(
                                     PoNumberInput(if(isBangla) "ডেলিভারি খরচ ($selectedCurrency)" else "Delivery charge ($selectedCurrency)",chinaLocalDeliveryStr,{chinaLocalDeliveryStr=it})
                                     val converted=(chinaLocalDeliveryStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).multiply(exchangeRateStr.toBigDecimalOrNull() ?: BigDecimal.ZERO).setScale(2,RoundingMode.HALF_UP)
                                     Text(if(isBangla) "বাংলাদেশি টাকায়: ৳ $converted" else "Converted to BDT: ৳ $converted",color=SecondaryTeal,style=MaterialTheme.typography.bodySmall)
+                                    if (!isLocalPurchase) {
+                                        Text(
+                                            text = if (isBangla) "চীন অভ্যন্তরীণ পরিবহন বিল কে নিবে?" else "China Domestic Transport Payee",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextPrimary
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            ChinaDeliveryPayee.entries.forEach { payeeOpt ->
+                                                val isSel = chinaDeliveryPayee == payeeOpt
+                                                FilterChip(
+                                                    selected = isSel,
+                                                    onClick = { chinaDeliveryPayee = payeeOpt },
+                                                    label = {
+                                                        Text(
+                                                            text = if (isBangla) payeeOpt.labelBn else payeeOpt.labelEn,
+                                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                                                        )
+                                                    },
+                                                    colors = FilterChipDefaults.filterChipColors(
+                                                        selectedContainerColor = PrimaryPurple,
+                                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                                    ),
+                                                    modifier = Modifier.weight(1f).testTag("china_payee_step0_${payeeOpt.name}")
+                                                )
+                                            }
+                                        }
+                                    }
                                     if(isLocalPurchase) PoNumberInput(if(isBangla) "আনলোডিং / শ্রম খরচ (৳)" else "Unloading / labour (BDT)",handlingCostStr,{handlingCostStr=it})
                                 }
                             }
@@ -1759,6 +1956,35 @@ fun CreatePurchaseOrderDialog(
                                                     )
                                                 }
 
+                                                val optWeightBd = itemState.optionalTotalWeightKgStr.trim().toBigDecimalOrNull()
+                                                val qtyIntForWeight = itemState.quantityStr.trim().toIntOrNull() ?: 0
+                                                val perPcOptKg = if (qtyIntForWeight > 0 && optWeightBd != null && optWeightBd > BigDecimal.ZERO) {
+                                                    optWeightBd.divide(BigDecimal(qtyIntForWeight), 4, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+                                                } else null
+                                                OutlinedTextField(
+                                                    value = itemState.optionalTotalWeightKgStr,
+                                                    onValueChange = { incoming ->
+                                                        val norm = PoPackingEngine.normalizeWeightInput(itemState.optionalTotalWeightKgStr, incoming)
+                                                        itemState.optionalTotalWeightKgStr = norm
+                                                        syncCartonLineProportionalWeightsForVariant(itemState.productId, itemState.variantId)
+                                                    },
+                                                    label = { Text(if (isBangla) "মোট ওজন KG (ঐচ্ছিক)" else "Total Weight KG (Optional)") },
+                                                    placeholder = { Text(if (isBangla) "যেমন 20 (কার্টনে ভাগ হবে)" else "e.g. 20 (splits to cartons)") },
+                                                    supportingText = if (perPcOptKg != null) {
+                                                        {
+                                                            Text(
+                                                                text = if (isBangla) "প্রতি পিস আনুমানিক ওজন: $perPcOptKg KG" else "Est. per piece: $perPcOptKg KG",
+                                                                color = SecondaryTeal
+                                                            )
+                                                        }
+                                                    } else null,
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .testTag("po_item_opt_weight_${productId}_$groupIdx"),
+                                                    singleLine = true
+                                                )
+
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1999,20 +2225,19 @@ fun CreatePurchaseOrderDialog(
                                         unallocated.forEach { st ->
                                             val newUid = java.util.UUID.randomUUID().toString()
                                             val nextNum = PoPackingEngine.formatCartonNumber(cartonBoxes.size + 1)
-                                            val itemDraft = itemsList.find { it.productId == st.key.productId && it.variantId == st.key.variantId }
-                                            val autoPackGw = itemDraft?.grossWeightKgStr?.trim()
-                                                ?.takeIf { (it.toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO }
-                                                ?: "15.0"
+                                            val propWtStr = initialProportionalWeightStr(st.key.productId, st.key.variantId, st.remaining)
                                             cartonBoxes.add(
                                                 CartonBoxState(
                                                     uid = newUid,
                                                     cartonNumber = nextNum,
-                                                    grossWeightKgStr = autoPackGw,
+                                                    grossWeightKgStr = "0",
                                                     initialLines = listOf(
                                                         CartonLineState(
                                                             productId = st.key.productId,
                                                             variantId = st.key.variantId,
-                                                            quantityStr = st.remaining.toString()
+                                                            quantityStr = st.remaining.toString(),
+                                                            manualWeightKgStr = propWtStr,
+                                                            isWeightManuallyEdited = false
                                                         )
                                                     )
                                                 )
@@ -2204,18 +2429,32 @@ fun CreatePurchaseOrderDialog(
                                                     HorizontalDivider(color = ERPSurfaceVariant)
                                                     Spacer(modifier = Modifier.height(8.dp))
 
+                                                    val boxGwInvalid = boxGw <= BigDecimal.ZERO
                                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                         OutlinedTextField(
                                                             value = box.grossWeightKgStr,
-                                                            onValueChange = { box.grossWeightKgStr = it },
-                                                            label = { Text(if (isBangla) "গ্রস ওজন (KG)" else "Gross (kg)") },
+                                                            onValueChange = { incoming ->
+                                                                box.grossWeightKgStr = PoPackingEngine.normalizeWeightInput(box.grossWeightKgStr, incoming)
+                                                            },
+                                                            label = { Text(if (isBangla) "গ্রস ওজন * (KG)" else "Gross Wt * (kg)") },
+                                                            isError = boxGwInvalid,
+                                                            supportingText = if (boxGwInvalid) {
+                                                                {
+                                                                    Text(
+                                                                        text = if (isBangla) "শূন্যের বেশি (যেমন 15) দিন" else "Must be > 0 kg",
+                                                                        color = StatusError
+                                                                    )
+                                                                }
+                                                            } else null,
                                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                                            modifier = Modifier.weight(1f),
+                                                            modifier = Modifier.weight(1f).testTag("carton_gw_$cIdx"),
                                                             singleLine = true
                                                         )
                                                         OutlinedTextField(
                                                             value = box.netWeightKgStr,
-                                                            onValueChange = { box.netWeightKgStr = it },
+                                                            onValueChange = { incoming ->
+                                                                box.netWeightKgStr = PoPackingEngine.normalizeWeightInput(box.netWeightKgStr, incoming)
+                                                            },
                                                             label = { Text(if (isBangla) "নেট ওজন (KG)" else "Net (kg)") },
                                                             placeholder = { Text(box.grossWeightKgStr) },
                                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -2298,12 +2537,16 @@ fun CreatePurchaseOrderDialog(
 
                                                     val allocationPreview = runCatching {
                                                         CartonWeightAllocationEngine.allocateWeights(boxGw, box.netWeightKg(), lines = box.lines.map { line ->
-                                                            MixedCartonLineInput(line.productId, line.variantId, quantity = line.quantityStr.toInt(),
-                                                                manualGrossWeightKg = line.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal())
+                                                            MixedCartonLineInput(
+                                                                line.productId,
+                                                                line.variantId,
+                                                                quantity = (line.quantityStr.trim().toIntOrNull() ?: 0).coerceAtLeast(1),
+                                                                manualGrossWeightKg = line.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimalOrNull()
+                                                            )
                                                         })
                                                     }
                                                     val totalManualWeight = box.lines.fold(BigDecimal.ZERO) { sum, line ->
-                                                        sum + (line.manualWeightKgStr.toBigDecimalOrNull() ?: BigDecimal.ZERO)
+                                                        sum + (line.manualWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO)
                                                     }
                                                     if (totalManualWeight > boxGw && boxGw > BigDecimal.ZERO) {
                                                         Text(
@@ -2389,7 +2632,17 @@ fun CreatePurchaseOrderDialog(
                                                             ) {
                                                                 OutlinedTextField(
                                                                     value = lineState.quantityStr,
-                                                                    onValueChange = { lineState.quantityStr = it },
+                                                                    onValueChange = { incoming ->
+                                                                        val filtered = incoming.filter { ch -> ch.isDigit() }
+                                                                        lineState.quantityStr = filtered
+                                                                        if (!lineState.isWeightManuallyEdited) {
+                                                                            lineState.manualWeightKgStr = initialProportionalWeightStr(
+                                                                                lineState.productId,
+                                                                                lineState.variantId,
+                                                                                filtered.toIntOrNull() ?: 0
+                                                                            )
+                                                                        }
+                                                                    },
                                                                     label = { Text(if (isBangla) "পিস (সর্বোচ্চ $maxAllowedForLine)" else "PCS (max $maxAllowedForLine)") },
                                                                     isError = lineInvalid,
                                                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -2398,8 +2651,12 @@ fun CreatePurchaseOrderDialog(
                                                                 )
                                                                 OutlinedTextField(
                                                                     value = lineState.manualWeightKgStr,
-                                                                    onValueChange = { lineState.manualWeightKgStr = it },
-                                                                    label = { Text(if (isBangla) "ম্যানুয়াল ওজন (KG)" else "Manual Wt (KG)") },
+                                                                    onValueChange = { incoming ->
+                                                                        val norm = PoPackingEngine.normalizeWeightInput(lineState.manualWeightKgStr, incoming)
+                                                                        lineState.manualWeightKgStr = norm
+                                                                        lineState.isWeightManuallyEdited = norm.isNotBlank()
+                                                                    },
+                                                                    label = { Text(if (isBangla) "ভ্যারিয়েন্ট ওজন (KG)" else "Variant Wt (KG)") },
                                                                     placeholder = { Text(if (isBangla) "অটো" else "Auto") },
                                                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                                                     modifier = Modifier.weight(1.1f),
@@ -2430,13 +2687,16 @@ fun CreatePurchaseOrderDialog(
                                                                     color = SecondaryTeal
                                                                 )
                                                                 Text(
-                                                                    text = if (manualWt != null && manualWt > BigDecimal.ZERO) {
-                                                                        if (isBangla) "ম্যানুয়াল ওজন" else "Manual override"
-                                                                    } else {
-                                                                        if (isBangla) "স্বয়ংক্রিয় বণ্টন" else "Auto allocated"
+                                                                    text = when {
+                                                                        lineState.isWeightManuallyEdited && manualWt != null && manualWt > BigDecimal.ZERO ->
+                                                                            if (isBangla) "ম্যানুয়াল ওজন" else "Manual override"
+                                                                        manualWt != null && manualWt > BigDecimal.ZERO ->
+                                                                            if (isBangla) "ভ্যারিয়েন্ট ওজন থেকে (এডিটেবল)" else "Proportional (editable)"
+                                                                        else ->
+                                                                            if (isBangla) "স্বয়ংক্রিয় বণ্টন" else "Auto allocated"
                                                                     },
                                                                     style = MaterialTheme.typography.labelSmall,
-                                                                    color = if (manualWt != null && manualWt > BigDecimal.ZERO) PrimaryPurple else TextSecondary,
+                                                                    color = if (lineState.isWeightManuallyEdited && manualWt != null && manualWt > BigDecimal.ZERO) PrimaryPurple else SecondaryTeal,
                                                                     fontWeight = FontWeight.SemiBold
                                                                 )
                                                             }
@@ -2497,9 +2757,14 @@ fun CreatePurchaseOrderDialog(
                                 val boxKey = box.cartonNumber.ifBlank { box.uid }
                                 val shares = runCatching {
                                     CartonWeightAllocationEngine.allocateWeights(
-                                        box.grossWeightKgStr.toBigDecimal(), lines = box.lines.map { line ->
-                                            MixedCartonLineInput(line.productId, line.variantId, quantity = line.quantityStr.toInt(),
-                                                manualGrossWeightKg = line.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimal())
+                                        box.grossWeightKgStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO,
+                                        lines = box.lines.map { line ->
+                                            MixedCartonLineInput(
+                                                line.productId,
+                                                line.variantId,
+                                                quantity = (line.quantityStr.trim().toIntOrNull() ?: 0).coerceAtLeast(1),
+                                                manualGrossWeightKg = line.manualWeightKgStr.trim().takeIf { it.isNotEmpty() }?.toBigDecimalOrNull()
+                                            )
                                         }
                                     )
                                 }.getOrDefault(emptyList())
@@ -2759,6 +3024,76 @@ fun CreatePurchaseOrderDialog(
                                     }
                                 }
 
+                                if (!isLocalPurchase) {
+                                    HorizontalDivider(color = ERPDivider, modifier = Modifier.padding(vertical = 10.dp))
+
+                                    Text(
+                                        text = if (isBangla) "চীন অভ্যন্তরীণ পরিবহন (China Domestic Transport)" else "China Domestic Transport",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    OutlinedTextField(
+                                        value = chinaLocalDeliveryStr,
+                                        onValueChange = { incoming ->
+                                            chinaLocalDeliveryStr = PoPackingEngine.normalizeWeightInput(chinaLocalDeliveryStr, incoming)
+                                        },
+                                        label = { Text(if (isBangla) "ডেলিভারি খরচ ($selectedCurrency)" else "Delivery Charge ($selectedCurrency)") },
+                                        supportingText = {
+                                            Text(
+                                                text = if (isBangla) "বাংলাদেশি টাকায়: ৳ $chinaDelivBdt" else "Converted to BDT: ৳ $chinaDelivBdt",
+                                                color = SecondaryTeal
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        modifier = Modifier.fillMaxWidth().testTag("china_delivery_step3"),
+                                        singleLine = true
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = if (isBangla) "কে বিল নিবে? (Payee)" else "Payable To (Payee)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        ChinaDeliveryPayee.entries.forEach { payeeOpt ->
+                                            val isSel = chinaDeliveryPayee == payeeOpt
+                                            FilterChip(
+                                                selected = isSel,
+                                                onClick = { chinaDeliveryPayee = payeeOpt },
+                                                label = {
+                                                    Text(
+                                                        text = if (isBangla) payeeOpt.labelBn else payeeOpt.labelEn,
+                                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                                                    )
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = PrimaryPurple,
+                                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                                ),
+                                                modifier = Modifier.weight(1f).testTag("china_payee_step3_${payeeOpt.name}")
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = if (chinaDeliveryPayee == ChinaDeliveryPayee.SUPPLIER) {
+                                            if (isBangla) "সাপ্লায়ার বিলে যোগ হবে (পণ্য + চীন পরিবহন); ফরোয়ার্ডার বিলে যাবে না।"
+                                            else "Added to Supplier PO payable & PO PDF/Excel; excluded from Freight Forwarder bill."
+                                        } else {
+                                            if (isBangla) "ফ্রেইট ফরোয়ার্ডার বিলে যোগ হবে; সাপ্লায়ার পণ্য বিলে যোগ হবে না।"
+                                            else "Billed to Freight Forwarder; excluded from Supplier goods payable."
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = PrimaryPurple
+                                    )
+                                }
+
                                 HorizontalDivider(color = ERPDivider, modifier = Modifier.padding(vertical = 10.dp))
 
                                 // Handling & Sample Costs Inputs (Capitalized into Landing Cost)
@@ -2796,7 +3131,21 @@ fun CreatePurchaseOrderDialog(
                                 PremiumPoCostLine(if (isBangla) "পণ্যের মোট ক্রয়মূল্য:" else "Products Purchase Total:", prodTotalDisplay)
                                 if (!isLocalPurchase) {
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    PremiumPoCostLine(if (isBangla) "চীন লোকাল ডেলিভারি চার্জ:" else "China Local Delivery:", "$selectedCurrency $chinaDelivForeign (৳ $chinaDelivBdt)")
+                                    val payeeSuffix = if (isBangla) chinaDeliveryPayee.labelBn else chinaDeliveryPayee.labelEn
+                                    PremiumPoCostLine(
+                                        if (isBangla) "চীন অভ্যন্তরীণ পরিবহন ($payeeSuffix):" else "China Domestic ($payeeSuffix):",
+                                        "$selectedCurrency $chinaDelivForeign (৳ $chinaDelivBdt)"
+                                    )
+                                    if (chinaDeliveryPayee == ChinaDeliveryPayee.SUPPLIER && chinaDelivForeign > BigDecimal.ZERO) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        val supplierTotalForeign = totalProductForeign.add(chinaDelivForeign).setScale(2, RoundingMode.HALF_UP)
+                                        val supplierTotalBdt = totalProductBdt.add(chinaDelivBdt).setScale(2, RoundingMode.HALF_UP)
+                                        PremiumPoCostLine(
+                                            if (isBangla) "সাপ্লায়ার মোট প্রদেয়:" else "Supplier Payable Total:",
+                                            "$selectedCurrency $supplierTotalForeign (৳ $supplierTotalBdt)",
+                                            PrimaryPurple
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     PremiumPoCostLine(if (isBangla) "আন্তর্জাতিক ফ্রেইট ($totalGrossWeightKg KG):" else "International Freight ($totalGrossWeightKg KG):", "৳ $totalCategoryFreightBdt", SecondaryTeal)
                                 }
@@ -3059,8 +3408,17 @@ fun CreatePurchaseOrderDialog(
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                     ) { Text(if (isBangla) "পেছনে" else "Back") }
                     if (currentStep < 3) {
-                        Button(onClick = { currentStep++ }, enabled = !isSaving,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                        Button(
+                            onClick = {
+                                if (currentStep == 2 && !validatePackingStepBeforeLeaving()) {
+                                    return@Button
+                                }
+                                errorMessage = null
+                                currentStep++
+                            },
+                            enabled = !isSaving,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        ) {
                             Text(if (isBangla) "পরবর্তী" else "Continue")
                         }
                     } else {
@@ -3222,6 +3580,8 @@ fun CreatePurchaseOrderDialog(
                                 b.lines[lIdx].productId = pick.productId
                                 b.lines[lIdx].variantId = pick.variantId
                                 b.lines[lIdx].quantityStr = pick.quantity.toString()
+                                b.lines[lIdx].manualWeightKgStr = initialProportionalWeightStr(pick.productId, pick.variantId, pick.quantity)
+                                b.lines[lIdx].isWeightManuallyEdited = false
                             } else {
                                 errorMessage = if (isBangla) "একই কার্টনে ডুপ্লিকেট ভ্যারিয়েন্ট যোগ করা যাবে না।" else "Duplicate variant cannot exist in the same carton."
                             }
@@ -3230,7 +3590,15 @@ fun CreatePurchaseOrderDialog(
                         val b = cartonBoxes[targetIdx]
                         picks.forEach { pick ->
                             if (b.lines.none { it.productId == pick.productId && it.variantId == pick.variantId }) {
-                                b.lines.add(CartonLineState(pick.productId, pick.variantId, pick.quantity.toString()))
+                                b.lines.add(
+                                    CartonLineState(
+                                        pick.productId,
+                                        pick.variantId,
+                                        pick.quantity.toString(),
+                                        manualWeightKgStr = initialProportionalWeightStr(pick.productId, pick.variantId, pick.quantity),
+                                        isWeightManuallyEdited = false
+                                    )
+                                )
                             }
                         }
                     } else {
@@ -3238,9 +3606,15 @@ fun CreatePurchaseOrderDialog(
                             cartonBoxes.add(
                                 CartonBoxState(
                                     cartonNumber = PoPackingEngine.formatCartonNumber(cartonBoxes.size + 1),
-                                    grossWeightKgStr = "15.0",
+                                    grossWeightKgStr = "0",
                                     initialLines = picks.map { p ->
-                                        CartonLineState(p.productId, p.variantId, p.quantity.toString())
+                                        CartonLineState(
+                                            p.productId,
+                                            p.variantId,
+                                            p.quantity.toString(),
+                                            manualWeightKgStr = initialProportionalWeightStr(p.productId, p.variantId, p.quantity),
+                                            isWeightManuallyEdited = false
+                                        )
                                     }
                                 )
                             )
@@ -3267,7 +3641,13 @@ fun CreatePurchaseOrderDialog(
                             grossWeightKgStr = gw.stripTrailingZeros().toPlainString(),
                             netWeightKgStr = nw.stripTrailingZeros().toPlainString(),
                             initialLines = perCartonPicks.map { pick ->
-                                CartonLineState(pick.productId, pick.variantId, pick.quantity.toString())
+                                CartonLineState(
+                                    pick.productId,
+                                    pick.variantId,
+                                    pick.quantity.toString(),
+                                    manualWeightKgStr = initialProportionalWeightStr(pick.productId, pick.variantId, pick.quantity),
+                                    isWeightManuallyEdited = false
+                                )
                             }
                         ).also {
                             if (measurementStr.isNotBlank()) it.updateMeasurement(measurementStr)

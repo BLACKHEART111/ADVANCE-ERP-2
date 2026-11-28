@@ -148,7 +148,8 @@ class ImportRepositoryImpl @Inject constructor(
         cartons: List<PoMixedCartonDraft>, chinaDeliveryChargeMinor: Long,
         categoryFreightRatesBdtMinor: Map<String, Long>, handlingCostMinor: Long,
         sampleCostMinor: Long, attachments: String?, orderDateMillis: Long,
-        expectedArrivalDateMillis: Long?, shippingMethod: String
+        expectedArrivalDateMillis: Long?, shippingMethod: String,
+        chinaDeliveryPayee: com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee
     ): String = database.withTransaction {
         val id = orderId ?: createPurchaseOrder(
             supplierId, currency, exchangeRate, items, notes, status, attachments,
@@ -156,7 +157,8 @@ class ImportRepositoryImpl @Inject constructor(
         )
         updatePurchaseOrder(id, supplierId, currency, exchangeRate, items, notes, status, cartons,
             chinaDeliveryChargeMinor, categoryFreightRatesBdtMinor, handlingCostMinor, sampleCostMinor, attachments,
-            orderDateMillis, expectedArrivalDateMillis, updateSchedule = true, shippingMethod = shippingMethod).getOrThrow()
+            orderDateMillis, expectedArrivalDateMillis, updateSchedule = true, shippingMethod = shippingMethod,
+            chinaDeliveryPayee = chinaDeliveryPayee).getOrThrow()
         id
     }
 
@@ -337,11 +339,21 @@ class ImportRepositoryImpl @Inject constructor(
                 lines.map { MixedCartonLineDraft(it.productId, it.variantId, quantity = it.quantity, manualGrossWeightKg = BigDecimal(it.grossWeightKg)) }, cbm = BigDecimal(first.cbm))
         }
         val costs = importCostDao.getCostItemsForOrderSync(orderId)
+        val parsedOrig = PoNotesMetadataParser.parse(original.notes, defaultForwarder = "")
+        val chinaCost = costs.firstOrNull {
+            it.costCategory == CostCategory.CHINA_DOMESTIC_TRANSPORT.name || it.description.startsWith("China Local Delivery")
+        }
+        val resolvedPayee = when {
+            chinaCost?.notes?.contains("[Payee:SUPPLIER]", ignoreCase = true) == true -> com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.SUPPLIER
+            chinaCost?.notes?.contains("[Payee:FREIGHT_FORWARDER]", ignoreCase = true) == true -> com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER
+            else -> parsedOrig.chinaDeliveryPayee ?: com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER
+        }
         savePurchaseOrderDraft(null, original.supplierId, original.currency, BigDecimal(original.exchangeRateToBdt),
             items, original.notes, PurchaseOrderStatus.DRAFT, cartons,
-            costs.firstOrNull { it.description.startsWith("China Local Delivery") }?.amountMinor ?: 0L,
+            chinaCost?.amountMinor ?: 0L,
             emptyMap(), costs.firstOrNull { it.description.contains("Handling") }?.bdtAmountMinor ?: 0L,
-            costs.firstOrNull { it.description.contains("Sample") }?.bdtAmountMinor ?: 0L, original.attachments)
+            costs.firstOrNull { it.description.contains("Sample") }?.bdtAmountMinor ?: 0L, original.attachments,
+            chinaDeliveryPayee = resolvedPayee)
     }
 
     override suspend fun cancelPurchaseOrder(orderId: String, reason: String?): Unit = database.withTransaction {
@@ -535,7 +547,9 @@ class ImportRepositoryImpl @Inject constructor(
         val targetDeltaMinor = (totalLandedMinor - po.totalBdtAmountMinor - alreadyPostedImportCostsMinor).coerceAtLeast(0L)
         if (targetDeltaMinor <= 0L) return
 
-        val unpostedPairs = actualCosts.filter { !it.isPosted }.map {
+        val unpostedPairs = actualCosts.filter {
+            !it.isPosted && !PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, po.notes)
+        }.map {
             ErpAccountingGuard.mapImportCostCategoryToExpenseAccountId(it.costCategory, it.description) to it.bdtAmountMinor
         }
         val catFreightMinor = snapshots.sumOf { it.internationalFreightBdtMinor }
@@ -765,7 +779,9 @@ class ImportRepositoryImpl @Inject constructor(
             }
             val alreadyPostedMinor = actualCosts.filter { it.isPosted }.sumOf { it.bdtAmountMinor }
             val totalDelta = (totalLandedMinor - po.totalBdtAmountMinor - alreadyPostedMinor).coerceAtLeast(0L)
-            val unpostedPairs = actualCosts.filter { !it.isPosted }.map {
+            val unpostedPairs = actualCosts.filter {
+                !it.isPosted && !PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, po.notes)
+            }.map {
                 ErpAccountingGuard.mapImportCostCategoryToExpenseAccountId(it.costCategory, it.description) to it.bdtAmountMinor
             }
             val rawBuckets = ErpAccountingGuard.allocateLandedExpenseBucketsMinor(
@@ -782,7 +798,9 @@ class ImportRepositoryImpl @Inject constructor(
         }
 
         val unpostedCapCosts = actualCosts.filter {
-            !it.isPosted && (it.isCapitalizableCost || it.isCapitalized || it.costCategory == CostCategory.OTHER_CHARGES.name)
+            !it.isPosted &&
+                (it.isCapitalizableCost || it.isCapitalized || it.costCategory == CostCategory.OTHER_CHARGES.name) &&
+                !PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, po.notes)
         }
         val freightCategories = setOf(
             CostCategory.INTERNATIONAL_FREIGHT.name,
@@ -3545,7 +3563,12 @@ class ImportRepositoryImpl @Inject constructor(
                     forwarderAddress = parsed.forwarderAddress,
                     userNotes = parsed.userNotes,
                     defaultShippingMark = parsed.defaultShippingMark,
-                    cartonShippingMarks = remappedMarks
+                    cartonShippingMarks = remappedMarks,
+                    customAdvanceMinor = parsed.customAdvanceMinor,
+                    chinaDeliveryPayee = parsed.chinaDeliveryPayee,
+                    supplierChinaDeliveryMinor = parsed.supplierChinaDeliveryMinor,
+                    supplierChinaDeliveryBdtMinor = parsed.supplierChinaDeliveryBdtMinor,
+                    variantOptionalTotalWeightsKg = parsed.variantOptionalTotalWeightsKg
                 )
                 purchaseOrderDao.updateOrder(order.copy(notes = updatedNotes, updatedAt = System.currentTimeMillis()))
             }
@@ -3572,8 +3595,59 @@ class ImportRepositoryImpl @Inject constructor(
 
     override suspend fun deletePurchaseCostItem(costItemId: String) = database.withTransaction {
         val cost = importCostDao.getCostItemById(costItemId) ?: return@withTransaction
-        cost.purchaseOrderId?.let { requirePackingEditableOrder(it) }
+        val poId = cost.purchaseOrderId
+        poId?.let { requirePackingEditableOrder(it) }
         require(!cost.isCapitalized && !cost.isPosted) { "Posted or capitalized costs require a reversal or cost adjustment" }
+        if (poId != null) {
+            val po = purchaseOrderDao.getOrderById(poId)
+            if (po != null && PoNotesMetadataParser.isSupplierChinaDeliveryCost(cost.costCategory, cost.notes, po.notes)) {
+                val parsed = PoNotesMetadataParser.parse(po.notes, defaultForwarder = "")
+                val removeForeignMinor = if (parsed.supplierChinaDeliveryMinor > 0L) parsed.supplierChinaDeliveryMinor else cost.amountMinor
+                val removeBdtMinor = if (parsed.supplierChinaDeliveryBdtMinor > 0L) parsed.supplierChinaDeliveryBdtMinor else cost.bdtAmountMinor
+                val itemsSum = purchaseOrderDao.getItemsForOrderSync(poId)
+                val minItemsOriginal = itemsSum.sumOf { it.totalAmountMinor }
+                val minItemsBdt = itemsSum.sumOf { it.totalBdtAmountMinor }
+                val newTotalMinor = (po.totalAmountMinor - removeForeignMinor).coerceAtLeast(minItemsOriginal)
+                val newTotalBdtMinor = (po.totalBdtAmountMinor - removeBdtMinor).coerceAtLeast(minItemsBdt)
+                if (po.paidAmountMinor > 0L) {
+                    require(newTotalMinor >= po.paidAmountMinor && newTotalBdtMinor >= po.paidBdtAmountMinor) {
+                        "নতুন PO মূল্য (${po.currency} ${Formatters.formatMinorUnit(newTotalMinor)}) পরিশোধিত সাপ্লায়ার পেমেন্ট (${po.currency} ${Formatters.formatMinorUnit(po.paidAmountMinor)})-এর চেয়ে কম হতে পারবে না।"
+                    }
+                }
+                if (po.status != PurchaseOrderStatus.DRAFT.name) {
+                    supplierDao.getSupplierById(po.supplierId)?.let { sup ->
+                        supplierDao.updateOutstandingPayable(sup.id, (sup.outstandingPayableMinor + newTotalBdtMinor - po.totalBdtAmountMinor).coerceAtLeast(0L))
+                    }
+                }
+                val updatedNotes = PoNotesMetadataParser.serialize(
+                    paymentTermLabel = parsed.rawTermsText,
+                    forwarderAddress = parsed.forwarderAddress,
+                    userNotes = parsed.userNotes,
+                    defaultShippingMark = parsed.defaultShippingMark,
+                    cartonShippingMarks = parsed.cartonShippingMarks,
+                    customAdvanceMinor = parsed.customAdvanceMinor,
+                    chinaDeliveryPayee = com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER,
+                    supplierChinaDeliveryMinor = 0L,
+                    supplierChinaDeliveryBdtMinor = 0L,
+                    variantOptionalTotalWeightsKg = parsed.variantOptionalTotalWeightsKg
+                )
+                val resolvedStatus = PoPackingEngine.resolveEditedPaidPoStatus(
+                    previousStatus = po.status,
+                    requestedDraftOrConfirmedStatus = po.status,
+                    paidAmountMinor = po.paidAmountMinor,
+                    newTotalAmountMinor = newTotalMinor
+                )
+                val updatedPo = po.copy(
+                    status = resolvedStatus,
+                    totalAmountMinor = newTotalMinor,
+                    totalBdtAmountMinor = newTotalBdtMinor,
+                    notes = updatedNotes,
+                    updatedAt = System.currentTimeMillis()
+                )
+                purchaseOrderDao.updateOrder(updatedPo)
+                syncPoCommitmentJournal(updatedPo)
+            }
+        }
         importCostDao.deleteCostItem(costItemId)
     }
 
@@ -3594,7 +3668,8 @@ class ImportRepositoryImpl @Inject constructor(
         orderDateMillis: Long?,
         expectedArrivalDateMillis: Long?,
         updateSchedule: Boolean,
-        shippingMethod: String?
+        shippingMethod: String?,
+        chinaDeliveryPayee: com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee
     ): Result<Unit> = runCatching { database.withTransaction {
         require(items.isNotEmpty()) { "Purchase order must contain at least 1 item" }
         require(exchangeRate > BigDecimal.ZERO) { "Exchange rate must be positive: $exchangeRate" }
@@ -3653,6 +3728,46 @@ class ImportRepositoryImpl @Inject constructor(
             )
         }
 
+        val isLocal = currency.equals("BDT", ignoreCase = true)
+        val parsedInputNotes = PoNotesMetadataParser.parse(notes, defaultForwarder = "")
+        val effectivePayee = if (isLocal) {
+            com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.FREIGHT_FORWARDER
+        } else {
+            chinaDeliveryPayee
+        }
+        val supplierChinaOriginalMinor = if (!isLocal && effectivePayee == com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee.SUPPLIER && chinaDeliveryChargeMinor > 0L) {
+            chinaDeliveryChargeMinor
+        } else 0L
+        val supplierChinaBdtMinor = if (supplierChinaOriginalMinor > 0L) {
+            BigDecimal(supplierChinaOriginalMinor)
+                .multiply(exchangeRate)
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValueExact()
+        } else 0L
+        totalOriginalMinor = Math.addExact(totalOriginalMinor, supplierChinaOriginalMinor)
+        totalBdtMinor = Math.addExact(totalBdtMinor, supplierChinaBdtMinor)
+
+        val finalNotes = if (supplierChinaOriginalMinor > 0L ||
+            parsedInputNotes.chinaDeliveryPayee != null ||
+            parsedInputNotes.supplierChinaDeliveryMinor > 0L ||
+            (!isLocal && chinaDeliveryChargeMinor > 0L)
+        ) {
+            PoNotesMetadataParser.serialize(
+                paymentTermLabel = parsedInputNotes.rawTermsText,
+                forwarderAddress = parsedInputNotes.forwarderAddress,
+                userNotes = parsedInputNotes.userNotes,
+                defaultShippingMark = parsedInputNotes.defaultShippingMark,
+                cartonShippingMarks = parsedInputNotes.cartonShippingMarks,
+                customAdvanceMinor = parsedInputNotes.customAdvanceMinor,
+                chinaDeliveryPayee = effectivePayee,
+                supplierChinaDeliveryMinor = supplierChinaOriginalMinor,
+                supplierChinaDeliveryBdtMinor = supplierChinaBdtMinor,
+                variantOptionalTotalWeightsKg = parsedInputNotes.variantOptionalTotalWeightsKg
+            )
+        } else {
+            notes
+        }
+
         val totalCartonsSum = if (cartons.isNotEmpty()) {
             cartons.map { it.cartonNumber.trim().ifBlank { "CTN" } }.distinct().size
         } else {
@@ -3705,7 +3820,7 @@ class ImportRepositoryImpl @Inject constructor(
             exchangeRateToBdt = exchangeRate.toPlainString(),
             totalAmountMinor = totalOriginalMinor,
             totalBdtAmountMinor = totalBdtMinor,
-            notes = notes,
+            notes = finalNotes,
             attachments = attachments?.takeIf { it.isNotBlank() },
             totalCartons = totalCartonsSum,
             totalGrossWeightKg = totalGrossWeightSum.toPlainString(),
@@ -3822,7 +3937,8 @@ class ImportRepositoryImpl @Inject constructor(
                 category: CostCategory,
                 descMatch: String,
                 defaultDesc: String,
-                amountMinor: Long
+                amountMinor: Long,
+                extraNotes: String? = null
             ) {
                 val costCurrency = if (category == CostCategory.CHINA_DOMESTIC_TRANSPORT) currency else "BDT"
                 val costRate = if (costCurrency == "BDT") BigDecimal.ONE else exchangeRate
@@ -3837,13 +3953,26 @@ class ImportRepositoryImpl @Inject constructor(
                         .setScale(0, RoundingMode.HALF_UP)
                         .longValueExact()
                     if (existing != null) {
+                        val mergedNotes = if (extraNotes != null) {
+                            val cleanExistingNotes = existing.notes
+                                ?.replace(Regex("""\[Payee:\s*[^\]]+]"""), "")
+                                ?.split("•")
+                                ?.map { it.trim() }
+                                ?.filter { it.isNotBlank() }
+                                ?.joinToString(" • ")
+                                ?.ifBlank { null }
+                            listOfNotNull(extraNotes, cleanExistingNotes).joinToString(" • ").ifBlank { null }
+                        } else {
+                            existing.notes
+                        }
                         importCostDao.updateCostItem(
                             existing.copy(
                                 costCategory = category.name,
                                 amountMinor = amountMinor,
                                 currency = costCurrency,
                                 exchangeRateToBdt = costRate.toPlainString(),
-                                bdtAmountMinor = bdtMinor
+                                bdtAmountMinor = bdtMinor,
+                                notes = mergedNotes
                             )
                         )
                     } else {
@@ -3855,7 +3984,8 @@ class ImportRepositoryImpl @Inject constructor(
                             currency = costCurrency,
                             exchangeRate = costRate,
                             method = AllocationMethod.QUANTITY,
-                            isEstimated = false
+                            isEstimated = false,
+                            notes = extraNotes
                         )
                     }
                 } else if (existing != null) {
@@ -3868,7 +3998,8 @@ class ImportRepositoryImpl @Inject constructor(
                     category = CostCategory.CHINA_DOMESTIC_TRANSPORT,
                     descMatch = "China Local",
                     defaultDesc = "China Local Delivery (চীন লোকাল ডেলিভারি)",
-                    amountMinor = chinaDeliveryChargeMinor
+                    amountMinor = chinaDeliveryChargeMinor,
+                    extraNotes = if (!isLocal) "[Payee:${effectivePayee.name}]" else null
                 )
             }
             if (handlingCostMinor > 0L || existingCosts.any { it.description.contains("Handling", ignoreCase = true) }) {
@@ -3986,8 +4117,9 @@ class ImportRepositoryImpl @Inject constructor(
         purchaseOrderDao.updateItem(updatedItem)
 
         val allItems = purchaseOrderDao.getItemsForOrderSync(po.id)
-        val newTotalMinor = allItems.sumOf { it.totalAmountMinor }
-        val newTotalBdtMinor = allItems.sumOf { it.totalBdtAmountMinor }
+        val parsedPoNotes = PoNotesMetadataParser.parse(po.notes, defaultForwarder = "")
+        val newTotalMinor = Math.addExact(allItems.sumOf { it.totalAmountMinor }, parsedPoNotes.supplierChinaDeliveryMinor)
+        val newTotalBdtMinor = Math.addExact(allItems.sumOf { it.totalBdtAmountMinor }, parsedPoNotes.supplierChinaDeliveryBdtMinor)
         val newCartons = allItems.sumOf { it.cartonQuantity }
         val newGross = allItems.fold(BigDecimal.ZERO) { acc, itm -> acc.add(BigDecimal(itm.grossWeightKg.ifBlank { "0" })) }.toPlainString()
 
@@ -4027,8 +4159,9 @@ class ImportRepositoryImpl @Inject constructor(
         purchaseOrderDao.deleteItemById(itemId)
 
         val allItems = purchaseOrderDao.getItemsForOrderSync(po.id)
-        val newTotalMinor = allItems.sumOf { it.totalAmountMinor }
-        val newTotalBdtMinor = allItems.sumOf { it.totalBdtAmountMinor }
+        val parsedPoNotes = PoNotesMetadataParser.parse(po.notes, defaultForwarder = "")
+        val newTotalMinor = Math.addExact(allItems.sumOf { it.totalAmountMinor }, parsedPoNotes.supplierChinaDeliveryMinor)
+        val newTotalBdtMinor = Math.addExact(allItems.sumOf { it.totalBdtAmountMinor }, parsedPoNotes.supplierChinaDeliveryBdtMinor)
         val newCartons = allItems.sumOf { it.cartonQuantity }
         val newGross = allItems.fold(BigDecimal.ZERO) { acc, itm -> acc.add(BigDecimal(itm.grossWeightKg.ifBlank { "0" })) }.toPlainString()
 

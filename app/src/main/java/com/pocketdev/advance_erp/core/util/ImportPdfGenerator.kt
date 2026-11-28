@@ -766,7 +766,9 @@ object ImportPdfGenerator {
         val supContactLine = "Attn: ${exportData.supplierContactPerson}  |  Tel: ${exportData.supplierPhone}"
         val supAddrLines = wrapText(exportData.supplierAddress, paint, halfW - 22f, maxLines = 2)
         val leftBoxH = 26f + supNameLines.size * 13f + 12f + supAddrLines.size * 11f + 10f
-        val summaryRowCount = if (exportData.isPartialCartonExport) 7 else 6
+        val summaryRowCount = 6 +
+            (if (exportData.isPartialCartonExport) 1 else 0) +
+            (if (exportData.supplierChinaDeliveryMinor > 0L) 1 else 0)
         val rightBoxH = 26f + summaryRowCount * 14f + 10f
         val cardsH = maxOf(leftBoxH, rightBoxH, 102f)
 
@@ -858,6 +860,9 @@ object ImportPdfGenerator {
         drawSummaryRow(gwLabel, gwValue)
         if (exportData.isPartialCartonExport) {
             drawSummaryRow("Selected Export:", "${exportData.exportedCartonCount} CTN (${exportData.exportedPackedQuantity} pcs)", boldValue = true)
+        }
+        if (exportData.supplierChinaDeliveryMinor > 0L) {
+            drawSummaryRow("China Local Del.:", "${exportData.currency} ${Formatters.formatMinorUnit(exportData.supplierChinaDeliveryMinor)}")
         }
         drawSummaryRow("Total Order Amount:", "${exportData.currency} ${Formatters.formatMinorUnit(exportData.poGrandTotalMinor)}", boldValue = true)
 
@@ -973,16 +978,50 @@ object ImportPdfGenerator {
             drawSupplierHeaderBanner(canvas, "P.$pageNumber")
             currentY = 122f
         }
+        val hasSupplierChinaDel = exportData.supplierChinaDeliveryMinor > 0L
+        val itemsBarTotalMinor = if (hasSupplierChinaDel && exportData.items.isNotEmpty()) {
+            exportData.poItemsSubtotalMinor
+        } else {
+            exportData.poGrandTotalMinor
+        }
         paint.color = Color.parseColor("#FEF3C7")
         canvas.drawRect(marginX, currentY, contentRight, currentY + 22f, paint)
         paint.color = Color.parseColor("#0F172A")
         paint.textSize = 8.2f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("TOTAL PRODUCT ORDER", marginX + 8f, currentY + 14.5f, paint)
+        canvas.drawText(if (hasSupplierChinaDel) "PRODUCT SUBTOTAL" else "TOTAL PRODUCT ORDER", marginX + 8f, currentY + 14.5f, paint)
         drawRightAlignedText(canvas, "${Formatters.formatNumber(exportData.poTotalQuantity.toLong(), com.pocketdev.advance_erp.core.model.AppLanguage.ENGLISH)} pcs", 432f, currentY + 14.5f, paint, 68f)
         paint.color = purpleAccent
-        drawRightAlignedText(canvas, "${exportData.currency} ${Formatters.formatMinorUnit(exportData.poGrandTotalMinor)}", contentRight - 6f, currentY + 14.5f, paint, 115f)
-        currentY += 32f
+        drawRightAlignedText(canvas, "${exportData.currency} ${Formatters.formatMinorUnit(itemsBarTotalMinor)}", contentRight - 6f, currentY + 14.5f, paint, 115f)
+        currentY += if (hasSupplierChinaDel) 22f else 32f
+        if (hasSupplierChinaDel) {
+            if (currentY + 46f > maxContentBottom) {
+                document.finishPage(page)
+                pageNumber++
+                page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create())
+                canvas = page.canvas
+                drawSupplierHeaderBanner(canvas, "P.$pageNumber")
+                currentY = 122f
+            }
+            paint.color = Color.parseColor("#F8FAFC")
+            canvas.drawRect(marginX, currentY, contentRight, currentY + 19f, paint)
+            paint.color = Color.parseColor("#334155")
+            paint.textSize = 8.0f
+            paint.typeface = Typeface.DEFAULT
+            canvas.drawText("CHINA LOCAL DELIVERY (SUPPLIER)", marginX + 8f, currentY + 13f, paint)
+            drawRightAlignedText(canvas, "+ ${exportData.currency} ${Formatters.formatMinorUnit(exportData.supplierChinaDeliveryMinor)}", contentRight - 6f, currentY + 13f, paint, 120f)
+            currentY += 19f
+
+            paint.color = Color.parseColor("#EDE9FE")
+            canvas.drawRect(marginX, currentY, contentRight, currentY + 22f, paint)
+            paint.color = Color.parseColor("#0F172A")
+            paint.textSize = 8.4f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("GRAND TOTAL (SUPPLIER PAYABLE)", marginX + 8f, currentY + 14.5f, paint)
+            paint.color = purpleAccent
+            drawRightAlignedText(canvas, "${exportData.currency} ${Formatters.formatMinorUnit(exportData.poGrandTotalMinor)}", contentRight - 6f, currentY + 14.5f, paint, 125f)
+            currentY += 32f
+        }
 
         // Section E: Structured Carton Packing Breakdown Table
         if (exportData.exportedCartons.isNotEmpty()) {

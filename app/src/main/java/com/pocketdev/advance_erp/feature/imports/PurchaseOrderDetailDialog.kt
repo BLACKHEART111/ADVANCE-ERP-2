@@ -211,19 +211,18 @@ fun PurchaseOrderDetailDialog(
     var deletingCartonNumber by remember { mutableStateOf<String?>(null) }
     var deletingCostItemId by remember { mutableStateOf<String?>(null) }
 
-    val paymentTerm = remember(order.notes) {
-        val notes = order.notes ?: ""
-        when {
-            notes.contains("100% Advance", ignoreCase = true) -> PaymentTermType.HUNDRED_PERCENT_ADVANCE
-            notes.contains("50% Advance", ignoreCase = true) -> PaymentTermType.FIFTY_FIFTY
-            notes.contains("Full Due", ignoreCase = true) -> PaymentTermType.FULL_DUE
-            notes.contains("Custom", ignoreCase = true) -> PaymentTermType.CUSTOM_PARTIAL
-            else -> PaymentTermType.THIRTY_SEVENTY
-        }
+    val parsedOrderNotes = remember(order.notes) {
+        com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.parse(order.notes, defaultForwarder = "")
     }
+    val paymentTerm = parsedOrderNotes.paymentTerm
     val rateBd = BigDecimal(order.exchangeRateToBdt.ifBlank { "17.00" })
-    val scheduledInstallments = remember(paymentTerm, order.totalAmountMinor, rateBd) {
-        PaymentTermsCalculator.calculateSchedule(paymentTerm, order.totalAmountMinor, rateBd)
+    val scheduledInstallments = remember(paymentTerm, order.totalAmountMinor, rateBd, parsedOrderNotes.customAdvanceMinor) {
+        PaymentTermsCalculator.calculateSchedule(
+            termType = paymentTerm,
+            totalAmountMinor = order.totalAmountMinor,
+            exchangeRateToBdt = rateBd,
+            customAdvanceAmountMinor = parsedOrderNotes.customAdvanceMinor
+        )
     }
 
     val remainingBalanceMinor = (order.totalAmountMinor - order.paidAmountMinor).coerceAtLeast(0L)
@@ -331,13 +330,14 @@ fun PurchaseOrderDetailDialog(
             ledgerAccruedImportMinor = ledgerAccruedFreightBillMinor
         )
     }
-    val freightPayableSummary = remember(landedSummary, costItems, additionalCosts, freightPayments, ledgerAccruedFreightBillMinor) {
+    val freightPayableSummary = remember(landedSummary, costItems, additionalCosts, freightPayments, ledgerAccruedFreightBillMinor, order.notes) {
         calculatePoFreightPayableSummary(
             landedSummary = landedSummary,
             costItems = costItems,
             additionalCosts = additionalCosts,
             paidFreightBillMinor = freightPayments.sumOf { it.amountBdtMinor },
-            ledgerAccruedBillMinor = ledgerAccruedFreightBillMinor
+            ledgerAccruedBillMinor = ledgerAccruedFreightBillMinor,
+            orderNotes = order.notes
         )
     }
 
@@ -443,10 +443,30 @@ fun PurchaseOrderDetailDialog(
                     }
                     if(detailTab==0) item {
                         Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                            PremiumPoCostLine(if(isBangla) "পণ্যের মোট ক্রয়মূল্য" else "Purchase value","${order.currency} ${Formatters.formatMinorUnit(order.totalAmountMinor)}")
-                            costItems.groupBy { it.costCategory }.forEach { (category,costs) ->
-                                val cat=runCatching {com.pocketdev.advance_erp.data.entity.CostCategory.valueOf(category)}.getOrNull()
-                                PremiumPoCostLine(cat?.let {if(isBangla)it.titleBn else it.titleEn} ?: category,"৳ ${Formatters.formatMinorUnit(costs.sumOf {it.bdtAmountMinor})}")
+                            val pureItemsOriginalMinor = if (!order.currency.equals("BDT", ignoreCase = true) && parsedOrderNotes.supplierChinaDeliveryMinor > 0L) {
+                                (order.totalAmountMinor - parsedOrderNotes.supplierChinaDeliveryMinor).coerceAtLeast(0L)
+                            } else {
+                                order.totalAmountMinor
+                            }
+                            PremiumPoCostLine(
+                                if (isBangla) "পণ্যের মোট ক্রয়মূল্য" else "Purchase value",
+                                "${order.currency} ${Formatters.formatMinorUnit(pureItemsOriginalMinor)}"
+                            )
+                            costItems.groupBy { it.costCategory }.forEach { (category, costs) ->
+                                val cat = runCatching { com.pocketdev.advance_erp.data.entity.CostCategory.valueOf(category) }.getOrNull()
+                                val baseLabel = cat?.let { if (isBangla) it.titleBn else it.titleEn } ?: category
+                                val labelWithPayee = if (category == CostCategory.CHINA_DOMESTIC_TRANSPORT.name && !order.currency.equals("BDT", ignoreCase = true)) {
+                                    val isSupplierPayee = costs.any {
+                                        com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, order.notes)
+                                    }
+                                    val payeeTag = if (isSupplierPayee) {
+                                        if (isBangla) "সাপ্লায়ার" else "Supplier"
+                                    } else {
+                                        if (isBangla) "ফ্রেইট ফরোয়ার্ডার" else "Freight Forwarder"
+                                    }
+                                    "$baseLabel ($payeeTag)"
+                                } else baseLabel
+                                PremiumPoCostLine(labelWithPayee, "৳ ${Formatters.formatMinorUnit(costs.sumOf { it.bdtAmountMinor })}")
                             }
                             additionalCosts.filter { it.isCapitalizable && it.bdtAmountMinor > 0L }.forEach { ac ->
                                 PremiumPoCostLine(
@@ -716,12 +736,12 @@ fun PurchaseOrderDetailDialog(
                                     }
                                 }
 
-                                if (!order.notes.isNullOrBlank()) {
+                                if (parsedOrderNotes.userNotes.isNotBlank()) {
                                     Spacer(modifier = Modifier.height(8.dp))
                                     HorizontalDivider(color = ERPDivider)
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "${if (isBangla) "মন্তব্য: " else "Notes: "}${order.notes}",
+                                        text = "${if (isBangla) "মন্তব্য: " else "Notes: "}${parsedOrderNotes.userNotes}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
@@ -823,6 +843,13 @@ fun PurchaseOrderDetailDialog(
                                             textAlign = TextAlign.Start,
                                             minFontSizeSp = 9.5f
                                         )
+                                        if (!order.currency.equals("BDT", ignoreCase = true) && parsedOrderNotes.supplierChinaDeliveryMinor > 0L) {
+                                            Text(
+                                                text = if (isBangla) "(পণ্য + চীন পরিবহন)" else "(Goods + China Del.)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PrimaryPurple
+                                            )
+                                        }
                                     }
 
                                     // Total Paid
@@ -2838,9 +2865,10 @@ fun PurchaseOrderDetailDialog(
     // Edit Packing Dialog (Allows resetting or modifying cartons e.g. 5 CTN -> 0)
     if (showEditPackingDialog) {
         var editCartonsStr by remember(order) { mutableStateOf(order.totalCartons.toString()) }
-        var editGrossWeightStr by remember(order) { mutableStateOf(order.totalGrossWeightKg) }
+        var editGrossWeightStr by remember(order) { mutableStateOf(order.totalGrossWeightKg.ifBlank { "0" }) }
         var editNetWeightStr by remember(order) { mutableStateOf(order.totalNetWeightKg) }
         var editCbmStr by remember(order) { mutableStateOf(order.totalCbm) }
+        var editPackingError by remember(order) { mutableStateOf<String?>(null) }
 
         AlertDialog(
             onDismissRequest = { showEditPackingDialog = false },
@@ -2866,16 +2894,22 @@ fun PurchaseOrderDetailDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    val editCtnCount = editCartonsStr.toIntOrNull() ?: 0
+                    val editGwInvalid = editCtnCount > 0 && (editGrossWeightStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO) <= BigDecimal.ZERO
                     OutlinedTextField(
                         value = editGrossWeightStr,
-                        onValueChange = { editGrossWeightStr = it },
+                        onValueChange = {
+                            editGrossWeightStr = PoPackingEngine.normalizeWeightInput(editGrossWeightStr, it)
+                            editPackingError = null
+                        },
                         label = { Text(if (isBangla) "মোট গ্রস ওজন (KG)" else "Total Gross Weight (KG)") },
+                        isError = editGwInvalid,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = editNetWeightStr,
-                        onValueChange = { editNetWeightStr = it },
+                        onValueChange = { editNetWeightStr = PoPackingEngine.normalizeWeightInput(editNetWeightStr, it) },
                         label = { Text(if (isBangla) "মোট নেট ওজন (KG)" else "Total Net Weight (KG)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -2887,14 +2921,27 @@ fun PurchaseOrderDetailDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    editPackingError?.let { err ->
+                        Text(err, color = StatusError, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         val ctn = editCartonsStr.toIntOrNull() ?: 0
-                        onUpdatePacking?.invoke(ctn, editGrossWeightStr.trim(), editNetWeightStr.trim(), editCbmStr.trim())
-                        showEditPackingDialog = false
+                        val gwBd = editGrossWeightStr.trim().toBigDecimalOrNull() ?: BigDecimal.ZERO
+                        if (ctn > 0 && gwBd <= BigDecimal.ZERO) {
+                            editPackingError = if (isBangla) {
+                                "কার্টন থাকলে মোট গ্রস ওজন শূন্যের বেশি (KG) হতে হবে।"
+                            } else {
+                                "Total gross weight must be greater than 0 KG when cartons > 0."
+                            }
+                        } else {
+                            editPackingError = null
+                            onUpdatePacking?.invoke(ctn, editGrossWeightStr.trim().ifBlank { "0" }, editNetWeightStr.trim(), editCbmStr.trim())
+                            showEditPackingDialog = false
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                 ) {

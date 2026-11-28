@@ -681,7 +681,7 @@ fun ImportManagementScreen(
             onValidateBarcode = viewModel::isBarcodeAvailable,
             onAddNewVariant = viewModel::addNewVariantFromPurchase,
             onAddNewCategory = viewModel::addNewCategory,
-            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments, orderDateMillis, expectedArrivalDateMillis, shippingMethod ->
+            onSavePo = { supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments, orderDateMillis, expectedArrivalDateMillis, shippingMethod, chinaDeliveryPayee ->
                 viewModel.createPurchaseOrder(
                     supplierId = supId,
                     currency = cur,
@@ -697,6 +697,7 @@ fun ImportManagementScreen(
                     orderDateMillis = orderDateMillis,
                     expectedArrivalDateMillis = expectedArrivalDateMillis,
                     shippingMethod = shippingMethod,
+                    chinaDeliveryPayee = chinaDeliveryPayee,
                     onSaved = { EditorDraftStore(context).remove("purchase:new"); showCreatePoDialog = false },
                     attachments = attachments
                 )
@@ -759,7 +760,7 @@ fun ImportManagementScreen(
                 onValidateBarcode = viewModel::isBarcodeAvailable,
                 onAddNewVariant = viewModel::addNewVariantFromPurchase,
                 onAddNewCategory = viewModel::addNewCategory,
-                onUpdatePo = { ordId, supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments, orderDateMillis, expectedArrivalDateMillis, shippingMethod ->
+                onUpdatePo = { ordId, supId, cur, rate, items, notes, status, cartons, chinaDeliveryMinor, catRatesMinor, handlingMinor, sampleMinor, attachments, orderDateMillis, expectedArrivalDateMillis, shippingMethod, chinaDeliveryPayee ->
                     viewModel.updatePurchaseOrder(
                         orderId = ordId,
                         supplierId = supId,
@@ -777,11 +778,12 @@ fun ImportManagementScreen(
                         expectedArrivalDateMillis = expectedArrivalDateMillis,
                         updateSchedule = true,
                         shippingMethod = shippingMethod,
+                        chinaDeliveryPayee = chinaDeliveryPayee,
                         onSaved = onOrderSaved,
                         attachments = attachments
                     )
                 },
-                onSavePo = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
+                onSavePo = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
             )
         }
     }

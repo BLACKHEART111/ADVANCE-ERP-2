@@ -1,5 +1,7 @@
 package com.pocketdev.advance_erp
 
+import com.pocketdev.advance_erp.core.engine.CartonWeightAllocationEngine
+import com.pocketdev.advance_erp.core.engine.MixedCartonLineInput
 import com.pocketdev.advance_erp.core.engine.PackingCartonLine
 import com.pocketdev.advance_erp.core.engine.PackingIssueType
 import com.pocketdev.advance_erp.core.engine.PackingOrderLine
@@ -7,6 +9,7 @@ import com.pocketdev.advance_erp.core.engine.PoOrderItemGroupLine
 import com.pocketdev.advance_erp.core.engine.PoPackingEngine
 import com.pocketdev.advance_erp.core.engine.VariantKey
 import com.pocketdev.advance_erp.core.engine.VariantVisibility
+import com.pocketdev.advance_erp.core.util.ChinaDeliveryPayee
 import com.pocketdev.advance_erp.core.util.ImportExcelGenerator
 import com.pocketdev.advance_erp.core.util.PoExportDataBuilder
 import com.pocketdev.advance_erp.core.util.PoNotesMetadataParser
@@ -416,5 +419,149 @@ class PoSmartPackingAndExportTest {
                 newTotalAmountMinor = 307_600L
             )
         )
+    }
+
+    @Test
+    fun scenario17_chinaDeliveryPayeeAndVariantWeightsNotesMetadataRoundTrip() {
+        val weights = linkedMapOf("prod-1:v1" to "12.5", "prod-1:v2" to "8")
+        val serialized = PoNotesMetadataParser.serialize(
+            paymentTermLabel = "30% Advance + 70% Balance",
+            forwarderAddress = "Yiwu Warehouse B",
+            userNotes = "Pack carefully",
+            defaultShippingMark = "TUKTAK / PO-1",
+            cartonShippingMarks = mapOf("CTN-001" to "RUSH"),
+            customAdvanceMinor = null,
+            chinaDeliveryPayee = ChinaDeliveryPayee.SUPPLIER,
+            supplierChinaDeliveryMinor = 30_000L,
+            supplierChinaDeliveryBdtMinor = 600_000L,
+            variantOptionalTotalWeightsKg = weights
+        )
+        val parsed = PoNotesMetadataParser.parse(serialized)
+        assertEquals(ChinaDeliveryPayee.SUPPLIER, parsed.chinaDeliveryPayee)
+        assertEquals(30_000L, parsed.supplierChinaDeliveryMinor)
+        assertEquals(600_000L, parsed.supplierChinaDeliveryBdtMinor)
+        assertEquals(weights, parsed.variantOptionalTotalWeightsKg)
+        assertEquals("Pack carefully", parsed.userNotes)
+        assertEquals("RUSH", parsed.cartonShippingMarks["CTN-001"])
+
+        // Legacy untagged notes stay clean with defaults
+        val legacy = PoNotesMetadataParser.parse("[Terms: 30% Advance + 70% Balance] • Simple remark")
+        assertEquals(null, legacy.chinaDeliveryPayee)
+        assertEquals(0L, legacy.supplierChinaDeliveryMinor)
+        assertEquals(0L, legacy.supplierChinaDeliveryBdtMinor)
+        assertTrue(legacy.variantOptionalTotalWeightsKg.isEmpty())
+        assertEquals("Simple remark", legacy.userNotes)
+
+        // Cost payee matcher honors cost-level [Payee:...] before order-level fallback
+        assertTrue(PoNotesMetadataParser.isSupplierChinaDeliveryCost("CHINA_DOMESTIC_TRANSPORT", "[Payee:SUPPLIER]", null))
+        assertFalse(PoNotesMetadataParser.isSupplierChinaDeliveryCost("CHINA_DOMESTIC_TRANSPORT", "[Payee:FREIGHT_FORWARDER]", serialized))
+        assertTrue(PoNotesMetadataParser.isSupplierChinaDeliveryCost("CHINA_DOMESTIC_TRANSPORT", null, serialized))
+        assertFalse(PoNotesMetadataParser.isSupplierChinaDeliveryCost("INTERNATIONAL_FREIGHT", "[Payee:SUPPLIER]", serialized))
+    }
+
+    @Test
+    fun scenario18_proportionalVariantWeightAndTareReconciliationAndInputNormalization() {
+        // 400 pcs total with 20 KG optional weight -> 100 pcs = 5 KG, 150 pcs = 7.5 KG
+        val wt100 = PoPackingEngine.calculateProportionalVariantWeightKg(400, BigDecimal("20"), 100)
+        val wt150 = PoPackingEngine.calculateProportionalVariantWeightKg(400, BigDecimal("20"), 150)
+        assertEquals(BigDecimal("5.000"), wt100)
+        assertEquals(BigDecimal("7.500"), wt150)
+        assertEquals("5", PoPackingEngine.formatWeightForInput(wt100))
+        assertEquals("7.5", PoPackingEngine.formatWeightForInput(wt150))
+
+        // Weight input normalization: leading placeholder 0 replaced by digit, keeps "0."
+        assertEquals("5", PoPackingEngine.normalizeWeightInput("0", "05"))
+        assertEquals("0.", PoPackingEngine.normalizeWeightInput("0", "0."))
+        assertEquals("0.5", PoPackingEngine.normalizeWeightInput("0.", "0.5"))
+        assertEquals("12.34", PoPackingEngine.normalizeWeightInput("12", "12.3.4"))
+
+        // Tare reconciliation: two variants manually/auto set to 5 + 7.5 = 12.5 KG inside 12.6 KG physical carton
+        val allocated = CartonWeightAllocationEngine.allocateWeights(
+            cartonGrossWeightKg = BigDecimal("12.600"),
+            lines = listOf(
+                MixedCartonLineInput("p1", "v1", quantity = 100, manualGrossWeightKg = BigDecimal("5")),
+                MixedCartonLineInput("p1", "v2", quantity = 150, manualGrossWeightKg = BigDecimal("7.5"))
+            )
+        )
+        val totalAllocated = allocated.fold(BigDecimal.ZERO) { acc, r -> acc.add(r.allocatedGrossWeightKg) }
+        assertEquals(0, BigDecimal("12.600").compareTo(totalAllocated))
+        assertEquals(0, BigDecimal("5.040").compareTo(allocated[0].allocatedGrossWeightKg))
+        assertEquals(0, BigDecimal("7.560").compareTo(allocated[1].allocatedGrossWeightKg))
+
+        // Exact sum still stays exact
+        val exact = CartonWeightAllocationEngine.allocateWeights(
+            cartonGrossWeightKg = BigDecimal("12.500"),
+            lines = listOf(
+                MixedCartonLineInput("p1", "v1", quantity = 100, manualGrossWeightKg = BigDecimal("5")),
+                MixedCartonLineInput("p1", "v2", quantity = 150, manualGrossWeightKg = BigDecimal("7.5"))
+            )
+        )
+        assertEquals(0, BigDecimal("5.000").compareTo(exact[0].allocatedGrossWeightKg))
+        assertEquals(0, BigDecimal("7.500").compareTo(exact[1].allocatedGrossWeightKg))
+    }
+
+    @Test
+    fun scenario19_supplierPoExportAndExcelIncludeSupplierChinaDeliveryWithoutMismatch() {
+        val supplier = Supplier(id = "sup-1", supplierCode = "SUP-1", companyName = "Guangzhou Factory", phone = "123", address = "GZ", country = "China", currency = "CNY")
+        val profile = BusinessProfile(id = "bp", companyName = "TUKTAK BD", address = "Dhaka", phone = "017", email = "a@b.c", taxNumber = "")
+        val product = Product(id = "p-1", baseSku = "SKU-1", nameEn = "4D Cloud Insole", nameBn = "ইনসোল", categoryId = "cat-1", sellingPriceMinor = 50000L, purchasePriceMinor = 10000L)
+        val notes = PoNotesMetadataParser.serialize(
+            paymentTermLabel = "30% Advance + 70% Balance",
+            forwarderAddress = "Guangzhou Warehouse",
+            userNotes = "",
+            chinaDeliveryPayee = ChinaDeliveryPayee.SUPPLIER,
+            supplierChinaDeliveryMinor = 30_000L,
+            supplierChinaDeliveryBdtMinor = 600_000L
+        )
+        val order = PurchaseOrder(
+            id = "po-sc19",
+            poNumber = "PO-2026-019",
+            supplierId = supplier.id,
+            status = PurchaseOrderStatus.CONFIRMED.name,
+            currency = "CNY",
+            exchangeRateToBdt = "20.00",
+            totalAmountMinor = 508_200L, // 478,200 items + 30,000 China delivery
+            totalBdtAmountMinor = 10_164_000L,
+            totalCartons = 1,
+            totalGrossWeightKg = "20.000",
+            totalNetWeightKg = "19.000",
+            totalCbm = "0.0600",
+            notes = notes
+        )
+        val items = listOf(
+            PurchaseOrderItem(
+                id = "poi-1", purchaseOrderId = order.id, productId = product.id, variantId = null,
+                quantity = 100, unitPriceMinor = 4_782L, totalAmountMinor = 478_200L, totalBdtAmountMinor = 9_564_000L,
+                cartonQuantity = 1, pcsPerCarton = 100, grossWeightKg = "20.000", netWeightKg = "19.000", cbm = "0.0600"
+            )
+        )
+        val cartons = listOf(
+            ShipmentCarton(
+                id = "ctn-1", shipmentId = "shp-1", purchaseOrderId = order.id, cartonNumber = "CTN-001",
+                productId = product.id, quantity = 100, grossWeightKg = "20.000", netWeightKg = "19.000",
+                cartonGrossWeightKg = "20.000", lengthCm = "50", widthCm = "40", heightCm = "30", cbm = "0.0600"
+            )
+        )
+        val built = PoExportDataBuilder.build(
+            order = order, items = items, productsMap = mapOf(product.id to product),
+            supplier = supplier, businessProfile = profile, cartons = cartons
+        )
+        assertTrue("Expected zero export blockers but got: ${built.blockingErrors}", built.isValidForSupplierExport)
+        assertEquals(478_200L, built.poItemsSubtotalMinor)
+        assertEquals(30_000L, built.supplierChinaDeliveryMinor)
+        assertEquals(508_200L, built.poGrandTotalMinor)
+
+        val xlsxFile = tempFolder.newFile("supplier_china_del.xlsx")
+        ImportExcelGenerator.generateSupplierOrderExcelToFile(
+            file = xlsxFile, order = order, items = items, productsMap = mapOf(product.id to product),
+            supplier = supplier, businessProfile = profile, cartons = cartons
+        )
+        ZipFile(xlsxFile).use { zip ->
+            val s1 = zip.getInputStream(zip.getEntry("xl/worksheets/sheet1.xml")).readBytes().toString(StandardCharsets.UTF_8)
+            assertTrue(s1.contains("Products Subtotal"))
+            assertTrue(s1.contains("China Local Delivery (Payable to Supplier)"))
+            assertTrue(s1.contains("Grand Total (CNY)"))
+            assertTrue(s1.contains("CNY 5,082.00"))
+        }
     }
 }

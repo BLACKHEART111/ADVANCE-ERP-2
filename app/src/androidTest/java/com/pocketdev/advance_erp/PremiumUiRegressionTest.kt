@@ -109,7 +109,7 @@ class PremiumUiRegressionTest {
                     if (visible) CreatePurchaseOrderDialog(
                         suppliers = listOf(Supplier("s", "S", "TEST SUPPLIER", phone = "", address = "")),
                         products = emptyList(), editingOrder = order,
-                        onDismiss = { visible = false }, onSavePo = { _,_,_,_,_,_,_,_,_,_,_,_,_,_,_ -> fail("Editor draft must not post an order") }
+                        onDismiss = { visible = false }, onSavePo = { _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_ -> fail("Editor draft must not post an order") }
                     )
                 }
             }

@@ -4,6 +4,11 @@ import com.pocketdev.advance_erp.domain.model.PaymentTermType
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 
+enum class ChinaDeliveryPayee(val labelEn: String, val labelBn: String) {
+    SUPPLIER("Supplier", "সাপ্লায়ার"),
+    FREIGHT_FORWARDER("Freight Forwarder", "ফ্রেইট ফরোয়ার্ডার")
+}
+
 data class ParsedPoNotes(
     val paymentTerm: PaymentTermType,
     val forwarderAddress: String,
@@ -11,12 +16,17 @@ data class ParsedPoNotes(
     val rawTermsText: String = paymentTerm.labelEn,
     val defaultShippingMark: String = "",
     val cartonShippingMarks: Map<String, String> = emptyMap(),
-    val customAdvanceMinor: Long? = null
+    val customAdvanceMinor: Long? = null,
+    val chinaDeliveryPayee: ChinaDeliveryPayee? = null,
+    val supplierChinaDeliveryMinor: Long = 0L,
+    val supplierChinaDeliveryBdtMinor: Long = 0L,
+    val variantOptionalTotalWeightsKg: Map<String, String> = emptyMap()
 )
 
 /**
  * Shared parser and serializer for structured metadata stored inside [PurchaseOrder.notes]
- * (`[Terms: ...]`, `[Forwarder: ...]`, `[ShippingMark: ...]`, `[CartonMarks: ...]`, and clean user remarks).
+ * (`[Terms: ...]`, `[Forwarder: ...]`, `[ShippingMark: ...]`, `[CartonMarks: ...]`,
+ * `[ChinaDeliveryPayee: ...]`, `[VariantWeights: ...]`, and clean user remarks).
  * Pure Kotlin + java.util.Base64 (no org.json dependency) so both Android runtime and JVM unit tests execute identically.
  */
 object PoNotesMetadataParser {
@@ -27,6 +37,10 @@ object PoNotesMetadataParser {
     private val FORWARDER_REGEX = Regex("""\[Forwarder:\s*([^\]]+)]""")
     private val SHIPPING_MARK_REGEX = Regex("""\[ShippingMark:\s*([^\]]*)]""")
     private val CARTON_MARKS_REGEX = Regex("""\[CartonMarks:\s*([A-Za-z0-9+/=_-]+)]""")
+    private val CHINA_DELIVERY_PAYEE_REGEX = Regex("""\[ChinaDeliveryPayee:\s*([^\]]+)]""")
+    private val SUPPLIER_CHINA_DELIVERY_MINOR_REGEX = Regex("""\[SupplierChinaDeliveryMinor:\s*([0-9]+)]""")
+    private val SUPPLIER_CHINA_DELIVERY_BDT_MINOR_REGEX = Regex("""\[SupplierChinaDeliveryBdtMinor:\s*([0-9]+)]""")
+    private val VARIANT_WEIGHTS_REGEX = Regex("""\[VariantWeights:\s*([A-Za-z0-9+/=_-]+)]""")
 
     fun parse(
         rawNotes: String?,
@@ -62,10 +76,20 @@ object PoNotesMetadataParser {
             .orEmpty()
 
         val resolvedCartonMarks = CARTON_MARKS_REGEX.find(rawNotes)?.groupValues?.getOrNull(1)
-            ?.let(::decodeCartonMarksBase64)
+            ?.let(::decodeStringMapBase64)
             ?: emptyMap()
 
         val resolvedCustomAdvance = CUSTOM_ADV_REGEX.find(rawNotes)?.groupValues?.getOrNull(1)?.toLongOrNull()
+
+        val resolvedChinaPayee = CHINA_DELIVERY_PAYEE_REGEX.find(rawNotes)?.groupValues?.getOrNull(1)?.trim()
+            ?.let { raw -> ChinaDeliveryPayee.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } }
+        val resolvedSupplierChinaMinor = SUPPLIER_CHINA_DELIVERY_MINOR_REGEX.find(rawNotes)
+            ?.groupValues?.getOrNull(1)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        val resolvedSupplierChinaBdtMinor = SUPPLIER_CHINA_DELIVERY_BDT_MINOR_REGEX.find(rawNotes)
+            ?.groupValues?.getOrNull(1)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        val resolvedVariantWeights = VARIANT_WEIGHTS_REGEX.find(rawNotes)?.groupValues?.getOrNull(1)
+            ?.let(::decodeStringMapBase64)
+            ?: emptyMap()
 
         val cleanUserNotes = rawNotes
             .replace(TERMS_REGEX, "")
@@ -73,6 +97,10 @@ object PoNotesMetadataParser {
             .replace(FORWARDER_REGEX, "")
             .replace(SHIPPING_MARK_REGEX, "")
             .replace(CARTON_MARKS_REGEX, "")
+            .replace(CHINA_DELIVERY_PAYEE_REGEX, "")
+            .replace(SUPPLIER_CHINA_DELIVERY_MINOR_REGEX, "")
+            .replace(SUPPLIER_CHINA_DELIVERY_BDT_MINOR_REGEX, "")
+            .replace(VARIANT_WEIGHTS_REGEX, "")
             .split("•")
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -85,8 +113,24 @@ object PoNotesMetadataParser {
             rawTermsText = termsText.ifBlank { resolvedTerm.labelEn },
             defaultShippingMark = resolvedShippingMark,
             cartonShippingMarks = resolvedCartonMarks,
-            customAdvanceMinor = resolvedCustomAdvance
+            customAdvanceMinor = resolvedCustomAdvance,
+            chinaDeliveryPayee = resolvedChinaPayee,
+            supplierChinaDeliveryMinor = resolvedSupplierChinaMinor,
+            supplierChinaDeliveryBdtMinor = resolvedSupplierChinaBdtMinor,
+            variantOptionalTotalWeightsKg = resolvedVariantWeights
         )
+    }
+
+    fun isSupplierChinaDeliveryCost(
+        costCategory: String,
+        costNotes: String?,
+        orderNotes: String?
+    ): Boolean {
+        if (!costCategory.equals("CHINA_DOMESTIC_TRANSPORT", ignoreCase = true)) return false
+        if (costNotes?.contains("[Payee:SUPPLIER]", ignoreCase = true) == true) return true
+        if (costNotes?.contains("[Payee:FREIGHT_FORWARDER]", ignoreCase = true) == true) return false
+        val parsed = parse(orderNotes)
+        return parsed.chinaDeliveryPayee == ChinaDeliveryPayee.SUPPLIER && parsed.supplierChinaDeliveryMinor > 0L
     }
 
     fun formatCustomPaymentTermsLabel(
@@ -111,7 +155,11 @@ object PoNotesMetadataParser {
         userNotes: String,
         defaultShippingMark: String = "",
         cartonShippingMarks: Map<String, String> = emptyMap(),
-        customAdvanceMinor: Long? = null
+        customAdvanceMinor: Long? = null,
+        chinaDeliveryPayee: ChinaDeliveryPayee? = null,
+        supplierChinaDeliveryMinor: Long = 0L,
+        supplierChinaDeliveryBdtMinor: Long = 0L,
+        variantOptionalTotalWeightsKg: Map<String, String> = emptyMap()
     ): String {
         val parts = mutableListOf<String>()
         val cleanTerms = paymentTermLabel.trim()
@@ -120,6 +168,15 @@ object PoNotesMetadataParser {
         }
         if (customAdvanceMinor != null && customAdvanceMinor > 0L) {
             parts += "[CustomAdvanceMinor: $customAdvanceMinor]"
+        }
+        if (chinaDeliveryPayee != null) {
+            parts += "[ChinaDeliveryPayee: ${chinaDeliveryPayee.name}]"
+        }
+        if (supplierChinaDeliveryMinor > 0L) {
+            parts += "[SupplierChinaDeliveryMinor: $supplierChinaDeliveryMinor]"
+        }
+        if (supplierChinaDeliveryBdtMinor > 0L) {
+            parts += "[SupplierChinaDeliveryBdtMinor: $supplierChinaDeliveryBdtMinor]"
         }
         val cleanForwarder = forwarderAddress.trim()
         if (cleanForwarder.isNotEmpty()) {
@@ -138,7 +195,17 @@ object PoNotesMetadataParser {
             }
             .toMap(LinkedHashMap())
         if (cleanCartonMarks.isNotEmpty()) {
-            parts += "[CartonMarks: ${encodeCartonMarksBase64(cleanCartonMarks)}]"
+            parts += "[CartonMarks: ${encodeStringMapBase64(cleanCartonMarks)}]"
+        }
+        val cleanVariantWeights = variantOptionalTotalWeightsKg
+            .mapNotNull { (k, v) ->
+                val ck = k.trim()
+                val cv = v.trim()
+                if (ck.isNotEmpty() && cv.isNotEmpty()) ck to cv else null
+            }
+            .toMap(LinkedHashMap())
+        if (cleanVariantWeights.isNotEmpty()) {
+            parts += "[VariantWeights: ${encodeStringMapBase64(cleanVariantWeights)}]"
         }
         val cleanNotes = userNotes.trim()
         if (cleanNotes.isNotEmpty()) {
@@ -178,7 +245,7 @@ object PoNotesMetadataParser {
     private fun sanitizeBracketValue(value: String): String =
         value.replace("[", "(").replace("]", ")")
 
-    private fun encodeCartonMarksBase64(marks: Map<String, String>): String {
+    private fun encodeStringMapBase64(marks: Map<String, String>): String {
         val json = buildString {
             append('{')
             marks.entries.forEachIndexed { idx, (k, v) ->
@@ -191,7 +258,7 @@ object PoNotesMetadataParser {
         return Base64.getEncoder().encodeToString(json.toByteArray(StandardCharsets.UTF_8))
     }
 
-    private fun decodeCartonMarksBase64(encoded: String): Map<String, String> {
+    private fun decodeStringMapBase64(encoded: String): Map<String, String> {
         return runCatching {
             val decoded = String(Base64.getDecoder().decode(encoded.trim()), StandardCharsets.UTF_8)
             parseJsonStringMap(decoded)

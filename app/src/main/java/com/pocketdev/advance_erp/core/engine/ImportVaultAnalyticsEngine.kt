@@ -1525,7 +1525,8 @@ object ImportVaultAnalyticsEngine {
         } else {
             linkedPos.sumOf { po ->
                 val share = ctx.shipmentShareOfPo(po.id, shp.id)
-                BigDecimal(po.totalBdtAmountMinor).multiply(share).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                val pureBdt = (po.totalBdtAmountMinor - com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.parse(po.notes).supplierChinaDeliveryBdtMinor).coerceAtLeast(0L)
+                BigDecimal(pureBdt).multiply(share).setScale(0, RoundingMode.HALF_UP).longValueExact()
             }
         }
         val chinaBdt = if (snapshots.isNotEmpty()) snapshots.sumOf { it.chinaDeliveryBdtMinor }
@@ -1663,7 +1664,8 @@ object ImportVaultAnalyticsEngine {
         val originPurchaseMinor = if (originCurrency != null) {
             linkedPos.sumOf { po ->
                 val share = ctx.shipmentShareOfPo(po.id, shp.id)
-                BigDecimal(po.totalAmountMinor).multiply(share).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                val pureOrigin = (po.totalAmountMinor - com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.parse(po.notes).supplierChinaDeliveryMinor).coerceAtLeast(0L)
+                BigDecimal(pureOrigin).multiply(share).setScale(0, RoundingMode.HALF_UP).longValueExact()
             }
         } else null
 
@@ -1867,7 +1869,7 @@ object ImportVaultAnalyticsEngine {
             pendingReceivingQtyByUnit = pendingQtyByUnit,
             netSoldQtyByUnit = netSoldQtyByUnit,
             remainingStockQtyByUnit = remainingQtyByUnit,
-            purchaseCostBdtMinor = po.totalBdtAmountMinor,
+            purchaseCostBdtMinor = (po.totalBdtAmountMinor - com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.parse(po.notes).supplierChinaDeliveryBdtMinor).coerceAtLeast(0L),
             capitalizedImportCostsMinor = capitalizedImport,
             capitalizedAdditionalCostsMinor = capAddTotal,
             totalInvestedCapitalMinor = totalInvested,

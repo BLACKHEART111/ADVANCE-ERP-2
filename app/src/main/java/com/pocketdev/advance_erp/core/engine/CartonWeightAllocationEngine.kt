@@ -49,9 +49,6 @@ object CartonWeightAllocationEngine {
         val manualSum = lines.fold(BigDecimal.ZERO) { sum, line -> sum + (line.manualGrossWeightKg ?: BigDecimal.ZERO) }
         require(manualSum <= cartonGrossWeightKg) { "Manual weights exceed carton gross weight" }
         val automatic = lines.indices.filter { lines[it].manualGrossWeightKg == null }
-        require(automatic.isNotEmpty() || manualSum.compareTo(cartonGrossWeightKg) == 0) {
-            "Manual weights must add up to carton gross weight"
-        }
         fun distribute(total: BigDecimal, indices: List<Int>, weights: List<BigDecimal>): List<BigDecimal> {
             if (indices.isEmpty()) return List(lines.size) { BigDecimal.ZERO }
             val denominator = indices.fold(BigDecimal.ZERO) { acc, index -> acc + weights[index] }
@@ -70,8 +67,23 @@ object CartonWeightAllocationEngine {
             }
             return shares
         }
-        val gross = distribute(cartonGrossWeightKg - manualSum, automatic, lines.map { BigDecimal(it.quantity) }).toMutableList()
-        lines.forEachIndexed { index, line -> line.manualGrossWeightKg?.let { gross[index] = it } }
+        val gross = if (automatic.isNotEmpty()) {
+            distribute(cartonGrossWeightKg - manualSum, automatic, lines.map { BigDecimal(it.quantity) }).toMutableList().also { shares ->
+                lines.forEachIndexed { index, line -> line.manualGrossWeightKg?.let { shares[index] = it } }
+            }
+        } else {
+            val baseGross = lines.map { it.manualGrossWeightKg ?: BigDecimal.ZERO }.toMutableList()
+            val tareRemainder = cartonGrossWeightKg - manualSum
+            if (tareRemainder > BigDecimal.ZERO) {
+                // Distribute extra carton box tare proportionally across line weights (fallback to quantity if zero).
+                val tareBasis = if (manualSum > BigDecimal.ZERO) baseGross else lines.map { BigDecimal(it.quantity) }
+                val tareShares = distribute(tareRemainder, lines.indices.toList(), tareBasis)
+                lines.indices.forEach { index ->
+                    baseGross[index] = baseGross[index] + tareShares[index]
+                }
+            }
+            baseGross
+        }
         // Net follows the actual gross shares so no line can have net greater than gross.
         val net = distribute(cartonNetWeightKg, lines.indices.toList(), gross)
         return lines.mapIndexed { index, line ->

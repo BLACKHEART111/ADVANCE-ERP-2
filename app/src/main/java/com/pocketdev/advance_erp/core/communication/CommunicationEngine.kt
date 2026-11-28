@@ -863,16 +863,17 @@ class CommunicationEngine @Inject constructor(
                 number = po.poNumber
                 documentDateMillis = po.orderDate
                 f["document_date"] = date(po.orderDate)
+                val parsedPo = com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.parse(po.notes, defaultForwarder = "")
                 val items = db.purchaseOrderDao().getItemsForOrderSync(po.id)
-                rows = items.map { item ->
+                val baseRows = items.map { item ->
                     val product = productsMap[item.productId]
                     listOf(
                         if (bn) product?.nameBn?.ifBlank { product.nameEn } ?: item.productId else product?.nameEn ?: item.productId,
                         item.quantity.toString(),
                         if (request.module == CommunicationModule.PACKING) item.cartonQuantity.toString() else money(item.totalAmountMinor, po.currency)
                     )
-                }
-                lineItems = items.mapIndexed { idx, item ->
+                }.toMutableList()
+                val richItems = items.mapIndexed { idx, item ->
                     val prod = productsMap[item.productId]
                     val variant = item.variantId?.let { variantsMap[it] }
                     RichDocumentLineItem(
@@ -892,7 +893,33 @@ class CommunicationEngine @Inject constructor(
                         lineTotalMinor = item.totalAmountMinor,
                         currencyCode = po.currency
                     )
+                }.toMutableList()
+                if (request.module == CommunicationModule.PURCHASE_ORDER &&
+                    !po.currency.equals("BDT", ignoreCase = true) &&
+                    parsedPo.supplierChinaDeliveryMinor > 0L
+                ) {
+                    val chinaLabel = if (bn) "চীন অভ্যন্তরীণ পরিবহন (সাপ্লায়ার)" else "China Local Delivery (Supplier)"
+                    baseRows += listOf(chinaLabel, "1", money(parsedPo.supplierChinaDeliveryMinor, po.currency))
+                    richItems += RichDocumentLineItem(
+                        index = richItems.size + 1,
+                        productId = "china-delivery",
+                        variantId = null,
+                        titleEn = "China Local Delivery (Supplier)",
+                        titleBn = "চীন অভ্যন্তরীণ পরিবহন (সাপ্লায়ার)",
+                        sku = null,
+                        color = null,
+                        size = null,
+                        unit = "CHG",
+                        thumbnailPath = null,
+                        quantity = 1,
+                        secondaryQuantityText = null,
+                        unitPriceMinor = parsedPo.supplierChinaDeliveryMinor,
+                        lineTotalMinor = parsedPo.supplierChinaDeliveryMinor,
+                        currencyCode = po.currency
+                    )
                 }
+                rows = baseRows
+                lineItems = richItems
                 f["total_quantity"] = items.sumOf { it.quantity }.toString()
                 if (request.module == CommunicationModule.PACKING) {
                     f.remove("total_outstanding")

@@ -517,6 +517,24 @@ Following commit `851485a`, five targeted fixes and features were implemented, v
 - `apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk` -> SHA-256 `70a28cffe1b6c502cd5847dc8c3afed59d931a4ecc975a747fd81d82fbfa8d43` (matched live installation).
 - `adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk` -> `Success`, `firstInstallTime=2026-11-22 02:39:36` preserved, cold launch (`MainActivity`) `Status: ok` (`TotalTime: 620`), `pid=6279`, zero fatal/SQLite/Room exceptions in `adb logcat`.
 
+## PO China Delivery Payee, Mandatory Carton Weight & Optional Variant Weight Checkpoint (2026-11-28)
+
+Preserved Room DB schema v16 unchanged; all new PO metadata lives in `PurchaseOrder.notes` and `ImportCostItem.notes`:
+
+1. **China Domestic Transport Payee (`SUPPLIER` vs `FREIGHT_FORWARDER`)**:
+   - Added `ChinaDeliveryPayee` and `[ChinaDeliveryPayee: ...]`, `[SupplierChinaDeliveryMinor: ...]`, `[SupplierChinaDeliveryBdtMinor: ...]` tags plus `isSupplierChinaDeliveryCost(...)` in `PoNotesMetadataParser.kt`.
+   - Default PO editor payee is `SUPPLIER` (`CreatePurchaseOrderDialog.kt`, toggleable in Step 0 & Step 3), while legacy/untagged callers default safely in `ImportRepository.kt` / `ImportViewModel.kt`.
+   - When `SUPPLIER`, China delivery (foreign & BDT) is added to `PurchaseOrder.totalAmountMinor`/`totalBdtAmountMinor`, supplier payable (`2010`), `PO_COMMITMENT` (`1220`/`2010`), payment schedule/custom advance, `PoExportDataBuilder`, `ImportPdfGenerator`, `ImportExcelGenerator`, and `CommunicationEngine` (`PURCHASE_ORDER`), while `ImportRepositoryImpl` (`postPoFinalizedLandedJournals`, `computeUnpaidPoFreightAndImportTotalMinor`) and `PoProductLandedCost.calculatePoFreightPayableSummary` exclude it from Freight Forwarder Bill (`2020`), and `PoProductLandedCost.calculatePoLandedCostSummary` + `ImportVaultAnalyticsEngine` prevent double-counting in landed cost and merchandise totals.
+2. **Mandatory Carton Gross Weight & `"0"` Default**:
+   - Replaced all PO carton `"15.0"`/`"15"`/`"14"` defaults with `"0"` (`CreatePurchaseOrderDialog.kt`, `BulkCreateCartonsDialog` in `PoProductVariantPicker.kt`, `AddCartonDialog.kt`, `PurchaseOrderDetailDialog.kt`), added `PoPackingEngine.normalizeWeightInput`, and enforced `> 0` gross weight validation on Step 2 -> Step 3 advancement, `submitPo`, bulk create, add carton, and `showEditPackingDialog` (when `cartons > 0`).
+3. **Optional Variant Total Weight (Step 1) -> Proportional Carton Line Weight (Step 2)**:
+   - Added Step 1 per-variant `"মোট ওজন KG (ঐচ্ছিক)"` input (no propagation across variants, persisted via `[VariantWeights: ...]`).
+   - Added `PoPackingEngine.calculateProportionalVariantWeightKg` & `formatWeightForInput` to auto-populate editable Step 2 carton line weights (`isWeightManuallyEdited` tracks manual overrides), and updated `CartonWeightAllocationEngine.allocateWeights` to distribute positive box tare proportionally when all carton lines carry manual/auto weights.
+4. **Verification (2026-11-28)**:
+   - `:app:testDebugUnitTest :app:assembleDebug :app:compileDebugAndroidTestKotlin` -> `BUILD SUCCESSFUL`, `UNIT_SUMMARY files=95 tests=524 fail=0 err=0 skip=0` (added scenarios 17-19 in `PoSmartPackingAndExportTest.kt` and double-counting/payable test in `PoProductLandedCostTest.kt`).
+   - `/root/android-sdk/build-tools/36.0.0/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk` -> SHA-256 `70a28cffe1b6c502cd5847dc8c3afed59d931a4ecc975a747fd81d82fbfa8d43`.
+   - `adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk` -> `Success`, `firstInstallTime=2026-11-22 02:39:36` preserved (`lastUpdateTime=2026-11-28 16:55:45`), cold launch `MainActivity` `Status: ok` (`TotalTime: 796`, `PID=7105`), zero app-process exceptions in `logcat`.
+
 ## User message to resume after reinstall
 
 > ADVANCE-ERP-2 repo-এর main branch নাও। প্রথমে AGENTS.md ও WORK_IN_PROGRESS.md পড়ো। Premium UI checkpoint থেকে বাকি implementation চালিয়ে যাও; নতুন করে redesign শুরু কোরো না। আগে build ও regression tests ঠিক করো, তারপর বাকি UI/logic audit শেষ করো।

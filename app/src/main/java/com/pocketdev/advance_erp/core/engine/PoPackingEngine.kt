@@ -359,4 +359,47 @@ object PoPackingEngine {
         newTotalAmountMinor > 0L && paidAmountMinor >= newTotalAmountMinor -> "PAID"
         else -> "PARTIALLY_PAID"
     }
+
+    /**
+     * Computes proportional weight (KG, scale 3 HALF_UP) for a carton line from a variant's
+     * optional total weight in Step 1 (`variantTotalWeightKg * cartonPcs / orderedPcs`).
+     */
+    fun calculateProportionalVariantWeightKg(
+        orderedPcs: Int,
+        variantTotalWeightKg: BigDecimal?,
+        cartonPcs: Int
+    ): BigDecimal? {
+        if (orderedPcs <= 0 || cartonPcs <= 0 || variantTotalWeightKg == null || variantTotalWeightKg <= BigDecimal.ZERO) {
+            return null
+        }
+        return variantTotalWeightKg
+            .multiply(BigDecimal(cartonPcs))
+            .divide(BigDecimal(orderedPcs), 3, RoundingMode.HALF_UP)
+    }
+
+    /** Formats a positive weight cleanly for numeric inputs without trailing zeros. */
+    fun formatWeightForInput(weight: BigDecimal?): String {
+        if (weight == null || weight <= BigDecimal.ZERO) return ""
+        val stripped = weight.stripTrailingZeros()
+        return (if (stripped.scale() < 0) stripped.setScale(0) else stripped).toPlainString()
+    }
+
+    /** Strips placeholder leading zeros when typing digits (e.g. "0" + "5" -> "5") while keeping "0." intact. */
+    fun normalizeWeightInput(previous: String, incoming: String): String {
+        val cleaned = incoming.filter { it.isDigit() || it == '.' }
+        val firstDot = cleaned.indexOf('.')
+        val singleDot = if (firstDot < 0) {
+            cleaned
+        } else {
+            cleaned.substring(0, firstDot + 1) + cleaned.substring(firstDot + 1).replace(".", "")
+        }
+        if (previous.trim() == "0" && singleDot.length == 2 && singleDot[0] == '0' && singleDot[1].isDigit()) {
+            return singleDot.substring(1)
+        }
+        if (singleDot.length > 1 && singleDot[0] == '0' && singleDot[1].isDigit()) {
+            val trimmed = singleDot.trimStart('0')
+            return if (trimmed.isEmpty() || trimmed.startsWith('.')) "0$trimmed" else trimmed
+        }
+        return singleDot
+    }
 }

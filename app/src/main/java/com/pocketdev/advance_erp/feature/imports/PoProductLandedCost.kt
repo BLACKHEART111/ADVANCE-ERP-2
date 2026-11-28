@@ -81,18 +81,33 @@ internal fun calculatePoFreightPayableSummary(
     costItems: List<ImportCostItem>,
     additionalCosts: List<AdditionalProductCost>,
     paidFreightBillMinor: Long,
-    ledgerAccruedBillMinor: Long? = null
+    ledgerAccruedBillMinor: Long? = null,
+    orderNotes: String? = null
 ): PoFreightPayableSummary {
+    val supplierChinaCostItems = costItems.filter {
+        com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, orderNotes)
+    }
     val alreadyDirectlyPaidMinor = costItems
-        .filter { it.isPosted && it.costCategory != CostCategory.PRODUCT_PURCHASE.name }
+        .filter {
+            it.isPosted &&
+                it.costCategory != CostCategory.PRODUCT_PURCHASE.name &&
+                !com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, orderNotes)
+        }
         .sumOf { it.bdtAmountMinor } +
         additionalCosts
             .filter { it.isCapitalizable }
             .sumOf { it.bdtAmountMinor }
+    val supplierChinaDeliveryMinor = if (supplierChinaCostItems.isNotEmpty()) {
+        supplierChinaCostItems
+            .filter { it.isCapitalizableCost || it.isCapitalized }
+            .sumOf { it.bdtAmountMinor }
+    } else {
+        com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.parse(orderNotes).supplierChinaDeliveryBdtMinor
+    }
     val totalBillMinor = if (ledgerAccruedBillMinor != null && ledgerAccruedBillMinor > 0L) {
         ledgerAccruedBillMinor
     } else {
-        (landedSummary.totalFreightBdtMinor + landedSummary.totalOtherOverheadBdtMinor - alreadyDirectlyPaidMinor)
+        (landedSummary.totalFreightBdtMinor + landedSummary.totalOtherOverheadBdtMinor - alreadyDirectlyPaidMinor - supplierChinaDeliveryMinor)
             .coerceAtLeast(0L)
     }
     val effectiveTotalMinor = maxOf(totalBillMinor, paidFreightBillMinor.coerceAtLeast(0L))
@@ -378,6 +393,16 @@ internal fun calculatePoLandedCostSummary(
     val variantMap = variants.associateBy { it.id }
     val categoryMap = categories.associateBy { it.id }
     val rateByCat = freightRates.associateBy { it.categoryId }
+    val parsedNotes = com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.parse(order.notes)
+    val supplierChinaCostItems = costItems.filter {
+        com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, order.notes)
+    }
+    val supplierChinaDeliveryBdtMinor = if (supplierChinaCostItems.isNotEmpty()) {
+        supplierChinaCostItems.filter { it.isCapitalizableCost || it.isCapitalized }.sumOf { it.bdtAmountMinor }
+    } else {
+        parsedNotes.supplierChinaDeliveryBdtMinor
+    }
+    val pureMerchandiseOrderBdtMinor = (order.totalBdtAmountMinor - parsedNotes.supplierChinaDeliveryBdtMinor).coerceAtLeast(0L)
 
     if (items.isEmpty()) {
         val explicitCapital = costItems.filter {
@@ -387,9 +412,9 @@ internal fun calculatePoLandedCostSummary(
         val explicitFreight = explicitCapital.filter { it.costCategory in FREIGHT_CATEGORY_NAMES }.sumOf { it.bdtAmountMinor }
         val otherCost = explicitCapital.filterNot { it.costCategory in FREIGHT_CATEGORY_NAMES }.sumOf { it.bdtAmountMinor } +
             additionalCosts.filter { it.isCapitalizable }.sumOf { it.bdtAmountMinor }
-        val total = order.totalBdtAmountMinor + explicitFreight + otherCost
+        val total = pureMerchandiseOrderBdtMinor + explicitFreight + otherCost
         return PoLandedCalculationSummary(
-            totalPurchaseBdtMinor = order.totalBdtAmountMinor,
+            totalPurchaseBdtMinor = pureMerchandiseOrderBdtMinor,
             totalFreightBdtMinor = explicitFreight,
             derivedRateFreightMinor = 0L,
             totalOtherOverheadBdtMinor = otherCost,
@@ -404,10 +429,10 @@ internal fun calculatePoLandedCostSummary(
 
     val packingMetricsByItemId = resolvePackingMetricsForItems(items, cartons)
 
-    // Base Purchase BDT per item, reconciled cleanly against order.totalBdtAmountMinor if > 0
+    // Base Purchase BDT per item, reconciled cleanly against pure merchandise BDT total (excluding supplier-billed China delivery)
     val rawPurchaseMinors = items.map { it.totalBdtAmountMinor }.toMutableList()
-    if (order.totalBdtAmountMinor > 0L) {
-        val delta = order.totalBdtAmountMinor - rawPurchaseMinors.sum()
+    if (pureMerchandiseOrderBdtMinor > 0L) {
+        val delta = pureMerchandiseOrderBdtMinor - rawPurchaseMinors.sum()
         if (delta != 0L) {
             val targetIdx = rawPurchaseMinors.indexOfLast { it > 0L }.takeIf { it >= 0 } ?: rawPurchaseMinors.lastIndex
             rawPurchaseMinors[targetIdx] = (rawPurchaseMinors[targetIdx] + delta).coerceAtLeast(0L)
@@ -497,9 +522,13 @@ internal fun calculatePoLandedCostSummary(
 
             if (ledgerAccruedImportMinor != null && ledgerAccruedImportMinor >= 0L) {
                 val alreadyPostedDirectMinor = costItems
-                    .filter { it.isPosted && it.costCategory != CostCategory.PRODUCT_PURCHASE.name }
+                    .filter {
+                        it.isPosted &&
+                            it.costCategory != CostCategory.PRODUCT_PURCHASE.name &&
+                            !com.pocketdev.advance_erp.core.util.PoNotesMetadataParser.isSupplierChinaDeliveryCost(it.costCategory, it.notes, order.notes)
+                    }
                     .sumOf { it.bdtAmountMinor }
-                val targetTotalAllocated = ledgerAccruedImportMinor + alreadyPostedDirectMinor
+                val targetTotalAllocated = ledgerAccruedImportMinor + alreadyPostedDirectMinor + supplierChinaDeliveryBdtMinor
                 val oldFreightTotal = items.sumOf { freightByItemId[it.id] ?: 0L }
                 val oldOtherTotal = items.sumOf { otherOverheadByItemId[it.id] ?: 0L }
                 val currentTotalAllocated = oldFreightTotal + oldOtherTotal
