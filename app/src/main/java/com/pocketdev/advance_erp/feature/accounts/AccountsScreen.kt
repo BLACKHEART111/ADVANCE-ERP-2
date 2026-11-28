@@ -2529,21 +2529,59 @@ private fun RecordExpenseDialog(
     var refNumber by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(16.dp)),
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(18.dp)
-                    .verticalScroll(rememberScrollState())
+    AccountModalDialog(
+        title = if (isBangla) "পরিচালন ব্যয় নথিভুক্ত করুন" else "Record Operating Expense",
+        onDismiss = onDismiss,
+        errorMessage = errorMessage,
+        bodyVerticalArrangement = Arrangement.Top,
+        footer = {
+            OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    try {
+                        val amtBd = BigDecimal(amountStr.trim())
+                        require(amtBd > BigDecimal.ZERO) { if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive" }
+                        require(descEn.isNotBlank()) { if (isBangla) "বিবরণ আবশ্যক" else "Description is required" }
+
+                        val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                        val rateBd = if (currency.equals("BDT", ignoreCase = true)) BigDecimal.ONE else BigDecimal(exchangeRate.trim().ifBlank { "1" })
+                        val bdtMinorCheck = amtBd.multiply(rateBd).multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                        val payAcc = paymentAccounts.find { it.id == paymentAccountId }
+                        if (payAcc?.liquidKind != null) {
+                            val payBal = trialBalanceMap[payAcc.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
+                            require(payBal >= bdtMinorCheck) {
+                                if (isBangla) {
+                                    "নির্বাচিত হিসাবে পর্যাপ্ত ব্যালেন্স নেই (বর্তমান: ৳${Formatters.formatMinorUnit(payBal)})। আগে মূলধন জমা করুন।"
+                                } else {
+                                    "Insufficient balance in selected account (available: ৳${Formatters.formatMinorUnit(payBal)})."
+                                }
+                            }
+                        }
+                        onConfirm(
+                            selectedCat.name,
+                            descEn,
+                            descBn.ifBlank { descEn },
+                            minor,
+                            currency,
+                            exchangeRate,
+                            paymentAccountId,
+                            selectedCat.defaultAccountId,
+                            System.currentTimeMillis(),
+                            refNumber.ifBlank { null },
+                            null
+                        )
+                        onDismiss()
+                    } catch (e: Exception) {
+                        errorMessage = e.message ?: if (isBangla) "ব্যয়ের তথ্য সঠিক নয়" else "Invalid expense details"
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
             ) {
-                Text(if (isBangla) "পরিচালন ব্যয় নথিভুক্ত করুন" else "Record Operating Expense", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(10.dp))
+                Text(if (isBangla) "ব্যয় পোস্ট করুন" else "Post Expense")
+            }
+        }
+    ) {
 
                 Text(if (isBangla) "ব্যয়ের খাত:" else "Expense Category:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2640,62 +2678,6 @@ private fun RecordExpenseDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(errorMessage!!, color = StatusError, style = MaterialTheme.typography.bodySmall)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            try {
-                                val amtBd = BigDecimal(amountStr.trim())
-                                require(amtBd > BigDecimal.ZERO) { if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive" }
-                                require(descEn.isNotBlank()) { if (isBangla) "বিবরণ আবশ্যক" else "Description is required" }
-
-                                val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                                val rateBd = if (currency.equals("BDT", ignoreCase = true)) BigDecimal.ONE else BigDecimal(exchangeRate.trim().ifBlank { "1" })
-                                val bdtMinorCheck = amtBd.multiply(rateBd).multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                                val payAcc = paymentAccounts.find { it.id == paymentAccountId }
-                                if (payAcc?.liquidKind != null) {
-                                    val payBal = trialBalanceMap[payAcc.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
-                                    require(payBal >= bdtMinorCheck) {
-                                        if (isBangla) {
-                                            "নির্বাচিত হিসাবে পর্যাপ্ত ব্যালেন্স নেই (বর্তমান: ৳${Formatters.formatMinorUnit(payBal)})। আগে মূলধন জমা করুন।"
-                                        } else {
-                                            "Insufficient balance in selected account (available: ৳${Formatters.formatMinorUnit(payBal)})."
-                                        }
-                                    }
-                                }
-                                onConfirm(
-                                    selectedCat.name,
-                                    descEn,
-                                    descBn.ifBlank { descEn },
-                                    minor,
-                                    currency,
-                                    exchangeRate,
-                                    paymentAccountId,
-                                    selectedCat.defaultAccountId,
-                                    System.currentTimeMillis(),
-                                    refNumber.ifBlank { null },
-                                    null
-                                )
-                                onDismiss()
-                            } catch (e: Exception) {
-                                errorMessage = e.message ?: if (isBangla) "ব্যয়ের তথ্য সঠিক নয়" else "Invalid expense details"
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
-                    ) {
-                        Text(if (isBangla) "ব্যয় পোস্ট করুন" else "Post Expense")
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -2713,25 +2695,46 @@ private fun AccountTransferDialog(
     var refStr by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .heightIn(max = 680.dp)
-                .clip(RoundedCornerShape(16.dp)),
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .imePadding()
-                    .padding(18.dp)
+    AccountModalDialog(
+        title = if (isBangla) "হিসাবের মধ্যে তহবিল স্থানান্তর" else "Inter-Account Transfer",
+        onDismiss = onDismiss,
+        errorMessage = errorMessage,
+        maxHeight = 680.dp,
+        bodyVerticalArrangement = Arrangement.Top,
+        footer = {
+            OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    try {
+                        require(sourceId != destId) { "Source and destination accounts must be different" }
+                        val amtBd = BigDecimal(amountStr.trim())
+                        require(amtBd > BigDecimal.ZERO) { "Amount must be positive" }
+
+                        val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                        val srcObj = accounts.find { it.id == sourceId }
+                        if (srcObj?.liquidKind != null) {
+                            val srcBal = trialBalanceMap[srcObj.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
+                            require(srcBal >= minor) {
+                                if (isBangla) {
+                                    "উৎস অ্যাকাউন্টে পর্যাপ্ত ব্যালেন্স নেই (বর্তমান: ৳${Formatters.formatMinorUnit(srcBal)})। আগে মূলধন জমা করুন।"
+                                } else {
+                                    "Insufficient balance in source account (available: ৳${Formatters.formatMinorUnit(srcBal)})."
+                                }
+                            }
+                        }
+                        onConfirm(sourceId, destId, minor, System.currentTimeMillis(), refStr.ifBlank { null }, null)
+                        onDismiss()
+                    } catch (e: Exception) {
+                        errorMessage = e.message ?: "Invalid transfer parameters"
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
             ) {
-                Text(if (isBangla) "হিসাবের মধ্যে তহবিল স্থানান্তর" else "Inter-Account Transfer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(10.dp))
+                Text(if (isBangla) "স্থানান্তর সম্পন্ন করুন" else "Execute Transfer")
+            }
+        }
+    ) {
 
                 AccountDropdownField(
                     label = if (isBangla) "যে হিসাব থেকে" else "From (Source Account)",
@@ -2784,48 +2787,6 @@ private fun AccountTransferDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(errorMessage!!, color = StatusError, style = MaterialTheme.typography.bodySmall)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            try {
-                                require(sourceId != destId) { "Source and destination accounts must be different" }
-                                val amtBd = BigDecimal(amountStr.trim())
-                                require(amtBd > BigDecimal.ZERO) { "Amount must be positive" }
-
-                                val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                                val srcObj = accounts.find { it.id == sourceId }
-                                if (srcObj?.liquidKind != null) {
-                                    val srcBal = trialBalanceMap[srcObj.id]?.let { it.totalDebitMinor - it.totalCreditMinor } ?: 0L
-                                    require(srcBal >= minor) {
-                                        if (isBangla) {
-                                            "উৎস অ্যাকাউন্টে পর্যাপ্ত ব্যালেন্স নেই (বর্তমান: ৳${Formatters.formatMinorUnit(srcBal)})। আগে মূলধন জমা করুন।"
-                                        } else {
-                                            "Insufficient balance in source account (available: ৳${Formatters.formatMinorUnit(srcBal)})."
-                                        }
-                                    }
-                                }
-                                onConfirm(sourceId, destId, minor, System.currentTimeMillis(), refStr.ifBlank { null }, null)
-                                onDismiss()
-                            } catch (e: Exception) {
-                                errorMessage = e.message ?: "Invalid transfer parameters"
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
-                    ) {
-                        Text(if (isBangla) "স্থানান্তর সম্পন্ন করুন" else "Execute Transfer")
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -2995,25 +2956,39 @@ private fun NewJournalEntryDialog(
     var amountStr by rememberSaveable { mutableStateOf("10000.00") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .heightIn(max = 680.dp)
-                .clip(RoundedCornerShape(16.dp)),
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .imePadding()
-                    .padding(18.dp)
+    AccountModalDialog(
+        title = if (isBangla) "নতুন ডাবল-এন্ট্রি জাবেদা" else "New Double-Entry Journal",
+        onDismiss = onDismiss,
+        errorMessage = errorMessage,
+        maxHeight = 680.dp,
+        bodyVerticalArrangement = Arrangement.Top,
+        footer = {
+            OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    try {
+                        val amtBd = BigDecimal(amountStr.trim())
+                        require(amtBd > BigDecimal.ZERO) { if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive" }
+                        require(debitAccountId != creditAccountId) { if (isBangla) "ডেবিট ও ক্রেডিট হিসাব আলাদা হতে হবে" else "Debit and Credit accounts must be different" }
+
+                        val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
+                        val lines = listOf(
+                            JournalLineDraft(accountId = debitAccountId, isDebit = true, amountMinor = minor),
+                            JournalLineDraft(accountId = creditAccountId, isDebit = false, amountMinor = minor)
+                        )
+                        onConfirm(descEn, descBn.ifBlank { descEn }, lines)
+                        onDismiss()
+                    } catch (e: Exception) {
+                        errorMessage = e.message ?: if (isBangla) "জাবেদার তথ্য সঠিক নয়" else "Invalid journal parameters"
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
             ) {
-                Text(if (isBangla) "নতুন ডাবল-এন্ট্রি জাবেদা" else "New Double-Entry Journal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(10.dp))
+                Text(if (isBangla) "দাখিলা পোস্ট করুন" else "Post Entry")
+            }
+        }
+    ) {
 
                 OutlinedTextField(
                     value = descEn,
@@ -3063,40 +3038,5 @@ private fun NewJournalEntryDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(errorMessage!!, color = StatusError, style = MaterialTheme.typography.bodySmall)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    OutlinedButton(onClick = onDismiss) { Text(if (isBangla) "বাতিল" else "Cancel") }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            try {
-                                val amtBd = BigDecimal(amountStr.trim())
-                                require(amtBd > BigDecimal.ZERO) { if (isBangla) "পরিমাণ শূন্যের বেশি হতে হবে" else "Amount must be positive" }
-                                require(debitAccountId != creditAccountId) { if (isBangla) "ডেবিট ও ক্রেডিট হিসাব আলাদা হতে হবে" else "Debit and Credit accounts must be different" }
-
-                                val minor = amtBd.multiply(BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).longValueExact()
-                                val lines = listOf(
-                                    JournalLineDraft(accountId = debitAccountId, isDebit = true, amountMinor = minor),
-                                    JournalLineDraft(accountId = creditAccountId, isDebit = false, amountMinor = minor)
-                                )
-                                onConfirm(descEn, descBn.ifBlank { descEn }, lines)
-                                onDismiss()
-                            } catch (e: Exception) {
-                                errorMessage = e.message ?: if (isBangla) "জাবেদার তথ্য সঠিক নয়" else "Invalid journal parameters"
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
-                    ) {
-                        Text(if (isBangla) "দাখিলা পোস্ট করুন" else "Post Entry")
-                    }
-                }
-            }
-        }
     }
 }

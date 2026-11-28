@@ -951,11 +951,12 @@ internal fun AddProductPhotoUploader(
                             ) {
                                 IconButton(
                                     onClick = {
-                                        if (index > 0) {
+                                        val curIndex = photos.indexOfFirst { it.id == item.id }
+                                        if (curIndex > 0) {
                                             val reordered = photos.toMutableList()
-                                            val tmp = reordered[index]
-                                            reordered[index] = reordered[index - 1]
-                                            reordered[index - 1] = tmp
+                                            val tmp = reordered[curIndex]
+                                            reordered[curIndex] = reordered[curIndex - 1]
+                                            reordered[curIndex - 1] = tmp
                                             onPhotosChanged(reordered.mapIndexed { idx, d -> d.copy(sortOrder = idx) })
                                         }
                                     },
@@ -972,7 +973,7 @@ internal fun AddProductPhotoUploader(
 
                                 IconButton(
                                     onClick = {
-                                        val updated = photos.mapIndexed { idx, d -> d.copy(isPrimary = idx == index) }
+                                        val updated = photos.map { d -> d.copy(isPrimary = d.id == item.id) }
                                         onPhotosChanged(updated)
                                     },
                                     modifier = Modifier.size(26.dp)
@@ -987,11 +988,12 @@ internal fun AddProductPhotoUploader(
 
                                 IconButton(
                                     onClick = {
-                                        if (index < photos.size - 1) {
+                                        val curIndex = photos.indexOfFirst { it.id == item.id }
+                                        if (curIndex in 0 until photos.lastIndex) {
                                             val reordered = photos.toMutableList()
-                                            val tmp = reordered[index]
-                                            reordered[index] = reordered[index + 1]
-                                            reordered[index + 1] = tmp
+                                            val tmp = reordered[curIndex]
+                                            reordered[curIndex] = reordered[curIndex + 1]
+                                            reordered[curIndex + 1] = tmp
                                             onPhotosChanged(reordered.mapIndexed { idx, d -> d.copy(sortOrder = idx) })
                                         }
                                     },

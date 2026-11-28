@@ -3,6 +3,7 @@ package com.pocketdev.advance_erp.data.repository
 import androidx.room.withTransaction
 import com.pocketdev.advance_erp.core.database.AdvanceErpDatabase
 import com.pocketdev.advance_erp.core.engine.DeterministicAllocation
+import com.pocketdev.advance_erp.core.engine.SalesInvoiceEditPlanner
 import com.pocketdev.advance_erp.core.util.MovementNumberGenerator
 import com.pocketdev.advance_erp.data.dao.CustomerDao
 import com.pocketdev.advance_erp.data.dao.CustomerPaymentDao
@@ -49,6 +50,7 @@ import com.pocketdev.advance_erp.domain.repository.DeliveryChallanInfo
 import com.pocketdev.advance_erp.domain.repository.DeliveryChallanItemInfo
 import com.pocketdev.advance_erp.domain.repository.UndeliveredItemInfo
 import com.pocketdev.advance_erp.domain.repository.DirectExchangeDraft
+import com.pocketdev.advance_erp.domain.repository.InvoiceEditContext
 import com.pocketdev.advance_erp.domain.repository.ReturnItemDraft
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -316,20 +318,12 @@ class SalesRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun updateInvoice(invoiceId: String, draft: SalesInvoiceDraft) {
-        val existing = salesDao.getInvoiceById(invoiceId)
-            ?: throw IllegalArgumentException("Invoice not found: $invoiceId")
-        if (existing.isPosted) {
-            throw IllegalStateException("Cannot edit a posted invoice. Use sales return or adjustment instead.")
-        }
-
-        val customer = customerDao.getCustomerById(draft.customerId)
-            ?: throw IllegalArgumentException("Customer not found")
-        val warehouse = warehouseDao.getWarehouseById(draft.warehouseId)
-            ?: throw IllegalArgumentException("Warehouse not found")
-
+    private suspend fun buildPreparedInvoiceItems(
+        invoiceId: String,
+        itemDrafts: List<com.pocketdev.advance_erp.domain.repository.InvoiceItemDraft>
+    ): Pair<Long, List<SalesInvoiceItem>> {
         var subtotalMinor = 0L
-        val invoiceItems = draft.items.map { itemDraft ->
+        val items = itemDrafts.filter { it.quantity > 0 }.map { itemDraft ->
             val product = productDao.getProductById(itemDraft.productId)
                 ?: throw IllegalArgumentException("Product not found")
             val variantSku = itemDraft.variantId?.let { db.productVariantDao().getVariantById(it)?.sku }
@@ -355,10 +349,42 @@ class SalesRepositoryImpl @Inject constructor(
                 discountPercentBps = itemDraft.discountPercentBps
             )
         }
+        return subtotalMinor to items
+    }
+
+    private suspend fun updateUnpostedInvoiceInternal(
+        invoiceId: String,
+        draft: SalesInvoiceDraft,
+        preserveNonDraftStatus: Boolean
+    ) {
+        val existing = salesDao.getInvoiceById(invoiceId)
+            ?: throw IllegalArgumentException("Invoice not found: $invoiceId")
+        if (existing.isPosted) {
+            throw IllegalStateException("Cannot edit a posted invoice via unposted update.")
+        }
+
+        val customer = customerDao.getCustomerById(draft.customerId)
+            ?: throw IllegalArgumentException("Customer not found")
+        val warehouse = warehouseDao.getWarehouseById(draft.warehouseId)
+            ?: throw IllegalArgumentException("Warehouse not found")
+
+        val (subtotalMinor, invoiceItems) = buildPreparedInvoiceItems(invoiceId, draft.items)
+        if (invoiceItems.isEmpty()) {
+            throw IllegalArgumentException("Invoice must contain at least one item with positive quantity.")
+        }
 
         val totalAmount = maxOf(0L, subtotalMinor - draft.discountMinor + draft.additionalChargesMinor)
-        val initialPaid = minOf(draft.paidAmountMinor, totalAmount)
+        val initialPaid = if (draft.paymentMethod == "CREDIT") 0L else minOf(draft.paidAmountMinor, totalAmount)
         val initialDue = maxOf(0L, totalAmount - initialPaid)
+        val resolvedStatus = if (preserveNonDraftStatus && existing.status in setOf(
+                InvoiceStatus.QUOTATION.name,
+                InvoiceStatus.SALES_ORDER.name
+            )
+        ) {
+            existing.status
+        } else {
+            InvoiceStatus.DRAFT.name
+        }
 
         val updated = existing.copy(
             customerId = customer.id,
@@ -366,12 +392,13 @@ class SalesRepositoryImpl @Inject constructor(
             customerPhone = customer.phone,
             warehouseId = warehouse.id,
             warehouseName = warehouse.name,
+            status = resolvedStatus,
             subtotalMinor = subtotalMinor,
             discountMinor = draft.discountMinor,
             taxMinor = draft.additionalChargesMinor,
             totalAmountMinor = totalAmount,
-            paidAmountMinor = if (draft.paidAmountMinor > 0L) initialPaid else existing.paidAmountMinor,
-            dueAmountMinor = if (draft.paidAmountMinor > 0L) initialDue else maxOf(0L, totalAmount - existing.paidAmountMinor),
+            paidAmountMinor = initialPaid,
+            dueAmountMinor = initialDue,
             invoiceDate = draft.invoiceDate,
             dueDate = draft.dueDate,
             notes = draft.notes,
@@ -383,8 +410,809 @@ class SalesRepositoryImpl @Inject constructor(
             paymentTerms = draft.paymentTerms?.trim()?.ifBlank { null } ?: existing.paymentTerms
         )
 
+        salesDao.deleteInvoiceItems(invoiceId)
         salesDao.updateInvoice(updated)
         salesDao.insertInvoiceItems(invoiceItems)
+    }
+
+    override suspend fun updateInvoice(invoiceId: String, draft: SalesInvoiceDraft) {
+        db.withTransaction {
+            val existing = salesDao.getInvoiceById(invoiceId)
+                ?: throw IllegalArgumentException("Invoice not found: $invoiceId")
+            if (existing.isPosted) {
+                throw IllegalStateException("Cannot edit a posted invoice. Use editInvoice instead.")
+            }
+            updateUnpostedInvoiceInternal(invoiceId, draft, preserveNonDraftStatus = true)
+        }
+    }
+
+    private data class ClassifiedInvoiceAllocations(
+        val receiptAllocs: List<Pair<PaymentAllocation, CustomerPayment>>,
+        val inlinePayments: List<CustomerPayment>,
+        val inlineAllocs: List<Pair<PaymentAllocation, CustomerPayment>>
+    )
+
+    private suspend fun classifyInvoicePaymentAllocations(invoiceId: String): ClassifiedInvoiceAllocations {
+        val allocs = customerPaymentDao.getAllocationsForInvoiceSync(invoiceId)
+            .sortedWith(compareBy<PaymentAllocation> { it.allocatedAt }.thenBy { it.id })
+        val receiptAllocs = mutableListOf<Pair<PaymentAllocation, CustomerPayment>>()
+        val inlinePayments = mutableListOf<CustomerPayment>()
+        val inlineAllocs = mutableListOf<Pair<PaymentAllocation, CustomerPayment>>()
+        val seenInlineIds = hashSetOf<String>()
+
+        for (alloc in allocs) {
+            val payment = customerPaymentDao.getPaymentById(alloc.paymentId) ?: continue
+            if (!payment.isPosted || payment.isVoided) continue
+            val payJournals = db.accountingDao().getActiveEntriesForReference("CUSTOMER_PAYMENT", payment.id)
+            if (payJournals.isNotEmpty()) {
+                receiptAllocs.add(alloc to payment)
+            } else {
+                inlineAllocs.add(alloc to payment)
+                if (seenInlineIds.add(payment.id)) {
+                    inlinePayments.add(payment)
+                }
+            }
+        }
+        return ClassifiedInvoiceAllocations(receiptAllocs, inlinePayments, inlineAllocs)
+    }
+
+    override suspend fun getInvoiceEditContext(invoiceId: String): InvoiceEditContext? {
+        val invoice = salesDao.getInvoiceById(invoiceId) ?: return null
+        val items = salesDao.getItemsForInvoice(invoiceId)
+        val hasPostedReturns = salesReturnDao.getReturnsForInvoiceSync(invoiceId).any { it.isPosted }
+        val hasDeliveryChallans = stockMovementDao.getMovementsForInvoiceSync(invoiceId)
+            .any { it.referenceType == "DELIVERY_CHALLAN" }
+        val classified = classifyInvoicePaymentAllocations(invoiceId)
+        val hasSeparateReceipts = classified.receiptAllocs.isNotEmpty()
+        val receiptsTotal = classified.receiptAllocs.sumOf { it.first.amountMinor }
+
+        val firstInline = classified.inlinePayments.firstOrNull()
+        val lastReceipt = classified.receiptAllocs.lastOrNull()?.second
+        val initialMethod = when {
+            firstInline != null -> firstInline.paymentMethod
+            hasSeparateReceipts -> lastReceipt?.paymentMethod ?: "CASH"
+            invoice.isPosted && invoice.paidAmountMinor == 0L -> "CREDIT"
+            else -> "CASH"
+        }
+        val initialAccountId = when {
+            firstInline != null -> firstInline.accountId
+            hasSeparateReceipts -> lastReceipt?.accountId ?: "coa-1010"
+            else -> "coa-1010"
+        }
+
+        return InvoiceEditContext(
+            invoice = invoice,
+            items = items,
+            hasSeparateReceipts = hasSeparateReceipts,
+            existingReceiptsTotalMinor = receiptsTotal,
+            initialPaymentMethod = initialMethod,
+            initialPaymentAccountId = initialAccountId,
+            hasPostedReturns = hasPostedReturns,
+            hasDeliveryChallans = hasDeliveryChallans
+        )
+    }
+
+    override suspend fun editInvoice(
+        invoiceId: String,
+        draft: SalesInvoiceDraft,
+        postAfterSave: Boolean,
+        operator: String
+    ): Result<Unit> {
+        return try {
+            db.withTransaction {
+                val existing = salesDao.getInvoiceById(invoiceId)
+                    ?: throw IllegalArgumentException("Invoice not found: $invoiceId")
+                if (draft.items.isEmpty() || draft.items.none { it.quantity > 0 }) {
+                    throw IllegalArgumentException("Invoice must contain at least one item with positive quantity.")
+                }
+
+                val hasPostedReturns = salesReturnDao.getReturnsForInvoiceSync(invoiceId).any { it.isPosted }
+                val hasDeliveryChallans = stockMovementDao.getMovementsForInvoiceSync(invoiceId)
+                    .any { it.referenceType == "DELIVERY_CHALLAN" }
+                SalesInvoiceEditPlanner.canEditInvoice(
+                    invoiceNumber = existing.invoiceNumber,
+                    status = existing.status,
+                    hasPostedReturns = hasPostedReturns,
+                    hasDeliveryChallans = hasDeliveryChallans
+                ).getOrThrow()
+
+                if (!existing.isPosted) {
+                    updateUnpostedInvoiceInternal(
+                        invoiceId = invoiceId,
+                        draft = draft,
+                        preserveNonDraftStatus = !postAfterSave
+                    )
+                    if (postAfterSave) {
+                        postInvoiceInternal(
+                            invoiceId = invoiceId,
+                            paymentMethod = draft.paymentMethod,
+                            paymentAccountId = draft.paymentAccountId
+                        ).getOrThrow()
+                    } else {
+                        db.auditLogDao().insertAuditLog(
+                            AuditLog(
+                                recordType = "SALES_INVOICE",
+                                recordId = invoiceId,
+                                action = "EDIT",
+                                details = "Unposted ${existing.status} #${existing.invoiceNumber} edited.",
+                                operator = operator,
+                                documentNumber = existing.invoiceNumber,
+                                operationType = "INVOICE_EDIT",
+                                previousStatus = existing.status,
+                                newStatus = existing.status
+                            )
+                        )
+                    }
+                    return@withTransaction
+                }
+
+                val now = System.currentTimeMillis()
+                val newCustomer = customerDao.getCustomerById(draft.customerId)
+                    ?: throw IllegalArgumentException("Customer not found")
+                val newWarehouse = warehouseDao.getWarehouseById(draft.warehouseId)
+                    ?: throw IllegalArgumentException("Warehouse not found")
+
+                val oldCustomerBaseline = captureCustomerBalanceBaseline(existing.customerId)
+                val newCustomerBaseline = if (newCustomer.id != existing.customerId) {
+                    captureCustomerBalanceBaseline(newCustomer.id)
+                } else {
+                    oldCustomerBaseline
+                }
+
+                val classified = classifyInvoicePaymentAllocations(invoiceId)
+                if (classified.receiptAllocs.isNotEmpty() && newCustomer.id != existing.customerId) {
+                    throw IllegalStateException(
+                        "Cannot change customer while separate payment receipts are allocated to invoice #${existing.invoiceNumber}."
+                    )
+                }
+
+                // 1. Restore previously deducted stock, FIFO cost layers, and mark prior allocations reversed
+                val oldItems = salesDao.getItemsForInvoice(invoiceId)
+                for (oldItem in oldItems) {
+                    val netQty = maxOf(0, oldItem.quantity - oldItem.returnedQuantity)
+                    if (netQty > 0) {
+                        val curBal = if (oldItem.variantId != null) {
+                            stockBalanceDao.getVariantBalance(existing.warehouseId, oldItem.productId, oldItem.variantId)
+                                ?: stockBalanceDao.getBalance(existing.warehouseId, oldItem.productId)
+                        } else {
+                            stockBalanceDao.getBalance(existing.warehouseId, oldItem.productId)
+                        }
+                        val restoredQty = (curBal?.quantity ?: 0) + netQty
+                        if (curBal != null) {
+                            stockBalanceDao.insertOrUpdate(curBal.copy(quantity = restoredQty, updatedAt = now))
+                        } else {
+                            stockBalanceDao.insertOrUpdate(
+                                StockBalance(
+                                    warehouseId = existing.warehouseId,
+                                    productId = oldItem.productId,
+                                    variantId = oldItem.variantId,
+                                    quantity = restoredQty,
+                                    updatedAt = now
+                                )
+                            )
+                        }
+                        stockMovementDao.insertMovement(
+                            StockMovement(
+                                id = MovementNumberGenerator.generateId("mov-edit-rev"),
+                                movementNumber = MovementNumberGenerator.generate("MOV-EDTR"),
+                                warehouseId = existing.warehouseId,
+                                productId = oldItem.productId,
+                                variantId = oldItem.variantId,
+                                movementType = StockMovementType.SALE_RETURN.code,
+                                quantity = netQty,
+                                unitCostMinor = oldItem.unitCostMinor,
+                                balanceAfterMovement = restoredQty,
+                                totalCostImpactMinor = netQty.toLong() * oldItem.unitCostMinor,
+                                referenceType = "SALES_INVOICE_EDIT_REVERSAL",
+                                referenceId = invoiceId,
+                                salesInvoiceId = invoiceId,
+                                operatorName = operator,
+                                notes = "Stock restored before updating invoice #${existing.invoiceNumber}",
+                                createdAt = now
+                            )
+                        )
+                    }
+                }
+
+                db.importVaultDao().markSaleLayerAllocationsReversedForInvoice(invoiceId)
+                val oldUsages = salesDao.getCostLayerUsagesForInvoice(invoiceId)
+                for (usage in oldUsages) {
+                    if (usage.quantityDepleted > 0) {
+                        val layer = inventoryCostLayerDao.getCostLayerById(usage.costLayerId)
+                        if (layer != null) {
+                            inventoryCostLayerDao.updateRemainingQuantity(
+                                layerId = layer.id,
+                                remainingQuantity = layer.remainingQuantity + usage.quantityDepleted,
+                                isActive = true
+                            )
+                        }
+                    }
+                }
+                salesDao.deleteCostLayerUsagesForInvoice(invoiceId)
+                db.fifoConsumptionDao().deleteConsumptionsForInvoice(invoiceId)
+                salesDao.deleteInvoiceItems(invoiceId)
+
+                // 2. Reverse prior SALES_INVOICE and SALES_COGS journals
+                for (entry in db.accountingDao().getActiveEntriesForReference("SALES_INVOICE", invoiceId)) {
+                    accountingRepository.reverseJournalEntry(entry.id)
+                }
+                for (entry in db.accountingDao().getActiveEntriesForReference("SALES_COGS", invoiceId)) {
+                    accountingRepository.reverseJournalEntry(entry.id)
+                }
+
+                // 3. Build new items & validate against restored stock
+                val (newSubtotal, preparedItems) = buildPreparedInvoiceItems(invoiceId, draft.items)
+                if (preparedItems.isEmpty()) {
+                    throw IllegalArgumentException("Invoice must contain at least one item with positive quantity.")
+                }
+                val newTotalAmount = maxOf(0L, newSubtotal - draft.discountMinor + draft.additionalChargesMinor)
+
+                val editedHeader = existing.copy(
+                    customerId = newCustomer.id,
+                    customerName = newCustomer.name,
+                    customerPhone = newCustomer.phone,
+                    warehouseId = newWarehouse.id,
+                    warehouseName = newWarehouse.name,
+                    subtotalMinor = newSubtotal,
+                    discountMinor = draft.discountMinor,
+                    taxMinor = draft.additionalChargesMinor,
+                    totalAmountMinor = newTotalAmount,
+                    invoiceDate = draft.invoiceDate,
+                    dueDate = draft.dueDate,
+                    notes = draft.notes,
+                    updatedAt = now,
+                    validUntilDate = draft.validUntilDate ?: existing.validUntilDate,
+                    scheduledDeliveryInfo = draft.scheduledDeliveryInfo?.trim()?.ifBlank { null } ?: existing.scheduledDeliveryInfo,
+                    salesType = draft.salesType,
+                    discountPercentBps = draft.discountPercentBps,
+                    paymentTerms = draft.paymentTerms?.trim()?.ifBlank { null } ?: existing.paymentTerms
+                )
+
+                val totalInvoiceCogs = depleteStockAndCostLayersForInvoice(
+                    invoice = editedHeader,
+                    items = preparedItems,
+                    now = now,
+                    allocationSourceType = "INVOICE_EDIT"
+                )
+
+                // 4. Reconcile inline vs separate receipt allocations and post updated Revenue + COGS journals
+                val cashPaidForJournal: Long
+                val arDueForJournal: Long
+                val advanceOverpayForJournal: Long
+                val resolvedPayMethod: String
+                val resolvedPayAccountId: String
+
+                if (classified.receiptAllocs.isEmpty()) {
+                    // Clean old inline payments and let user set new inline cash / AR terms
+                    for (inlinePay in classified.inlinePayments) {
+                        customerPaymentDao.deleteAllocationsForPayment(inlinePay.id)
+                        customerPaymentDao.deletePaymentById(inlinePay.id)
+                    }
+                    cashPaidForJournal = if (draft.paymentMethod == "CREDIT") 0L else minOf(draft.paidAmountMinor, newTotalAmount)
+                    arDueForJournal = maxOf(0L, newTotalAmount - cashPaidForJournal)
+                    advanceOverpayForJournal = 0L
+                    resolvedPayMethod = draft.paymentMethod.ifBlank { "CASH" }
+                    resolvedPayAccountId = draft.paymentAccountId.ifBlank { "coa-1010" }
+
+                    val finalStatus = when {
+                        arDueForJournal == 0L && newTotalAmount > 0L -> InvoiceStatus.PAID.name
+                        cashPaidForJournal > 0L -> InvoiceStatus.PARTIALLY_PAID.name
+                        else -> InvoiceStatus.POSTED.name
+                    }
+                    val finalInvoice = editedHeader.copy(
+                        status = finalStatus,
+                        paidAmountMinor = cashPaidForJournal,
+                        dueAmountMinor = arDueForJournal,
+                        totalCogsMinor = totalInvoiceCogs
+                    )
+                    salesDao.updateInvoice(finalInvoice)
+                    if (cashPaidForJournal > 0L) {
+                        insertInlineInvoicePayment(
+                            invoice = finalInvoice,
+                            amountMinor = cashPaidForJournal,
+                            paymentMethod = resolvedPayMethod,
+                            paymentAccountId = resolvedPayAccountId,
+                            now = now
+                        )
+                    }
+                } else {
+                    // Separate payment receipts exist: preserve CUSTOMER_PAYMENT receipts and convert excess to Customer Advance (coa-2030)
+                    customerPaymentDao.deleteAllocationsForInvoice(invoiceId)
+                    val firstInline = classified.inlinePayments.firstOrNull()
+                    resolvedPayMethod = firstInline?.paymentMethod ?: "CASH"
+                    resolvedPayAccountId = firstInline?.accountId ?: "coa-1010"
+
+                    val reconciliation = SalesInvoiceEditPlanner.reconcileSeparateReceiptAllocations(
+                        newTotalAmountMinor = newTotalAmount,
+                        inlineSlices = classified.inlineAllocs.map { (alloc, _) ->
+                            SalesInvoiceEditPlanner.AllocationSlice(alloc.id, alloc.paymentId, alloc.amountMinor)
+                        },
+                        receiptSlices = classified.receiptAllocs.map { (alloc, _) ->
+                            SalesInvoiceEditPlanner.AllocationSlice(alloc.id, alloc.paymentId, alloc.amountMinor)
+                        }
+                    )
+
+                    val keptAllocations = mutableListOf<PaymentAllocation>()
+                    for ((alloc, _) in classified.inlineAllocs) {
+                        val keepAmt = reconciliation.keptInlineAmounts[alloc.id] ?: 0L
+                        if (keepAmt > 0L) keptAllocations.add(alloc.copy(amountMinor = keepAmt))
+                    }
+                    for ((alloc, _) in classified.receiptAllocs) {
+                        val keepAmt = reconciliation.keptReceiptAmounts[alloc.id] ?: 0L
+                        if (keepAmt > 0L) keptAllocations.add(alloc.copy(amountMinor = keepAmt))
+                    }
+
+                    for ((paymentId, freedInline) in reconciliation.freedInlineByPayment) {
+                        val inlinePay = classified.inlinePayments.firstOrNull { it.id == paymentId } ?: continue
+                        customerPaymentDao.updatePayment(
+                            inlinePay.copy(
+                                allocatedAmountMinor = maxOf(0L, inlinePay.allocatedAmountMinor - freedInline),
+                                unallocatedCreditMinor = inlinePay.unallocatedCreditMinor + freedInline,
+                                isAdvance = true
+                            )
+                        )
+                    }
+
+                    for ((paymentId, freedReceipt) in reconciliation.freedReceiptByPayment) {
+                        val receiptPay = classified.receiptAllocs.firstOrNull { it.second.id == paymentId }?.second ?: continue
+                        customerPaymentDao.updatePayment(
+                            receiptPay.copy(
+                                allocatedAmountMinor = maxOf(0L, receiptPay.allocatedAmountMinor - freedReceipt),
+                                unallocatedCreditMinor = receiptPay.unallocatedCreditMinor + freedReceipt,
+                                isAdvance = true
+                            )
+                        )
+                        accountingRepository.postJournalEntry(
+                            entryDate = now,
+                            descEn = "Convert excess receipt #${receiptPay.paymentNumber} to customer advance on edited invoice #${existing.invoiceNumber}",
+                            descBn = "সংশোধিত চালান #${existing.invoiceNumber} বাবদ অতিরিক্ত পেমেন্ট #${receiptPay.paymentNumber} অগ্রিমে রূপান্তর",
+                            referenceType = "PAYMENT_TO_ADVANCE",
+                            referenceId = invoiceId,
+                            lines = listOf(
+                                JournalLineDraft(
+                                    accountId = "coa-1040",
+                                    isDebit = true,
+                                    amountMinor = freedReceipt,
+                                    description = "Reclassify AR to Advance: Edited Inv #${existing.invoiceNumber}"
+                                ),
+                                JournalLineDraft(
+                                    accountId = "coa-2030",
+                                    isDebit = false,
+                                    amountMinor = freedReceipt,
+                                    description = "Customer advance credit: Receipt #${receiptPay.paymentNumber}"
+                                )
+                            )
+                        )
+                    }
+
+                    if (keptAllocations.isNotEmpty()) {
+                        customerPaymentDao.insertAllocations(keptAllocations)
+                    }
+
+                    cashPaidForJournal = reconciliation.cashPaidForJournal
+                    advanceOverpayForJournal = reconciliation.advanceOverpayForJournal
+                    arDueForJournal = reconciliation.arDueForJournal
+
+                    salesDao.updateInvoice(editedHeader.copy(totalCogsMinor = totalInvoiceCogs))
+                    recalculateAndPersistInvoiceSettlement(invoiceId, now)
+                }
+
+                val latestInvoice = salesDao.getInvoiceById(invoiceId) ?: editedHeader
+                postSalesRevenueAndCogsJournals(
+                    invoice = latestInvoice,
+                    cashPaid = cashPaidForJournal,
+                    arDue = arDueForJournal,
+                    advanceOverpayMinor = advanceOverpayForJournal,
+                    totalInvoiceCogs = totalInvoiceCogs,
+                    paymentMethod = resolvedPayMethod,
+                    paymentAccountId = resolvedPayAccountId,
+                    now = now,
+                    isEdit = true
+                )
+
+                // 5. Refresh Customer Balances & Communication Snapshot
+                updateCustomerBalanceFromBaseline(newCustomer.id, newCustomerBaseline)
+                if (existing.customerId != newCustomer.id) {
+                    updateCustomerBalanceFromBaseline(existing.customerId, oldCustomerBaseline)
+                }
+
+                val closing = getCustomerLedger(newCustomer.id).lastOrNull()?.runningBalanceMinor ?: 0L
+                val settledInvoice = salesDao.getInvoiceById(invoiceId) ?: latestInvoice
+                db.communicationDao().snapshot(
+                    com.pocketdev.advance_erp.data.entity.CommunicationSnapshot(
+                        module = "INVOICE",
+                        documentId = settledInvoice.id,
+                        number = settledInvoice.invoiceNumber,
+                        partyId = settledInvoice.customerId,
+                        createdAt = now,
+                        originalAmountMinor = settledInvoice.totalAmountMinor,
+                        previousBalanceMinor = closing - settledInvoice.totalAmountMinor + settledInvoice.paidAmountMinor,
+                        allocatedPaymentMinor = settledInvoice.paidAmountMinor,
+                        invoiceDueMinor = settledInvoice.dueAmountMinor,
+                        closingBalanceMinor = closing
+                    )
+                )
+
+                db.auditLogDao().insertAuditLog(
+                    AuditLog(
+                        recordType = "SALES_INVOICE",
+                        recordId = invoiceId,
+                        action = "EDIT",
+                        details = "Posted invoice #${existing.invoiceNumber} edited (Total: ৳${existing.totalAmountMinor / 100} -> ৳${settledInvoice.totalAmountMinor / 100}).",
+                        operator = operator,
+                        documentNumber = existing.invoiceNumber,
+                        operationType = "INVOICE_EDIT",
+                        previousStatus = existing.status,
+                        newStatus = settledInvoice.status
+                    )
+                )
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun depleteStockAndCostLayersForInvoice(
+        invoice: SalesInvoice,
+        items: List<SalesInvoiceItem>,
+        now: Long,
+        allocationSourceType: String
+    ): Long {
+        val requestedBySelection = items.groupBy { it.productId to it.variantId }
+        for ((selection, groupItems) in requestedBySelection) {
+            val (prodId, varId) = selection
+            val balance = if (varId != null) {
+                stockBalanceDao.getVariantBalance(invoice.warehouseId, prodId, varId)
+                    ?: stockBalanceDao.getBalance(invoice.warehouseId, prodId)
+            } else {
+                stockBalanceDao.getBalance(invoice.warehouseId, prodId)
+            }
+            val sellableQty = maxOf(0, (balance?.quantity ?: 0) - (balance?.reservedQuantity ?: 0))
+            val totalRequested = groupItems.sumOf { it.quantity }
+            if (sellableQty < totalRequested) {
+                throw IllegalStateException(
+                    "Insufficient sellable stock for '${groupItems.first().productNameEn}'. Available: $sellableQty, Requested: $totalRequested"
+                )
+            }
+        }
+
+        val invoiceDiscountByItem = DeterministicAllocation.allocateInvoiceDiscountAcrossItems(
+            invoiceDiscountMinor = invoice.discountMinor,
+            items = items
+        )
+        var totalInvoiceCogs = 0L
+        val costLayerUsages = mutableListOf<SalesCostLayerUsage>()
+        val allFifoConsumptions = mutableListOf<FifoConsumption>()
+        val allSaleLayerAllocations = mutableListOf<SaleLayerAllocation>()
+        val updatedItems = mutableListOf<SalesInvoiceItem>()
+
+        for (item in items) {
+            val currentBalance = if (item.variantId != null) {
+                stockBalanceDao.getVariantBalance(invoice.warehouseId, item.productId, item.variantId)
+                    ?: stockBalanceDao.getBalance(invoice.warehouseId, item.productId)
+            } else {
+                stockBalanceDao.getBalance(invoice.warehouseId, item.productId)
+            }
+            val existingQty = currentBalance?.quantity ?: 0
+            val newQty = existingQty - item.quantity
+            if (currentBalance != null) {
+                stockBalanceDao.insertOrUpdate(
+                    currentBalance.copy(quantity = newQty, updatedAt = now)
+                )
+            } else {
+                stockBalanceDao.insertOrUpdate(
+                    StockBalance(
+                        warehouseId = invoice.warehouseId,
+                        productId = item.productId,
+                        variantId = item.variantId,
+                        quantity = newQty,
+                        updatedAt = now
+                    )
+                )
+            }
+
+            var neededQty = item.quantity
+            var itemTotalCogs = 0L
+            val itemSlices = mutableListOf<ConsumedLayerSlice>()
+            val activeLayers = if (item.variantId != null) {
+                val variantLayers = inventoryCostLayerDao.getActiveLayersForVariantAndWarehouseSync(
+                    productId = item.productId,
+                    variantId = item.variantId,
+                    warehouseId = invoice.warehouseId
+                )
+                if (variantLayers.isNotEmpty()) variantLayers else {
+                    inventoryCostLayerDao.getActiveLayersForProductAndWarehouseSync(
+                        productId = item.productId,
+                        warehouseId = invoice.warehouseId
+                    )
+                }
+            } else {
+                inventoryCostLayerDao.getActiveLayersForProductAndWarehouseSync(
+                    productId = item.productId,
+                    warehouseId = invoice.warehouseId
+                )
+            }
+
+            for (layer in activeLayers) {
+                if (neededQty <= 0) break
+                val qtyToTake = minOf(neededQty, layer.remainingQuantity)
+                if (qtyToTake <= 0) continue
+                val layerCost = qtyToTake.toLong() * layer.unitLandedCostBdtMinor
+                itemTotalCogs += layerCost
+                neededQty -= qtyToTake
+
+                val newRemaining = layer.remainingQuantity - qtyToTake
+                inventoryCostLayerDao.updateRemainingQuantity(
+                    layerId = layer.id,
+                    remainingQuantity = newRemaining,
+                    isActive = newRemaining > 0
+                )
+
+                costLayerUsages.add(
+                    SalesCostLayerUsage(
+                        invoiceId = invoice.id,
+                        invoiceItemId = item.id,
+                        costLayerId = layer.id,
+                        quantityDepleted = qtyToTake,
+                        unitCostMinor = layer.unitLandedCostBdtMinor
+                    )
+                )
+
+                allFifoConsumptions.add(
+                    FifoConsumption(
+                        invoiceId = invoice.id,
+                        invoiceItemId = item.id,
+                        costLayerId = layer.id,
+                        productId = item.productId,
+                        variantId = item.variantId,
+                        warehouseId = invoice.warehouseId,
+                        quantity = qtyToTake,
+                        unitCostBdtMinor = layer.unitLandedCostBdtMinor,
+                        totalCogsBdtMinor = layerCost,
+                        referenceType = "SALE",
+                        referenceId = invoice.id,
+                        createdAt = now
+                    )
+                )
+
+                itemSlices.add(
+                    ConsumedLayerSlice(
+                        layer = layer,
+                        quantity = qtyToTake,
+                        unitCostMinor = layer.unitLandedCostBdtMinor,
+                        totalCogsMinor = layerCost
+                    )
+                )
+            }
+
+            if (neededQty > 0) {
+                val variant = item.variantId?.let { db.productVariantDao().getVariantById(it) }
+                val prod = productDao.getProductById(item.productId)
+                val fallbackUnitCost = variant?.variantCostMinor?.takeIf { it > 0L } ?: prod?.purchasePriceMinor ?: 0L
+                val fallbackCogs = neededQty.toLong() * fallbackUnitCost
+                itemTotalCogs += fallbackCogs
+                itemSlices.add(
+                    ConsumedLayerSlice(
+                        layer = null,
+                        quantity = neededQty,
+                        unitCostMinor = fallbackUnitCost,
+                        totalCogsMinor = fallbackCogs
+                    )
+                )
+            }
+
+            allSaleLayerAllocations.addAll(
+                buildSaleLayerAllocationsForItem(
+                    invoice = invoice,
+                    item = item,
+                    allocatedItemInvoiceDiscountMinor = invoiceDiscountByItem[item.id] ?: 0L,
+                    slices = itemSlices,
+                    sourceType = allocationSourceType,
+                    referenceId = invoice.id,
+                    now = now
+                )
+            )
+
+            val unitCogs = if (item.quantity > 0) itemTotalCogs / item.quantity else 0L
+            totalInvoiceCogs += itemTotalCogs
+
+            stockMovementDao.insertMovement(
+                StockMovement(
+                    id = MovementNumberGenerator.generateId("mov-sale"),
+                    movementNumber = MovementNumberGenerator.generate("MOV-SALE"),
+                    warehouseId = invoice.warehouseId,
+                    productId = item.productId,
+                    variantId = item.variantId,
+                    movementType = StockMovementType.SALE_DISPATCH.code,
+                    quantity = item.quantity,
+                    unitCostMinor = unitCogs,
+                    balanceAfterMovement = newQty,
+                    totalCostImpactMinor = itemTotalCogs,
+                    referenceType = "SALES_INVOICE",
+                    referenceId = invoice.id,
+                    salesInvoiceId = invoice.id,
+                    notes = "Sales Invoice #${invoice.invoiceNumber}",
+                    createdAt = now
+                )
+            )
+
+            updatedItems.add(
+                item.copy(
+                    unitCostMinor = unitCogs,
+                    totalCogsMinor = itemTotalCogs
+                )
+            )
+        }
+
+        salesDao.insertInvoiceItems(updatedItems)
+        if (costLayerUsages.isNotEmpty()) {
+            salesDao.insertCostLayerUsages(costLayerUsages)
+        }
+        if (allFifoConsumptions.isNotEmpty()) {
+            db.fifoConsumptionDao().insertConsumptions(allFifoConsumptions)
+        }
+        if (allSaleLayerAllocations.isNotEmpty()) {
+            db.importVaultDao().insertSaleLayerAllocations(allSaleLayerAllocations)
+        }
+        return totalInvoiceCogs
+    }
+
+    private suspend fun insertInlineInvoicePayment(
+        invoice: SalesInvoice,
+        amountMinor: Long,
+        paymentMethod: String,
+        paymentAccountId: String,
+        now: Long
+    ) {
+        val resolvedMethod = paymentMethod.ifBlank { "CASH" }
+        val resolvedAccountId = paymentAccountId.ifBlank { "coa-1010" }
+        val paymentId = UUID.randomUUID().toString()
+        val paymentNumber = generatePaymentNumber()
+        val payment = CustomerPayment(
+            id = paymentId,
+            paymentNumber = paymentNumber,
+            customerId = invoice.customerId,
+            customerName = invoice.customerName,
+            amountMinor = amountMinor,
+            allocatedAmountMinor = amountMinor,
+            unallocatedCreditMinor = 0L,
+            paymentDate = now,
+            paymentMethod = resolvedMethod,
+            accountId = resolvedAccountId,
+            referenceNote = "Initial payment on Invoice #${invoice.invoiceNumber}",
+            isAdvance = false,
+            isPosted = true
+        )
+        customerPaymentDao.insertPayment(payment)
+        val allocation = PaymentAllocation(
+            id = UUID.randomUUID().toString(),
+            paymentId = paymentId,
+            invoiceId = invoice.id,
+            invoiceNumber = invoice.invoiceNumber,
+            amountMinor = amountMinor,
+            allocatedAt = now
+        )
+        customerPaymentDao.insertAllocations(listOf(allocation))
+    }
+
+    private suspend fun postSalesRevenueAndCogsJournals(
+        invoice: SalesInvoice,
+        cashPaid: Long,
+        arDue: Long,
+        advanceOverpayMinor: Long = 0L,
+        totalInvoiceCogs: Long,
+        paymentMethod: String,
+        paymentAccountId: String,
+        now: Long,
+        isEdit: Boolean = false
+    ) {
+        val revenueLines = mutableListOf<JournalLineDraft>()
+        val grossCreditRevenue = invoice.subtotalMinor + invoice.taxMinor
+        val effectiveDiscount = minOf(invoice.discountMinor, grossCreditRevenue)
+
+        if (cashPaid > 0L) {
+            revenueLines.add(
+                JournalLineDraft(
+                    accountId = paymentAccountId.ifBlank { "coa-1010" },
+                    isDebit = true,
+                    amountMinor = cashPaid,
+                    description = "Payment Received (${paymentMethod.ifBlank { "CASH" }}): Inv #${invoice.invoiceNumber}"
+                )
+            )
+        }
+        if (arDue > 0L) {
+            revenueLines.add(
+                JournalLineDraft(
+                    accountId = "coa-1040",
+                    isDebit = true,
+                    amountMinor = arDue,
+                    description = "Accounts Receivable: Inv #${invoice.invoiceNumber}"
+                )
+            )
+        }
+        if (cashPaid == 0L && arDue == 0L && advanceOverpayMinor == 0L && invoice.totalAmountMinor > 0L) {
+            revenueLines.add(
+                JournalLineDraft(
+                    accountId = "coa-1040",
+                    isDebit = true,
+                    amountMinor = invoice.totalAmountMinor,
+                    description = "Accounts Receivable: Inv #${invoice.invoiceNumber}"
+                )
+            )
+        }
+        if (effectiveDiscount > 0L) {
+            revenueLines.add(
+                JournalLineDraft(
+                    accountId = "coa-4030",
+                    isDebit = true,
+                    amountMinor = effectiveDiscount,
+                    description = "Sales Discount: Inv #${invoice.invoiceNumber}"
+                )
+            )
+        }
+        if (advanceOverpayMinor > 0L) {
+            revenueLines.add(
+                JournalLineDraft(
+                    accountId = "coa-2030",
+                    isDebit = false,
+                    amountMinor = advanceOverpayMinor,
+                    description = "Excess inline payment moved to Customer Advance: Inv #${invoice.invoiceNumber}"
+                )
+            )
+        }
+        if (grossCreditRevenue > 0L) {
+            revenueLines.add(
+                JournalLineDraft(
+                    accountId = "coa-4010",
+                    isDebit = false,
+                    amountMinor = grossCreditRevenue,
+                    description = "Sales Revenue: Inv #${invoice.invoiceNumber}"
+                )
+            )
+            accountingRepository.postJournalEntry(
+                entryDate = now,
+                descEn = if (isEdit) {
+                    "Updated Sales Invoice #${invoice.invoiceNumber} for ${invoice.customerName}"
+                } else {
+                    "Sales Invoice #${invoice.invoiceNumber} posted for ${invoice.customerName}"
+                },
+                descBn = if (isEdit) {
+                    "গ্রাহক ${invoice.customerName} এর জন্য সংশোধিত বিক্রয় চালান #${invoice.invoiceNumber}"
+                } else {
+                    "গ্রাহক ${invoice.customerName} এর জন্য বিক্রয় চালান #${invoice.invoiceNumber} পোস্ট করা হয়েছে"
+                },
+                referenceType = "SALES_INVOICE",
+                referenceId = invoice.id,
+                lines = revenueLines
+            )
+        }
+
+        if (totalInvoiceCogs > 0) {
+            val cogsLines = listOf(
+                JournalLineDraft(
+                    accountId = "coa-5010",
+                    isDebit = true,
+                    amountMinor = totalInvoiceCogs,
+                    description = "Cost of Goods Sold: Inv #${invoice.invoiceNumber}"
+                ),
+                JournalLineDraft(
+                    accountId = "coa-1210",
+                    isDebit = false,
+                    amountMinor = totalInvoiceCogs,
+                    description = "Inventory Asset deduction: Inv #${invoice.invoiceNumber}"
+                )
+            )
+            accountingRepository.postJournalEntry(
+                entryDate = now,
+                descEn = if (isEdit) "Updated COGS for Sales Invoice #${invoice.invoiceNumber}" else "COGS for Sales Invoice #${invoice.invoiceNumber}",
+                descBn = if (isEdit) "সংশোধিত বিক্রয় চালান #${invoice.invoiceNumber} এর বিক্রীত পণ্যের মোট ব্যয়" else "বিক্রয় চালান #${invoice.invoiceNumber} এর বিক্রীত পণ্যের মোট ব্যয়",
+                referenceType = "SALES_COGS",
+                referenceId = invoice.id,
+                lines = cogsLines
+            )
+        }
     }
 
     override fun getAllInvoices(): Flow<List<SalesInvoice>> = salesDao.getAllInvoices()
@@ -425,213 +1253,14 @@ class SalesRepositoryImpl @Inject constructor(
             }
             val customerBalanceBaseline = captureCustomerBalanceBaseline(invoice.customerId)
 
-            // 1. Aggregate stock availability validation across repeated product/variant lines
-            val requestedBySelection = items.groupBy { it.productId to it.variantId }
-            for ((selection, groupItems) in requestedBySelection) {
-                val (prodId, varId) = selection
-                val balance = if (varId != null) {
-                    stockBalanceDao.getVariantBalance(invoice.warehouseId, prodId, varId)
-                        ?: stockBalanceDao.getBalance(invoice.warehouseId, prodId)
-                } else {
-                    stockBalanceDao.getBalance(invoice.warehouseId, prodId)
-                }
-                val sellableQty = maxOf(0, (balance?.quantity ?: 0) - (balance?.reservedQuantity ?: 0))
-                val totalRequested = groupItems.sumOf { it.quantity }
-                if (sellableQty < totalRequested) {
-                    return Result.failure(
-                        IllegalStateException(
-                            "Insufficient sellable stock for '${groupItems.first().productNameEn}'. Available: $sellableQty, Requested: $totalRequested"
-                        )
-                    )
-                }
-            }
-
-            // 2. Atomic Stock Reduction, COGS & Cost Layer Depletion
+            // 1. Atomic Stock Reduction, COGS & Cost Layer Depletion
             val now = System.currentTimeMillis()
-            val invoiceDiscountByItem = DeterministicAllocation.allocateInvoiceDiscountAcrossItems(
-                invoiceDiscountMinor = invoice.discountMinor,
-                items = items
+            val totalInvoiceCogs = depleteStockAndCostLayersForInvoice(
+                invoice = invoice,
+                items = items,
+                now = now,
+                allocationSourceType = "INVOICE_POST"
             )
-            var totalInvoiceCogs = 0L
-            val costLayerUsages = mutableListOf<SalesCostLayerUsage>()
-            val allFifoConsumptions = mutableListOf<FifoConsumption>()
-            val allSaleLayerAllocations = mutableListOf<SaleLayerAllocation>()
-            val updatedItems = mutableListOf<SalesInvoiceItem>()
-
-            for (item in items) {
-                // Deduct stock balance (variant-specific if variantId is present)
-                val currentBalance = if (item.variantId != null) {
-                    stockBalanceDao.getVariantBalance(invoice.warehouseId, item.productId, item.variantId)
-                        ?: stockBalanceDao.getBalance(invoice.warehouseId, item.productId)
-                } else {
-                    stockBalanceDao.getBalance(invoice.warehouseId, item.productId)
-                }
-                val existingQty = currentBalance?.quantity ?: 0
-                val newQty = existingQty - item.quantity
-                if (currentBalance != null) {
-                    stockBalanceDao.insertOrUpdate(
-                        currentBalance.copy(
-                            quantity = newQty,
-                            updatedAt = now
-                        )
-                    )
-                } else {
-                    stockBalanceDao.insertOrUpdate(
-                        StockBalance(
-                            warehouseId = invoice.warehouseId,
-                            productId = item.productId,
-                            variantId = item.variantId,
-                            quantity = newQty,
-                            updatedAt = now
-                        )
-                    )
-                }
-
-                // Deplete active cost layers (FIFO by receipt date, strictly warehouse & variant isolated)
-                var neededQty = item.quantity
-                var itemTotalCogs = 0L
-                val itemSlices = mutableListOf<ConsumedLayerSlice>()
-                val activeLayers = if (item.variantId != null) {
-                    val variantLayers = inventoryCostLayerDao.getActiveLayersForVariantAndWarehouseSync(
-                        productId = item.productId,
-                        variantId = item.variantId,
-                        warehouseId = invoice.warehouseId
-                    )
-                    if (variantLayers.isNotEmpty()) variantLayers else {
-                        inventoryCostLayerDao.getActiveLayersForProductAndWarehouseSync(
-                            productId = item.productId,
-                            warehouseId = invoice.warehouseId
-                        )
-                    }
-                } else {
-                    inventoryCostLayerDao.getActiveLayersForProductAndWarehouseSync(
-                        productId = item.productId,
-                        warehouseId = invoice.warehouseId
-                    )
-                }
-
-                for (layer in activeLayers) {
-                    if (neededQty <= 0) break
-                    val qtyToTake = minOf(neededQty, layer.remainingQuantity)
-                    if (qtyToTake <= 0) continue
-                    val layerCost = qtyToTake.toLong() * layer.unitLandedCostBdtMinor
-                    itemTotalCogs += layerCost
-                    neededQty -= qtyToTake
-
-                    val newRemaining = layer.remainingQuantity - qtyToTake
-                    inventoryCostLayerDao.updateRemainingQuantity(
-                        layerId = layer.id,
-                        remainingQuantity = newRemaining,
-                        isActive = newRemaining > 0
-                    )
-
-                    costLayerUsages.add(
-                        SalesCostLayerUsage(
-                            invoiceId = invoice.id,
-                            invoiceItemId = item.id,
-                            costLayerId = layer.id,
-                            quantityDepleted = qtyToTake,
-                            unitCostMinor = layer.unitLandedCostBdtMinor
-                        )
-                    )
-
-                    allFifoConsumptions.add(
-                        FifoConsumption(
-                            invoiceId = invoice.id,
-                            invoiceItemId = item.id,
-                            costLayerId = layer.id,
-                            productId = item.productId,
-                            variantId = item.variantId,
-                            warehouseId = invoice.warehouseId,
-                            quantity = qtyToTake,
-                            unitCostBdtMinor = layer.unitLandedCostBdtMinor,
-                            totalCogsBdtMinor = layerCost,
-                            referenceType = "SALE",
-                            referenceId = invoice.id,
-                            createdAt = now
-                        )
-                    )
-
-                    itemSlices.add(
-                        ConsumedLayerSlice(
-                            layer = layer,
-                            quantity = qtyToTake,
-                            unitCostMinor = layer.unitLandedCostBdtMinor,
-                            totalCogsMinor = layerCost
-                        )
-                    )
-                }
-
-                // If layers are exhausted (e.g. legacy/adjusted stock), fallback to product/variant purchase price & log unattributed slice
-                if (neededQty > 0) {
-                    val variant = item.variantId?.let { db.productVariantDao().getVariantById(it) }
-                    val prod = productDao.getProductById(item.productId)
-                    val fallbackUnitCost = variant?.variantCostMinor?.takeIf { it > 0L } ?: prod?.purchasePriceMinor ?: 0L
-                    val fallbackCogs = neededQty.toLong() * fallbackUnitCost
-                    itemTotalCogs += fallbackCogs
-                    itemSlices.add(
-                        ConsumedLayerSlice(
-                            layer = null,
-                            quantity = neededQty,
-                            unitCostMinor = fallbackUnitCost,
-                            totalCogsMinor = fallbackCogs
-                        )
-                    )
-                }
-
-                allSaleLayerAllocations.addAll(
-                    buildSaleLayerAllocationsForItem(
-                        invoice = invoice,
-                        item = item,
-                        allocatedItemInvoiceDiscountMinor = invoiceDiscountByItem[item.id] ?: 0L,
-                        slices = itemSlices,
-                        sourceType = "INVOICE_POST",
-                        referenceId = invoice.id,
-                        now = now
-                    )
-                )
-
-                val unitCogs = if (item.quantity > 0) itemTotalCogs / item.quantity else 0L
-                totalInvoiceCogs += itemTotalCogs
-
-                // Stock Movement Audit with running balance, cost impact, and sales reference
-                val movement = StockMovement(
-                    id = MovementNumberGenerator.generateId("mov-sale"),
-                    movementNumber = MovementNumberGenerator.generate("MOV-SALE"),
-                    warehouseId = invoice.warehouseId,
-                    productId = item.productId,
-                    variantId = item.variantId,
-                    movementType = StockMovementType.SALE_DISPATCH.code,
-                    quantity = item.quantity,
-                    unitCostMinor = unitCogs,
-                    balanceAfterMovement = newQty,
-                    totalCostImpactMinor = itemTotalCogs,
-                    referenceType = "SALES_INVOICE",
-                    referenceId = invoice.id,
-                    salesInvoiceId = invoice.id,
-                    notes = "Sales Invoice #${invoice.invoiceNumber}",
-                    createdAt = now
-                )
-                stockMovementDao.insertMovement(movement)
-
-                updatedItems.add(
-                    item.copy(
-                        unitCostMinor = unitCogs,
-                        totalCogsMinor = itemTotalCogs
-                    )
-                )
-            }
-
-            salesDao.insertInvoiceItems(updatedItems)
-            if (costLayerUsages.isNotEmpty()) {
-                salesDao.insertCostLayerUsages(costLayerUsages)
-            }
-            if (allFifoConsumptions.isNotEmpty()) {
-                db.fifoConsumptionDao().insertConsumptions(allFifoConsumptions)
-            }
-            if (allSaleLayerAllocations.isNotEmpty()) {
-                db.importVaultDao().insertSaleLayerAllocations(allSaleLayerAllocations)
-            }
 
             // Update Invoice as Posted
             val finalStatus = when {
@@ -653,127 +1282,27 @@ class SalesRepositoryImpl @Inject constructor(
             val arDue = invoice.dueAmountMinor
 
             if (cashPaid > 0L) {
-                val resolvedMethod = paymentMethod.ifBlank { "CASH" }
-                val resolvedAccountId = paymentAccountId.ifBlank { "coa-1010" }
-                val paymentId = UUID.randomUUID().toString()
-                val paymentNumber = generatePaymentNumber()
-                val payment = CustomerPayment(
-                    id = paymentId,
-                    paymentNumber = paymentNumber,
-                    customerId = invoice.customerId,
-                    customerName = invoice.customerName,
+                insertInlineInvoicePayment(
+                    invoice = invoice,
                     amountMinor = cashPaid,
-                    allocatedAmountMinor = cashPaid,
-                    unallocatedCreditMinor = 0L,
-                    paymentDate = now,
-                    paymentMethod = resolvedMethod,
-                    accountId = resolvedAccountId,
-                    referenceNote = "Initial payment on Invoice #${invoice.invoiceNumber}",
-                    isAdvance = false,
-                    isPosted = true
+                    paymentMethod = paymentMethod,
+                    paymentAccountId = paymentAccountId,
+                    now = now
                 )
-                customerPaymentDao.insertPayment(payment)
-                val allocation = PaymentAllocation(
-                    id = UUID.randomUUID().toString(),
-                    paymentId = paymentId,
-                    invoiceId = invoice.id,
-                    invoiceNumber = invoice.invoiceNumber,
-                    amountMinor = cashPaid,
-                    allocatedAt = now
-                )
-                customerPaymentDao.insertAllocations(listOf(allocation))
             }
 
             // 3. Double-Entry Accounting Integration
-            // Entry A: Sales Revenue, Accounts Receivable, Additional Charges, and Cash/Bank/MFS Received
-            val revenueLines = mutableListOf<JournalLineDraft>()
-            val grossCreditRevenue = invoice.subtotalMinor + invoice.taxMinor
-            val effectiveDiscount = minOf(invoice.discountMinor, grossCreditRevenue)
-
-            if (cashPaid > 0L) {
-                revenueLines.add(
-                    JournalLineDraft(
-                        accountId = paymentAccountId.ifBlank { "coa-1010" },
-                        isDebit = true,
-                        amountMinor = cashPaid,
-                        description = "Payment Received (${paymentMethod.ifBlank { "CASH" }}): Inv #${invoice.invoiceNumber}"
-                    )
-                )
-            }
-            if (arDue > 0L) {
-                revenueLines.add(
-                    JournalLineDraft(
-                        accountId = "coa-1040",
-                        isDebit = true,
-                        amountMinor = arDue,
-                        description = "Accounts Receivable: Inv #${invoice.invoiceNumber}"
-                    )
-                )
-            }
-            if (cashPaid == 0L && arDue == 0L && invoice.totalAmountMinor > 0L) {
-                revenueLines.add(
-                    JournalLineDraft(
-                        accountId = "coa-1040",
-                        isDebit = true,
-                        amountMinor = invoice.totalAmountMinor,
-                        description = "Accounts Receivable: Inv #${invoice.invoiceNumber}"
-                    )
-                )
-            }
-            if (effectiveDiscount > 0L) {
-                revenueLines.add(
-                    JournalLineDraft(
-                        accountId = "coa-4030",
-                        isDebit = true,
-                        amountMinor = effectiveDiscount,
-                        description = "Sales Discount: Inv #${invoice.invoiceNumber}"
-                    )
-                )
-            }
-            if (grossCreditRevenue > 0L) {
-                revenueLines.add(
-                    JournalLineDraft(
-                        accountId = "coa-4010",
-                        isDebit = false,
-                        amountMinor = grossCreditRevenue,
-                        description = "Sales Revenue: Inv #${invoice.invoiceNumber}"
-                    )
-                )
-                accountingRepository.postJournalEntry(
-                    entryDate = now,
-                    descEn = "Sales Invoice #${invoice.invoiceNumber} posted for ${invoice.customerName}",
-                    descBn = "গ্রাহক ${invoice.customerName} এর জন্য বিক্রয় চালান #${invoice.invoiceNumber} পোস্ট করা হয়েছে",
-                    referenceType = "SALES_INVOICE",
-                    referenceId = invoice.id,
-                    lines = revenueLines
-                )
-            }
-
-            // Entry B: COGS Recognition & Inventory Asset Deduction
-            if (totalInvoiceCogs > 0) {
-                val cogsLines = listOf(
-                    JournalLineDraft(
-                        accountId = "coa-5010",
-                        isDebit = true,
-                        amountMinor = totalInvoiceCogs,
-                        description = "Cost of Goods Sold: Inv #${invoice.invoiceNumber}"
-                    ),
-                    JournalLineDraft(
-                        accountId = "coa-1210",
-                        isDebit = false,
-                        amountMinor = totalInvoiceCogs,
-                        description = "Inventory Asset deduction: Inv #${invoice.invoiceNumber}"
-                    )
-                )
-                accountingRepository.postJournalEntry(
-                    entryDate = now,
-                    descEn = "COGS for Sales Invoice #${invoice.invoiceNumber}",
-                    descBn = "বিক্রয় চালান #${invoice.invoiceNumber} এর বিক্রীত পণ্যের মোট ব্যয়",
-                    referenceType = "SALES_COGS",
-                    referenceId = invoice.id,
-                    lines = cogsLines
-                )
-            }
+            postSalesRevenueAndCogsJournals(
+                invoice = invoice,
+                cashPaid = cashPaid,
+                arDue = arDue,
+                advanceOverpayMinor = 0L,
+                totalInvoiceCogs = totalInvoiceCogs,
+                paymentMethod = paymentMethod,
+                paymentAccountId = paymentAccountId,
+                now = now,
+                isEdit = false
+            )
 
             // 4. Update Customer Outstanding Balance preserving genuine opening balance
             updateCustomerBalanceFromBaseline(invoice.customerId, customerBalanceBaseline)

@@ -55,22 +55,22 @@ class ShareWorkflowPlannerTest {
         )
         assertEquals(listOf(ShareStepKind.SEND_IMAGE_CARDS, ShareStepKind.SEND_TEXT), imageAndText2.map { it.kind })
 
-        // 3. PDF + Text -> separate Text then PDF because WhatsApp strips PDF captions
+        // 3. PDF + Text -> combines document attachment + caption in one step (fallback button handles strip edge-cases)
         val pdfAndText = ShareWorkflowPlanner.buildShareSteps(setOf(ShareOutputFormat.PDF, ShareOutputFormat.TEXT_MESSAGE))
-        assertEquals(listOf(ShareStepKind.SEND_TEXT, ShareStepKind.SEND_DOCUMENT), pdfAndText.map { it.kind })
+        assertEquals(listOf(ShareStepKind.SEND_DOCUMENT_WITH_CAPTION), pdfAndText.map { it.kind })
 
         // 4. PDF + Image -> separate Document then Image cards (no heterogeneous MIME intent crash)
         val pdfAndImage = ShareWorkflowPlanner.buildShareSteps(setOf(ShareOutputFormat.PDF, ShareOutputFormat.IMAGE_CARD))
         assertEquals(listOf(ShareStepKind.SEND_DOCUMENT, ShareStepKind.SEND_IMAGE_CARDS), pdfAndImage.map { it.kind })
 
-        // 5. All 3 selected -> exact Text -> PDF -> Image Card sequence matching Reference #5
+        // 5. All 3 selected -> Document+Caption then Image Card sequence
         val allThree = ShareWorkflowPlanner.buildShareSteps(ShareOutputFormat.entries.toSet(), imagePageCount = 1)
         assertEquals(
-            listOf(ShareStepKind.SEND_TEXT, ShareStepKind.SEND_DOCUMENT, ShareStepKind.SEND_IMAGE_CARDS),
+            listOf(ShareStepKind.SEND_DOCUMENT_WITH_CAPTION, ShareStepKind.SEND_IMAGE_CARDS),
             allThree.map { it.kind }
         )
-        assertEquals(listOf(0, 1, 2), allThree.map { it.stepIndex })
-        assertTrue(allThree.all { it.totalSteps == 3 })
+        assertEquals(listOf(0, 1), allThree.map { it.stepIndex })
+        assertTrue(allThree.all { it.totalSteps == 2 })
     }
 
     @Test(expected = IllegalArgumentException::class)

@@ -1361,10 +1361,9 @@ class SmartCommunicationQaAndroidTest {
             imagePageCount = invUnpaidBn.imageCardPages.size,
             documentExtension = "pdf"
         )
-        assertEquals(3, steps.size)
-        assertEquals(ShareStepKind.SEND_TEXT, steps[0].kind)
-        assertEquals(ShareStepKind.SEND_DOCUMENT, steps[1].kind)
-        assertEquals(ShareStepKind.SEND_IMAGE_CARDS, steps[2].kind)
+        assertEquals(2, steps.size)
+        assertEquals(ShareStepKind.SEND_DOCUMENT_WITH_CAPTION, steps[0].kind)
+        assertEquals(ShareStepKind.SEND_IMAGE_CARDS, steps[1].kind)
         val multiIntent = WhatsAppShareManager.sendMultipleIntent(
             context = context,
             files = invUnpaidBn.imageCardPages,

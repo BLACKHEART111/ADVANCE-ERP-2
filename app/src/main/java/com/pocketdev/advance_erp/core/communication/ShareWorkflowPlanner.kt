@@ -11,6 +11,7 @@ enum class SharePreviewTab {
 enum class ShareStepKind {
     SEND_TEXT,
     SEND_DOCUMENT,
+    SEND_DOCUMENT_WITH_CAPTION,
     SEND_IMAGE_CARDS,
     SEND_IMAGE_WITH_CAPTION
 }
@@ -77,13 +78,11 @@ object ShareWorkflowPlanner {
         val raw = mutableListOf<ShareStepKind>()
         when {
             hasPdf && hasImage && hasText -> {
-                raw += ShareStepKind.SEND_TEXT
-                raw += ShareStepKind.SEND_DOCUMENT
+                raw += ShareStepKind.SEND_DOCUMENT_WITH_CAPTION
                 raw += ShareStepKind.SEND_IMAGE_CARDS
             }
             hasPdf && hasText -> {
-                raw += ShareStepKind.SEND_TEXT
-                raw += ShareStepKind.SEND_DOCUMENT
+                raw += ShareStepKind.SEND_DOCUMENT_WITH_CAPTION
             }
             hasPdf && hasImage -> {
                 raw += ShareStepKind.SEND_DOCUMENT
@@ -124,6 +123,16 @@ object ShareWorkflowPlanner {
                     titleBn = "$docLabelUpper ডকুমেন্ট পাঠান",
                     subtitleEn = "Shares the detailed $docLabelUpper file via WhatsApp / chooser",
                     subtitleBn = "বিস্তারিত $docLabelUpper ফাইলটি WhatsApp / শেয়ার শিটে পাঠাবে"
+                )
+                ShareStepKind.SEND_DOCUMENT_WITH_CAPTION -> PlannedShareStep(
+                    stepIndex = idx,
+                    totalSteps = total,
+                    kind = kind,
+                    format = ShareOutputFormat.PDF,
+                    titleEn = "Send $docLabelUpper + Caption",
+                    titleBn = "$docLabelUpper ও বার্তা পাঠান",
+                    subtitleEn = "Attaches $docLabelUpper file with text caption (text also copied to clipboard)",
+                    subtitleBn = "$docLabelUpper ফাইলের সাথে ক্যাপশন পাঠাবে (বার্তা ক্লিপবোর্ডেও কপি করা আছে)"
                 )
                 ShareStepKind.SEND_IMAGE_CARDS -> PlannedShareStep(
                     stepIndex = idx,

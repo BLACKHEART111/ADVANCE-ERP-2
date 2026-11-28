@@ -442,6 +442,7 @@ internal fun SalesCustomerHeroSection(
     summary: CustomerSummary?,
     isBangla: Boolean,
     palette: SalesInvoicePalette,
+    canChangeCustomer: Boolean = true,
     onChangeCustomerClick: () -> Unit
 ) {
     val displayName = pendingNewCustomer?.name ?: customer?.name
@@ -558,29 +559,31 @@ internal fun SalesCustomerHeroSection(
                     }
                 }
 
-                Surface(
-                    onClick = onChangeCustomerClick,
-                    shape = RoundedCornerShape(10.dp),
-                    color = palette.cardBg,
-                    border = BorderStroke(1.dp, palette.customerBorder)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                if (canChangeCustomer) {
+                    Surface(
+                        onClick = onChangeCustomerClick,
+                        shape = RoundedCornerShape(10.dp),
+                        color = palette.cardBg,
+                        border = BorderStroke(1.dp, palette.customerBorder)
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Edit,
-                            contentDescription = "Change",
-                            tint = palette.primaryPurple,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isBangla) "পরিবর্তন" else "Change",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = palette.textPrimary
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = "Change",
+                                tint = palette.primaryPurple,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isBangla) "পরিবর্তন" else "Change",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = palette.textPrimary
+                            )
+                        }
                     }
                 }
             }
@@ -961,6 +964,8 @@ internal fun SalesPaymentSettlementCard(
     grandTotalMinor: Long,
     isBangla: Boolean,
     palette: SalesInvoicePalette,
+    isLocked: Boolean = false,
+    lockNotice: String? = null,
     onSelectPaymentMethod: (String) -> Unit,
     onSelectAccountId: (String) -> Unit,
     onPaidAmountChange: (String) -> Unit,
@@ -1010,6 +1015,24 @@ internal fun SalesPaymentSettlementCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            if (!lockNotice.isNullOrBlank()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = palette.iconBadgeBg,
+                    border = BorderStroke(1.dp, palette.cardBorder)
+                ) {
+                    Text(
+                        text = lockNotice,
+                        fontSize = 11.5.sp,
+                        color = palette.textPrimary,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
             // 4-Across Payment Tiles matching reference
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1023,7 +1046,7 @@ internal fun SalesPaymentSettlementCard(
                             .weight(1f)
                             .height(60.dp)
                             .clip(RoundedCornerShape(11.dp))
-                            .clickable { onSelectPaymentMethod(code) },
+                            .clickable(enabled = !isLocked) { onSelectPaymentMethod(code) },
                         shape = RoundedCornerShape(11.dp),
                         color = Color.Transparent,
                         border = if (isSelected) null else BorderStroke(1.dp, palette.cardBorder)
@@ -1118,9 +1141,10 @@ internal fun SalesPaymentSettlementCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(36.dp),
-                            onClick = { if (paymentMethod != "CREDIT" && channelAccounts.isNotEmpty()) accountMenuExpanded = true },
+                            onClick = { if (!isLocked && paymentMethod != "CREDIT" && channelAccounts.isNotEmpty()) accountMenuExpanded = true },
+                            enabled = !isLocked && paymentMethod != "CREDIT" && channelAccounts.isNotEmpty(),
                             shape = RoundedCornerShape(9.dp),
-                            color = if (paymentMethod == "CREDIT") palette.subtleSurface else palette.inputBg,
+                            color = if (isLocked || paymentMethod == "CREDIT") palette.subtleSurface else palette.inputBg,
                             border = BorderStroke(1.dp, palette.inputBorder)
                         ) {
                             Row(
@@ -1190,11 +1214,11 @@ internal fun SalesPaymentSettlementCard(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     CompactNumericInputBox(
-                        value = if (paymentMethod == "CREDIT") "0.00" else if (isFullPaySelected) Formatters.formatMinorUnit(grandTotalMinor).replace(",", "") else paidAmountStr,
+                        value = if (paymentMethod == "CREDIT" && !isLocked) "0.00" else if (isFullPaySelected && !isLocked) Formatters.formatMinorUnit(grandTotalMinor).replace(",", "") else paidAmountStr,
                         onValueChange = onPaidAmountChange,
                         palette = palette,
                         textAlign = TextAlign.Start,
-                        enabled = paymentMethod != "CREDIT",
+                        enabled = !isLocked && paymentMethod != "CREDIT",
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1203,8 +1227,9 @@ internal fun SalesPaymentSettlementCard(
                 Surface(
                     modifier = Modifier.height(36.dp),
                     onClick = onFullPayClick,
+                    enabled = !isLocked,
                     shape = RoundedCornerShape(9.dp),
-                    color = palette.fullPayBg,
+                    color = if (isLocked) palette.subtleSurface else palette.fullPayBg,
                     border = BorderStroke(1.dp, palette.fullPayBorder)
                 ) {
                     Box(
@@ -1431,6 +1456,8 @@ private fun SummaryMetricRow(
 internal fun SalesInvoiceStickyFooter(
     isBangla: Boolean,
     palette: SalesInvoicePalette,
+    isEditMode: Boolean = false,
+    isEditingPostedInvoice: Boolean = false,
     onCancel: () -> Unit,
     onSaveDraft: () -> Unit,
     onConfirmSale: () -> Unit
@@ -1480,34 +1507,40 @@ internal fun SalesInvoiceStickyFooter(
                     )
                 }
 
-                Button(
-                    onClick = onSaveDraft,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = palette.draftBg,
-                        contentColor = palette.draftText
-                    ),
-                    border = BorderStroke(1.dp, palette.draftBorder),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1.05f)
-                        .height(44.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Save,
-                        contentDescription = null,
-                        tint = palette.draftText,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = if (isBangla) "খসড়া" else "Save Draft",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                if (!(isEditMode && isEditingPostedInvoice)) {
+                    Button(
+                        onClick = onSaveDraft,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = palette.draftBg,
+                            contentColor = palette.draftText
+                        ),
+                        border = BorderStroke(1.dp, palette.draftBorder),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                        modifier = Modifier
+                            .weight(1.05f)
+                            .height(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Save,
+                            contentDescription = null,
+                            tint = palette.draftText,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = if (isEditMode) {
+                                if (isBangla) "খসড়া আপডেট" else "Update Draft"
+                            } else {
+                                if (isBangla) "খসড়া" else "Save Draft"
+                            },
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Button(
@@ -1519,7 +1552,7 @@ internal fun SalesInvoiceStickyFooter(
                     ),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                     modifier = Modifier
-                        .weight(1.28f)
+                        .weight(if (isEditMode && isEditingPostedInvoice) 1.55f else 1.28f)
                         .height(44.dp)
                 ) {
                     Icon(
@@ -1530,7 +1563,11 @@ internal fun SalesInvoiceStickyFooter(
                     )
                     Spacer(modifier = Modifier.width(5.dp))
                     Text(
-                        text = if (isBangla) "নিশ্চিত বিক্রয়" else "Confirm Sale",
+                        text = if (isEditMode && isEditingPostedInvoice) {
+                            if (isBangla) "আপডেট সংরক্ষণ" else "Update Invoice"
+                        } else {
+                            if (isBangla) "নিশ্চিত বিক্রয়" else "Confirm Sale"
+                        },
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -1551,12 +1588,18 @@ internal fun SalesProductVariantPickerDialog(
     warehouseId: String,
     productImages: Map<String, String>,
     variantImages: Map<String, String>,
+    committedQtyBySelection: Map<Pair<String, String?>, Int> = emptyMap(),
     isBangla: Boolean,
     palette: SalesInvoicePalette,
     onDismiss: () -> Unit,
     onSelectProductAndVariant: (product: Product, variant: ProductVariant?) -> Unit
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    val committedQtyByProduct = remember(committedQtyBySelection) {
+        committedQtyBySelection.entries
+            .groupBy { it.key.first }
+            .mapValues { (_, list) -> list.sumOf { it.value } }
+    }
 
     val filteredProducts = remember(products, variantsByProduct, searchQuery) {
         val q = searchQuery.trim()
@@ -1643,7 +1686,8 @@ internal fun SalesProductVariantPickerDialog(
                 ) {
                     items(filteredProducts, key = { it.id }) { prod ->
                         val prodVars = variantsByProduct[prod.id].orEmpty()
-                        val prodStock = sellableStockForProduct(stockBalances, warehouseId, prod.id, prodVars)
+                        val prodStock = sellableStockForProduct(stockBalances, warehouseId, prod.id, prodVars) +
+                            (committedQtyByProduct[prod.id] ?: 0)
                         val prodImage = productImages[prod.id]
 
                         Surface(
@@ -1706,7 +1750,8 @@ internal fun SalesProductVariantPickerDialog(
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                         prodVars.forEach { variant ->
-                                            val varStock = sellableStockForVariant(stockBalances, warehouseId, prod.id, variant.id)
+                                            val varStock = sellableStockForVariant(stockBalances, warehouseId, prod.id, variant.id) +
+                                                (committedQtyBySelection[prod.id to variant.id] ?: 0)
                                             val varInStock = varStock > 0
                                             val varLabel = listOfNotNull(variant.color, variant.size).joinToString("-").ifBlank { variant.sku }
                                             Surface(

@@ -20,6 +20,7 @@ import com.pocketdev.advance_erp.data.entity.BusinessProfile
 import com.pocketdev.advance_erp.data.entity.ChartOfAccount
 import com.pocketdev.advance_erp.data.entity.Customer
 import com.pocketdev.advance_erp.data.entity.CustomerPayment
+import com.pocketdev.advance_erp.data.entity.InvoiceStatus
 import com.pocketdev.advance_erp.data.entity.PaymentAllocation
 import com.pocketdev.advance_erp.data.entity.Product
 import com.pocketdev.advance_erp.data.entity.ProductVariant
@@ -37,6 +38,7 @@ import com.pocketdev.advance_erp.domain.repository.CustomerPaymentDraft
 import com.pocketdev.advance_erp.domain.repository.CustomerSummary
 import com.pocketdev.advance_erp.domain.repository.CustomerWiseSalesItem
 import com.pocketdev.advance_erp.domain.repository.DeliveryChallanInfo
+import com.pocketdev.advance_erp.domain.repository.InvoiceEditContext
 import com.pocketdev.advance_erp.domain.repository.NewCustomerDraft
 import com.pocketdev.advance_erp.domain.repository.ProductRepository
 import com.pocketdev.advance_erp.domain.repository.ProductWiseSalesItem
@@ -72,6 +74,7 @@ data class SalesUiState(
     val selectedInvoiceItems: List<SalesInvoiceItem> = emptyList(),
     val selectedInvoiceAllocations: List<PaymentAllocation> = emptyList(),
     val selectedInvoiceChallans: List<DeliveryChallanInfo> = emptyList(),
+    val editingInvoiceContext: InvoiceEditContext? = null,
     val selectedCustomerLedger: List<CustomerLedgerEntry> = emptyList(),
     val selectedCustomerIdForLedger: String? = null,
     val salesReport: SalesReportSummary? = null,
@@ -641,6 +644,96 @@ class SalesViewModel @Inject constructor(
                 onSuccess()
             } else {
                 _uiState.update { it.copy(userMessage = "Failed to cancel invoice: ${result.exceptionOrNull()?.message}") }
+            }
+        }
+    }
+
+    fun startEditingInvoice(invoice: SalesInvoice, closeDetail: Boolean = false) {
+        viewModelScope.launch {
+            val isBn = _uiState.value.language == AppLanguage.BANGLA
+            if (invoice.status == InvoiceStatus.CANCELLED.name) {
+                _uiState.update {
+                    it.copy(
+                        userMessage = if (isBn) "বাতিলকৃত চালান সম্পাদনা করা যাবে না"
+                        else "Cancelled invoice cannot be edited"
+                    )
+                }
+                return@launch
+            }
+            val editContext = salesRepository.getInvoiceEditContext(invoice.id)
+            if (editContext == null) {
+                _uiState.update {
+                    it.copy(userMessage = if (isBn) "চালানের তথ্য পাওয়া যায়নি" else "Invoice details not found")
+                }
+                return@launch
+            }
+            if (editContext.hasPostedReturns) {
+                _uiState.update {
+                    it.copy(
+                        userMessage = if (isBn) "এই চালানের বিপরীতে বিক্রয় ফেরত থাকায় সম্পাদনা করা যাবে না"
+                        else "Cannot edit #${invoice.invoiceNumber} because sales return(s) exist"
+                    )
+                }
+                return@launch
+            }
+            if (editContext.hasDeliveryChallans) {
+                _uiState.update {
+                    it.copy(
+                        userMessage = if (isBn) "এই চালানের ডেলিভারি চালান ইস্যু হওয়ায় সম্পাদনা করা যাবে না"
+                        else "Cannot edit #${invoice.invoiceNumber} because delivery challan(s) exist"
+                    )
+                }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    editingInvoiceContext = editContext,
+                    selectedInvoice = if (closeDetail) null else it.selectedInvoice
+                )
+            }
+        }
+    }
+
+    fun clearEditingInvoice() {
+        _uiState.update { it.copy(editingInvoiceContext = null) }
+    }
+
+    fun saveEditedInvoice(
+        invoiceId: String,
+        draft: SalesInvoiceDraft,
+        postAfterSave: Boolean,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val isBn = _uiState.value.language == AppLanguage.BANGLA
+            val result = salesRepository.editInvoice(
+                invoiceId = invoiceId,
+                draft = draft,
+                postAfterSave = postAfterSave
+            )
+            result.onSuccess {
+                val refreshed = salesRepository.getInvoiceById(invoiceId)
+                _uiState.update { state ->
+                    state.copy(
+                        editingInvoiceContext = null,
+                        userMessage = if (isBn) {
+                            "চালান #${refreshed?.invoiceNumber ?: ""} সফলভাবে আপডেট হয়েছে"
+                        } else {
+                            "Invoice #${refreshed?.invoiceNumber ?: ""} updated successfully"
+                        }
+                    )
+                }
+                if (_uiState.value.selectedInvoice?.id == invoiceId && refreshed != null) {
+                    selectInvoice(refreshed)
+                }
+                loadDefaultReport()
+                onSuccess()
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        userMessage = if (isBn) "আপডেট ব্যর্থ: ${err.message}" else "Update failed: ${err.message}"
+                    )
+                }
             }
         }
     }

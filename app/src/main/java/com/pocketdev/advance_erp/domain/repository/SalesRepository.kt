@@ -197,11 +197,29 @@ data class CustomerWiseSalesItem(
     val outstandingBalanceMinor: Long
 )
 
+data class InvoiceEditContext(
+    val invoice: SalesInvoice,
+    val items: List<SalesInvoiceItem>,
+    val hasSeparateReceipts: Boolean,
+    val existingReceiptsTotalMinor: Long,
+    val initialPaymentMethod: String,
+    val initialPaymentAccountId: String,
+    val hasPostedReturns: Boolean,
+    val hasDeliveryChallans: Boolean
+)
+
 interface SalesRepository {
 
     // Invoices
     suspend fun createInvoice(draft: SalesInvoiceDraft): String
     suspend fun updateInvoice(invoiceId: String, draft: SalesInvoiceDraft)
+    suspend fun getInvoiceEditContext(invoiceId: String): InvoiceEditContext?
+    suspend fun editInvoice(
+        invoiceId: String,
+        draft: SalesInvoiceDraft,
+        postAfterSave: Boolean = true,
+        operator: String = "SYSTEM_ADMIN"
+    ): Result<Unit>
     fun getAllInvoices(): Flow<List<SalesInvoice>>
     suspend fun getInvoiceById(id: String): SalesInvoice?
     suspend fun getInvoiceItems(invoiceId: String): List<SalesInvoiceItem>

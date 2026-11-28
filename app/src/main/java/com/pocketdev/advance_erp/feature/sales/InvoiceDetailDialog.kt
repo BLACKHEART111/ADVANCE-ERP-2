@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.AssignmentTurnedIn
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Replay
@@ -94,7 +95,8 @@ fun InvoiceDetailDialog(
     onCancelOrDeleteInvoice: (reason: String) -> Unit = {},
     challans: List<DeliveryChallanInfo> = emptyList(),
     onShareChallan: (String) -> Unit = {},
-    onSaveCommunicationMetadata: (validUntilDate: Long?, scheduledDeliveryInfo: String?) -> Unit = { _, _ -> }
+    onSaveCommunicationMetadata: (validUntilDate: Long?, scheduledDeliveryInfo: String?) -> Unit = { _, _ -> },
+    onEditInvoice: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US)
@@ -168,6 +170,15 @@ fun InvoiceDetailDialog(
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (invoice.status != "CANCELLED" && onEditInvoice != null) {
+                            IconButton(onClick = onEditInvoice) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Edit,
+                                    contentDescription = if (isBangla) "চালান সম্পাদনা" else "Edit Invoice",
+                                    tint = PrimaryPurple
+                                )
+                            }
+                        }
                         if (invoice.status != "CANCELLED") {
                             IconButton(onClick = { showCancelConfirmDialog = true }) {
                                 Icon(

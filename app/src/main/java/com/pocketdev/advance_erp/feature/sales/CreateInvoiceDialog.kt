@@ -81,6 +81,7 @@ import com.pocketdev.advance_erp.core.designsystem.StatusError
 import com.pocketdev.advance_erp.core.designsystem.TextSecondary
 import com.pocketdev.advance_erp.core.engine.LineCalculation
 import com.pocketdev.advance_erp.core.engine.SalesInvoiceCalculator
+import com.pocketdev.advance_erp.core.engine.SalesInvoiceEditPlanner
 import com.pocketdev.advance_erp.core.model.AppLanguage
 import com.pocketdev.advance_erp.core.model.BangladeshBanks
 import com.pocketdev.advance_erp.core.security.SecurityManager
@@ -102,6 +103,7 @@ import com.pocketdev.advance_erp.data.entity.ProductVariant
 import com.pocketdev.advance_erp.data.entity.StockBalance
 import com.pocketdev.advance_erp.data.entity.Warehouse
 import com.pocketdev.advance_erp.domain.repository.CustomerSummary
+import com.pocketdev.advance_erp.domain.repository.InvoiceEditContext
 import com.pocketdev.advance_erp.domain.repository.InvoiceItemDraft
 import com.pocketdev.advance_erp.domain.repository.NewCustomerDraft
 import com.pocketdev.advance_erp.domain.repository.SalesInvoiceDraft
@@ -142,6 +144,7 @@ fun CreateInvoiceDialog(
     userRole: UserRole = UserRole.OWNER_ADMIN,
     customerSummary: CustomerSummary? = null,
     isBangla: Boolean,
+    editContext: InvoiceEditContext? = null,
     onDismiss: () -> Unit,
     onCustomerSelected: (String) -> Unit = {},
     onCreateCustomerImmediate: ((NewCustomerDraft, onCreated: (Customer) -> Unit, onError: (String) -> Unit) -> Unit)? = null,
@@ -152,29 +155,69 @@ fun CreateInvoiceDialog(
     val context = LocalContext.current
     val isDark = LocalIsDarkTheme.current
     val palette = rememberSalesInvoicePalette()
+    val editingInvoice = editContext?.invoice
+    val isEditMode = editingInvoice != null
+    val isEditingPostedInvoice = editingInvoice?.isPosted == true
+    val hasLockedReceipts = editContext?.hasSeparateReceipts == true
+    val sessionKey = editingInvoice?.id ?: "new"
 
     val canViewCost = SecurityManager.canViewCost(userRole)
     val canViewProfit = SecurityManager.canViewProfit(userRole)
     val canViewAnyCostOrProfit = canViewCost || canViewProfit
 
-    var selectedCustomerId by rememberSaveable { mutableStateOf(customers.firstOrNull()?.id ?: "") }
-    var pendingNewCustomerDraft by remember { mutableStateOf<NewCustomerDraft?>(null) }
+    var selectedCustomerId by rememberSaveable(sessionKey) {
+        mutableStateOf(editingInvoice?.customerId ?: customers.firstOrNull()?.id ?: "")
+    }
+    var pendingNewCustomerDraft by remember(sessionKey) { mutableStateOf<NewCustomerDraft?>(null) }
     var showCustomerLookup by rememberSaveable { mutableStateOf(false) }
 
-    var selectedWarehouseId by rememberSaveable { mutableStateOf(warehouses.firstOrNull()?.id ?: "") }
+    var selectedWarehouseId by rememberSaveable(sessionKey) {
+        mutableStateOf(editingInvoice?.warehouseId ?: warehouses.firstOrNull()?.id ?: "")
+    }
 
-    var invoiceDiscountStr by rememberSaveable { mutableStateOf("0.00") }
-    var isInvoiceDiscountPercentage by rememberSaveable { mutableStateOf(true) }
-    var additionalChargesStr by rememberSaveable { mutableStateOf("0.00") }
-    var paidAmountStr by rememberSaveable { mutableStateOf("0.00") }
-    var isFullPaymentSelected by rememberSaveable { mutableStateOf(false) }
-    var paymentMethod by rememberSaveable { mutableStateOf("CASH") }
-    var selectedPaymentAccountId by rememberSaveable {
+    var invoiceDiscountStr by rememberSaveable(sessionKey) {
+        val initial = editingInvoice?.let { inv ->
+            val bps = inv.discountPercentBps ?: 0L
+            if (bps > 0L) SalesInvoiceCalculator.formatMajorEditable(bps)
+            else SalesInvoiceCalculator.formatMajorEditable(inv.discountMinor)
+        } ?: "0.00"
+        mutableStateOf(initial)
+    }
+    var isInvoiceDiscountPercentage by rememberSaveable(sessionKey) {
+        val initialIsPct = editingInvoice?.let { inv ->
+            (inv.discountPercentBps ?: 0L) > 0L || inv.discountMinor == 0L
+        } ?: true
+        mutableStateOf(initialIsPct)
+    }
+    var additionalChargesStr by rememberSaveable(sessionKey) {
         mutableStateOf(
-            liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id ?: "coa-1010"
+            editingInvoice?.let { SalesInvoiceCalculator.formatMajorEditable(it.taxMinor) } ?: "0.00"
         )
     }
-    var notes by rememberSaveable { mutableStateOf("") }
+    var paidAmountStr by rememberSaveable(sessionKey) {
+        mutableStateOf(
+            editingInvoice?.let { SalesInvoiceCalculator.formatMajorEditable(it.paidAmountMinor) } ?: "0.00"
+        )
+    }
+    var isFullPaymentSelected by rememberSaveable(sessionKey) {
+        val fullPaid = editingInvoice != null &&
+            !hasLockedReceipts &&
+            editingInvoice.totalAmountMinor > 0L &&
+            editingInvoice.dueAmountMinor == 0L &&
+            editingInvoice.paidAmountMinor >= editingInvoice.totalAmountMinor
+        mutableStateOf(fullPaid)
+    }
+    var paymentMethod by rememberSaveable(sessionKey) {
+        mutableStateOf(editContext?.initialPaymentMethod ?: "CASH")
+    }
+    var selectedPaymentAccountId by rememberSaveable(sessionKey) {
+        mutableStateOf(
+            editContext?.initialPaymentAccountId
+                ?: liquidAccounts.firstOrNull { it.liquidKind == LiquidAccountKind.CASH }?.id
+                ?: "coa-1010"
+        )
+    }
+    var notes by rememberSaveable(sessionKey) { mutableStateOf(editingInvoice?.notes.orEmpty()) }
     val costProfitVisibility = rememberBiometricCostVisibility(
         key = "sales-invoice-cost-profit",
         allowed = canViewAnyCostOrProfit,
@@ -188,7 +231,7 @@ fun CreateInvoiceDialog(
     var showItemSearchBar by rememberSaveable { mutableStateOf(false) }
     var itemSearchQuery by rememberSaveable { mutableStateOf("") }
     var showAddItemPicker by rememberSaveable { mutableStateOf(false) }
-    var pickingForItemIndex by remember { mutableStateOf<Int?>(null) }
+    var pickingForItemUid by remember { mutableStateOf<String?>(null) }
     var showBarcodeScanner by rememberSaveable { mutableStateOf(false) }
 
     // Option C Credit Limit Control State
@@ -221,15 +264,60 @@ fun CreateInvoiceDialog(
         )
     }
 
-    val itemsList = remember {
+    val committedBySelectionAll = remember(editContext) {
+        SalesInvoiceEditPlanner.computeCommittedQuantities(
+            isPosted = editingInvoice?.isPosted == true,
+            items = editContext?.items.orEmpty()
+        )
+    }
+    val activeCommittedBySelection = remember(
+        editingInvoice,
+        selectedWarehouseId,
+        committedBySelectionAll
+    ) {
+        SalesInvoiceEditPlanner.effectiveCommittedForWarehouse(
+            isPosted = editingInvoice?.isPosted == true,
+            originalWarehouseId = editingInvoice?.warehouseId,
+            selectedWarehouseId = selectedWarehouseId,
+            committed = committedBySelectionAll
+        )
+    }
+    val activeCommittedByProduct = remember(activeCommittedBySelection) {
+        activeCommittedBySelection.entries
+            .groupBy { it.key.first }
+            .mapValues { (_, entries) -> entries.sumOf { it.value } }
+    }
+
+    val itemsList = remember(sessionKey) {
         mutableStateListOf<ItemDraftState>().apply {
-            if (products.isNotEmpty()) {
+            val existingItems = editContext?.items.orEmpty()
+            if (existingItems.isNotEmpty()) {
+                existingItems.forEachIndexed { idx, existingItem ->
+                    val bps = existingItem.discountPercentBps ?: 0L
+                    val usePct = bps > 0L || existingItem.discountMinor == 0L
+                    add(
+                        ItemDraftState(
+                            productId = existingItem.productId,
+                            variantId = existingItem.variantId,
+                            quantityStr = existingItem.quantity.toString(),
+                            unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(existingItem.unitPriceMinor),
+                            discountStr = if (bps > 0L) {
+                                SalesInvoiceCalculator.formatMajorEditable(bps)
+                            } else {
+                                SalesInvoiceCalculator.formatMajorEditable(existingItem.discountMinor)
+                            },
+                            isPercentageDiscount = usePct,
+                            isExpanded = idx == 0
+                        )
+                    )
+                }
+            } else if (products.isNotEmpty()) {
                 add(createDefaultItemDraft(selectedWarehouseId))
             }
         }
     }
 
-    LaunchedEffect(selectedWarehouseId, stockBalances, products, variants, warehouses) {
+    LaunchedEffect(selectedWarehouseId, stockBalances, products, variants, warehouses, activeCommittedBySelection) {
         if (selectedWarehouseId.isBlank() && warehouses.isNotEmpty()) {
             selectedWarehouseId = warehouses.first().id
         }
@@ -238,14 +326,19 @@ fun CreateInvoiceDialog(
         itemsList.forEach { itemDraft ->
             if (itemDraft.productId.isBlank()) return@forEach
             val pVars = variantsByProduct[itemDraft.productId].orEmpty()
-            if (sellableStockForProduct(stockBalances, whId, itemDraft.productId, pVars) <= 0) {
+            val effectiveProductStock = sellableStockForProduct(stockBalances, whId, itemDraft.productId, pVars) +
+                (activeCommittedByProduct[itemDraft.productId] ?: 0)
+            if (effectiveProductStock <= 0) {
                 itemDraft.productId = ""
                 itemDraft.variantId = null
                 itemDraft.unitPriceStr = "0.00"
             } else if (pVars.isNotEmpty()) {
                 val curVarId = itemDraft.variantId
-                val curVarInStock = curVarId != null &&
-                    sellableStockForVariant(stockBalances, whId, itemDraft.productId, curVarId) > 0
+                val curVarStock = if (curVarId != null) {
+                    sellableStockForVariant(stockBalances, whId, itemDraft.productId, curVarId) +
+                        (activeCommittedBySelection[itemDraft.productId to curVarId] ?: 0)
+                } else 0
+                val curVarInStock = curVarId != null && curVarStock > 0
                 if (!curVarInStock) {
                     val nextV = firstInStockVariant(stockBalances, whId, itemDraft.productId, pVars)
                     itemDraft.variantId = nextV?.id
@@ -267,7 +360,7 @@ fun CreateInvoiceDialog(
             productId = productId,
             variantId = variantId,
             productVariants = variantsByProduct[productId].orEmpty()
-        )
+        ) + (activeCommittedBySelection[productId to variantId] ?: 0)
 
     fun resolveItemUnitCostMinor(product: Product?, variant: ProductVariant?): Long {
         if (product == null) return 0L
@@ -297,6 +390,9 @@ fun CreateInvoiceDialog(
             unitCostMinor = unitCostMinor
         )
     }
+
+    val calcByUid: Map<String, LineCalculation> = itemsList.zip(lineCalculations)
+        .associate { (item, calc) -> item.uid to calc }
 
     val totals = SalesInvoiceCalculator.computeInvoiceTotals(
         lines = lineCalculations,
@@ -459,36 +555,39 @@ fun CreateInvoiceDialog(
         return SalesInvoiceDraft(
             customerId = selectedCustomerId,
             warehouseId = selectedWarehouseId,
-            invoiceDate = System.currentTimeMillis(),
+            invoiceDate = editingInvoice?.invoiceDate ?: System.currentTimeMillis(),
+            dueDate = editingInvoice?.dueDate,
             discountMinor = totals.invoiceDiscountMinor,
             additionalChargesMinor = totals.additionalChargesMinor,
-            paidAmountMinor = totals.paidMinor,
+            paidAmountMinor = if (hasLockedReceipts) editingInvoice!!.paidAmountMinor else totals.paidMinor,
             paymentMethod = resolvedPaymentMethod,
             paymentAccountId = resolvedAccountId,
             notes = notes.trim().ifBlank { null },
             items = draftItems,
             newCustomerDraft = pendingNewCustomerDraft,
+            validUntilDate = editingInvoice?.validUntilDate,
+            scheduledDeliveryInfo = editingInvoice?.scheduledDeliveryInfo,
+            salesType = editingInvoice?.salesType ?: "DIRECT_INVOICE",
             discountPercentBps = if (isInvoiceDiscountPercentage && totals.invoiceDiscountMinor > 0L) {
                 SalesInvoiceCalculator.parsePercentBasisPoints(invoiceDiscountStr).takeIf { it > 0L }
-            } else null
+            } else null,
+            paymentTerms = editingInvoice?.paymentTerms
         )
     }
 
-    val visibleIndices = remember(itemsList.size, itemsList.map { "${it.productId}|${it.variantId}" }, itemSearchQuery, productsMap, variantsByProduct) {
-        val q = itemSearchQuery.trim()
-        itemsList.indices.filter { idx ->
-            if (q.isBlank()) true
-            else {
-                val item = itemsList[idx]
-                val p = productsMap[item.productId]
-                val v = variantsByProduct[item.productId]?.find { it.id == item.variantId }
-                (p?.nameEn?.contains(q, true) == true) ||
-                    (p?.nameBn?.contains(q, true) == true) ||
-                    (p?.baseSku?.contains(q, true) == true) ||
-                    (v?.sku?.contains(q, true) == true) ||
-                    (v?.color?.contains(q, true) == true) ||
-                    (v?.size?.contains(q, true) == true)
-            }
+    val trimmedItemSearchQuery = itemSearchQuery.trim()
+    val visibleItems: List<ItemDraftState> = itemsList.filter { item ->
+        if (trimmedItemSearchQuery.isBlank()) {
+            true
+        } else {
+            val p = productsMap[item.productId]
+            val v = variantsByProduct[item.productId]?.find { it.id == item.variantId }
+            (p?.nameEn?.contains(trimmedItemSearchQuery, true) == true) ||
+                (p?.nameBn?.contains(trimmedItemSearchQuery, true) == true) ||
+                (p?.baseSku?.contains(trimmedItemSearchQuery, true) == true) ||
+                (v?.sku?.contains(trimmedItemSearchQuery, true) == true) ||
+                (v?.color?.contains(trimmedItemSearchQuery, true) == true) ||
+                (v?.size?.contains(trimmedItemSearchQuery, true) == true)
         }
     }
 
@@ -506,8 +605,20 @@ fun CreateInvoiceDialog(
 
             Column(modifier = Modifier.fillMaxSize()) {
                 SalesInvoiceHeroHeader(
-                    title = if (isBangla) "নতুন বিক্রয় চালান" else "New Sales Invoice",
-                    subtitle = if (isBangla) "চালান তৈরি, পণ্য যোগ ও পেমেন্ট নিন" else "Create invoice, add items & take payment",
+                    title = if (isEditMode) {
+                        if (isBangla) "চালান সম্পাদনা • ${editingInvoice!!.invoiceNumber}" else "Edit Invoice • ${editingInvoice!!.invoiceNumber}"
+                    } else {
+                        if (isBangla) "নতুন বিক্রয় চালান" else "New Sales Invoice"
+                    },
+                    subtitle = if (isEditMode) {
+                        if (isEditingPostedInvoice) {
+                            if (isBangla) "স্টক, FIFO ও হিসাব স্বয়ংক্রিয়ভাবে সমন্বয় হবে" else "Stock, FIFO layers & accounts will re-sync"
+                        } else {
+                            if (isBangla) "খসড়া তথ্য, পণ্য ও শর্ত পরিবর্তন করুন" else "Update draft items, pricing & payment terms"
+                        }
+                    } else {
+                        if (isBangla) "চালান তৈরি, পণ্য যোগ ও পেমেন্ট নিন" else "Create invoice, add items & take payment"
+                    },
                     canToggleCostOrProfit = canViewAnyCostOrProfit,
                     showCostAndProfit = showCostAndProfit,
                     onBack = onDismiss,
@@ -539,6 +650,7 @@ fun CreateInvoiceDialog(
                                     summary = customerSummary,
                                     isBangla = isBangla,
                                     palette = palette,
+                                    canChangeCustomer = !hasLockedReceipts,
                                     onChangeCustomerClick = { showCustomerLookup = true }
                                 )
                             }
@@ -627,7 +739,7 @@ fun CreateInvoiceDialog(
                                                     .clip(RoundedCornerShape(10.dp))
                                                     .background(purplePillGradient)
                                                     .clickable {
-                                                        pickingForItemIndex = null
+                                                        pickingForItemUid = null
                                                         showAddItemPicker = true
                                                     }
                                                     .padding(horizontal = 12.dp),
@@ -701,7 +813,7 @@ fun CreateInvoiceDialog(
                                             )
                                             Button(
                                                 onClick = {
-                                                    pickingForItemIndex = null
+                                                    pickingForItemUid = null
                                                     showAddItemPicker = true
                                                 },
                                                 colors = ButtonDefaults.buttonColors(containerColor = palette.primaryPurpleStrong),
@@ -718,11 +830,16 @@ fun CreateInvoiceDialog(
 
                             // 4. Item Cards (Expanded & Minimized states matching reference 1:1)
                             itemsIndexed(
-                                items = visibleIndices,
-                                key = { _, realIndex -> itemsList[realIndex].uid }
-                            ) { _, index ->
-                                val itemDraft = itemsList[index]
-                                val calc = lineCalculations[index]
+                                items = visibleItems,
+                                key = { _, itemDraft -> itemDraft.uid }
+                            ) { displayIndex, itemDraft ->
+                                val calc = calcByUid[itemDraft.uid] ?: SalesInvoiceCalculator.computeLineAmounts(
+                                    quantity = 0,
+                                    unitPriceMinor = 0L,
+                                    discountInput = "0",
+                                    isPercentDiscount = true,
+                                    unitCostMinor = 0L
+                                )
                                 val curProduct = productsMap[itemDraft.productId]
                                 val prodVariants = variantsByProduct[itemDraft.productId].orEmpty()
                                 val curVariant = prodVariants.find { it.id == itemDraft.variantId }
@@ -733,7 +850,7 @@ fun CreateInvoiceDialog(
                                 val unitCostMinor = resolveItemUnitCostMinor(curProduct, curVariant)
 
                                 SalesInvoiceItemCard(
-                                    index = index,
+                                    index = itemsList.indexOfFirst { it.uid == itemDraft.uid }.let { if (it >= 0) it else displayIndex },
                                     itemDraft = itemDraft,
                                     calculation = calc,
                                     product = curProduct,
@@ -759,15 +876,20 @@ fun CreateInvoiceDialog(
                                             isPercentageDiscount = itemDraft.isPercentageDiscount,
                                             isExpanded = true
                                         )
-                                        itemsList.add(index + 1, clone)
+                                        val curIdx = itemsList.indexOfFirst { it.uid == itemDraft.uid }
+                                        if (curIdx >= 0) {
+                                            itemsList.add(curIdx + 1, clone)
+                                        } else {
+                                            itemsList.add(clone)
+                                        }
                                         errorMessage = null
                                     },
                                     onDelete = {
-                                        itemsList.removeAt(index)
+                                        itemsList.removeAll { it.uid == itemDraft.uid }
                                         errorMessage = null
                                     },
                                     onOpenProductPicker = {
-                                        pickingForItemIndex = index
+                                        pickingForItemUid = itemDraft.uid
                                         showAddItemPicker = true
                                     },
                                     onSelectVariant = { chosenVariant ->
@@ -976,6 +1098,14 @@ fun CreateInvoiceDialog(
                                     grandTotalMinor = totals.grandTotalMinor,
                                     isBangla = isBangla,
                                     palette = palette,
+                                    isLocked = hasLockedReceipts,
+                                    lockNotice = if (hasLockedReceipts) {
+                                        if (isBangla) {
+                                            "এই চালানে আলাদা পেমেন্ট রসিদ যুক্ত আছে। চালানের মোট কম হলে অতিরিক্ত টাকা স্বয়ংক্রিয়ভাবে কাস্টমার অগ্রিম হিসেবে সংরক্ষিত হবে।"
+                                        } else {
+                                            "Separate payment receipt(s) are allocated to this invoice. Any excess payment if the bill decreases will convert to Customer Advance."
+                                        }
+                                    } else null,
                                     onSelectPaymentMethod = { code ->
                                         paymentMethod = code
                                         when (code) {
@@ -1046,6 +1176,8 @@ fun CreateInvoiceDialog(
                         SalesInvoiceStickyFooter(
                             isBangla = isBangla,
                             palette = palette,
+                            isEditMode = isEditMode,
+                            isEditingPostedInvoice = isEditingPostedInvoice,
                             onCancel = onDismiss,
                             onSaveDraft = {
                                 val draft = buildInvoiceDraft() ?: return@SalesInvoiceStickyFooter
@@ -1055,7 +1187,13 @@ fun CreateInvoiceDialog(
                                 val draft = buildInvoiceDraft() ?: return@SalesInvoiceStickyFooter
                                 val cust = customers.find { it.id == selectedCustomerId }
                                 val existingDue = customerSummary?.outstandingBalanceMinor ?: cust?.outstandingBalanceMinor ?: 0L
-                                val expectedDue = existingDue + totals.dueMinor
+                                val expectedDue = SalesInvoiceEditPlanner.expectedCustomerDueAfterEdit(
+                                    existingCustomerDueMinor = existingDue,
+                                    isEditingPostedInvoice = isEditingPostedInvoice,
+                                    sameCustomer = editingInvoice?.customerId == selectedCustomerId,
+                                    previousInvoiceDueMinor = editingInvoice?.dueAmountMinor ?: 0L,
+                                    newInvoiceDueMinor = totals.dueMinor
+                                )
                                 val limit = cust?.creditLimitMinor ?: 0L
 
                                 if (limit > 0L && expectedDue > limit && !creditLimitApproved) {
@@ -1115,17 +1253,18 @@ fun CreateInvoiceDialog(
             warehouseId = selectedWarehouseId,
             productImages = productImages,
             variantImages = variantImages,
+            committedQtyBySelection = activeCommittedBySelection,
             isBangla = isBangla,
             palette = palette,
             onDismiss = {
                 showAddItemPicker = false
-                pickingForItemIndex = null
+                pickingForItemUid = null
             },
             onSelectProductAndVariant = { chosenProduct, chosenVariant ->
                 val priceMinor = chosenVariant?.variantPriceMinor ?: chosenProduct.sellingPriceMinor
-                val targetIndex = pickingForItemIndex
-                if (targetIndex != null && targetIndex in itemsList.indices) {
-                    val target = itemsList[targetIndex]
+                val targetUid = pickingForItemUid
+                val target = targetUid?.let { uid -> itemsList.firstOrNull { it.uid == uid } }
+                if (target != null) {
                     target.productId = chosenProduct.id
                     target.variantId = chosenVariant?.id
                     target.unitPriceStr = SalesInvoiceCalculator.formatMajorEditable(priceMinor)
@@ -1142,7 +1281,7 @@ fun CreateInvoiceDialog(
                 }
                 errorMessage = null
                 showAddItemPicker = false
-                pickingForItemIndex = null
+                pickingForItemUid = null
             }
         )
     }
@@ -1161,7 +1300,13 @@ fun CreateInvoiceDialog(
     if (showCreditLimitWarningDialog) {
         val cust = customers.find { it.id == selectedCustomerId }
         val existingDue = customerSummary?.outstandingBalanceMinor ?: cust?.outstandingBalanceMinor ?: 0L
-        val expectedDue = existingDue + totals.dueMinor
+        val expectedDue = SalesInvoiceEditPlanner.expectedCustomerDueAfterEdit(
+            existingCustomerDueMinor = existingDue,
+            isEditingPostedInvoice = isEditingPostedInvoice,
+            sameCustomer = editingInvoice?.customerId == selectedCustomerId,
+            previousInvoiceDueMinor = editingInvoice?.dueAmountMinor ?: 0L,
+            newInvoiceDueMinor = totals.dueMinor
+        )
         val limit = cust?.creditLimitMinor ?: 0L
 
         Dialog(onDismissRequest = { showCreditLimitWarningDialog = false }) {
@@ -1809,29 +1954,29 @@ private fun ItemActionIconsRow(
     onToggleExpand: () -> Unit
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
             onClick = onDuplicate,
-            modifier = Modifier.size(23.dp)
+            modifier = Modifier.size(30.dp)
         ) {
             Icon(
                 imageVector = Icons.Outlined.ContentCopy,
                 contentDescription = "Duplicate Item",
                 tint = palette.primaryPurple,
-                modifier = Modifier.size(15.dp)
+                modifier = Modifier.size(16.dp)
             )
         }
         IconButton(
             onClick = onDelete,
-            modifier = Modifier.size(23.dp)
+            modifier = Modifier.size(30.dp)
         ) {
             Icon(
                 imageVector = Icons.Outlined.DeleteOutline,
                 contentDescription = "Delete Item",
                 tint = palette.errorText,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(17.dp)
             )
         }
         Box(

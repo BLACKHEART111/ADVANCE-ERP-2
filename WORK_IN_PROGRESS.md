@@ -493,6 +493,30 @@ The entire original plan is **not complete**. Most shared styling and key purcha
 
 No user business database/media backup was created or uploaded by this checkpoint. Git contains project source and its already-tracked assets, not a backup of the currently installed ERP app's live data. Uninstalling the ERP itself can erase its private database unless separately exported.
 
+## Sales / Accounts / Share Hotfixes & Invoice Edit Checkpoint (2026-11-28)
+
+Following commit `851485a`, five targeted fixes and features were implemented, verified via pure-JVM unit tests + APK build, and installed in-place on `CPH2745` (`emulator-5554`):
+
+1. **Sales Invoice Product Delete Crash Fix & Keyed Lazy List Audit**:
+   - Root cause (`IndexOutOfBoundsException` at `CreateInvoiceDialog.kt`): `LazyColumn` keyed on `itemsList[realIndex].uid` using cached `visibleIndices: List<Int>` while `itemsList.removeAt(index)` mutated `SnapshotStateList`.
+   - Fixed in `CreateInvoiceDialog.kt` by filtering directly to `visibleItems: List<ItemDraftState>` with `calcByUid`, `pickingForItemUid`, `key = { _, itemDraft -> itemDraft.uid }`, `itemsList.removeAll { it.uid == itemDraft.uid }`, and 30.dp delete/duplicate `IconButton` targets. Also updated `AddProductDesignComponents.kt` and `PhotoGalleryPicker.kt` photo reorder/primary callbacks to resolve by `item.id` instead of stale `index`.
+2. **Clipped Accounts Dialog Buttons Fix**:
+   - Extracted `AccountModalDialog` in `AccountDialogs.kt` with bounded height (`heightIn(max = 640.dp..680.dp)`), `RoundedCornerShape(20.dp)` after `.navigationBarsPadding().imePadding()`, pinned header (`X` close button) & footer (`Cancel`/`বাতিল` + primary confirm), and `weight(1f, fill = false).verticalScroll(...)` body. Applied across `CreateEditAccountDialog`, `CapitalDepositDialog`, `CapitalWithdrawalAndProfitDialog`, `PayAccruedFreightDialog` (`AccountDialogs.kt`) and `RecordExpenseDialog`, `AccountTransferDialog`, `NewJournalEntryDialog` (`AccountsScreen.kt`).
+3. **Quick POS Expandable Speed-Dial FAB**:
+   - Removed the wide Quick POS pill beside `+` on `SalesScreen.kt` (`selectedTabIndex == 0`) and implemented an expandable Speed-Dial FAB (`Receive Payment`, `Quick POS`, `New Sales Invoice`) with animated FAB rotation, full-screen scrim, tab switch reset, and `BackHandler`.
+4. **PDF + Text Message Joint Share**:
+   - Added `ShareStepKind.SEND_DOCUMENT_WITH_CAPTION` in `ShareWorkflowPlanner.kt` (`PDF + TEXT_MESSAGE` and `PDF + IMAGE_CARD + TEXT_MESSAGE`), updated `CommunicationDialog.kt` (`launchDocumentStep` attaches caption with clipboard copy + keeps separate text fallback button), and updated `ShareWorkflowPlannerTest.kt` + `SmartCommunicationQaAndroidTest.kt`.
+5. **Full Sales Invoice Edit (`DRAFT`, `POSTED`, `PARTIALLY_PAID`, `PAID`)**:
+   - Preserved Room DB schema v16 unchanged; added DAO cleanup/lookup queries in `SalesDao.kt`, `FifoConsumptionDao.kt`, `CustomerPaymentDao.kt`, and `SalesReturnDao.kt`.
+   - Extracted pure-JVM `SalesInvoiceEditPlanner.kt` and wired `updateInvoice` fix + `getInvoiceEditContext` + atomic `editInvoice` in `SalesRepository.kt` / `SalesRepositoryImpl.kt` (shared FIFO/stock depletion and revenue/COGS journal helpers, old stock/layer/journal reversal, inline vs separate receipt reconciliation, excess payment conversion to Customer Advance `coa-2030`, and guard blocking cancelled/returned/challan-dispatched invoices).
+   - Wired Edit entry points & prefilled edit session (`committedQtyBySelection` offset, locked customer/receipt UI notice, credit-limit offset, edit header/footer labels) across `SalesViewModel.kt`, `InvoiceDetailDialog.kt`, `SalesScreen.kt`, `SalesInvoiceDesignComponents.kt`, and `CreateInvoiceDialog.kt`.
+   - Added `SalesInvoiceEditTest.kt`.
+
+### Verification Summary (2026-11-28)
+- `:app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:assembleDebug` -> `BUILD SUCCESSFUL`, `UNIT_SUMMARY tests=520 fail=0`.
+- `apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk` -> SHA-256 `70a28cffe1b6c502cd5847dc8c3afed59d931a4ecc975a747fd81d82fbfa8d43` (matched live installation).
+- `adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk` -> `Success`, `firstInstallTime=2026-11-22 02:39:36` preserved, cold launch (`MainActivity`) `Status: ok` (`TotalTime: 620`), `pid=6279`, zero fatal/SQLite/Room exceptions in `adb logcat`.
+
 ## User message to resume after reinstall
 
 > ADVANCE-ERP-2 repo-এর main branch নাও। প্রথমে AGENTS.md ও WORK_IN_PROGRESS.md পড়ো। Premium UI checkpoint থেকে বাকি implementation চালিয়ে যাও; নতুন করে redesign শুরু কোরো না। আগে build ও regression tests ঠিক করো, তারপর বাকি UI/logic audit শেষ করো।

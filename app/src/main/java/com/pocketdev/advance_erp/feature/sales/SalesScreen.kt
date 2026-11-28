@@ -6,9 +6,19 @@ import com.pocketdev.advance_erp.feature.communication.*
 import com.pocketdev.advance_erp.core.designsystem.StatusWarning
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +48,7 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactPage
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Payment
 import androidx.compose.material.icons.outlined.Payments
@@ -84,8 +95,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -148,6 +161,7 @@ fun SalesScreen(
     var selectedStatusFilter by rememberSaveable { mutableStateOf("ALL") }
 
     // Dialog state
+    var isSalesFabExpanded by rememberSaveable { mutableStateOf(false) }
     var showCreateInvoiceDialog by rememberSaveable { mutableStateOf(false) }
     var showPosDialog by rememberSaveable { mutableStateOf(false) }
     var showRecordPaymentDialog by rememberSaveable { mutableStateOf(false) }
@@ -158,6 +172,19 @@ fun SalesScreen(
     var showCustomerLedgerDialog by rememberSaveable { mutableStateOf(false) }
     var ledgerCustomer by remember { mutableStateOf<Customer?>(null) }
     var remainingDeliveryItems by remember { mutableStateOf<List<com.pocketdev.advance_erp.domain.repository.UndeliveredItemInfo>>(emptyList()) }
+
+    LaunchedEffect(selectedTabIndex) {
+        isSalesFabExpanded = false
+    }
+
+    BackHandler(enabled = selectedTabIndex == 0 && isSalesFabExpanded) {
+        isSalesFabExpanded = false
+    }
+
+    val salesFabRotation by animateFloatAsState(
+        targetValue = if (isSalesFabExpanded) 45f else 0f,
+        label = "sales_fab_rotation"
+    )
 
     LaunchedEffect(uiState.userMessage) {
         uiState.userMessage?.let { msg ->
@@ -181,67 +208,70 @@ fun SalesScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (selectedTabIndex == 0) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Surface(
-                        onClick = { showPosDialog = true },
-                        shape = RoundedCornerShape(28.dp),
-                        shadowElevation = 8.dp,
-                        color = Color.Transparent,
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f))
+                    AnimatedVisibility(
+                        visible = isSalesFabExpanded,
+                        enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom) + slideInVertically { it / 2 },
+                        exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom) + slideOutVertically { it / 2 }
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = listOf(PrimaryPurple, PrimaryPurpleDark, DeepNavy)
-                                    )
-                                )
-                                .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(SecondaryTeal.copy(alpha = 0.28f))
-                                    .padding(1.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = PosTerminalIcon,
-                                    contentDescription = "POS Mode",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(21.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = if (isBangla) "দ্রুত বিক্রয়" else "Quick POS",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 13.sp,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = if (isBangla) "ক্যাশ কাউন্টার" else "POS COUNTER",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 9.sp,
-                                    letterSpacing = 0.8.sp,
-                                    color = SecondaryTeal.copy(alpha = 0.95f)
-                                )
-                            }
+                            SalesFabMenuItem(
+                                title = if (isBangla) "পেমেন্ট গ্রহণ" else "Receive Payment",
+                                icon = Icons.Outlined.Payment,
+                                accentColor = PrimaryPurple,
+                                onClick = {
+                                    isSalesFabExpanded = false
+                                    collectDueCustomerId = null
+                                    viewModel.refreshNextPaymentNumber()
+                                    showRecordPaymentDialog = true
+                                }
+                            )
+                            SalesFabMenuItem(
+                                title = if (isBangla) "দ্রুত বিক্রয় (POS)" else "Quick POS",
+                                subtitle = if (isBangla) "ক্যাশ কাউন্টার" else "POS COUNTER",
+                                icon = PosTerminalIcon,
+                                accentColor = SecondaryTeal,
+                                highlightedGradient = Brush.horizontalGradient(
+                                    colors = listOf(PrimaryPurple, PrimaryPurpleDark, DeepNavy)
+                                ),
+                                onClick = {
+                                    isSalesFabExpanded = false
+                                    showPosDialog = true
+                                }
+                            )
+                            SalesFabMenuItem(
+                                title = if (isBangla) "নতুন বিক্রয় চালান" else "New Sales Invoice",
+                                icon = Icons.Outlined.ReceiptLong,
+                                accentColor = StatusSuccess,
+                                onClick = {
+                                    isSalesFabExpanded = false
+                                    showCreateInvoiceDialog = true
+                                }
+                            )
                         }
                     }
+
                     FloatingActionButton(
-                        onClick = { showCreateInvoiceDialog = true },
-                        containerColor = StatusSuccess,
+                        onClick = { isSalesFabExpanded = !isSalesFabExpanded },
+                        containerColor = if (isSalesFabExpanded) PrimaryPurple else StatusSuccess,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                         shape = RoundedCornerShape(18.dp)
                     ) {
-                        Icon(Icons.Outlined.Add, contentDescription = if (isBangla) "নতুন চালান তৈরি করুন" else "New Sale")
+                        Icon(
+                            imageVector = Icons.Outlined.Add,
+                            contentDescription = if (isBangla) {
+                                if (isSalesFabExpanded) "মেনু বন্ধ করুন" else "বিক্রয় মেনু খুলুন"
+                            } else {
+                                if (isSalesFabExpanded) "Close Menu" else "Open Sales Menu"
+                            },
+                            modifier = Modifier.rotate(salesFabRotation)
+                        )
                     }
                 }
             } else if (selectedTabIndex == 2) {
@@ -259,11 +289,12 @@ fun SalesScreen(
             }
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            Column(modifier = Modifier.fillMaxSize()) {
             CommunicationLauncher(isBangla = isBangla)
             // Top Navigation Tabs
             ScrollableTabRow(
@@ -324,7 +355,8 @@ fun SalesScreen(
                                 else -> CommunicationModule.INVOICE
                             }
                             communicationRequest = CommunicationRequest(mod, inv.id)
-                        }
+                        },
+                        onEditInvoice = { inv -> viewModel.startEditingInvoice(inv) }
                     )
                     1 -> CustomersTab(
                         customers = uiState.customers,
@@ -376,6 +408,19 @@ fun SalesScreen(
                         isBangla = isBangla
                     )
                 }
+            }
+            }
+            if (selectedTabIndex == 0 && isSalesFabExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.42f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { isSalesFabExpanded = false }
+                        )
+                )
             }
         }
     }
@@ -444,6 +489,51 @@ fun SalesScreen(
                 uiState.selectedInvoice?.let { inv ->
                     viewModel.updateInvoiceCommunicationMetadata(inv.id, validUntil, scheduledInfo)
                 }
+            },
+            onEditInvoice = {
+                uiState.selectedInvoice?.let { inv ->
+                    viewModel.startEditingInvoice(inv, closeDetail = true)
+                }
+            }
+        )
+    }
+
+    // Edit Existing Invoice Dialog (Draft or Posted)
+    uiState.editingInvoiceContext?.let { editCtx ->
+        CreateInvoiceDialog(
+            customers = uiState.customers,
+            warehouses = uiState.warehouses,
+            products = uiState.products,
+            variants = uiState.variants,
+            stockBalances = uiState.stockBalances,
+            costLayers = uiState.costLayers,
+            liquidAccounts = uiState.liquidAccounts,
+            productImages = uiState.productImages,
+            variantImages = uiState.variantImages,
+            userRole = uiState.userRole,
+            customerSummary = uiState.selectedCustomerSummary,
+            isBangla = isBangla,
+            editContext = editCtx,
+            onDismiss = { viewModel.clearEditingInvoice() },
+            onCustomerSelected = { custId ->
+                viewModel.loadCustomerSummary(custId)
+            },
+            onCreateCustomerImmediate = { newCustDraft, onCreated, onError ->
+                viewModel.createCustomerInline(newCustDraft, onCreated, onError)
+            },
+            onSubmitDraft = { draft ->
+                viewModel.saveEditedInvoice(
+                    invoiceId = editCtx.invoice.id,
+                    draft = draft,
+                    postAfterSave = false
+                )
+            },
+            onConfirmSale = { draft ->
+                viewModel.saveEditedInvoice(
+                    invoiceId = editCtx.invoice.id,
+                    draft = draft,
+                    postAfterSave = true
+                )
             }
         )
     }
@@ -593,7 +683,8 @@ private fun InvoicesTab(
     onSearchChange: (String) -> Unit,
     onStatusFilterChange: (String) -> Unit,
     onSelectInvoice: (SalesInvoice) -> Unit,
-    onQuickShare: (SalesInvoice) -> Unit = {}
+    onQuickShare: (SalesInvoice) -> Unit = {},
+    onEditInvoice: (SalesInvoice) -> Unit = {}
 ) {
     val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
 
@@ -716,6 +807,19 @@ private fun InvoicesTab(
                                     .padding(horizontal = 8.dp, vertical = 2.dp)
                             ) {
                                 Text(statusLabel, color = badgeColor, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                            }
+                            if (inv.status != "CANCELLED") {
+                                IconButton(
+                                    onClick = { onEditInvoice(inv) },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Edit,
+                                        contentDescription = if (isBangla) "সম্পাদনা" else "Edit",
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                             if (inv.status != "CANCELLED" && (inv.isPosted || inv.status in setOf("QUOTATION", "SALES_ORDER"))) {
                                 IconButton(
@@ -1723,6 +1827,72 @@ private fun ReturnsTab(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text("Reason: ${ret.reason}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SalesFabMenuItem(
+    title: String,
+    icon: ImageVector,
+    accentColor: Color,
+    subtitle: String? = null,
+    highlightedGradient: Brush? = null,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        shadowElevation = 6.dp,
+        color = if (highlightedGradient == null) MaterialTheme.colorScheme.surface else Color.Transparent,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (highlightedGradient != null) Color.White.copy(alpha = 0.25f) else accentColor.copy(alpha = 0.28f)
+        )
+    ) {
+        Row(
+            modifier = (if (highlightedGradient != null) {
+                Modifier.background(highlightedGradient)
+            } else {
+                Modifier
+            }).padding(start = 8.dp, end = 14.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (highlightedGradient != null) accentColor.copy(alpha = 0.28f)
+                        else accentColor.copy(alpha = 0.14f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = if (highlightedGradient != null) Color.White else accentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = if (highlightedGradient != null) Color.White else TextPrimary
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        letterSpacing = 0.8.sp,
+                        color = accentColor.copy(alpha = 0.95f)
+                    )
                 }
             }
         }

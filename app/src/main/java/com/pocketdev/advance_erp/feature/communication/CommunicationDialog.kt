@@ -270,6 +270,7 @@ fun CommunicationDialog(
 
     fun launchDocumentStep(
         docFile: File,
+        withCaption: Boolean,
         resolvedApp: String?,
         steps: List<PlannedShareStep>,
         stepIndex: Int
@@ -277,12 +278,19 @@ fun CommunicationDialog(
         val docExt = docFile.extension.lowercase()
         val sharedCsv = if (steps.size > 1) {
             ShareWorkflowPlanner.formatSharedFormatsCsv(state.selectedFormats, docExt)
+        } else if (withCaption) {
+            val docToken = if (docExt == "xlsx") "XLSX" else "PDF"
+            "$docToken,TEXT_MESSAGE"
         } else {
             if (docExt == "xlsx") "XLSX" else "PDF"
         }
+        val caption = if (withCaption) state.message else ""
+        if (withCaption && state.message.isNotBlank()) {
+            WhatsAppShareManager.copy(context, state.message)
+        }
         val eventName = if (steps.size > 1) "MULTI_STEP_HANDOFF" else "SHARE_INITIATED"
         val launchRes = runCatching {
-            WhatsAppShareManager.share(context, docFile, "", resolvedApp)
+            WhatsAppShareManager.share(context, docFile, caption, resolvedApp)
         }
         launchRes.onFailure { e ->
             viewModel.error(e.message ?: label("Document share failed", "ডকুমেন্ট শেয়ার ব্যর্থ হয়েছে"))
@@ -292,13 +300,20 @@ fun CommunicationDialog(
             event = eventName,
             application = resolvedApp ?: "SYSTEM_CHOOSER",
             attachment = true,
-            message = if (ShareOutputFormat.TEXT_MESSAGE in state.selectedFormats) state.message else "",
+            message = if (withCaption || ShareOutputFormat.TEXT_MESSAGE in state.selectedFormats) state.message else "",
             sharedFormatsOverride = sharedCsv,
             includePdfRef = true,
             includeImageRef = false
         )
         if (steps.size > 1) {
             viewModel.updateShareWorkflow(steps, completedIndex = stepIndex)
+        } else if (withCaption) {
+            viewModel.notice(
+                label(
+                    "Document + caption opened in share sheet (text also copied to clipboard).",
+                    "ডকুমেন্ট ও বার্তা শেয়ার শিটে খোলা হয়েছে (বার্তাটি ক্লিপবোর্ডেও কপি করা আছে)।"
+                )
+            )
         }
     }
 
@@ -357,7 +372,9 @@ fun CommunicationDialog(
     ) {
         val p = state.prepared ?: return
         if (state.busy || state.generatingFormat != null) return
-        val needsText = step.kind == ShareStepKind.SEND_TEXT || step.kind == ShareStepKind.SEND_IMAGE_WITH_CAPTION
+        val needsText = step.kind == ShareStepKind.SEND_TEXT ||
+            step.kind == ShareStepKind.SEND_DOCUMENT_WITH_CAPTION ||
+            step.kind == ShareStepKind.SEND_IMAGE_WITH_CAPTION
         if (!validateTextIfNeeded(needsText)) return
 
         val resolvedApp = if (other) null else {
@@ -405,13 +422,14 @@ fun CommunicationDialog(
                 }
             }
 
-            ShareStepKind.SEND_DOCUMENT -> {
+            ShareStepKind.SEND_DOCUMENT, ShareStepKind.SEND_DOCUMENT_WITH_CAPTION -> {
+                val withCaption = step.kind == ShareStepKind.SEND_DOCUMENT_WITH_CAPTION
                 val existingDoc = p.attachment ?: p.pdfFile
                 if (existingDoc != null && WhatsAppShareManager.isAttachmentReady(context, existingDoc)) {
-                    launchDocumentStep(existingDoc, resolvedApp, steps, step.stepIndex)
+                    launchDocumentStep(existingDoc, withCaption, resolvedApp, steps, step.stepIndex)
                 } else {
                     viewModel.ensurePdfGenerated { freshPdf ->
-                        launchDocumentStep(freshPdf, resolvedApp, steps, step.stepIndex)
+                        launchDocumentStep(freshPdf, withCaption, resolvedApp, steps, step.stepIndex)
                     }
                 }
             }
@@ -1053,9 +1071,11 @@ fun CommunicationDialog(
                                     onDismissWorkflow = { viewModel.clearShareWorkflow() }
                                 )
                             } else if (
-                                ShareOutputFormat.IMAGE_CARD in state.selectedFormats &&
                                 ShareOutputFormat.TEXT_MESSAGE in state.selectedFormats &&
-                                ShareOutputFormat.PDF !in state.selectedFormats
+                                ((ShareOutputFormat.IMAGE_CARD in state.selectedFormats &&
+                                    ShareOutputFormat.PDF !in state.selectedFormats) ||
+                                    (ShareOutputFormat.PDF in state.selectedFormats &&
+                                        ShareOutputFormat.IMAGE_CARD !in state.selectedFormats))
                             ) {
                                 OutlinedButton(
                                     onClick = {

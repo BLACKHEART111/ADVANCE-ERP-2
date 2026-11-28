@@ -51,6 +51,9 @@ interface FifoConsumptionDao {
     @Query("SELECT * FROM fifo_consumptions WHERE invoiceId = :invoiceId ORDER BY createdAt ASC")
     suspend fun getConsumptionsForInvoiceSync(invoiceId: String): List<FifoConsumption>
 
+    @Query("DELETE FROM fifo_consumptions WHERE invoiceId = :invoiceId")
+    suspend fun deleteConsumptionsForInvoice(invoiceId: String)
+
     @Query("SELECT * FROM fifo_consumptions WHERE productId = :productId ORDER BY createdAt DESC")
     fun getConsumptionsForProduct(productId: String): Flow<List<FifoConsumption>>
 

@@ -29,6 +29,9 @@ interface SalesReturnDao {
     @Query("SELECT * FROM sales_returns WHERE invoiceId = :invoiceId ORDER BY returnDate DESC")
     fun getReturnsForInvoice(invoiceId: String): Flow<List<SalesReturn>>
 
+    @Query("SELECT * FROM sales_returns WHERE invoiceId = :invoiceId ORDER BY returnDate DESC")
+    suspend fun getReturnsForInvoiceSync(invoiceId: String): List<SalesReturn>
+
     @Query("SELECT * FROM sales_returns WHERE customerId = :customerId ORDER BY returnDate DESC")
     fun getReturnsForCustomer(customerId: String): Flow<List<SalesReturn>>
 

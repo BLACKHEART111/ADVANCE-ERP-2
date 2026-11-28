@@ -70,6 +70,9 @@ interface SalesDao {
     @Query("SELECT * FROM sales_cost_layer_usages WHERE invoiceId = :invoiceId")
     suspend fun getCostLayerUsagesForInvoice(invoiceId: String): List<SalesCostLayerUsage>
 
+    @Query("DELETE FROM sales_cost_layer_usages WHERE invoiceId = :invoiceId")
+    suspend fun deleteCostLayerUsagesForInvoice(invoiceId: String)
+
     @Query("UPDATE sales_invoices SET status = :status, paidAmountMinor = :paidMinor, dueAmountMinor = :dueMinor, updatedAt = :now WHERE id = :invoiceId")
     suspend fun updateInvoicePaymentStatus(invoiceId: String, status: String, paidMinor: Long, dueMinor: Long, now: Long = System.currentTimeMillis())
 
